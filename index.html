@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SonicBrand — AI Playlist for Business</title>
 <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{--bg:#0a0a0f;--bg-2:#12121a;--card:#1a1a25;--card-2:#22222f;--border:#2a2a3a;--text:#f5f5f7;--muted:#8a8a9a;--accent:#1DB954;--accent-2:#9b5cff;--accent-3:#ff4785;--gradient:linear-gradient(135deg,#1DB954 0%,#9b5cff 50%,#ff4785 100%)}
   *{margin:0;padding:0;box-sizing:border-box;font-family:'Heebo',sans-serif}
@@ -27,6 +28,22 @@
   .btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 30px rgba(155,92,255,.3)}
   .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
   .btn-ghost:hover{border-color:var(--accent)}
+  #authScreen{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;align-items:center;justify-content:center}
+  .auth-box{background:var(--card);border:1px solid var(--border);border-radius:24px;padding:40px;width:100%;max-width:420px;text-align:center}
+  .auth-box h2{margin-bottom:8px}.auth-box p{font-size:14px;margin-bottom:24px}
+  .auth-tabs{display:flex;gap:0;margin-bottom:24px;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+  .auth-tab{flex:1;padding:12px;background:transparent;border:none;color:var(--muted);font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;transition:.2s}
+  .auth-tab.active{background:var(--gradient);color:#fff}
+  .auth-input{width:100%;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 18px;border-radius:12px;font-size:15px;font-family:inherit;margin-bottom:12px;direction:ltr;text-align:left}
+  .auth-input:focus{outline:none;border-color:var(--accent)}
+  .auth-err{color:var(--accent-3);font-size:13px;margin-bottom:12px;display:none}
+  .auth-divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--muted);font-size:13px}
+  .auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+  .guest-btn{width:100%;padding:14px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);border-radius:12px;font-size:14px;cursor:pointer;font-family:inherit;transition:.2s}
+  .guest-btn:hover{border-color:var(--accent);background:var(--card-2)}
+  .auth-user-bar{position:fixed;top:12px;left:12px;z-index:101;display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:6px 12px;font-size:12px;color:var(--muted)}
+  .auth-user-bar .au-email{color:var(--text);font-weight:500}
+  .auth-user-bar button{background:none;border:none;color:var(--accent-3);cursor:pointer;font-size:11px;font-family:inherit;padding:2px 6px}
   .input{width:100%;background:var(--card-2);border:1px solid var(--border);color:var(--text);padding:16px 20px;border-radius:12px;font-size:16px;font-family:inherit}
   .input:focus{outline:none;border-color:var(--accent)}
   .hero{text-align:center;padding:80px 20px}.hero h1{font-size:56px}
@@ -140,12 +157,44 @@
 </style>
 </head>
 <body>
+<div id="authScreen">
+  <div class="auth-box">
+    <h2 class="gradient-text">SonicBrand</h2>
+    <p>התחברו כדי לשמור פלייליסטים ולחבר Spotify</p>
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login',this)">התחברות</button>
+      <button class="auth-tab" onclick="switchAuthTab('register',this)">הרשמה</button>
+    </div>
+    <div id="authFormLogin">
+      <input class="auth-input" id="authEmail" type="email" placeholder="אימייל">
+      <input class="auth-input" id="authPass" type="password" placeholder="סיסמה">
+      <div class="auth-err" id="authErr"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="authSubmit('login')">התחבר</button>
+    </div>
+    <div id="authFormRegister" style="display:none">
+      <input class="auth-input" id="regEmail" type="email" placeholder="אימייל">
+      <input class="auth-input" id="regPass" type="password" placeholder="סיסמה (6+ תווים)">
+      <input class="auth-input" id="regPass2" type="password" placeholder="אימות סיסמה">
+      <div class="auth-err" id="regErr"></div>
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="authSubmit('register')">הירשם</button>
+    </div>
+    <div class="auth-divider">או</div>
+    <button class="guest-btn" onclick="guestLogin()">המשך כאורח →</button>
+    <p style="font-size:11px;color:var(--muted);margin-top:16px;margin-bottom:0">אורח = Spotify משותף · משתמש רשום = Spotify אישי</p>
+  </div>
+</div>
+<div id="authUserBar" class="auth-user-bar" style="display:none">
+  <span id="authUserEmail" class="au-email"></span>
+  <button onclick="authLogout()">התנתק</button>
+</div>
 <nav class="screen-nav">
   <div class="logo">◉ SonicBrand</div>
   <button onclick="nav('landing')" class="active">Home</button>
   <button onclick="nav('onboarding')">Onboarding</button>
   <button onclick="nav('playlist')">Playlist</button>
   <button onclick="nav('settings')" style="margin-right:auto;background:var(--card-2)">⚙ Settings</button>
+  <span style="font-size:11px;color:var(--muted);margin-left:8px" id="appVersion">v1</span>
+  <button onclick="hardRefresh()" style="background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:4px 8px" title="רענן">⟳</button>
 </nav>
 <div class="container">
 <section id="landing" class="screen active">
@@ -292,6 +341,19 @@
 <button class="shazam-btn" onclick="openShazam()">🎤</button>
 <div class="shazam-modal" id="shazamModal"><div class="shazam-content" style="position:relative"><button onclick="closeShazam()" style="position:absolute;top:16px;left:16px;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer">✕</button><h2>🎵 זיהוי שיר</h2><p style="color:var(--muted);font-size:14px">לחצו להאזנה — המערכת תזהה את השיר</p><div class="shazam-circle" id="shazamCircle" onclick="startShazam()">🎤</div><div id="shazamStatus" style="color:var(--muted);font-size:14px;margin-top:12px"></div><div id="shazamResult" class="shazam-result"></div></div></div>
 <script>
+const APP_VERSION='v1';
+function hardRefresh(){if('caches' in window){caches.keys().then(names=>{names.forEach(n=>caches.delete(n))}).finally(()=>{location.href=location.pathname+'?t='+Date.now();location.reload(true)})}else{location.href=location.pathname+'?t='+Date.now()}}
+const SUPABASE_URL='https://xhkqrxljncazvbgkmqex.supabase.co';
+const SUPABASE_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
+const sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
+let authUser=null,isGuest=false;
+function switchAuthTab(tab,el){document.querySelectorAll('.auth-tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');document.getElementById('authFormLogin').style.display=tab==='login'?'block':'none';document.getElementById('authFormRegister').style.display=tab==='register'?'block':'none'}
+async function authSubmit(mode){const errEl=document.getElementById(mode==='login'?'authErr':'regErr');errEl.style.display='none';if(mode==='login'){const email=document.getElementById('authEmail').value.trim(),pass=document.getElementById('authPass').value;if(!email||!pass){errEl.textContent='נא למלא אימייל וסיסמה';errEl.style.display='block';return}const{data,error}=await sb.auth.signInWithPassword({email,password:pass});if(error){errEl.textContent=error.message==='Invalid login credentials'?'אימייל או סיסמה שגויים':error.message;errEl.style.display='block';return}authUser=data.user;isGuest=false;enterApp()}else{const email=document.getElementById('regEmail').value.trim(),pass=document.getElementById('regPass').value,pass2=document.getElementById('regPass2').value;if(!email||!pass){errEl.textContent='נא למלא את כל השדות';errEl.style.display='block';return}if(pass!==pass2){errEl.textContent='הסיסמאות לא תואמות';errEl.style.display='block';return}if(pass.length<6){errEl.textContent='סיסמה חייבת להכיל לפחות 6 תווים';errEl.style.display='block';return}const{data,error}=await sb.auth.signUp({email,password:pass});if(error){errEl.textContent=error.message;errEl.style.display='block';return}authUser=data.user;isGuest=false;enterApp()}}
+function guestLogin(){isGuest=true;authUser=null;enterApp()}
+function enterApp(){document.getElementById('authScreen').style.display='none';if(!isGuest&&authUser){document.getElementById('authUserBar').style.display='flex';document.getElementById('authUserEmail').textContent=authUser.email;loadUserSpotifyTokens()}else{document.getElementById('authUserBar').style.display='none'}}
+async function authLogout(){await sb.auth.signOut();authUser=null;isGuest=false;spotifyLogout();document.getElementById('authUserBar').style.display='none';document.getElementById('authScreen').style.display='flex'}
+async function loadUserSpotifyTokens(){if(!authUser)return;try{const{data}=await sb.from('user_spotify').select('*').eq('user_id',authUser.id).single();if(data&&data.access_token){localStorage.setItem('sp_access',data.access_token);localStorage.setItem('sp_refresh',data.refresh_token);localStorage.setItem('sp_expiry',data.expiry);localStorage.setItem('spotify_id','b6404b5ae1684143b79d9a86bb4b6cba');await loadSpotifyUser()}}catch(e){}}
+async function saveUserSpotifyTokens(){if(!authUser||isGuest)return;try{const at=localStorage.getItem('sp_access'),rt=localStorage.getItem('sp_refresh'),ex=localStorage.getItem('sp_expiry');if(!at)return;await sb.from('user_spotify').upsert({user_id:authUser.id,access_token:at,refresh_token:rt,expiry:ex,updated_at:new Date().toISOString()},{onConflict:'user_id'})}catch(e){}}
 const HARDCODED_API_KEY=['sk-proj-CetQIHSroWfiQ-w3dUeL','xjzlS0-dFQYQ-rM_hNIUQn59rBt-aavbhIWHgz6K_dPIrTWE2bDlAeT3Blbk','FJZdBgV1JQUPwz2SzPqnCCnH8o0gLkjVqNaQdwxwMtN7P75oEaUCNs0PjyDqgdmEF_LWqrjuaIAA'].join('');
 const brainLogs=[];
 function brainLog(e,t,d,ai){const time=new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});brainLogs.push({e,t,d,ai,time});const el=document.getElementById('brainLog'),div=document.createElement('div');div.className='brain-entry'+(ai?' ai':'');div.innerHTML='<div class="brain-time">'+time+'</div><div class="brain-title">'+e+' '+esc(t)+'</div><div class="brain-detail">'+esc(d)+'</div>';el.prepend(div);try{localStorage.setItem('sb_brain_logs',JSON.stringify(brainLogs))}catch(x){}}
@@ -304,8 +366,8 @@ function genRandomString(l){const a=new Uint8Array(l);crypto.getRandomValues(a);
 async function sha256(p){return crypto.subtle.digest('SHA-256',new TextEncoder().encode(p))}
 function base64url(b){return btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
 async function spotifyLogin(){const c=document.getElementById('spotifyId').value.trim()||'b6404b5ae1684143b79d9a86bb4b6cba';localStorage.setItem('spotify_id',c);const v=genRandomString(64);localStorage.setItem('sp_verifier',v);window.location.href='https://accounts.spotify.com/authorize?'+new URLSearchParams({client_id:c,response_type:'code',redirect_uri:SPOTIFY_REDIRECT,scope:SPOTIFY_SCOPES,code_challenge_method:'S256',code_challenge:base64url(await sha256(v)),state:genRandomString(16)})}
-async function handleSpotifyCallback(){const code=new URLSearchParams(window.location.search).get('code');if(!code)return;history.replaceState(null,'',location.pathname);const ci=localStorage.getItem('spotify_id'),v=localStorage.getItem('sp_verifier');if(!ci||!v)return;try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:SPOTIFY_REDIRECT,client_id:ci,code_verifier:v})});const j=await r.json();if(j.error)throw new Error(j.error_description||j.error);localStorage.setItem('sp_access',j.access_token);localStorage.setItem('sp_refresh',j.refresh_token);localStorage.setItem('sp_expiry',String(Date.now()+j.expires_in*1000));spotifyToken=j.access_token;spotifyExpiry=Date.now()+j.expires_in*1000;await loadSpotifyUser();nav('settings')}catch(e){showMsg('spotifyStatus','שגיאה: '+e.message,'err')}}
-async function refreshSpotifyToken(){const ci=localStorage.getItem('spotify_id'),rf=localStorage.getItem('sp_refresh');if(!ci||!rf)return null;try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',refresh_token:rf,client_id:ci})});const j=await r.json();if(j.error)throw new Error(j.error);localStorage.setItem('sp_access',j.access_token);if(j.refresh_token)localStorage.setItem('sp_refresh',j.refresh_token);localStorage.setItem('sp_expiry',String(Date.now()+j.expires_in*1000));spotifyToken=j.access_token;spotifyExpiry=Date.now()+j.expires_in*1000;return spotifyToken}catch(e){spotifyLogout();return null}}
+async function handleSpotifyCallback(){const code=new URLSearchParams(window.location.search).get('code');if(!code)return;history.replaceState(null,'',location.pathname);const ci=localStorage.getItem('spotify_id'),v=localStorage.getItem('sp_verifier');if(!ci||!v)return;try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:SPOTIFY_REDIRECT,client_id:ci,code_verifier:v})});const j=await r.json();if(j.error)throw new Error(j.error_description||j.error);localStorage.setItem('sp_access',j.access_token);localStorage.setItem('sp_refresh',j.refresh_token);localStorage.setItem('sp_expiry',String(Date.now()+j.expires_in*1000));spotifyToken=j.access_token;spotifyExpiry=Date.now()+j.expires_in*1000;await loadSpotifyUser();await saveUserSpotifyTokens();nav('settings')}catch(e){showMsg('spotifyStatus','שגיאה: '+e.message,'err')}}
+async function refreshSpotifyToken(){const ci=localStorage.getItem('spotify_id'),rf=localStorage.getItem('sp_refresh');if(!ci||!rf)return null;try{const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',refresh_token:rf,client_id:ci})});const j=await r.json();if(j.error)throw new Error(j.error);localStorage.setItem('sp_access',j.access_token);if(j.refresh_token)localStorage.setItem('sp_refresh',j.refresh_token);localStorage.setItem('sp_expiry',String(Date.now()+j.expires_in*1000));spotifyToken=j.access_token;spotifyExpiry=Date.now()+j.expires_in*1000;saveUserSpotifyTokens();return spotifyToken}catch(e){spotifyLogout();return null}}
 async function getSpotifyToken(){if(spotifyToken&&Date.now()<spotifyExpiry-60000)return spotifyToken;const s=localStorage.getItem('sp_access'),x=+localStorage.getItem('sp_expiry')||0;if(s&&Date.now()<x-60000){spotifyToken=s;spotifyExpiry=x;return spotifyToken}if(localStorage.getItem('sp_refresh'))return refreshSpotifyToken();return null}
 async function spotifyFetch(url,opts={}){let t=await getSpotifyToken();if(!t)return null;let r=await fetch(url,{...opts,headers:{...opts.headers,'Authorization':'Bearer '+t}});if(r.status===401){t=await refreshSpotifyToken();if(!t)return null;r=await fetch(url,{...opts,headers:{...opts.headers,'Authorization':'Bearer '+t}})}return r}
 async function loadSpotifyUser(){const r=await spotifyFetch('https://api.spotify.com/v1/me');if(!r)return;const u=await r.json();spotifyUser=u;document.getElementById('spotifyNotConnected').style.display='none';document.getElementById('spotifyConnected').style.display='block';document.getElementById('spotifyName').textContent=u.display_name||u.id;document.getElementById('spotifyPlan').textContent=(u.product==='premium'?'Premium':'Free')+' · '+u.country;if(u.images?.length)document.getElementById('spotifyAvatar').src=u.images[0].url;const btn=document.getElementById('saveToSpotifyBtn');if(btn)btn.style.display='inline-flex';const wh=document.getElementById('wizSpotifyHint');if(wh)wh.style.display='none';const sb=document.getElementById('spotifyConnectBanner');if(sb)sb.style.display='none';brainLog('🎧','Spotify',u.display_name)}
@@ -317,7 +379,7 @@ function saveKey(){const k=document.getElementById('apiKey').value.trim();if(!k.
 async function testKey(){try{showMsg('openaiStatus','בודק...','ok');await callOpenAI([{role:'user',content:'Say OK'}],{max_tokens:10,noJson:true});showMsg('openaiStatus','✓ תקין','ok')}catch(e){showMsg('openaiStatus','שגיאה: '+e.message,'err')}}
 function showMsg(id,msg,type){const el=document.getElementById(id);el.style.display='block';el.textContent=msg;el.style.background=type==='ok'?'rgba(29,185,84,.15)':'rgba(255,71,133,.15)';el.style.color=type==='ok'?'var(--accent)':'var(--accent-3)'}
 function generateShareLink(){const k=document.getElementById('apiKey').value.trim();if(!k){showMsg('openaiStatus','הזן מפתח','err');return}saveKey();const p=new URLSearchParams();p.set('k',btoa(k));const m=document.getElementById('apiModel').value;if(m!=='gpt-4o')p.set('m',m);const s=localStorage.getItem('spotify_id');if(s)p.set('sid',s);document.getElementById('shareLinkUrl').textContent=location.origin+location.pathname+'#'+p;document.getElementById('shareLink').style.display='block'}
-(async function(){if(location.hash.length>1){try{const h=new URLSearchParams(location.hash.slice(1));if(h.has('k')){const d=atob(h.get('k'));if(d.startsWith('sk-')){localStorage.setItem('openai_key',d);if(h.has('m'))localStorage.setItem('openai_model',h.get('m'));if(h.has('sid'))localStorage.setItem('spotify_id',h.get('sid'));history.replaceState(null,'',location.pathname)}}}catch(e){}}const k=localStorage.getItem('openai_key');if(k)document.getElementById('apiKey').value=k;document.getElementById('apiModel').value=localStorage.getItem('openai_model')||'gpt-4o';const s=localStorage.getItem('spotify_id');if(s)document.getElementById('spotifyId').value=s;if(window.location.search.includes('code='))await handleSpotifyCallback();else if(localStorage.getItem('sp_access'))await loadSpotifyUser();brainLog('🚀','אתחול','API: '+(k?'מוגדר':'ברירת מחדל'));if(!isSpotifyConnected())document.getElementById('wizSpotifyHint').style.display='block'})();
+(async function(){if(location.hash.length>1){try{const h=new URLSearchParams(location.hash.slice(1));if(h.has('k')){const d=atob(h.get('k'));if(d.startsWith('sk-')){localStorage.setItem('openai_key',d);if(h.has('m'))localStorage.setItem('openai_model',h.get('m'));if(h.has('sid'))localStorage.setItem('spotify_id',h.get('sid'));history.replaceState(null,'',location.pathname)}}}catch(e){}}const k=localStorage.getItem('openai_key');if(k)document.getElementById('apiKey').value=k;document.getElementById('apiModel').value=localStorage.getItem('openai_model')||'gpt-4o';const s=localStorage.getItem('spotify_id');if(s)document.getElementById('spotifyId').value=s;if(window.location.search.includes('code='))await handleSpotifyCallback();else if(localStorage.getItem('sp_access'))await loadSpotifyUser();brainLog('🚀','אתחול','API: '+(k?'מוגדר':'ברירת מחדל'));if(!isSpotifyConnected())document.getElementById('wizSpotifyHint').style.display='block';const{data:{session}}=await sb.auth.getSession();if(session){authUser=session.user;isGuest=false;enterApp()}})();
 let selectedUser='';function selectUser(n,el){document.querySelectorAll('.user-card').forEach(c=>c.classList.remove('selected'));el.classList.add('selected');if(n==='other'){document.getElementById('customUserInput').style.display='block';selectedUser=''}else{document.getElementById('customUserInput').style.display='none';selectedUser=n}}
 const selectedGenres=new Set();function toggleGenre(el){const g=el.textContent.trim();if(selectedGenres.has(g)){selectedGenres.delete(g);el.classList.remove('selected')}else{selectedGenres.add(g);el.classList.add('selected')}}
 const refTracks=[];

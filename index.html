@@ -215,8 +215,6 @@
         <div class="fader-item"><div class="fader-labels"><span class="fl strong">לועזית</span><span class="fl">עברית</span></div><input type="range" min="0" max="100" value="30" id="fHebrew" oninput="updateFader(this)"><div class="fader-val">30% עברית</div></div>
         <div class="fader-item"><div class="fader-labels"><span class="fl strong">אינסטרומנטלי</span><span class="fl">ווקלי</span></div><input type="range" min="0" max="100" value="60" id="fVocal" oninput="updateFader(this)"><div class="fader-val">60%</div></div>
         <div class="fader-item"><div class="fader-labels"><span class="fl strong">רגוע ונינוח</span><span class="fl">אנרגטי ותוסס</span></div><input type="range" min="0" max="100" value="40" id="fEnergy" oninput="updateFader(this)"><div class="fader-val">40%</div></div>
-        <div class="fader-item"><div class="fader-labels"><span class="fl strong">קלאסי ונצחי</span><span class="fl">עכשווי וטרנדי</span></div><input type="range" min="0" max="100" value="50" id="fEra" oninput="updateFader(this)"><div class="fader-val">50%</div></div>
-        <div class="fader-item"><div class="fader-labels"><span class="fl strong">אקוסטי ואורגני</span><span class="fl">אלקטרוני ומעובד</span></div><input type="range" min="0" max="100" value="40" id="fElectronic" oninput="updateFader(this)"><div class="fader-val">40%</div></div>
       </div>
       <div class="wiz-nav">
         <button class="btn btn-ghost" onclick="wizGo(1)">→ חזרה</button>
@@ -659,8 +657,6 @@
         hebrew:+document.getElementById('fHebrew').value,
         vocal:+document.getElementById('fVocal').value,
         energy:+document.getElementById('fEnergy').value,
-        era:+document.getElementById('fEra').value,
-        electronic:+document.getElementById('fElectronic').value
       };
       wizGo(3); generateSamples();
     } else if(cur===3){

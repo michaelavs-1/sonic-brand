@@ -45,9 +45,13 @@
   .input{width:100%;background:var(--card-2);border:1px solid var(--border);
     color:var(--text);padding:16px 20px;border-radius:12px;font-size:16px;font-family:inherit}
   .input:focus{outline:none;border-color:var(--accent)}
+
+  /* Landing */
   .hero{text-align:center;padding:80px 20px}
   .hero h1{font-size:56px}
   .hero .sub{font-size:18px;color:var(--muted);max-width:550px;margin:20px auto 40px}
+
+  /* Wizard */
   .wizard{max-width:680px;margin:0 auto}
   .wizard-progress{display:flex;align-items:center;justify-content:center;gap:0;margin-bottom:40px}
   .wstep{
@@ -63,6 +67,8 @@
   .wiz-panel h2{text-align:center;margin-bottom:8px}
   .wiz-sub{text-align:center;color:var(--muted);margin-bottom:32px;font-size:15px}
   .wiz-nav{display:flex;justify-content:center;gap:12px;margin-top:32px}
+
+  /* Step 1 */
   .desc-area{width:100%;background:var(--card);border:1px solid var(--border);color:var(--text);
     padding:20px;border-radius:16px;font-size:16px;font-family:inherit;resize:vertical;min-height:140px;line-height:1.7}
   .desc-area:focus{outline:none;border-color:var(--accent)}
@@ -73,6 +79,8 @@
   .voice-btn:hover{border-color:var(--accent)}
   .voice-btn.recording{background:rgba(255,71,133,.15);border-color:var(--accent-3);color:var(--accent-3);animation:pulse 1.5s infinite}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+
+  /* Step 2 — faders */
   .fader-list{display:flex;flex-direction:column;gap:24px}
   .fader-item{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px 24px}
   .fader-labels{display:flex;justify-content:space-between;margin-bottom:12px;font-size:14px;font-weight:600}
@@ -81,6 +89,8 @@
   .fader-val{text-align:center;font-size:12px;color:var(--accent);margin-top:6px;font-weight:700}
   input[type=range]{-webkit-appearance:none;width:100%;height:6px;border-radius:3px;background:var(--card-2);outline:none}
   input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:var(--gradient);cursor:pointer;box-shadow:0 2px 10px rgba(155,92,255,.4)}
+
+  /* Step 3 — samples */
   .sample-list{display:flex;flex-direction:column;gap:16px}
   .sample-card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;display:flex;align-items:center;gap:14px}
   .sample-embed{flex:1;border-radius:12px;overflow:hidden}
@@ -96,6 +106,8 @@
   .sample-loading{text-align:center;padding:40px;color:var(--muted)}
   .sample-loading .spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px}
   @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* Step 4 — energy */
   .energy-map{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
   @media(max-width:600px){.energy-map{grid-template-columns:repeat(2,1fr)}}
   .energy-block{
@@ -108,6 +120,8 @@
   .energy-block input[type=range]{writing-mode:vertical-lr;direction:rtl;height:100px;width:6px;margin:6px 0}
   .eb-val{font-size:20px;font-weight:900;color:var(--accent)}
   .energy-desc{font-size:11px;color:var(--muted)}
+
+  /* Playlist */
   .playlist-header{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
   .playlist-cover{width:140px;height:140px;border-radius:16px;background:var(--gradient);display:flex;align-items:center;justify-content:center;font-size:56px;flex-shrink:0;background-size:cover;background-position:center}
   .playlist-meta{color:var(--muted);font-size:14px;margin-top:4px}
@@ -128,17 +142,32 @@
   .voted-up{background:rgba(29,185,84,.15)!important;color:var(--accent)!important}
   .voted-down{background:rgba(255,71,133,.15)!important;color:var(--accent-3)!important}
   .feedback-summary{display:none;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 18px;margin-top:12px;align-items:center;gap:12px;font-size:14px}
+
+  /* Settings */
   .settings-grid{display:flex;flex-direction:column;gap:16px;max-width:600px}
   .status-msg{padding:10px 14px;border-radius:8px;font-size:13px;margin-top:10px;display:none}
+  .spotify-connect-btn{
+    display:inline-flex;align-items:center;gap:10px;padding:14px 28px;border-radius:50px;
+    border:none;background:#1DB954;color:#fff;font-size:15px;font-weight:700;cursor:pointer;
+    font-family:inherit;transition:.2s
+  }
+  .spotify-connect-btn:hover{background:#1ed760;transform:translateY(-1px);box-shadow:0 6px 20px rgba(29,185,84,.4)}
+  .spotify-connect-btn.connected{background:var(--card);border:2px solid var(--accent);color:var(--accent)}
+  .spotify-user{display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg-2);border-radius:12px;margin-top:12px}
+  .spotify-user img{width:40px;height:40px;border-radius:50%;object-fit:cover}
+  .spotify-user .info{flex:1}
+  .spotify-user .name{font-weight:700;font-size:14px}
+  .spotify-user .plan{font-size:12px;color:var(--accent)}
 </style>
 </head>
 <body>
+
 <nav class="screen-nav">
-  <div class="logo">&#9673; SonicBrand</div>
+  <div class="logo">◉ SonicBrand</div>
   <button onclick="nav('landing')" class="active">Home</button>
   <button onclick="nav('onboarding')">Onboarding</button>
   <button onclick="nav('playlist')">Playlist</button>
-  <button onclick="nav('settings')" style="margin-right:auto;background:var(--card-2)">&#9881; Settings</button>
+  <button onclick="nav('settings')" style="margin-right:auto;background:var(--card-2)">⚙ Settings</button>
 </nav>
 
 <div class="container">
@@ -146,9 +175,9 @@
 <!-- LANDING -->
 <section id="landing" class="screen active">
   <div class="hero">
-    <h1>&#1492;&#1508;&#1500;&#1497;&#1497;&#1500;&#1497;&#1505;&#1496; &#1513;&#1500; &#1492;&#1506;&#1505;&#1511; &#1513;&#1500;&#1498;,<br><span class="gradient-text">&#1504;&#1489;&#1504;&#1492; &#1489;&#1506;&#1510;&#1502;&#1493;.</span></h1>
-    <p class="sub">&#1505;&#1508;&#1512;&#1493; &#1500;&#1504;&#1493; &#1506;&#1500; &#1492;&#1506;&#1505;&#1511;, &#1499;&#1493;&#1493;&#1504;&#1493; &#1499;&#1502;&#1492; &#1505;&#1500;&#1497;&#1497;&#1491;&#1512;&#1497;&#1501;, &#1493;&#1514;&#1511;&#1489;&#1500;&#1493; &#1508;&#1500;&#1497;&#1497;&#1500;&#1497;&#1505;&#1496; Spotify &#1502;&#1493;&#1514;&#1488;&#1501; &#1488;&#1497;&#1513;&#1497;&#1514; &#1514;&#1493;&#1498; &#1491;&#1511;&#1493;&#1514;.</p>
-    <button class="btn btn-primary" onclick="nav('onboarding')">&#1492;&#1514;&#1495;&#1500; &#1506;&#1499;&#1513;&#1497;&#1493; &#8592;</button>
+    <h1>הפלייליסט של העסק שלך,<br><span class="gradient-text">נבנה בעצמו.</span></h1>
+    <p class="sub">ספרו לנו על העסק, כוונו כמה סליידרים, ותקבלו פלייליסט Spotify מותאם אישית תוך דקות.</p>
+    <button class="btn btn-primary" onclick="nav('onboarding')">התחל עכשיו ←</button>
   </div>
 </section>
 
@@ -156,7 +185,7 @@
 <section id="onboarding" class="screen">
   <div class="wizard">
     <div id="apiWarning" style="display:none;background:rgba(255,71,133,.15);border:1px solid var(--accent-3);color:var(--accent-3);padding:14px;border-radius:12px;margin-bottom:16px;text-align:center">
-      &#9888; &#1500;&#1488; &#1502;&#1493;&#1490;&#1491;&#1512; &#1502;&#1508;&#1514;&#1495; OpenAI. <a href="#" onclick="nav('settings');return false" style="color:var(--accent-3);text-decoration:underline">&#1492;&#1490;&#1491;&#1512; &#1506;&#1499;&#1513;&#1497;&#1493;</a>
+      ⚠ לא מוגדר מפתח OpenAI. <a href="#" onclick="nav('settings');return false" style="color:var(--accent-3);text-decoration:underline">הגדר עכשיו</a>
     </div>
     <div class="wizard-progress">
       <div class="wstep active" data-step="1">1</div><div class="wline"></div>
@@ -167,59 +196,59 @@
 
     <!-- STEP 1 -->
     <div id="wizStep1" class="wiz-panel active">
-      <h2>&#1505;&#1508;&#1512;&#1493; &#1500;&#1504;&#1493; &#1506;&#1500; &#1492;&#1506;&#1505;&#1511;</h2>
-      <p class="wiz-sub">&#1514;&#1488;&#1512;&#1493; &#1488;&#1514; &#1492;&#1506;&#1505;&#1511;, &#1492;&#1511;&#1492;&#1500;, &#1492;&#1488;&#1493;&#1493;&#1497;&#1512;&#1492; &#8212; &#1489;&#1502;&#1497;&#1500;&#1497;&#1501; &#1513;&#1500;&#1499;&#1501;</p>
-      <textarea id="bizDescription" class="desc-area" rows="5" placeholder="&#1500;&#1502;&#1513;&#1500;: &#1488;&#1504;&#1495;&#1504;&#1493; &#1502;&#1505;&#1506;&#1491;&#1514; &#1508;&#1497;&#1493;&#1494;&#1523;&#1503; &#1488;&#1505;&#1497;&#1488;&#1514;&#1497; &#1489;&#1512;&#1495;&#1493;&#1489; &#1491;&#1497;&#1494;&#1504;&#1490;&#1493;&#1507;. &#1511;&#1492;&#1500; &#1510;&#1506;&#1497;&#1512;. &#1502;&#1495;&#1508;&#1513;&#1497;&#1501; &#1493;&#1497;&#1497;&#1489; &#1513;&#1500; &#1489;&#1497;&#1505;&#1496;&#1512;&#1493; &#1510;&#1512;&#1508;&#1514;&#1497; &#1511;&#1500;&#1488;&#1505;&#1497; &#1506;&#1501; &#1504;&#1490;&#1497;&#1506;&#1493;&#1514; &#1502;&#1494;&#1512;&#1495; &#1514;&#1497;&#1499;&#1493;&#1504;&#1497;&#1493;&#1514;..."></textarea>
+      <h2>ספרו לנו על העסק</h2>
+      <p class="wiz-sub">תארו את העסק, הקהל, האווירה — במילים שלכם</p>
+      <textarea id="bizDescription" class="desc-area" rows="5" placeholder="למשל: אנחנו מסעדת פיוז׳ן אסיאתי ברחוב דיזנגוף. קהל צעיר. מחפשים וייב של ביסטרו צרפתי קלאסי עם נגיעות מזרח תיכוניות..."></textarea>
       <div style="display:flex;gap:10px;align-items:center;margin-top:12px">
-        <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">&#127908; &#1492;&#1511;&#1500;&#1496; &#1489;&#1502;&#1511;&#1493;&#1501; &#1500;&#1492;&#1511;&#1500;&#1497;&#1491;</button>
+        <button class="voice-btn" id="voiceBtn" onclick="toggleVoice()">🎤 הקלט במקום להקליד</button>
         <span id="voiceStatus" style="font-size:12px;color:var(--muted)"></span>
       </div>
-      <div class="wiz-nav"><button class="btn btn-primary" onclick="wizNext(1)">&#1492;&#1502;&#1513;&#1498; &#8592;</button></div>
+      <div class="wiz-nav"><button class="btn btn-primary" onclick="wizNext(1)">המשך ←</button></div>
     </div>
 
     <!-- STEP 2 -->
     <div id="wizStep2" class="wiz-panel">
-      <h2>&#1499;&#1497;&#1493;&#1493;&#1503; &#1492;&#1506;&#1491;&#1508;&#1493;&#1514;</h2>
-      <p class="wiz-sub">&#1492;&#1494;&#1497;&#1494;&#1493; &#1488;&#1514; &#1492;&#1505;&#1500;&#1497;&#1497;&#1491;&#1512;&#1497;&#1501; &#1500;&#1508;&#1497; &#1502;&#1492; &#1513;&#1502;&#1514;&#1488;&#1497;&#1501; &#1500;&#1499;&#1501;</p>
+      <h2>כוונון העדפות</h2>
+      <p class="wiz-sub">הזיזו את הסליידרים לפי מה שמתאים לכם</p>
       <div class="fader-list">
-        <div class="fader-item"><div class="fader-labels"><span class="fl strong">&#1502;&#1493;&#1499;&#1512; &#1493;&#1502;&#1505;&#1495;&#1512;&#1497;</span><span class="fl">&#1506;&#1502;&#1493;&#1511; &#1493;&#1488;&#1500;&#1502;&#1493;&#1504;&#1497;</span></div><input type="range" min="0" max="100" value="50" id="fFamiliarity" oninput="updateFader(this)"><div class="fader-val">50%</div></div>
-        <div class="fader-item"><div class="fader-labels"><span class="fl strong">&#1500;&#1493;&#1506;&#1494;&#1497;&#1514;</span><span class="fl">&#1506;&#1489;&#1512;&#1497;&#1514;</span></div><input type="range" min="0" max="100" value="30" id="fHebrew" oninput="updateFader(this)"><div class="fader-val">30% &#1506;&#1489;&#1512;&#1497;&#1514;</div></div>
-        <div class="fader-item"><div class="fader-labels"><span class="fl strong">&#1488;&#1497;&#1504;&#1505;&#1496;&#1512;&#1493;&#1502;&#1504;&#1496;&#1500;&#1497;</span><span class="fl">&#1493;&#1493;&#1511;&#1500;&#1497;</span></div><input type="range" min="0" max="100" value="60" id="fVocal" oninput="updateFader(this)"><div class="fader-val">60%</div></div>
-        <div class="fader-item"><div class="fader-labels"><span class="fl strong">&#1512;&#1490;&#1493;&#1506; &#1493;&#1504;&#1497;&#1504;&#1493;&#1495;</span><span class="fl">&#1488;&#1504;&#1512;&#1490;&#1496;&#1497; &#1493;&#1514;&#1493;&#1505;&#1505;</span></div><input type="range" min="0" max="100" value="40" id="fEnergy" oninput="updateFader(this)"><div class="fader-val">40%</div></div>
-        <div class="fader-item"><div class="fader-labels"><span class="fl strong">&#1511;&#1500;&#1488;&#1505;&#1497; &#1493;&#1504;&#1510;&#1495;&#1497;</span><span class="fl">&#1506;&#1499;&#1513;&#1493;&#1493;&#1497; &#1493;&#1496;&#1512;&#1504;&#1491;&#1497;</span></div><input type="range" min="0" max="100" value="50" id="fEra" oninput="updateFader(this)"><div class="fader-val">50%</div></div>
-        <div class="fader-item"><div class="fader-labels"><span class="fl strong">&#1488;&#1511;&#1493;&#1505;&#1496;&#1497; &#1493;&#1488;&#1493;&#1512;&#1490;&#1504;&#1497;</span><span class="fl">&#1488;&#1500;&#1511;&#1496;&#1512;&#1493;&#1504;&#1497; &#1493;&#1502;&#1506;&#1493;&#1489;&#1491;</span></div><input type="range" min="0" max="100" value="40" id="fElectronic" oninput="updateFader(this)"><div class="fader-val">40%</div></div>
+        <div class="fader-item"><div class="fader-labels"><span class="fl strong">מוכר ומסחרי</span><span class="fl">עמוק ואלמוני</span></div><input type="range" min="0" max="100" value="50" id="fFamiliarity" oninput="updateFader(this)"><div class="fader-val">50%</div></div>
+        <div class="fader-item"><div class="fader-labels"><span class="fl strong">לועזית</span><span class="fl">עברית</span></div><input type="range" min="0" max="100" value="30" id="fHebrew" oninput="updateFader(this)"><div class="fader-val">30% עברית</div></div>
+        <div class="fader-item"><div class="fader-labels"><span class="fl strong">אינסטרומנטלי</span><span class="fl">ווקלי</span></div><input type="range" min="0" max="100" value="60" id="fVocal" oninput="updateFader(this)"><div class="fader-val">60%</div></div>
+        <div class="fader-item"><div class="fader-labels"><span class="fl strong">רגוע ונינוח</span><span class="fl">אנרגטי ותוסס</span></div><input type="range" min="0" max="100" value="40" id="fEnergy" oninput="updateFader(this)"><div class="fader-val">40%</div></div>
+        <div class="fader-item"><div class="fader-labels"><span class="fl strong">קלאסי ונצחי</span><span class="fl">עכשווי וטרנדי</span></div><input type="range" min="0" max="100" value="50" id="fEra" oninput="updateFader(this)"><div class="fader-val">50%</div></div>
+        <div class="fader-item"><div class="fader-labels"><span class="fl strong">אקוסטי ואורגני</span><span class="fl">אלקטרוני ומעובד</span></div><input type="range" min="0" max="100" value="40" id="fElectronic" oninput="updateFader(this)"><div class="fader-val">40%</div></div>
       </div>
       <div class="wiz-nav">
-        <button class="btn btn-ghost" onclick="wizGo(1)">&#8594; &#1495;&#1494;&#1512;&#1492;</button>
-        <button class="btn btn-primary" onclick="wizNext(2)">&#1492;&#1502;&#1513;&#1498; &#8592;</button>
+        <button class="btn btn-ghost" onclick="wizGo(1)">→ חזרה</button>
+        <button class="btn btn-primary" onclick="wizNext(2)">המשך ←</button>
       </div>
     </div>
 
     <!-- STEP 3 -->
     <div id="wizStep3" class="wiz-panel">
-      <h2>&#1502;&#1492; &#1488;&#1514;&#1501; &#1488;&#1493;&#1502;&#1512;&#1497;&#1501; &#1506;&#1500; &#1492;&#1513;&#1497;&#1512;&#1497;&#1501; &#1492;&#1488;&#1500;&#1492;?</h2>
-      <p class="wiz-sub">&#1505;&#1502;&#1504;&#1493; &#128077; &#1488;&#1493; &#128078; &#8212; &#1494;&#1492; &#1506;&#1493;&#1494;&#1512; &#1500;&#1504;&#1493; &#1500;&#1491;&#1497;&#1497;&#1511;</p>
-      <div id="sampleLoading" class="sample-loading"><div class="spinner"></div><p>&#1502;&#1497;&#1497;&#1510;&#1512; &#1505;&#1488;&#1502;&#1508;&#1500;&#1497;&#1501; &#1502;&#1493;&#1514;&#1488;&#1502;&#1497;&#1501;...</p></div>
+      <h2>מה אתם אומרים על השירים האלה?</h2>
+      <p class="wiz-sub">סמנו 👍 או 👎 — זה עוזר לנו לדייק</p>
+      <div id="sampleLoading" class="sample-loading"><div class="spinner"></div><p>מייצר סאמפלים מותאמים...</p></div>
       <div id="sampleList" class="sample-list" style="display:none"></div>
       <div class="wiz-nav">
-        <button class="btn btn-ghost" onclick="wizGo(2)">&#8594; &#1495;&#1494;&#1512;&#1492;</button>
-        <button class="btn btn-primary" id="sampleNextBtn" onclick="wizNext(3)" style="display:none">&#1492;&#1502;&#1513;&#1498; &#8592;</button>
+        <button class="btn btn-ghost" onclick="wizGo(2)">→ חזרה</button>
+        <button class="btn btn-primary" id="sampleNextBtn" onclick="wizNext(3)" style="display:none">המשך ←</button>
       </div>
     </div>
 
     <!-- STEP 4 -->
     <div id="wizStep4" class="wiz-panel">
-      <h2>&#1506;&#1511;&#1493;&#1502;&#1514; &#1488;&#1504;&#1512;&#1490;&#1497;&#1492; &#8212; &#1502;&#1514;&#1497; &#1502;&#1504;&#1490;&#1504;&#1497;&#1501; &#1502;&#1492;?</h2>
-      <p class="wiz-sub">&#1511;&#1489;&#1506;&#1493; &#1488;&#1514; &#1512;&#1502;&#1514; &#1492;&#1488;&#1504;&#1512;&#1490;&#1497;&#1492; &#1500;&#1499;&#1500; &#1495;&#1500;&#1511; &#1489;&#1497;&#1493;&#1501;</p>
+      <h2>עקומת אנרגיה — מתי מנגנים מה?</h2>
+      <p class="wiz-sub">קבעו את רמת האנרגיה לכל חלק ביום</p>
       <div class="energy-map">
-        <div class="energy-block"><div class="eb-icon">&#127749;</div><div class="eb-label">&#1489;&#1493;&#1511;&#1512;</div><div class="eb-hours">07&#8211;12</div><input type="range" min="1" max="5" value="2" id="eMorning" oninput="updateEnergy(this)"><div class="eb-val">2</div><div class="energy-desc">&#1512;&#1490;&#1493;&#1506;</div></div>
-        <div class="energy-block"><div class="eb-icon">&#9728;&#65039;</div><div class="eb-label">&#1510;&#1492;&#1512;&#1497;&#1497;&#1501;</div><div class="eb-hours">12&#8211;16</div><input type="range" min="1" max="5" value="3" id="eAfternoon" oninput="updateEnergy(this)"><div class="eb-val">3</div><div class="energy-desc">&#1489;&#1497;&#1504;&#1493;&#1504;&#1497;</div></div>
-        <div class="energy-block"><div class="eb-icon">&#127750;</div><div class="eb-label">&#1506;&#1512;&#1489;</div><div class="eb-hours">16&#8211;21</div><input type="range" min="1" max="5" value="4" id="eEvening" oninput="updateEnergy(this)"><div class="eb-val">4</div><div class="energy-desc">&#1488;&#1504;&#1512;&#1490;&#1496;&#1497;</div></div>
-        <div class="energy-block"><div class="eb-icon">&#127769;</div><div class="eb-label">&#1500;&#1497;&#1500;&#1492;</div><div class="eb-hours">21&#8211;01</div><input type="range" min="1" max="5" value="3" id="eNight" oninput="updateEnergy(this)"><div class="eb-val">3</div><div class="energy-desc">&#1489;&#1497;&#1504;&#1493;&#1504;&#1497;</div></div>
+        <div class="energy-block"><div class="eb-icon">🌅</div><div class="eb-label">בוקר</div><div class="eb-hours">07–12</div><input type="range" min="1" max="5" value="2" id="eMorning" oninput="updateEnergy(this)"><div class="eb-val">2</div><div class="energy-desc">רגוע</div></div>
+        <div class="energy-block"><div class="eb-icon">☀️</div><div class="eb-label">צהריים</div><div class="eb-hours">12–16</div><input type="range" min="1" max="5" value="3" id="eAfternoon" oninput="updateEnergy(this)"><div class="eb-val">3</div><div class="energy-desc">בינוני</div></div>
+        <div class="energy-block"><div class="eb-icon">🌆</div><div class="eb-label">ערב</div><div class="eb-hours">16–21</div><input type="range" min="1" max="5" value="4" id="eEvening" oninput="updateEnergy(this)"><div class="eb-val">4</div><div class="energy-desc">אנרגטי</div></div>
+        <div class="energy-block"><div class="eb-icon">🌙</div><div class="eb-label">לילה</div><div class="eb-hours">21–01</div><input type="range" min="1" max="5" value="3" id="eNight" oninput="updateEnergy(this)"><div class="eb-val">3</div><div class="energy-desc">בינוני</div></div>
       </div>
       <div class="wiz-nav">
-        <button class="btn btn-ghost" onclick="wizGo(3)">&#8594; &#1495;&#1494;&#1512;&#1492;</button>
-        <button class="btn btn-primary" onclick="finishWizard()">&#1510;&#1493;&#1512; &#1508;&#1500;&#1497;&#1497;&#1500;&#1497;&#1505;&#1496; &#8592;</button>
+        <button class="btn btn-ghost" onclick="wizGo(3)">→ חזרה</button>
+        <button class="btn btn-primary" onclick="finishWizard()">צור פלייליסט ←</button>
       </div>
       <div id="wizStatus" style="margin-top:16px;text-align:center;color:var(--muted);font-size:14px"></div>
     </div>
@@ -229,30 +258,34 @@
 <!-- PLAYLIST -->
 <section id="playlist" class="screen">
   <div id="playlistEmpty" class="card" style="text-align:center">
-    <h3>&#1506;&#1491;&#1497;&#1497;&#1503; &#1488;&#1497;&#1503; &#1508;&#1500;&#1497;&#1497;&#1500;&#1497;&#1505;&#1496;</h3>
-    <p>&#1506;&#1489;&#1512;&#1493; &#1488;&#1514; &#1514;&#1492;&#1500;&#1497;&#1498; &#1492;&#1488;&#1493;&#1504;&#1489;&#1493;&#1512;&#1491;&#1497;&#1504;&#1490; &#1499;&#1491;&#1497; &#1500;&#1497;&#1497;&#1510;&#1512; &#1508;&#1500;&#1497;&#1497;&#1500;&#1497;&#1505;&#1496; &#1502;&#1493;&#1514;&#1488;&#1501;.</p>
-    <button class="btn btn-primary" onclick="nav('onboarding')">&#1492;&#1514;&#1495;&#1500; &#1488;&#1493;&#1504;&#1489;&#1493;&#1512;&#1491;&#1497;&#1504;&#1490; &#8592;</button>
+    <h3>עדיין אין פלייליסט</h3>
+    <p>עברו את תהליך האונבורדינג כדי לייצר פלייליסט מותאם.</p>
+    <button class="btn btn-primary" onclick="nav('onboarding')">התחל אונבורדינג ←</button>
   </div>
   <div id="playlistLive" style="display:none">
     <div class="card">
       <div class="playlist-header">
-        <div id="playlistCover" class="playlist-cover">&#127925;</div>
+        <div id="playlistCover" class="playlist-cover">🎵</div>
         <div>
-          <div style="color:var(--muted);font-size:12px;text-transform:uppercase">&#1508;&#1500;&#1497;&#1497;&#1500;&#1497;&#1505;&#1496; &#1495;&#1497;</div>
-          <h2 id="playlistTitle" style="margin-bottom:4px">&#8212;</h2>
-          <div id="playlistMeta" class="playlist-meta">&#8212;</div>
+          <div style="color:var(--muted);font-size:12px;text-transform:uppercase">פלייליסט חי</div>
+          <h2 id="playlistTitle" style="margin-bottom:4px">—</h2>
+          <div id="playlistMeta" class="playlist-meta">—</div>
           <div class="chip-row">
-            <button class="btn btn-primary" onclick="regenerate()">&#128260; &#1497;&#1497;&#1510;&#1512; &#1502;&#1495;&#1491;&#1513;</button>
-            <button class="btn btn-ghost" onclick="exportM3U()">&#128229; M3U</button>
-            <button class="btn btn-ghost" onclick="copyJSON()">&#128203; JSON</button>
+            <button class="btn btn-primary" onclick="regenerate()">🔄 ייצר מחדש</button>
+            <button id="saveToSpotifyBtn" class="spotify-connect-btn" onclick="savePlaylistToSpotify()" style="display:none;padding:10px 20px;font-size:13px;border-radius:12px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+              שמור ב-Spotify
+            </button>
+            <button class="btn btn-ghost" onclick="exportM3U()">📥 M3U</button>
+            <button class="btn btn-ghost" onclick="copyJSON()">📋 JSON</button>
           </div>
         </div>
       </div>
     </div>
     <div id="playlistGenStatus" style="display:none;margin-top:16px;padding:14px;background:var(--bg-2);border-radius:12px;text-align:center"></div>
     <div id="feedbackSummary" class="feedback-summary">
-      <strong>&#1508;&#1497;&#1491;&#1489;&#1511;:</strong> <span id="fbUp">0</span> &#128077; &#183; <span id="fbDown">0</span> &#128078;
-      <button class="btn btn-primary" onclick="regenerateWithFeedback()" style="padding:4px 14px;font-size:12px;margin-right:12px">&#128260; &#1497;&#1497;&#1510;&#1512; &#1506;&#1501; &#1508;&#1497;&#1491;&#1489;&#1511;</button>
+      <strong>פידבק:</strong> <span id="fbUp">0</span> 👍 · <span id="fbDown">0</span> 👎
+      <button class="btn btn-primary" onclick="regenerateWithFeedback()" style="padding:4px 14px;font-size:12px;margin-right:12px">🔄 ייצר עם פידבק</button>
     </div>
     <div class="card" style="padding:0;margin-top:16px"><div id="tracksContainer"></div></div>
   </div>
@@ -260,29 +293,50 @@
 
 <!-- SETTINGS -->
 <section id="settings" class="screen">
-  <h2>&#1492;&#1490;&#1491;&#1512;&#1493;&#1514; API</h2>
+  <h2>הגדרות API</h2>
   <div class="settings-grid">
     <div class="card">
       <h3 style="margin-bottom:16px">OpenAI</h3>
       <label style="font-size:13px;color:var(--muted)">API Key</label>
       <input id="apiKey" class="input" type="password" placeholder="sk-..." style="margin:8px 0">
-      <label style="font-size:13px;color:var(--muted)">&#1502;&#1493;&#1491;&#1500;</label>
+      <label style="font-size:13px;color:var(--muted)">מודל</label>
       <select id="apiModel" class="input" style="margin:8px 0;padding:12px"><option value="gpt-4o">GPT-4o</option><option value="gpt-4o-mini">GPT-4o-mini</option></select>
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn btn-primary" onclick="saveKey()">&#1513;&#1502;&#1493;&#1512;</button>
-        <button class="btn btn-ghost" onclick="testKey()">&#1489;&#1491;&#1493;&#1511; &#1495;&#1497;&#1489;&#1493;&#1512;</button>
+      <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="saveKey()">שמור</button>
+        <button class="btn btn-ghost" onclick="testKey()">בדוק חיבור</button>
+        <button class="btn btn-ghost" onclick="generateShareLink()" style="background:rgba(29,185,84,.1);border-color:var(--accent)">🔗 צור לינק לשיתוף</button>
+      </div>
+      <div id="shareLink" style="display:none;margin-top:10px;padding:12px;background:var(--bg-2);border-radius:10px;font-size:12px;word-break:break-all">
+        <div style="color:var(--accent);margin-bottom:6px;font-weight:700">לינק עם מפתח מוטמע:</div>
+        <code id="shareLinkUrl" style="color:var(--text);cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent);this.style.color='var(--accent)'"></code>
+        <div style="color:var(--muted);margin-top:6px;font-size:11px">לחץ על הלינק להעתקה · כל מי שיפתח אותו יקבל את המפתח אוטומטית</div>
       </div>
       <div id="openaiStatus" class="status-msg"></div>
     </div>
     <div class="card">
-      <h3 style="margin-bottom:16px">Spotify</h3>
-      <label style="font-size:13px;color:var(--muted)">Client ID</label>
-      <input id="spotifyId" class="input" placeholder="Spotify Client ID" style="margin:8px 0">
-      <label style="font-size:13px;color:var(--muted)">Client Secret</label>
-      <input id="spotifySecret" class="input" type="password" placeholder="Spotify Client Secret" style="margin:8px 0">
-      <div style="display:flex;gap:8px;margin-top:8px">
-        <button class="btn btn-primary" onclick="saveSpotify()">&#1513;&#1502;&#1493;&#1512;</button>
-        <button class="btn btn-ghost" onclick="testSpotify()">&#1489;&#1491;&#1493;&#1511; &#1495;&#1497;&#1489;&#1493;&#1512;</button>
+      <h3 style="margin-bottom:16px">Spotify — חיבור חשבון</h3>
+      <div id="spotifyNotConnected">
+        <p style="font-size:14px;margin-bottom:16px">חברו את חשבון הספוטיפיי שלכם כדי ליצור פלייליסטים ישירות.</p>
+        <label style="font-size:13px;color:var(--muted)">Client ID (מ-Spotify Developer Dashboard)</label>
+        <input id="spotifyId" class="input" placeholder="הדביקו את ה-Client ID..." style="margin:8px 0 16px">
+        <button class="spotify-connect-btn" onclick="spotifyLogin()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg>
+          התחבר עם Spotify
+        </button>
+        <p style="font-size:12px;color:var(--muted);margin-top:12px">צריך Client ID? <a href="https://developer.spotify.com/dashboard" target="_blank" style="color:var(--accent)">לחצו כאן ליצירת אפליקציה</a><br>הגדירו Redirect URI: <code style="background:var(--card-2);padding:2px 6px;border-radius:4px;font-size:11px">${location.origin}${location.pathname}</code></p>
+      </div>
+      <div id="spotifyConnected" style="display:none">
+        <div class="spotify-user">
+          <img id="spotifyAvatar" src="" alt="">
+          <div class="info">
+            <div class="name" id="spotifyName">—</div>
+            <div class="plan" id="spotifyPlan">—</div>
+          </div>
+          <button class="btn btn-ghost" onclick="spotifyLogout()" style="padding:8px 14px;font-size:12px">נתק</button>
+        </div>
+        <div style="margin-top:12px;font-size:13px;color:var(--muted)">
+          ✓ מחובר · ניתן ליצור פלייליסטים ב-Spotify שלך
+        </div>
       </div>
       <div id="spotifyStatus" class="status-msg"></div>
     </div>
@@ -290,6 +344,7 @@
 </section>
 
 </div>
+
 <script>
   // ===== NAV =====
   function nav(id){
@@ -305,7 +360,7 @@
   // ===== OPENAI =====
   async function callOpenAI(messages, opts={}){
     const k=localStorage.getItem('openai_key');
-    if(!k) throw new Error('\u05D0\u05D9\u05DF \u05DE\u05E4\u05EA\u05D7 API \u2014 \u05D4\u05D2\u05D3\u05E8 \u05D1-Settings');
+    if(!k) throw new Error('אין מפתח API — הגדר ב-Settings');
     const model=opts.model||localStorage.getItem('openai_model')||'gpt-4o';
     for(let attempt=0;attempt<3;attempt++){
       const r=await fetch('https://api.openai.com/v1/chat/completions',{
@@ -315,21 +370,21 @@
       });
       if(r.status===429){
         const wait=Math.max(parseFloat(r.headers.get('retry-after')||'20'),10)*1000+attempt*5000;
-        updateWizStatus('\u23F3 \u05DE\u05DE\u05EA\u05D9\u05DF '+Math.ceil(wait/1000)+' \u05E9\u05E0\u05D9\u05D5\u05EA (\u05DE\u05D2\u05D1\u05DC\u05EA API)...');
+        updateWizStatus('⏳ ממתין '+Math.ceil(wait/1000)+' שניות (מגבלת API)...');
         await new Promise(res=>setTimeout(res,wait));
         continue;
       }
       const j=await r.json();
       if(j.error?.message?.includes('Rate limit')){
         const wait=(attempt+1)*20000;
-        updateWizStatus('\u23F3 \u05DE\u05DE\u05EA\u05D9\u05DF '+Math.ceil(wait/1000)+' \u05E9\u05E0\u05D9\u05D5\u05EA...');
+        updateWizStatus('⏳ ממתין '+Math.ceil(wait/1000)+' שניות...');
         await new Promise(res=>setTimeout(res,wait));
         continue;
       }
       if(j.error) throw new Error(j.error.message);
       return j.choices[0].message.content;
     }
-    throw new Error('\u05DE\u05D2\u05D1\u05DC\u05EA API \u2014 \u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1 \u05D1\u05E2\u05D5\u05D3 \u05D3\u05E7\u05D4');
+    throw new Error('מגבלת API — נסה שוב בעוד דקה');
   }
 
   function updateWizStatus(msg){
@@ -337,21 +392,132 @@
     if(el) el.textContent=msg;
   }
 
-  // ===== SPOTIFY =====
-  let spotifyToken=null, spotifyExpiry=0;
+  // ===== SPOTIFY OAUTH PKCE =====
+  const SPOTIFY_SCOPES='playlist-modify-public playlist-modify-private user-read-private user-read-email';
+  const SPOTIFY_REDIRECT=location.origin+location.pathname;
+  let spotifyToken=null, spotifyExpiry=0, spotifyUser=null;
+
+  // PKCE helpers
+  function genRandomString(len){const a=new Uint8Array(len);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('').slice(0,len);}
+  async function sha256(plain){return crypto.subtle.digest('SHA-256',new TextEncoder().encode(plain));}
+  function base64url(buf){return btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+
+  async function spotifyLogin(){
+    const clientId=document.getElementById('spotifyId').value.trim();
+    if(!clientId||clientId.length<10){showMsg('spotifyStatus','הזינו Client ID תקין','err');return;}
+    localStorage.setItem('spotify_id',clientId);
+    const verifier=genRandomString(64);
+    localStorage.setItem('sp_verifier',verifier);
+    const challenge=base64url(await sha256(verifier));
+    const params=new URLSearchParams({
+      client_id:clientId, response_type:'code', redirect_uri:SPOTIFY_REDIRECT,
+      scope:SPOTIFY_SCOPES, code_challenge_method:'S256', code_challenge:challenge,
+      state:genRandomString(16)
+    });
+    window.location.href='https://accounts.spotify.com/authorize?'+params.toString();
+  }
+
+  async function handleSpotifyCallback(){
+    const params=new URLSearchParams(window.location.search);
+    const code=params.get('code');
+    if(!code) return;
+    // Clean URL
+    history.replaceState(null,'',location.pathname);
+    const clientId=localStorage.getItem('spotify_id');
+    const verifier=localStorage.getItem('sp_verifier');
+    if(!clientId||!verifier){console.warn('Missing spotify creds for callback');return;}
+    try{
+      const r=await fetch('https://accounts.spotify.com/api/token',{
+        method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({
+          grant_type:'authorization_code', code, redirect_uri:SPOTIFY_REDIRECT,
+          client_id:clientId, code_verifier:verifier
+        })
+      });
+      const j=await r.json();
+      if(j.error) throw new Error(j.error_description||j.error);
+      localStorage.setItem('sp_access',j.access_token);
+      localStorage.setItem('sp_refresh',j.refresh_token);
+      localStorage.setItem('sp_expiry',String(Date.now()+j.expires_in*1000));
+      spotifyToken=j.access_token;
+      spotifyExpiry=Date.now()+j.expires_in*1000;
+      await loadSpotifyUser();
+      nav('settings');
+    }catch(e){
+      console.error('Spotify callback error:',e);
+      showMsg('spotifyStatus','שגיאה בהתחברות: '+e.message,'err');
+    }
+  }
+
+  async function refreshSpotifyToken(){
+    const clientId=localStorage.getItem('spotify_id');
+    const refresh=localStorage.getItem('sp_refresh');
+    if(!clientId||!refresh) return null;
+    try{
+      const r=await fetch('https://accounts.spotify.com/api/token',{
+        method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refresh,client_id:clientId})
+      });
+      const j=await r.json();
+      if(j.error) throw new Error(j.error);
+      localStorage.setItem('sp_access',j.access_token);
+      if(j.refresh_token) localStorage.setItem('sp_refresh',j.refresh_token);
+      localStorage.setItem('sp_expiry',String(Date.now()+j.expires_in*1000));
+      spotifyToken=j.access_token;
+      spotifyExpiry=Date.now()+j.expires_in*1000;
+      return spotifyToken;
+    }catch(e){console.error('Token refresh failed:',e);spotifyLogout();return null;}
+  }
+
   async function getSpotifyToken(){
     if(spotifyToken && Date.now()<spotifyExpiry-60000) return spotifyToken;
-    const id=localStorage.getItem('spotify_id'), secret=localStorage.getItem('spotify_secret');
-    if(!id||!secret) return null;
-    const r=await fetch('https://accounts.spotify.com/api/token',{
-      method:'POST',headers:{'Authorization':'Basic '+btoa(id+':'+secret),'Content-Type':'application/x-www-form-urlencoded'},
-      body:'grant_type=client_credentials'
-    });
-    const j=await r.json();
-    if(!j.access_token) return null;
-    spotifyToken=j.access_token; spotifyExpiry=Date.now()+j.expires_in*1000;
-    return spotifyToken;
+    // Try stored token
+    const stored=localStorage.getItem('sp_access');
+    const expiry=+localStorage.getItem('sp_expiry')||0;
+    if(stored && Date.now()<expiry-60000){spotifyToken=stored;spotifyExpiry=expiry;return spotifyToken;}
+    // Try refresh
+    if(localStorage.getItem('sp_refresh')) return refreshSpotifyToken();
+    return null;
   }
+
+  async function spotifyFetch(url,opts={}){
+    let t=await getSpotifyToken();
+    if(!t) return null;
+    let r=await fetch(url,{...opts,headers:{...opts.headers,'Authorization':'Bearer '+t}});
+    if(r.status===401){
+      t=await refreshSpotifyToken();
+      if(!t) return null;
+      r=await fetch(url,{...opts,headers:{...opts.headers,'Authorization':'Bearer '+t}});
+    }
+    return r;
+  }
+
+  async function loadSpotifyUser(){
+    const r=await spotifyFetch('https://api.spotify.com/v1/me');
+    if(!r) return;
+    const u=await r.json();
+    spotifyUser=u;
+    document.getElementById('spotifyNotConnected').style.display='none';
+    document.getElementById('spotifyConnected').style.display='block';
+    document.getElementById('spotifyName').textContent=u.display_name||u.id;
+    document.getElementById('spotifyPlan').textContent=(u.product==='premium'?'Premium':'Free')+' · '+u.country;
+    if(u.images?.length) document.getElementById('spotifyAvatar').src=u.images[0].url;
+    else document.getElementById('spotifyAvatar').src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect fill="%231DB954" width="40" height="40" rx="20"/><text x="50%" y="55%" text-anchor="middle" fill="white" font-size="18" dy=".1em">♪</text></svg>';
+    // Show save-to-spotify button if playlist exists
+    const btn=document.getElementById('saveToSpotifyBtn');
+    if(btn) btn.style.display='inline-flex';
+  }
+
+  function spotifyLogout(){
+    localStorage.removeItem('sp_access');localStorage.removeItem('sp_refresh');localStorage.removeItem('sp_expiry');
+    spotifyToken=null;spotifyExpiry=0;spotifyUser=null;
+    document.getElementById('spotifyNotConnected').style.display='block';
+    document.getElementById('spotifyConnected').style.display='none';
+    const btn=document.getElementById('saveToSpotifyBtn');if(btn) btn.style.display='none';
+  }
+
+  function isSpotifyConnected(){return !!(spotifyToken || localStorage.getItem('sp_access'));}
+
   async function searchTrack(artist,title){
     const t=await getSpotifyToken(); if(!t) return null;
     let r=await fetch('https://api.spotify.com/v1/search?q='+encodeURIComponent('track:"'+title+'" artist:"'+artist+'"')+'&type=track&limit=1',{headers:{'Authorization':'Bearer '+t}});
@@ -366,49 +532,105 @@
     return null;
   }
 
+  // ===== SAVE PLAYLIST TO SPOTIFY =====
+  async function savePlaylistToSpotify(){
+    if(!window.currentPlaylist?.tracks?.length){alert('אין פלייליסט לשמירה');return;}
+    if(!isSpotifyConnected()){alert('חבר את Spotify קודם ב-Settings');nav('settings');return;}
+    const btn=document.getElementById('saveToSpotifyBtn');
+    const origText=btn.innerHTML;
+    btn.innerHTML='⏳ שומר...';btn.disabled=true;
+    try{
+      const userId=spotifyUser?.id||(await(await spotifyFetch('https://api.spotify.com/v1/me')).json()).id;
+      const name=(window.currentPlaylist.profile?.business_name||'SonicBrand')+' — Signature Mix';
+      // Create playlist
+      const createR=await spotifyFetch('https://api.spotify.com/v1/users/'+userId+'/playlists',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name,description:'Generated by SonicBrand AI',public:false})
+      });
+      const pl=await createR.json();
+      if(!pl.id) throw new Error('נכשל ביצירת פלייליסט');
+      // Add tracks (max 100 per request)
+      const uris=window.currentPlaylist.tracks.filter(t=>t.id).map(t=>'spotify:track:'+t.id);
+      for(let i=0;i<uris.length;i+=100){
+        await spotifyFetch('https://api.spotify.com/v1/playlists/'+pl.id+'/tracks',{
+          method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({uris:uris.slice(i,i+100)})
+        });
+      }
+      btn.innerHTML='✓ נשמר ב-Spotify!';
+      setTimeout(()=>{btn.innerHTML=origText;btn.disabled=false;},3000);
+      // Open playlist
+      if(pl.external_urls?.spotify) window.open(pl.external_urls.spotify,'_blank');
+    }catch(e){
+      btn.innerHTML='❌ '+e.message;
+      setTimeout(()=>{btn.innerHTML=origText;btn.disabled=false;},3000);
+    }
+  }
+
   // ===== SETTINGS =====
   function saveKey(){
     const k=document.getElementById('apiKey').value.trim();
-    if(!k.startsWith('sk-')){showMsg('openaiStatus','\u05DE\u05E4\u05EA\u05D7 \u05DC\u05D0 \u05EA\u05E7\u05D9\u05DF','err');return;}
+    if(!k.startsWith('sk-')){showMsg('openaiStatus','מפתח לא תקין','err');return;}
     localStorage.setItem('openai_key',k);
     localStorage.setItem('openai_model',document.getElementById('apiModel').value);
-    showMsg('openaiStatus','\u2713 \u05E0\u05E9\u05DE\u05E8','ok');
+    showMsg('openaiStatus','✓ נשמר','ok');
   }
   async function testKey(){
     try{
-      showMsg('openaiStatus','\u05D1\u05D5\u05D3\u05E7...','ok');
+      showMsg('openaiStatus','בודק...','ok');
       await callOpenAI([{role:'user',content:'Say OK'}],{max_tokens:10,noJson:true});
-      showMsg('openaiStatus','\u2713 \u05D7\u05D9\u05D1\u05D5\u05E8 \u05EA\u05E7\u05D9\u05DF','ok');
-    }catch(e){showMsg('openaiStatus','\u05E9\u05D2\u05D9\u05D0\u05D4: '+e.message,'err');}
+      showMsg('openaiStatus','✓ חיבור תקין','ok');
+    }catch(e){showMsg('openaiStatus','שגיאה: '+e.message,'err');}
   }
-  function saveSpotify(){
-    localStorage.setItem('spotify_id',document.getElementById('spotifyId').value.trim());
-    localStorage.setItem('spotify_secret',document.getElementById('spotifySecret').value.trim());
-    spotifyToken=null;
-    showMsg('spotifyStatus','\u2713 \u05E0\u05E9\u05DE\u05E8','ok');
-  }
-  async function testSpotify(){
-    try{
-      showMsg('spotifyStatus','\u05D1\u05D5\u05D3\u05E7...','ok');
-      const t=await getSpotifyToken();
-      if(!t) throw new Error('\u05DC\u05D0 \u05D4\u05E6\u05DC\u05D9\u05D7');
-      showMsg('spotifyStatus','\u2713 \u05DE\u05D7\u05D5\u05D1\u05E8','ok');
-    }catch(e){showMsg('spotifyStatus','\u05E9\u05D2\u05D9\u05D0\u05D4: '+e.message,'err');}
-  }
+  // Spotify settings are now handled via OAuth above
   function showMsg(id,msg,type){
     const el=document.getElementById(id);
     el.style.display='block';el.textContent=msg;
     el.style.background=type==='ok'?'rgba(29,185,84,.15)':'rgba(255,71,133,.15)';
     el.style.color=type==='ok'?'var(--accent)':'var(--accent-3)';
   }
-  // Load saved settings
-  (function(){
+  // Generate share link with embedded API key
+  function generateShareLink(){
+    const k=document.getElementById('apiKey').value.trim();
+    if(!k){showMsg('openaiStatus','הזן מפתח קודם','err');return;}
+    saveKey();
+    const params=new URLSearchParams();
+    params.set('k',btoa(k));
+    const m=document.getElementById('apiModel').value;
+    if(m!=='gpt-4o') params.set('m',m);
+    const sid=localStorage.getItem('spotify_id');
+    if(sid) params.set('sid',sid);
+    const url=location.origin+location.pathname+'#'+params.toString();
+    document.getElementById('shareLinkUrl').textContent=url;
+    document.getElementById('shareLink').style.display='block';
+  }
+
+  // Load saved settings + handle URL hash keys + Spotify OAuth callback
+  (async function(){
+    // Parse hash params for shared keys
+    if(location.hash.length>1){
+      try{
+        const hp=new URLSearchParams(location.hash.slice(1));
+        if(hp.has('k')){
+          const decoded=atob(hp.get('k'));
+          if(decoded.startsWith('sk-')){
+            localStorage.setItem('openai_key',decoded);
+            if(hp.has('m')) localStorage.setItem('openai_model',hp.get('m'));
+            if(hp.has('sid')) localStorage.setItem('spotify_id',hp.get('sid'));
+            // Clean hash from URL
+            history.replaceState(null,'',location.pathname);
+          }
+        }
+      }catch(e){console.warn('Hash parse error:',e);}
+    }
     const k=localStorage.getItem('openai_key');
     if(k) document.getElementById('apiKey').value=k;
     document.getElementById('apiModel').value=localStorage.getItem('openai_model')||'gpt-4o';
-    const sid=localStorage.getItem('spotify_id'), ss=localStorage.getItem('spotify_secret');
+    const sid=localStorage.getItem('spotify_id');
     if(sid) document.getElementById('spotifyId').value=sid;
-    if(ss) document.getElementById('spotifySecret').value=ss;
+    // Handle Spotify OAuth callback
+    if(window.location.search.includes('code=')) await handleSpotifyCallback();
+    else if(localStorage.getItem('sp_access')) await loadSpotifyUser();
   })();
 
   // ===== WIZARD ENGINE =====
@@ -429,7 +651,7 @@
   function wizNext(cur){
     if(cur===1){
       const d=document.getElementById('bizDescription').value.trim();
-      if(d.length<10){alert('\u05E0\u05D0 \u05DC\u05DB\u05EA\u05D5\u05D1 \u05EA\u05D9\u05D0\u05D5\u05E8 \u05E7\u05E6\u05E8 \u05DC\u05E4\u05D7\u05D5\u05EA');return;}
+      if(d.length<10){alert('נא לכתוב תיאור קצר לפחות');return;}
       wiz.desc=d; wizGo(2);
     } else if(cur===2){
       wiz.faders={
@@ -450,10 +672,10 @@
     const v=+el.value, item=el.closest('.fader-item'), labels=item.querySelectorAll('.fl'), val=item.querySelector('.fader-val');
     labels[0].classList.toggle('strong',v<=50);
     labels[1].classList.toggle('strong',v>=50);
-    val.textContent=el.id==='fHebrew'?v+'% \u05E2\u05D1\u05E8\u05D9\u05EA':el.id==='fVocal'?(v<=30?'\u05D1\u05E2\u05D9\u05E7\u05E8 \u05D0\u05D9\u05E0\u05E1\u05D8\u05E8\u05D5\u05DE\u05E0\u05D8\u05DC\u05D9':v>=70?'\u05D1\u05E2\u05D9\u05E7\u05E8 \u05D5\u05D5\u05E7\u05DC\u05D9':'\u05DE\u05D9\u05E7\u05E1'):v+'%';
+    val.textContent=el.id==='fHebrew'?v+'% עברית':el.id==='fVocal'?(v<=30?'בעיקר אינסטרומנטלי':v>=70?'בעיקר ווקלי':'מיקס'):v+'%';
   }
 
-  const eLbls={1:'\u05E9\u05E7\u05D8 \u05DE\u05D0\u05D5\u05D3',2:'\u05E8\u05D2\u05D5\u05E2',3:'\u05D1\u05D9\u05E0\u05D5\u05E0\u05D9',4:'\u05D0\u05E0\u05E8\u05D2\u05D8\u05D9',5:'\u05E9\u05D9\u05D0'};
+  const eLbls={1:'שקט מאוד',2:'רגוע',3:'בינוני',4:'אנרגטי',5:'שיא'};
   function updateEnergy(el){
     const v=+el.value,b=el.closest('.energy-block');
     b.querySelector('.eb-val').textContent=v;
@@ -464,15 +686,16 @@
   let sr=null,isRec=false;
   function toggleVoice(){
     const btn=document.getElementById('voiceBtn'),st=document.getElementById('voiceStatus');
-    if(isRec){sr?.stop();btn.classList.remove('recording');btn.textContent='\uD83C\uDFA4 \u05D4\u05E7\u05DC\u05D8 \u05D1\u05DE\u05E7\u05D5\u05DD \u05DC\u05D4\u05E7\u05DC\u05D9\u05D3';st.textContent='';isRec=false;return;}
+    if(isRec){sr?.stop();btn.classList.remove('recording');btn.textContent='🎤 הקלט במקום להקליד';st.textContent='';isRec=false;return;}
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!SR){alert('\u05D4\u05D3\u05E4\u05D3\u05E4\u05DF \u05DC\u05D0 \u05EA\u05D5\u05DE\u05DA \u2014 \u05E0\u05E1\u05D4 Chrome');return;}
+    if(!SR){alert('הדפדפן לא תומך — נסה Chrome');return;}
     sr=new SR();sr.lang='he-IL';sr.continuous=true;sr.interimResults=true;
     const ta=document.getElementById('bizDescription'),start=ta.value;
     sr.onresult=e=>{let f='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)f+=e.results[i][0].transcript+' ';}if(f)ta.value=start+(start?' ':'')+f;};
-    sr.onend=()=>{btn.classList.remove('recording');btn.textContent='\uD83C\uDFA4 \u05D4\u05E7\u05DC\u05D8 \u05D1\u05DE\u05E7\u05D5\u05DD \u05DC\u05D4\u05E7\u05DC\u05D9\u05D3';st.textContent='';isRec=false;};
-    sr.start();btn.classList.add('recording');btn.textContent='\u23F9 \u05E2\u05E6\u05D5\u05E8 \u05D4\u05E7\u05DC\u05D8\u05D4';st.textContent='\uD83D\uDD34 \u05DE\u05E7\u05E9\u05D9\u05D1...';isRec=true;
+    sr.onend=()=>{btn.classList.remove('recording');btn.textContent='🎤 הקלט במקום להקליד';st.textContent='';isRec=false;};
+    sr.start();btn.classList.add('recording');btn.textContent='⏹ עצור הקלטה';st.textContent='🔴 מקשיב...';isRec=true;
   }
+
   // STEP 3: Generate samples
   async function generateSamples(){
     const ld=document.getElementById('sampleLoading'),list=document.getElementById('sampleList'),nb=document.getElementById('sampleNextBtn');
@@ -481,14 +704,7 @@
       const f=wiz.faders;
       const raw=await callOpenAI([
         {role:'system',content:'You are a music curator AI. Return only valid JSON.'},
-        {role:'user',content:`Based on this business and preferences, suggest 5 sample songs.
-
-Business: "${wiz.desc}"
-
-Preferences (0-100): Familiarity:${f.familiarity}, Hebrew%:${f.hebrew}, Vocal:${f.vocal}, Energy:${f.energy}, Era:${f.era}, Electronic:${f.electronic}
-
-Return: {"samples":[{"artist":"exact name","title":"exact Spotify title","reason":"8 words max in Hebrew"}]}
-Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebrew songs, match energy/era.`}
+        {role:'user',content:'Based on this business and preferences, suggest 5 sample songs.\n\nBusiness: "'+wiz.desc+'"\n\nPreferences (0-100): Familiarity:'+f.familiarity+', Hebrew%:'+f.hebrew+', Vocal:'+f.vocal+', Energy:'+f.energy+', Era:'+f.era+', Electronic:'+f.electronic+'\n\nReturn: {"samples":[{"artist":"exact name","title":"exact Spotify title","reason":"8 words max in Hebrew"}]}\nRules: real Spotify songs only, diverse mix, ~'+Math.round(5*f.hebrew/100)+' Hebrew songs, match energy/era.'}
       ],{max_tokens:800});
 
       const parsed=JSON.parse(raw);
@@ -496,7 +712,7 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
       let html='';
       for(let i=0;i<wiz.samples.length;i++){
         const s=wiz.samples[i];
-        let embed='<div style="padding:12px;color:var(--muted);font-size:13px">\uD83C\uDFB5 '+esc(s.artist)+' \u2014 '+esc(s.title)+'</div>';
+        let embed='<div style="padding:12px;color:var(--muted);font-size:13px">🎵 '+esc(s.artist)+' — '+esc(s.title)+'</div>';
         try{
           const t=await getSpotifyToken();
           if(t){
@@ -508,11 +724,11 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
             }
           }
         }catch(e){}
-        html+='<div class="sample-card"><div class="sample-embed">'+embed+'</div><div style="min-width:60px;text-align:center"><div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+esc(s.reason)+'</div><div class="sample-votes"><button id="sy'+i+'" onclick="voteSample('+i+',true)">\uD83D\uDC4D</button><button id="sn'+i+'" onclick="voteSample('+i+',false)">\uD83D\uDC4E</button></div></div></div>';
+        html+='<div class="sample-card"><div class="sample-embed">'+embed+'</div><div style="min-width:60px;text-align:center"><div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+esc(s.reason)+'</div><div class="sample-votes"><button id="sy'+i+'" onclick="voteSample('+i+',true)">👍</button><button id="sn'+i+'" onclick="voteSample('+i+',false)">👎</button></div></div></div>';
       }
       list.innerHTML=html;ld.style.display='none';list.style.display='flex';nb.style.display='inline-flex';
     }catch(e){
-      ld.innerHTML='<p style="color:var(--accent-3)">\u05E9\u05D2\u05D9\u05D0\u05D4: '+e.message+'</p><button class="btn btn-ghost" onclick="generateSamples()" style="margin-top:12px">\u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1</button>';
+      ld.innerHTML='<p style="color:var(--accent-3)">שגיאה: '+e.message+'</p><button class="btn btn-ghost" onclick="generateSamples()" style="margin-top:12px">נסה שוב</button>';
     }
   }
 
@@ -522,11 +738,11 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
     document.getElementById('sn'+i).className=liked?'':'voted-no';
   }
 
-  // STEP 4: FINISH - build profile + playlist
+  // STEP 4: FINISH — build profile + playlist
   async function finishWizard(){
     wiz.energy={morning:+document.getElementById('eMorning').value,afternoon:+document.getElementById('eAfternoon').value,evening:+document.getElementById('eEvening').value,night:+document.getElementById('eNight').value};
     const st=document.getElementById('wizStatus');
-    st.textContent='\u05D1\u05D5\u05E0\u05D4 \u05E4\u05E8\u05D5\u05E4\u05D9\u05DC \u05DE\u05D5\u05EA\u05D2...';
+    st.textContent='בונה פרופיל מותג...';
 
     try{
       const liked=Object.entries(wiz.votes).filter(([,v])=>v).map(([k])=>wiz.samples[+k]).filter(Boolean);
@@ -543,7 +759,7 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
       window.brandProfile=profile;
 
       // Build strategist layer
-      st.textContent='Music Strategist \u05DE\u05E0\u05EA\u05D7...';
+      st.textContent='Music Strategist מנתח...';
       let strategy=null;
       try{
         const stratRaw=await callOpenAI([
@@ -554,8 +770,8 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
       }catch(e){console.warn('Strategist failed:',e);}
 
       // Generate 40 tracks
-      st.textContent='\u05D1\u05D5\u05E0\u05D4 \u05E4\u05DC\u05D9\u05D9\u05DC\u05D9\u05E1\u05D8 \u05E9\u05DC 40 \u05E9\u05D9\u05E8\u05D9\u05DD...';
-      const trackPrompt='\u05D0\u05EA\u05D4 \u05DE\u05D5\u05DE\u05D7\u05D4 \u05DE\u05D5\u05D6\u05D9\u05E7\u05DC\u05D9. \u05D1\u05E0\u05D4 \u05E8\u05E9\u05D9\u05DE\u05EA 40 \u05E9\u05D9\u05E8\u05D9\u05DD \u05D0\u05DE\u05D9\u05EA\u05D9\u05D9\u05DD \u05DE-Spotify.\n\n\u05D7\u05D5\u05E7\u05D9\u05DD: 1. \u05E9\u05D9\u05E8\u05D9\u05DD \u05D0\u05DE\u05D9\u05EA\u05D9\u05D9\u05DD \u05D1\u05DC\u05D1\u05D3. 2. \u05DC\u05D0 \u05D9\u05D5\u05EA\u05E8 \u05DE-2 \u05E9\u05D9\u05E8\u05D9\u05DD \u05DE\u05D0\u05D5\u05EA\u05D5 \u05D0\u05DE\u05DF. 3. \u05DB\u05D1\u05D3 language_preference \u05D5-energy_curve. 4. \u05D7\u05DC\u05D5\u05E7\u05D4: morning/afternoon/evening/night \u05DC\u05E4\u05D9 \u05D4-energy curve.\n\n'+(strategy?'Strategy:\n'+JSON.stringify(strategy,null,2):'Profile:\n'+JSON.stringify(profile,null,2))+'\n\n'+(liked.length?'\uD83D\uDC4D Liked: '+liked.map(s=>s.artist+' - '+s.title).join(', '):'')+'\n'+(disliked.length?'\uD83D\uDC4E Disliked: '+disliked.map(s=>s.artist+' - '+s.title).join(', '):'')+'\n\nReturn JSON: {"tracks":[{"artist":"","title":"","reason":"max 10 words Hebrew","slot":"morning|afternoon|evening|night"}]}';
+      st.textContent='בונה פלייליסט של 40 שירים...';
+      const trackPrompt='אתה מומחה מוזיקלי. בנה רשימת 40 שירים אמיתיים מ-Spotify.\n\nחוקים: 1. שירים אמיתיים בלבד. 2. לא יותר מ-2 שירים מאותו אמן. 3. כבד language_preference ו-energy_curve. 4. חלוקה: morning/afternoon/evening/night לפי ה-energy curve.\n\n'+(strategy?'Strategy:\n'+JSON.stringify(strategy,null,2):'Profile:\n'+JSON.stringify(profile,null,2))+'\n\n'+(liked.length?'👍 Liked: '+liked.map(s=>s.artist+' - '+s.title).join(', '):'')+'\n'+(disliked.length?'👎 Disliked: '+disliked.map(s=>s.artist+' - '+s.title).join(', '):'')+'\n\nReturn JSON: {"tracks":[{"artist":"","title":"","reason":"max 10 words Hebrew","slot":"morning|afternoon|evening|night"}]}';
 
       const tracksRaw=await callOpenAI([
         {role:'system',content:'Return only valid JSON with 40 real Spotify tracks.'},
@@ -563,18 +779,19 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
       ],{max_tokens:4000});
 
       const tracks=JSON.parse(tracksRaw).tracks;
-      if(!tracks?.length) throw new Error('\u05DC\u05D0 \u05D4\u05EA\u05E7\u05D1\u05DC\u05D5 \u05E9\u05D9\u05E8\u05D9\u05DD');
+      if(!tracks?.length) throw new Error('לא התקבלו שירים');
 
       // Show playlist
-      st.textContent='\u05DE\u05D0\u05DE\u05EA \u05DE\u05D5\u05DC Spotify...';
+      st.textContent='מאמת מול Spotify...';
       nav('playlist');
       document.getElementById('playlistEmpty').style.display='none';
       document.getElementById('playlistLive').style.display='block';
-      document.getElementById('playlistTitle').textContent=(profile.business_name||'Business')+' \u2014 Signature Mix';
+      document.getElementById('playlistTitle').textContent=(profile.business_name||'Business')+' — Signature Mix';
       document.getElementById('tracksContainer').innerHTML='';
 
-      const hasSpotify=!!localStorage.getItem('spotify_id');
+      const hasSpotify=isSpotifyConnected();
       const genStatus=document.getElementById('playlistGenStatus');
+      if(hasSpotify) document.getElementById('saveToSpotifyBtn').style.display='inline-flex';
 
       if(hasSpotify){
         genStatus.style.display='block';
@@ -585,32 +802,32 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
             const sp=await searchTrack(t.artist,t.title);
             if(sp) validated.push({artist:sp.artists.map(a=>a.name).join(', '),title:sp.name,id:sp.id,url:sp.external_urls.spotify,cover:sp.album.images[sp.album.images.length-1]?.url,bigCover:sp.album.images[0]?.url,preview:sp.preview_url,duration:sp.duration_ms,reason:t.reason,slot:t.slot});
           }catch(e){}
-          genStatus.textContent='\u05DE\u05D0\u05DE\u05EA... ('+(i+1)+'/'+tracks.length+', \u05E0\u05DE\u05E6\u05D0\u05D5 '+validated.length+')';
+          genStatus.textContent='מאמת... ('+(i+1)+'/'+tracks.length+', נמצאו '+validated.length+')';
         }
         validated.forEach((t,i)=>renderTrack(i+1,t));
         window.currentPlaylist={profile,tracks:validated};
-        document.getElementById('playlistMeta').textContent=validated.length+' \u05E9\u05D9\u05E8\u05D9\u05DD \u00B7 '+Math.round(validated.reduce((a,t)=>a+(t.duration||0),0)/60000)+' \u05D3\u05E7\u05D5\u05EA';
+        document.getElementById('playlistMeta').textContent=validated.length+' שירים · '+Math.round(validated.reduce((a,t)=>a+(t.duration||0),0)/60000)+' דקות';
         if(validated[0]?.bigCover){const c=document.getElementById('playlistCover');c.style.backgroundImage='url('+validated[0].bigCover+')';c.textContent='';}
         genStatus.style.display='none';
       } else {
         tracks.forEach((t,i)=>renderTrack(i+1,{artist:t.artist,title:t.title,reason:t.reason,slot:t.slot,url:'https://open.spotify.com/search/'+encodeURIComponent(t.artist+' '+t.title)}));
         window.currentPlaylist={profile,tracks};
-        document.getElementById('playlistMeta').textContent=tracks.length+' \u05E9\u05D9\u05E8\u05D9\u05DD';
+        document.getElementById('playlistMeta').textContent=tracks.length+' שירים';
       }
 
     }catch(e){
-      st.innerHTML='\u274C '+e.message+'<br><button class="btn btn-ghost" onclick="finishWizard()" style="margin-top:8px">\u05E0\u05E1\u05D4 \u05E9\u05D5\u05D1</button>';
+      st.innerHTML='❌ '+e.message+'<br><button class="btn btn-ghost" onclick="finishWizard()" style="margin-top:8px">נסה שוב</button>';
     }
   }
 
-  const STRATEGIST_PROMPT='\u05D0\u05EA\u05D4 Music Strategist \u05E9\u05DC SonicBrand. \u05E7\u05D9\u05D1\u05DC\u05EA BusinessProfile. \u05D4\u05D7\u05D6\u05E8 MusicStrategy \u05DB-JSON:\n{"core_genres":[{"name":"","why":""}],"avoid_genres":[],"energy_curve":{"morning":0,"midday":0,"peak":0,"evening":0},"bpm_ranges":{"morning":[0,0],"midday":[0,0],"peak":[0,0],"evening":[0,0]},"language_mix":{"en":0,"he":0},"anchor_artists":[],"blacklist_final":[],"rationale":""}\n\u05D7\u05D5\u05E7\u05D9\u05DD: \u05D0\u05DE\u05E0\u05D9\u05DD \u05D5\u05D6\u05F3\u05D0\u05E0\u05E8\u05D9\u05DD \u05D0\u05DE\u05D9\u05EA\u05D9\u05D9\u05DD \u05D1\u05DC\u05D1\u05D3. \u05DB\u05D1\u05D3 blacklist \u05D5-language preferences. JSON \u05D1\u05DC\u05D1\u05D3.';
+  const STRATEGIST_PROMPT='אתה Music Strategist של SonicBrand. קיבלת BusinessProfile. החזר MusicStrategy כ-JSON:\n{"core_genres":[{"name":"","why":""}],"avoid_genres":[],"energy_curve":{"morning":0,"midday":0,"peak":0,"evening":0},"bpm_ranges":{"morning":[0,0],"midday":[0,0],"peak":[0,0],"evening":[0,0]},"language_mix":{"en":0,"he":0},"anchor_artists":[],"blacklist_final":[],"rationale":""}\nחוקים: אמנים וז\'אנרים אמיתיים בלבד. כבד blacklist ו-language preferences. JSON בלבד.';
 
   // ===== PLAYLIST RENDER =====
   function renderTrack(num,t){
     const c=document.getElementById('tracksContainer'),row=document.createElement('div');
     row.className='track';
     const sa=esc(t.artist).replace(/'/g,'&#39;'),st=esc(t.title).replace(/'/g,'&#39;');
-    row.innerHTML='<div class="num">'+num+'</div><div class="thumb" style="background-image:url(\''+( t.cover||'')+'\');background-size:cover">'+(t.cover?'':'\uD83C\uDFB5')+'</div><div class="info"><div class="title">'+esc(t.title)+'</div><div class="artist">'+esc(t.artist)+(t.slot?' \u00B7 '+t.slot:'')+(t.reason?' \u00B7 '+esc(t.reason):'')+'</div></div><div class="feedback"><button class="fb-up" onclick="voteTrk(\''+sa+'\',\''+st+'\',\'up\',this)">\uD83D\uDC4D</button><button class="fb-down" onclick="voteTrk(\''+sa+'\',\''+st+'\',\'down\',this)">\uD83D\uDC4E</button></div><div class="actions">'+(t.preview?'<button onclick="playPreview(\''+t.preview+'\',this)">\u25B6</button>':'')+'<a href="'+(t.url||'#')+'" target="_blank" style="color:var(--accent);text-decoration:none;padding:6px 10px">\u2197</a></div>';
+    row.innerHTML='<div class="num">'+num+'</div><div class="thumb" style="background-image:url(\''+( t.cover||'')+'\');background-size:cover">'+(t.cover?'':'🎵')+'</div><div class="info"><div class="title">'+esc(t.title)+'</div><div class="artist">'+esc(t.artist)+(t.slot?' · '+t.slot:'')+(t.reason?' · '+esc(t.reason):'')+'</div></div><div class="feedback"><button class="fb-up" onclick="voteTrk(\''+sa+'\',\''+st+'\',\'up\',this)">👍</button><button class="fb-down" onclick="voteTrk(\''+sa+'\',\''+st+'\',\'down\',this)">👎</button></div><div class="actions">'+(t.preview?'<button onclick="playPreview(\''+t.preview+'\',this)">▶</button>':'')+'<a href="'+(t.url||'#')+'" target="_blank" style="color:var(--accent);text-decoration:none;padding:6px 10px">↗</a></div>';
     c.appendChild(row);
   }
 
@@ -639,17 +856,18 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
   let currentAudio=null;
   function playPreview(url,btn){
     if(currentAudio){currentAudio.pause();currentAudio=null;}
-    if(btn.textContent==='\u23F8'){btn.textContent='\u25B6';return;}
-    document.querySelectorAll('.actions button').forEach(b=>{if(b.textContent==='\u23F8')b.textContent='\u25B6';});
-    currentAudio=new Audio(url);currentAudio.play();btn.textContent='\u23F8';
-    currentAudio.onended=()=>{btn.textContent='\u25B6';};
+    if(btn.textContent==='⏸'){btn.textContent='▶';return;}
+    document.querySelectorAll('.actions button').forEach(b=>{if(b.textContent==='⏸')b.textContent='▶';});
+    currentAudio=new Audio(url);currentAudio.play();btn.textContent='⏸';
+    currentAudio.onended=()=>{btn.textContent='▶';};
   }
 
   function regenerate(){finishWizard();}
   function regenerateWithFeedback(){
     const fb=getFB(),liked=[],disliked=[];
-    Object.entries(fb).forEach(([k,v])=>{const[a,t]=k.split('|||');if(v==='up')liked.push(a+' \u2014 '+t);else disliked.push(a+' \u2014 '+t);});
-    if(liked.length) wiz.votes={};
+    Object.entries(fb).forEach(([k,v])=>{const[a,t]=k.split('|||');if(v==='up')liked.push(a+' — '+t);else disliked.push(a+' — '+t);});
+    // Inject into wizard data so finishWizard picks them up
+    if(liked.length) wiz.votes={};// reset sample votes, use track feedback instead
     finishWizard();
   }
 
@@ -661,7 +879,7 @@ Rules: real Spotify songs only, diverse mix, ~${Math.round(5*f.hebrew/100)} Hebr
   }
   function copyJSON(){
     if(!window.currentPlaylist) return;
-    navigator.clipboard.writeText(JSON.stringify(window.currentPlaylist,null,2));alert('JSON \u05D4\u05D5\u05E2\u05EA\u05E7 \u05DC\u05DC\u05D5\u05D7');
+    navigator.clipboard.writeText(JSON.stringify(window.currentPlaylist,null,2));alert('JSON הועתק ללוח');
   }
 </script>
 </body>

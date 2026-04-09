@@ -147,7 +147,75 @@
   .brain-entry .brain-detail{color:var(--muted)}
   .brain-entry.ai{border-color:var(--accent-2);background:rgba(155,92,255,.08)}
   .brain-overlay{display:none}
-  @media(max-width:700px){.brain-body{flex-direction:column}.brain-col:first-child{border-left:none;border-bottom:1px solid var(--border)}}
+  .brain-version-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;max-width:600px;margin:0 auto}
+  .brain-card{background:var(--card);border:2px solid var(--border);border-radius:14px;padding:14px 10px;text-align:center;cursor:pointer;transition:.3s}
+  .brain-card:hover{transform:translateY(-2px);border-color:var(--accent)}
+  .brain-card.selected{background:rgba(29,185,84,.15);border-color:var(--accent)}
+  .bc-icon{font-size:22px;margin-bottom:4px}
+  .bc-label{font-weight:900;font-size:13px;margin-bottom:4px}
+  .bc-desc{font-size:10px;color:var(--muted);line-height:1.4}
+  @media(max-width:700px){
+    .brain-body{flex-direction:column}.brain-col:first-child{border-left:none;border-bottom:1px solid var(--border)}
+    body{padding:10px}
+    .container{margin-top:60px;padding:10px}
+    .hero h1{font-size:28px!important}
+    .hero .sub{font-size:14px}
+    .hero{padding:40px 10px}
+    h1{font-size:28px}h2{font-size:22px}
+    .card{padding:16px;border-radius:14px}
+    .btn{padding:12px 18px;font-size:14px}
+    .screen-nav{padding:8px 10px;gap:4px;flex-wrap:wrap}
+    .screen-nav .logo{font-size:14px;margin-left:8px}
+    .screen-nav button{padding:6px 10px;font-size:11px}
+    .wizard{max-width:100%}
+    .user-cards{grid-template-columns:repeat(3,1fr);gap:8px}
+    .user-card{padding:14px 8px}
+    .user-card .icon{font-size:28px}
+    .user-card .label{font-size:13px}
+    .brain-version-grid{grid-template-columns:repeat(2,1fr);gap:8px;max-width:100%}
+    .brain-card{padding:12px 8px}
+    .bc-icon{font-size:18px}
+    .bc-label{font-size:12px}
+    .bc-desc{font-size:9px}
+    .desc-area{min-height:100px;font-size:14px;padding:14px}
+    .genre-grid{gap:6px}
+    .genre-chip{padding:8px 12px;font-size:12px}
+    .fader-item{padding:14px}
+    .fader-labels{font-size:12px}
+    .energy-map{grid-template-columns:repeat(2,1fr);gap:10px}
+    .sample-card{flex-direction:column;gap:10px}
+    .playlist-header{flex-direction:column;gap:14px;text-align:center}
+    .playlist-cover{width:100px;height:100px;margin:0 auto}
+    .chip-row{justify-content:center}
+    .track{padding:8px 10px;gap:6px}
+    .track .info{min-width:0}
+    .track .title{font-size:13px}
+    .track .artist{font-size:11px}
+    .track .thumb{width:32px;height:32px}
+    .settings-grid{max-width:100%}
+    .auth-box{padding:24px 16px;max-width:95%;border-radius:16px}
+    .auth-input{padding:12px 14px;font-size:14px}
+    .auth-user-bar{top:auto;bottom:10px;left:10px;z-index:201;font-size:11px}
+    .wiz-nav{gap:8px}
+    .wiz-nav .btn{padding:10px 14px;font-size:13px}
+    .shazam-btn{width:44px;height:44px;font-size:18px;bottom:14px;left:14px}
+    .brain-header{padding:14px 16px}
+    .brain-header h3{font-size:16px}
+    .brain-col{padding:12px}
+    .brain-col-title{font-size:13px}
+    .feedback-summary{flex-direction:column;gap:8px;font-size:13px}
+    .ref-input-group .input{font-size:14px;padding:12px}
+    .voice-btn{font-size:13px;padding:10px 14px}
+    .spotify-connect-btn{padding:12px 20px;font-size:13px}
+  }
+  @media(max-width:400px){
+    .brain-version-grid{grid-template-columns:repeat(2,1fr)}
+    .user-cards{grid-template-columns:1fr 1fr 1fr;gap:6px}
+    .user-card{padding:10px 6px}
+    .hero h1{font-size:24px!important}
+    .screen-nav button{padding:4px 8px;font-size:10px}
+    .screen-nav .logo{font-size:12px}
+  }
   .shazam-btn{position:fixed;bottom:20px;left:86px;z-index:200;width:56px;height:56px;border-radius:50%;background:var(--card);border:2px solid var(--accent-3);font-size:24px;cursor:pointer;box-shadow:0 4px 20px rgba(255,71,133,.3);transition:.3s;color:var(--accent-3)}
   .shazam-btn:hover{transform:scale(1.1);background:rgba(255,71,133,.15)}
   .shazam-modal{display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.8);justify-content:center;align-items:center}
@@ -229,24 +297,26 @@
       <input id="customUserInput" class="input" placeholder="הכניסו שם..." style="display:none;margin-top:16px;max-width:300px;margin-left:auto;margin-right:auto">
       <div style="margin-top:24px;text-align:center">
         <p class="wiz-sub" style="margin-bottom:12px;font-weight:700;color:var(--text)">בחרו גרסת מוח:</p>
-        <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-          <div id="brainV1Card" class="user-card selected" onclick="selectBrainVersion('v1',this)" style="min-width:160px;padding:16px">
-            <div class="icon" style="font-size:24px">🧠</div>
-            <div class="label" style="font-weight:700">BRAIN v1</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">קלאסי · מהיר · 13 קטגוריות</div>
+        <div class="brain-version-grid">
+          <div id="brainV1Card" class="brain-card selected" onclick="selectBrainVersion('v1',this)">
+            <div class="bc-icon">🧠</div>
+            <div class="bc-label">BRAIN v1</div>
+            <div class="bc-desc">קלאסי · מהיר<br>13 קטגוריות</div>
           </div>
-          <div id="brainV5Card" class="user-card" onclick="selectBrainVersion('v5turbo',this)" style="min-width:160px;padding:16px;border-color:var(--accent-2)">
-            <div class="icon" style="font-size:24px">⚡</div>
-            <div class="label" style="font-weight:700;background:linear-gradient(135deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent">v5 TURBO</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:4px">Intent · Persona · Flow · Anti-AI</div>
-          <div id="brainV6Card" class="user-card" onclick="selectBrainVersion('v6',this)" style="min-width:160px;padding:16px;border-color:var(--accent-3);background:linear-gradient(135deg,rgba(255,71,133,.05),rgba(155,92,255,.05))">
-            <div class="icon" style="font-size:24px">🔮</div>
-            <div class="label" style="font-weight:900;background:linear-gradient(135deg,var(--accent-3),var(--accent-2),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent">v6 DEEP</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Taste Graph · Multi-Layer<br>Decision Engine · 10 Layers</div>
-          <div id="brainV7Card" class="user-card" onclick="selectBrainVersion('v7',this)" style="min-width:160px;padding:16px;border-color:var(--accent);background:linear-gradient(135deg,rgba(29,185,84,.08),rgba(255,71,133,.05),rgba(155,92,255,.05))">
-            <div class="icon" style="font-size:24px">🌊</div>
-            <div class="label" style="font-weight:900;background:linear-gradient(135deg,var(--accent),var(--accent-3),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent">v7 LIVE</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px">Crowd Simulation · Delta<br>Control System · Real-time</div>
+          <div id="brainV5Card" class="brain-card" onclick="selectBrainVersion('v5turbo',this)" style="border-color:var(--accent-2)">
+            <div class="bc-icon">⚡</div>
+            <div class="bc-label" style="background:linear-gradient(135deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent">v5 TURBO</div>
+            <div class="bc-desc">Intent · Persona<br>Flow · Anti-AI</div>
+          </div>
+          <div id="brainV6Card" class="brain-card" onclick="selectBrainVersion('v6',this)" style="border-color:var(--accent-3);background:linear-gradient(135deg,rgba(255,71,133,.05),rgba(155,92,255,.05))">
+            <div class="bc-icon">🔮</div>
+            <div class="bc-label" style="background:linear-gradient(135deg,var(--accent-3),var(--accent-2),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent">v6 DEEP</div>
+            <div class="bc-desc">Taste Graph · 10 Layers<br>Decision Engine</div>
+          </div>
+          <div id="brainV7Card" class="brain-card" onclick="selectBrainVersion('v7',this)" style="border-color:var(--accent);background:linear-gradient(135deg,rgba(29,185,84,.08),rgba(255,71,133,.05),rgba(155,92,255,.05))">
+            <div class="bc-icon">🌊</div>
+            <div class="bc-label" style="background:linear-gradient(135deg,var(--accent),var(--accent-3),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent">v7 LIVE</div>
+            <div class="bc-desc">Crowd Simulation<br>Control System · Delta</div>
           </div>
         </div>
       </div>

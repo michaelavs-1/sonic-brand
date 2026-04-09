@@ -455,7 +455,7 @@
       <div>6️⃣ <b>אימות Spotify</b> → חיפוש כל שיר ב-API, אימות קיום</div>
       <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">🏷️ 13 קטגוריות עסק</div>
       <div>cafe · restaurant · bar · nightclub · fashion · tattoo · spa · gym · office · retail · kids · gallery · general</div>
-      <div id="baseRulesArch" style="display:block;background:var(--card);border-radius:12px;padding:14px;margin-top:10px;border:1px solid rgba(255,71,133,.3)"><div style="font-weight:700;color:var(--accent-3);font-size:14px;margin-bottom:8px">🔒 BASE RULES v7.5</div><div style="font-size:11px;color:var(--muted);line-height:1.5"><div>📜 40-Track Experience Engine</div><div>🚫 Hard Constraints + Negative Space</div><div>🎨 8 Candidate Roles + 8 Track Roles</div><div>📊 Saturation Index + Smart Surprise</div><div>🔧 Recovery Logic + Failure Prevention</div><div>🛡️ Brand Protection + Taste Policy</div><div>🔍 Self-Critique + Decomposed Confidence</div><div>✨ Distinctiveness Score + Anti-AI</div></div></div><div id="brainDnaInfo" style="margin-top:10px;display:none;padding:12px;background:rgba(29,185,84,.1);border-radius:10px"></div>
+      <div id="baseRulesArch" style="display:block;background:var(--card);border-radius:12px;padding:14px;margin-top:10px;border:1px solid rgba(255,71,133,.3)"><div style="font-weight:700;color:var(--accent-3);font-size:14px;margin-bottom:8px">🔒 BASE RULES v7.5</div><div style="font-size:11px;color:var(--muted);line-height:1.5"><div>🚀 Pipeline v2.0 Architecture</div><div>🔢 Constraint Solver + Genre Palette</div><div>🎯 Audio Target Profile + Ref Amplification</div><div>🌱 Seed Generation + Spotify Pre-fetch</div><div>🎵 Slot-by-Slot Generation (4×10)</div><div>🎭 Two-Pass Critic + Similarity Check</div><div>🔄 Fallback Chain + Temperature Gradient</div><div>📦 Prompt Compression + Structured Output</div><div>👁️ Human Checkpoint (Seeds Review)</div></div></div><div id="brainDnaInfo" style="margin-top:10px;display:none;padding:12px;background:rgba(29,185,84,.1);border-radius:10px"></div>
       <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">🎚️ חוקי סליידרים → טקסט בפרומפט</div>
       <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent);font-weight:700">מסחריות &gt;70:</span><br><code style="color:var(--accent-3);font-size:11px">"שירים מוכרים ומסחריים בלבד — להיטים שכולם מכירים"</code></div>
       <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent);font-weight:700">מסחריות &lt;30:</span><br><code style="color:var(--accent-3);font-size:11px">"חובה שירים נישתיים, עמוקים ופחות מוכרים! אסור להיטים! תבחר B-sides, אמנים עצמאיים, שירים שרוב האנשים לא מכירים. זה הדבר הכי חשוב!"</code></div>
@@ -519,7 +519,7 @@
 <button class="shazam-btn" onclick="openShazam()">🎤</button>
 <div class="shazam-modal" id="shazamModal"><div class="shazam-content" style="position:relative"><button onclick="closeShazam()" style="position:absolute;top:16px;left:16px;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer">✕</button><h2>🎵 זיהוי שיר</h2><p style="color:var(--muted);font-size:14px">לחצו להאזנה — המערכת תזהה את השיר</p><div class="shazam-circle" id="shazamCircle" onclick="startShazam()">🎤</div><div id="shazamStatus" style="color:var(--muted);font-size:14px;margin-top:12px"></div><div id="shazamResult" class="shazam-result"></div></div></div>
 <script>
-const APP_VERSION='v2';const BRAIN_VERSION='v7.5-base';
+const APP_VERSION='v2';const BRAIN_VERSION='v7.5-pipeline';
 function hardRefresh(){if('caches' in window){caches.keys().then(names=>{names.forEach(n=>caches.delete(n))}).finally(()=>{location.href=location.pathname+'?t='+Date.now();location.reload(true)})}else{location.href=location.pathname+'?t='+Date.now()}}
 const SUPABASE_URL='https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -836,7 +836,441 @@ const eLbls={1:'שקט מאוד',2:'רגוע',3:'בינוני',4:'אנרגטי',
 let sr=null,isRec=false,voiceTranscript='',voiceRecordings=[];function startVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){alert('הדפדפן לא תומך בהקלטה');return}sr=new SR();sr.lang='he-IL';sr.continuous=true;sr.interimResults=true;voiceTranscript='';document.getElementById('voiceLiveText').textContent='';document.getElementById('voiceIdle').style.display='none';document.getElementById('voiceRecording').style.display='block';document.getElementById('voiceReview').style.display='none';sr.onresult=e=>{let final='',interim='';for(let i=0;i<e.results.length;i++){if(e.results[i].isFinal)final+=e.results[i][0].transcript+' ';else interim+=e.results[i][0].transcript}voiceTranscript=final.trim();document.getElementById('voiceLiveText').textContent=voiceTranscript+(interim?' '+interim:'')};sr.onerror=()=>{pauseVoice()};sr.onend=()=>{if(isRec)try{sr.start()}catch(e){}};sr.start();isRec=true}function pauseVoice(){isRec=false;if(sr)try{sr.stop()}catch(e){}document.getElementById('voiceRecording').style.display='none';const txt=voiceTranscript.trim()||document.getElementById('voiceLiveText').textContent.trim();if(txt){document.getElementById('voiceReviewText').textContent='🎤 '+txt;document.getElementById('voiceReview').style.display='block'}else{document.getElementById('voiceIdle').style.display='block'}}function useVoice(){const txt=voiceTranscript.trim()||document.getElementById('voiceReviewText').textContent.replace(/^🎤\s*/,'').trim();document.getElementById('voiceReview').style.display='none';if(txt){voiceRecordings.push(txt);renderVoiceChips();brainLog('🎤','הקלטה',txt.substring(0,50)+'...')}document.getElementById('voiceIdle').style.display='block';document.getElementById('voiceBtn').textContent='🎤 הוסף הקלטה נוספת'}function retryVoice(){document.getElementById('voiceReview').style.display='none';startVoice()}function renderVoiceChips(){const c=document.getElementById('voiceRecordings');c.innerHTML='';voiceRecordings.forEach((t,i)=>{c.innerHTML+='<div class="voice-chip"><span class="vc-text">🎤 '+esc(t)+'</span><button class="vc-remove" onclick="removeVoiceChip('+i+')" title="הסר">✕</button></div>'})}function removeVoiceChip(i){voiceRecordings.splice(i,1);renderVoiceChips();if(!voiceRecordings.length)document.getElementById('voiceBtn').textContent='🎤 הקלט במקום להקליד'}
 async function generateSamples(){const ld=document.getElementById('sampleLoading'),list=document.getElementById('sampleList'),nb=document.getElementById('sampleNextBtn');ld.style.display='block';list.style.display='none';nb.style.display='none';brainLog('🎲','סאמפלים','מייצר 5 שירים...',true);try{const f=wiz.faders,g=wiz.genres.length?'\nGenres: '+wiz.genres.join(', '):'',rf=wiz.refs.length?'\nRef: '+wiz.refs.map(r=>r.artist+' - '+r.title).join(', '):'';const dna=wiz.bizDNA||BIZ_DNA.general;const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי');const famDesc=f.familiarity>70?'שירים מוכרים ומסחריים':f.familiarity<30?'שירים נישתיים, עמוקים ופחות מוכרים - זה קריטי! אל תביא שירים שכולם מכירים':' תמהיל של שירים מוכרים ופחות מוכרים';const hebDesc=f.hebrew>70?'רוב השירים בעברית':f.hebrew<30?'רוב השירים בלועזית':'מיקס עברית ולועזית';const vocDesc=f.vocal>70?'שירים ווקליים':'שירים אינסטרומנטליים או עם מעט מילים';const nrgDesc=f.energy>70?'שירים אנרגטיים, תוססים, קצביים':f.energy<30?'שירים רגועים, שקטים, נינוחים':'תמהיל של שירים רגועים ואנרגטיים';let sysPrompt,usrPrompt;if(wiz.brainVersion==='v5turbo'){const sliderBlock=buildV5SliderBlock(f);const eDNA=V5_ENHANCED_DNA[wiz.bizCategory||'general']||V5_ENHANCED_DNA.general;const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);const pData=V5_PERSONAS[persona];sysPrompt='You are the V5 TURBO music engine of SonicBrand. You operate as a '+pData.label+': '+pData.desc+'.\n\nANTI-AI RULES:\n- '+V5_ANTI_AI.antiObvious+'\n- '+V5_ANTI_AI.noAlgorithmic+'\n- '+V5_ANTI_AI.eraSpread+'\n- Surprise factor: '+V5_ANTI_AI.surprisePct+'% of tracks should be unexpected picks.\nJSON only.';usrPrompt='Suggest 5 sample tracks for this business.\nBusiness: "'+wiz.desc+'"'+dnaBlock+'\n\n🎭 Music Persona: '+pData.label+' — '+pData.desc+'\n🔊 Sonic Texture: '+eDNA.texture+'\n🎵 Groove Level: '+eDNA.grooveLevel+'\n🎨 Mood Profile: '+eDNA.moodProfile.join(', ')+sliderBlock+g+rf+(wiz.v5Intent?'\n\n🎯 INTENT: dwell='+wiz.v5Intent.dwellTime+', social='+wiz.v5Intent.socialEnergy+', premium='+wiz.v5Intent.premiumFeel+', brand='+wiz.v5Intent.brandAttitude+', sonic identity: '+wiz.v5Intent.sonicIdentity:'')+'\n\nReturn: {"samples":[{"artist":"name","title":"exact Spotify title","reason":"8 words Hebrew","mood":"one word mood","bpm_est":120}]}\nRules: Real Spotify tracks only. Diverse. ~'+Math.round(5*f.hebrew/100)+' Hebrew. MUST respect persona + Anti-AI rules!'}else{sysPrompt='אתה אוצר מוזיקלי מומחה של SonicBrand. חוקי הבסיס v7.5 חלים תמיד: שירים אמיתיים בלבד, מקסימום 2 לאמן, כבד את ה-DNA העסקי כנקודת מוצא + סליידרים של הלקוח. הימנע מבחירות גנריות וצפויות. JSON only.';usrPrompt='הצע 5 שירים לעסק.\nעסק: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\nסליידרים (עדיפות גבוהה):\n- מסחריות ('+f.familiarity+'/100): '+famDesc+'\n- שפה (עברית '+f.hebrew+'%): '+hebDesc+'\n- ווקלי/אינסטרומנטלי ('+f.vocal+'/100): '+vocDesc+'\n- אנרגיה ('+f.energy+'/100): '+nrgDesc+'\n\nReturn: {"samples":[{"artist":"name","title":"exact Spotify title","reason":"8 words Hebrew"}]}\nחוקים: שירים אמיתיים שקיימים ב-Spotify. מגוון. ~'+Math.round(5*f.hebrew/100)+' שירים בעברית. חובה להתחשב ב-DNA של סוג העסק!'+((f.familiarity<40)?'\nחשוב מאוד: אל תבחר להיטים! תבחר שירים עמוקים, B-sides, אמנים עצמאיים, שירים פחות מוכרים.':'')+''};const raw=await callOpenAI([{role:'system',content:sysPrompt},{role:'user',content:usrPrompt}],{max_tokens:800,stage:wiz.brainVersion==='v5turbo'?'2️⃣ V5 סאמפלים':'2️⃣ סאמפלים'});const parsed=safeJSON(raw);wiz.samples=parsed.samples||[];wiz.votes={};brainLog('✅','סאמפלים',wiz.samples.map(s=>s.artist+' - '+s.title).join(' | '),true);let html='';for(let i=0;i<wiz.samples.length;i++){const s=wiz.samples[i];let embed='<div style="padding:12px;color:var(--muted);font-size:13px">🎵 '+esc(s.artist)+' — '+esc(s.title)+'</div>';try{const t=await getSpotifyToken();if(t){const r2=await fetch('https://api.spotify.com/v1/search?q='+encodeURIComponent(s.artist+' '+s.title)+'&type=track&limit=1',{headers:{'Authorization':'Bearer '+t}});const sd=await r2.json();if(sd.tracks?.items?.length){wiz.samples[i].spotifyId=sd.tracks.items[0].id;embed='<iframe src="https://open.spotify.com/embed/track/'+sd.tracks.items[0].id+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>'}}}catch(e){}html+='<div class="sample-card"><div class="sample-embed">'+embed+'</div><div style="min-width:60px;text-align:center"><div style="font-size:12px;color:var(--muted);margin-bottom:6px">'+esc(s.reason)+'</div><div class="sample-votes" style="display:flex;gap:8px"><button id="sy'+i+'" onclick="voteSample('+i+',true)">👍</button><button id="sn'+i+'" onclick="voteSample('+i+',false)">👎</button></div></div></div>'}list.innerHTML=html;ld.style.display='none';list.style.display='flex';nb.style.display='inline-flex'}catch(e){ld.innerHTML='<p style="color:var(--accent-3)">'+e.message+'</p><button class="btn btn-ghost" onclick="generateSamples()" style="margin-top:12px">נסה שוב</button>'}}
 function voteSample(i,liked){wiz.votes[i]=liked;document.getElementById('sy'+i).className=liked?'voted-yes':'';document.getElementById('sn'+i).className=liked?'':'voted-no';brainLog('🗳️','הצבעה',(liked?'👍':'👎')+' '+wiz.samples[i].artist)}
-async function finishWizard(){wiz.energy={morning:+document.getElementById('eMorning').value,afternoon:+document.getElementById('eAfternoon').value,evening:+document.getElementById('eEvening').value,night:+document.getElementById('eNight').value};const st=document.getElementById('wizStatus');st.textContent='בונה פרופיל...';brainLog('⚡','אנרגיה','בוקר:'+wiz.energy.morning+' צהריים:'+wiz.energy.afternoon+' ערב:'+wiz.energy.evening+' לילה:'+wiz.energy.night);brainLog('🏗️','פרופיל','משלב נתונים...',true);try{const liked=Object.entries(wiz.votes).filter(([,v])=>v).map(([k])=>wiz.samples[+k]).filter(Boolean),disliked=Object.entries(wiz.votes).filter(([,v])=>!v).map(([k])=>wiz.samples[+k]).filter(Boolean),f=wiz.faders,g=wiz.genres.length?'\nGenres: '+wiz.genres.join(', '):'',rf=wiz.refs.length?'\nRef: '+wiz.refs.map(r=>r.artist+' - '+r.title).join(', '):'';const famDesc2=f.familiarity>70?'Commercial/mainstream songs':f.familiarity<30?'NICHE/deep cuts/indie/unknown artists - CRITICAL: avoid mainstream hits!':'Mix of known and lesser-known';const hebDesc2='Hebrew songs: '+f.hebrew+'% of total';const vocDesc2=f.vocal>70?'Prefer vocal tracks':'Prefer instrumental/minimal vocals';const nrgDesc2=f.energy>70?'Energetic, upbeat, high-tempo':'Low energy, calm, relaxed, chill';const dna=wiz.bizDNA||BIZ_DNA.general;const dnaCtx='\n\n🏷️ BUSINESS DNA ('+dna.label+'):\nVibe: '+dna.vibe+'\nBase genres: '+dna.baseGenres.join(', ')+'\nAvoid: '+(dna.avoid.length?dna.avoid.join(', '):'none')+'\nBPM range: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nBase energy: '+dna.energy+'\nRef artists: '+(dna.refArtists.concat(dna.hebrewRef).join(', ')||'general');const pRaw=await callOpenAI([{role:'system',content:'SonicBrand AI music profiler. You MUST use the BUSINESS DNA as your starting point — it defines the core musical identity of the business type. Then apply the slider values on top. CRITICAL: The familiarity slider is the MOST important parameter. When set to niche/low, you MUST pick obscure artists and deep cuts, NOT mainstream hits. JSON only.'},{role:'user',content:'Business: "'+wiz.desc+'"'+dnaCtx+g+rf+'\n\nSLIDER VALUES (these MUST be respected, they override DNA defaults):\n- Familiarity ('+f.familiarity+'/100): '+famDesc2+'\n- Language: '+hebDesc2+'\n- Vocal ('+f.vocal+'/100): '+vocDesc2+'\n- Overall Energy ('+f.energy+'/100): '+nrgDesc2+'\n\nLiked: '+(liked.map(s=>s.artist+' - '+s.title).join(', ')||'none')+'\nDisliked: '+(disliked.map(s=>s.artist+' - '+s.title).join(', ')||'none')+'\nEnergy: morning:'+wiz.energy.morning+'/5,afternoon:'+wiz.energy.afternoon+'/5,evening:'+wiz.energy.evening+'/5,night:'+wiz.energy.night+'/5\nUser: '+wiz.user+'\nReturn: {"business_name":"","business_type":"","target_audience":"","core_genres":[],"reference_artists":[],"bpm_range":{"min":0,"max":0},"language_preference":{"hebrew_pct":'+f.hebrew+',"english_pct":'+(100-f.hebrew)+'},"energy_curve":{"morning":'+wiz.energy.morning+',"afternoon":'+wiz.energy.afternoon+',"evening":'+wiz.energy.evening+',"night":'+wiz.energy.night+'},"brand_personality":"","familiarity_level":"'+(f.familiarity<30?'niche':f.familiarity>70?'mainstream':'mixed')+'","blacklist":[]}'}],{max_tokens:1500,stage:'3️⃣ פרופיל'});const profile=safeJSON(pRaw);window.brandProfile=profile;brainLog('📊','פרופיל',profile.business_name+' | '+(profile.core_genres||[]).join(', '),true);if(wiz.brainVersion==='v5turbo'){const eDNA=V5_ENHANCED_DNA[wiz.bizCategory||'general']||V5_ENHANCED_DNA.general;const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);profile.v5_sonic_attributes=eDNA.sonicAttributes;profile.v5_mood_profile=eDNA.moodProfile;profile.v5_texture=eDNA.texture;profile.v5_persona=persona;profile.v5_persona_label=V5_PERSONAS[persona].label;if(wiz.v5Intent){profile.v5_intent=wiz.v5Intent}brainLog('⚡','V5 Profile','persona:'+V5_PERSONAS[persona].label+' texture:'+eDNA.texture,true);updateBrainV5Live()}st.textContent='Strategist...';let strategy=null;try{const v5Strat=wiz.brainVersion==='v5turbo'||wiz.brainVersion==='v6'||wiz.brainVersion==='v7';const stratSys=v5Strat?'V5 TURBO Music Strategist. Create an ENHANCED MusicStrategy with sonic direction, emotional arc, transition logic, and flow rules. Include: core_genres (with why), avoid_genres, energy_curve, bpm_ranges, language_mix, anchor_artists, discovery_artists (lesser-known), blacklist_final, sonic_direction (warmth/brightness/density targets), emotional_arc (per time slot), transition_logic (how to move between slots), flow_rules, rationale. JSON only.':STRATEGIST_PROMPT;const stratUser=v5Strat?'BusinessProfile:\n'+JSON.stringify(profile,null,2)+'\n\nV5 Enhanced Context:\n- Persona: '+(profile.v5_persona_label||'eclectic')+'\n- Texture: '+(profile.v5_texture||'balanced')+'\n- Mood: '+(profile.v5_mood_profile||[]).join(', ')+'\n'+(wiz.v5Intent?'- Intent: dwell='+wiz.v5Intent.dwellTime+', social='+wiz.v5Intent.socialEnergy+', premium='+wiz.v5Intent.premiumFeel:'')+'\nReturn enhanced MusicStrategy JSON.':'BusinessProfile:\n'+JSON.stringify(profile,null,2)+'\nReturn MusicStrategy JSON.';const sRaw=await callOpenAI([{role:'system',content:stratSys},{role:'user',content:stratUser}],{max_tokens:2500,stage:v5Strat?'4️⃣ V5 אסטרטג':'4️⃣ אסטרטג'});strategy=safeJSON(sRaw);brainLog('🎯','אסטרטגיה',(strategy.anchor_artists||[]).join(', '),true)}catch(e){}st.textContent='בונה 40 שירים...';const famDesc3=f.familiarity>70?'שירים מוכרים ומסחריים בלבד — להיטים שכולם מכירים':f.familiarity<30?'חובה שירים נישתיים, עמוקים ופחות מוכרים! אסור להיטים! תבחר B-sides, אמנים עצמאיים, שירים שרוב האנשים לא מכירים. זה הדבר הכי חשוב!':'תמהיל — חצי שירים מוכרים וחצי פחות מוכרים';const hebDesc3='בדיוק '+f.hebrew+'% מהשירים חייבים להיות בעברית ו-'+(100-f.hebrew)+'% בלועזית. זה חובה!';const vocDesc3=f.vocal>70?'העדפה לשירים ווקליים עם שירה בולטת':f.vocal<30?'העדפה לשירים אינסטרומנטליים או עם מינימום מילים':'מיקס של ווקלי ואינסטרומנטלי';const nrgDesc3=f.energy>70?'אנרגיה גבוהה — שירים קצביים, תוססים, אפטמפו':f.energy<30?'אנרגיה נמוכה — שירים רגועים, איטיים, נינוחים, chill':'אנרגיה בינונית — מיקס של רגוע וקצבי';const baseRulesText=buildBaseRulesBlock(wiz);const tp='אתה אוצר מוזיקלי מומחה של SonicBrand. בנה פלייליסט של 40 שירים אמיתיים שקיימים ב-Spotify.\n\n🏷️ DNA עסקי — '+dna.label+':\n'+dna.vibe+'\nז׳אנרים בסיס: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nאמנים מייצגים: '+dna.refArtists.concat(dna.hebrewRef).join(', ')+'\n\nהנחיות קריטיות (חובה לציית!):\n1. כל השירים חייבים להיות אמיתיים וקיימים ב-Spotify\n2. מקסימום 2 שירים לאמן\n3. מסחריות ('+f.familiarity+'/100): '+famDesc3+'\n4. שפה: '+hebDesc3+'\n5. ווקלי/אינסטרומנטלי ('+f.vocal+'/100): '+vocDesc3+'\n6. אנרגיה כללית ('+f.energy+'/100): '+nrgDesc3+'\n7. חלק שווה בין morning/afternoon/evening/night (~10 שירים לכל חלק)\n8. התאם אנרגיה לזמנים: morning='+wiz.energy.morning+'/5, afternoon='+wiz.energy.afternoon+'/5, evening='+wiz.energy.evening+'/5, night='+wiz.energy.night+'/5\n9. חובה להתחשב ב-DNA העסקי! סוג העסק משפיע ישירות על בחירת השירים.\n\n'+(strategy?'Strategy:\n'+JSON.stringify(strategy,null,2):'Profile:\n'+JSON.stringify(profile,null,2))+'\n'+(liked.length?'👍 שירים שאהבו: '+liked.map(s=>s.artist+' - '+s.title).join(', '):'')+(disliked.length?'\n👎 שירים שלא אהבו: '+disliked.map(s=>s.artist+' - '+s.title).join(', '):'')+((f.familiarity<40)?'\n\n⚠️ תזכורת: הלקוח ביקש שירים נישתיים ופחות מוכרים. אל תביא להיטים! תחפש אמנים עצמאיים, אלבומים פחות מוכרים, שירים עמוקים.':'')+(wiz.feedbackContext?'\n\n🧬 FEEDBACK INTELLIGENCE (from user ratings):\n'+wiz.feedbackContext:'')+'\nReturn: {"tracks":[{"artist":"","title":"","reason":"10 words Hebrew","slot":"morning|afternoon|evening|night"}]}';let tRaw;if(wiz.brainVersion==='v5turbo'){const sliderBlock=buildV5SliderBlock(f);const eDNA=V5_ENHANCED_DNA[wiz.bizCategory||'general']||V5_ENHANCED_DNA.general;const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);const pData=V5_PERSONAS[persona];const flowRulesStr=Object.entries(V5_FLOW_RULES).map(([k,v])=>k+': '+v).join('\n');const v5sys='You are V5 TURBO — the most advanced AI music curator. You are operating as '+pData.label+': '+pData.desc+'.\n\n🔊 SONIC TEXTURE TARGET: '+eDNA.texture+'\n🎵 GROOVE LEVEL: '+eDNA.grooveLevel+'\n🎨 MOOD TARGETS: '+eDNA.moodProfile.join(', ')+'\n\nPRIORITY HIERARCHY (STRICT ORDER):\n1. Hard constraints (real tracks, max 2 per artist, language ratio)\n2. Slider overrides (these ALWAYS override DNA defaults)\n3. Business intent signals\n4. Music persona style\n5. BIZ_DNA base\n6. Soft preferences\n\nANTI-AI RULES (CRITICAL):\n- '+V5_ANTI_AI.antiObvious+'\n- '+V5_ANTI_AI.noAlgorithmic+'\n- '+V5_ANTI_AI.eraSpread+'\n- Surprise: inject '+V5_ANTI_AI.surprisePct+'% unexpected picks\n- Discovery: '+V5_ANTI_AI.discoveryPct+'% tracks should be discovery-worthy\n\nFLOW ENGINE RULES:\n'+flowRulesStr+'\n\nValid JSON only. 40 real Spotify tracks.';const v5user=tp+sliderBlock+(wiz.v5Intent?'\n\n🎯 INTENT SIGNALS: dwell='+wiz.v5Intent.dwellTime+', turnover='+wiz.v5Intent.turnover+', premium='+wiz.v5Intent.premiumFeel+', social='+wiz.v5Intent.socialEnergy+', brand='+wiz.v5Intent.brandAttitude+', familiarity tolerance='+wiz.v5Intent.familiarityTolerance+', discovery tolerance='+wiz.v5Intent.discoveryTolerance+(wiz.v5Intent.sonicIdentity?'\nSonic Identity: '+wiz.v5Intent.sonicIdentity:'')+(wiz.v5Intent.emotionalArc?'\nEmotional Arc: '+wiz.v5Intent.emotionalArc:''):'')+'\n\nV5 TIME SLOT TARGETS:\n- morning: energy='+V5_TIME_SLOTS.morning.targetEnergy+', familiarity='+V5_TIME_SLOTS.morning.targetFamiliarity+', feel='+V5_TIME_SLOTS.morning.socialFeel+'\n- afternoon: energy='+V5_TIME_SLOTS.afternoon.targetEnergy+', familiarity='+V5_TIME_SLOTS.afternoon.targetFamiliarity+', feel='+V5_TIME_SLOTS.afternoon.socialFeel+'\n- evening: energy='+V5_TIME_SLOTS.evening.targetEnergy+', familiarity='+V5_TIME_SLOTS.evening.targetFamiliarity+', feel='+V5_TIME_SLOTS.evening.socialFeel+'\n- night: energy='+V5_TIME_SLOTS.night.targetEnergy+', familiarity='+V5_TIME_SLOTS.night.targetFamiliarity+', feel='+V5_TIME_SLOTS.night.socialFeel+'\n\nReturn: {"tracks":[{"artist":"","title":"","reason":"10 words Hebrew","slot":"morning|afternoon|evening|night","mood":"one word","bpm_est":0,"energy_level":0.0-1.0,"is_discovery":false}]}';brainLog('🚀','V5 Pipeline','Multi-step generation...',true);tRaw=await callOpenAI([{role:'system',content:v5sys},{role:'user',content:v5user}],{max_tokens:6000,stage:'5️⃣ V5 40 שירים'})}else if(wiz.brainVersion==='v6'){brainLog('🔮','V6 Pipeline','Decision Engine starting — 4 phases...',true);const sliderBlock=buildV5SliderBlock(f);const eDNA=V5_ENHANCED_DNA[wiz.bizCategory||'general']||V5_ENHANCED_DNA.general;const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);const pData=V5_PERSONAS[persona];const pBehavior=V6_PERSONA_BEHAVIORS[persona]||V6_PERSONA_BEHAVIORS.eclectic;const realityCtx=wiz.v6Reality?'\n\n🏢 BUSINESS REALITY:\n- Why people come: '+wiz.v6Reality.whyPeopleCome+'\n- Dwell: '+wiz.v6Reality.avgDwellMinutes+'min | Talk: '+wiz.v6Reality.talkingLevel+'\n- Groups: '+wiz.v6Reality.groupSize+' | Music attention: '+wiz.v6Reality.musicAttention+'\n- Foreground/Background: '+wiz.v6Reality.foregroundBackground+'\n- Physical noise: '+wiz.v6Reality.physicalNoise+'\n- Alcohol: '+wiz.v6Reality.hasAlcohol+' | Movement: '+wiz.v6Reality.hasMovement+'\n- Intimacy: '+wiz.v6Reality.intimacyLevel+'\n- Peak moments: '+wiz.v6Reality.peakMoments+'\n- Quiet moments: '+wiz.v6Reality.quietMoments:'';const intentCtx=wiz.v6IntentForce?'\n\n⚡ INTENT FORCE FIELD:\n- Dwell: '+wiz.v6IntentForce.dwellTime+' | Turnover pressure: '+wiz.v6IntentForce.turnoverPressure+'\n- Revenue mode: '+wiz.v6IntentForce.revenueMode+'\n- Emotional goal: '+wiz.v6IntentForce.emotionalGoal+'\n- Social mode: '+wiz.v6IntentForce.socialMode+'\n- Brand distance: '+wiz.v6IntentForce.brandDistance+' | Risk tolerance: '+wiz.v6IntentForce.riskTolerance:'';const sonicCtx=wiz.v6SonicId?'\n\n🔊 SONIC IDENTITY:\n- Texture: '+wiz.v6SonicId.texture+' | Density: '+wiz.v6SonicId.density+'\n- Rhythm: '+wiz.v6SonicId.rhythmFeel+' | Vocal: '+wiz.v6SonicId.vocalPresence+'\n- Harmony: '+wiz.v6SonicId.harmonicComplexity+' | Polish: '+wiz.v6SonicId.productionPolish+'\n- Temporal: '+wiz.v6SonicId.temporalFeel+' | Culture: '+wiz.v6SonicId.culturalIdentity:'';const conflictCtx=wiz.v6Conflicts?.length?'\n\n⚠️ DETECTED CONFLICTS:\n'+wiz.v6Conflicts.map(c=>'- '+c).join('\n')+'\nRESOLVE these — do not ignore them.':'';const personaCtx='\n\n🎭 PERSONA BEHAVIOR ('+pData.label+'):\n- Risk: '+pBehavior.riskCurve+'\n- Familiarity: '+pBehavior.familiarityCurve+'\n- Transitions: '+pBehavior.transitionStyle+'\n- Genre flex: '+pBehavior.genreFlexibility+'\n- Tempo: '+pBehavior.tempoBehavior+'\n- Emotional consistency: '+pBehavior.emotionalConsistency+'\n- Discovery: '+pBehavior.discoveryStrategy;st.textContent='V6: Generating candidates...';const phase1Raw=await callOpenAI([{role:'system',content:'You are V6 DEEP — a decision engine, not a generator. You EVALUATE, COMPARE, PRIORITIZE, SELECT.\n\nPHASE 1: CANDIDATE GENERATION\nGenerate 60 candidate tracks in 3 tiers:\n- 25 SAFE candidates (high fit, reliable)\n- 20 STRETCH candidates (borderline but interesting)\n- 15 WILDCARD candidates (surprising but justified)\n\nFor each track, provide a multi-dimensional score.\nAll tracks MUST be real Spotify tracks.\nJSON only.'},{role:'user',content:'Business: "'+wiz.desc+'"'+realityCtx+intentCtx+sonicCtx+personaCtx+conflictCtx+sliderBlock+'\n\nDNA: '+dna.label+' | '+dna.vibe+'\nBase genres: '+dna.baseGenres.join(', ')+'\nAvoid: '+(dna.avoid.length?dna.avoid.join(', '):'none')+'\nBPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\n'+(strategy?'Strategy: '+JSON.stringify(strategy):'Profile: '+JSON.stringify(profile))+'\nSliders: familiarity='+f.familiarity+', hebrew='+f.hebrew+'%, vocal='+f.vocal+', energy='+f.energy+'\nEnergy curve: morning='+wiz.energy.morning+'/5, afternoon='+wiz.energy.afternoon+'/5, evening='+wiz.energy.evening+'/5, night='+wiz.energy.night+'/5'+((f.familiarity<40)?'\n\nCRITICAL: Niche mode! Deep cuts, unknown artists, B-sides. NO mainstream hits.':'')+'\n\nReturn: {"candidates":[{"artist":"","title":"","tier":"safe|stretch|wildcard","slot":"morning|afternoon|evening|night","scores":{"bizFit":0-10,"intentFit":0-10,"personaFit":0-10,"sonicFit":0-10,"langFit":0-10,"novelty":0-10,"flowPotential":0-10},"lang":"he|en|other","bpm_est":0,"energy_est":0.0-1.0,"reason":"5 words"}]}'}],{max_tokens:8000,stage:'5️⃣a V6 Candidates (60)'});const phase1=safeJSON(phase1Raw);const candidates=phase1.candidates||[];brainLog('🎲','V6 Candidates',candidates.length+' tracks: '+candidates.filter(c=>c.tier==='safe').length+' safe, '+candidates.filter(c=>c.tier==='stretch').length+' stretch, '+candidates.filter(c=>c.tier==='wildcard').length+' wildcard',true);st.textContent='V6: Selecting & arranging...';const phase2Raw=await callOpenAI([{role:'system',content:'You are V6 DEEP — PHASE 2: SELECTION + ARRANGEMENT.\n'+baseRulesText+'\n\nFrom '+candidates.length+' candidates, SELECT exactly 40 tracks and ARRANGE them.\n\nSELECTION RULES:\n- Balance safe/stretch/wildcard (roughly 60%/25%/15%)\n- Max 2 tracks per artist\n- Hebrew ratio must match '+f.hebrew+'%\n- ~10 tracks per time slot\n- Resolve any detected conflicts intelligently\n\nARRANGEMENT RULES:\n- Energy micro-arcs within each slot (gentle start → peak → landing)\n- BPM continuity (no jumps >25 BPM between adjacent tracks)\n- Genre clustering (2-3 similar, then transition)\n- Hebrew spread (never >2 consecutive Hebrew tracks)\n- Surprise injection every 6-8 tracks\n- Gradual transitions between time slots (no hard cuts)\n\nANTI-AI:\n- No obvious genre representatives\n- Mix eras across decades\n- Avoid algorithmic playlist clichés\n\nCONFLICT RESOLUTION:\n'+V6_CONFLICT_RULES.map(function(r){return r.conflict+' → '+r.resolution}).join('\n')+'\n\nJSON only.'},{role:'user',content:'Candidates:\n'+JSON.stringify(candidates)+'\n\nBusiness: '+dna.label+'\nPersona: '+pData.label+' ('+pBehavior.transitionStyle+')'+realityCtx+intentCtx+sonicCtx+conflictCtx+'\nSliders: familiarity='+f.familiarity+', hebrew='+f.hebrew+'%, vocal='+f.vocal+', energy='+f.energy+'\nEnergy curve: m='+wiz.energy.morning+' a='+wiz.energy.afternoon+' e='+wiz.energy.evening+' n='+wiz.energy.night+'\n\nReturn: {"tracks":[{"artist":"","title":"","slot":"morning|afternoon|evening|night","reason":"10 words Hebrew","tier":"safe|stretch|wildcard","position_rationale":"why here in sequence","mood":"one word","bpm_est":0,"energy_level":0.0-1.0,"is_discovery":false,"lang":"he|en"}],"decisions":{"conflicts_resolved":["how each conflict was handled"],"selection_philosophy":"2 sentences on overall approach","flow_strategy":"how transitions were designed"},"confidence":0-100,"confidenceBreakdown":{"brandFit":0-100,"flowQuality":0-100,"diversityScore":0-100,"surpriseFactor":0-100,"languageAccuracy":0-100,"energyArcQuality":0-100,"audienceMatch":0-100},"selfCritique":["list of issues found and fixed"]}'}],{max_tokens:8000,stage:'5️⃣b V6 Select+Arrange (40)'});const phase2=safeJSON(phase2Raw);if(phase2.decisions){brainLog('🧠','V6 Decisions','Philosophy: '+(phase2.decisions.selection_philosophy||'').substring(0,100),true);if(phase2.decisions.conflicts_resolved?.length)brainLog('⚖️','Conflicts Resolved',phase2.decisions.conflicts_resolved.join(' | '),true);if(phase2.decisions.flow_strategy)brainLog('🌊','Flow Strategy',phase2.decisions.flow_strategy,true)}if(phase2.confidence!==undefined)brainLog('💯','Confidence',phase2.confidence+'/100',true);wiz.v6Decisions=phase2.decisions;wiz.v6Confidence=phase2.confidence;updateBrainV5Live();tRaw=JSON.stringify({tracks:phase2.tracks})}else if(wiz.brainVersion==='v7'){brainLog('🌊','V7 LIVE','Crowd Control Pipeline — 3 phases...',true);const sliderBlock=buildV5SliderBlock(f);const eDNA=V5_ENHANCED_DNA[wiz.bizCategory||'general']||V5_ENHANCED_DNA.general;const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);const pData=V5_PERSONAS[persona];const pBehavior=V6_PERSONA_BEHAVIORS[persona]||V6_PERSONA_BEHAVIORS.eclectic;const realityCtx=wiz.v6Reality?'\nReality: dwell='+wiz.v6Reality.avgDwellMinutes+'m, talk='+wiz.v6Reality.talkingLevel+', music='+wiz.v6Reality.musicAttention+', noise='+wiz.v6Reality.physicalNoise+', groups='+wiz.v6Reality.groupSize+', intimacy='+wiz.v6Reality.intimacyLevel:'';const intentCtx=wiz.v6IntentForce?'\nIntent Force: goal='+wiz.v6IntentForce.emotionalGoal+', social='+wiz.v6IntentForce.socialMode+', risk='+wiz.v6IntentForce.riskTolerance+', revenue='+wiz.v6IntentForce.revenueMode:'';const sonicCtx=wiz.v6SonicId?'\nSonic ID: texture='+wiz.v6SonicId.texture+', density='+wiz.v6SonicId.density+', rhythm='+wiz.v6SonicId.rhythmFeel+', vocal='+wiz.v6SonicId.vocalPresence+', temporal='+wiz.v6SonicId.temporalFeel:'';const crowdCtx=wiz.v7CrowdPatterns?'\n\nCROWD SIMULATION:\nMorning: crowd='+wiz.v7CrowdPatterns.morning.crowdSize+'%, energy='+wiz.v7CrowdPatterns.morning.energy+', mood='+wiz.v7CrowdPatterns.morning.mood+', trend='+wiz.v7CrowdPatterns.morning.trend+'\nAfternoon: crowd='+wiz.v7CrowdPatterns.afternoon.crowdSize+'%, energy='+wiz.v7CrowdPatterns.afternoon.energy+', mood='+wiz.v7CrowdPatterns.afternoon.mood+', trend='+wiz.v7CrowdPatterns.afternoon.trend+'\nEvening: crowd='+wiz.v7CrowdPatterns.evening.crowdSize+'%, energy='+wiz.v7CrowdPatterns.evening.energy+', mood='+wiz.v7CrowdPatterns.evening.mood+', trend='+wiz.v7CrowdPatterns.evening.trend+'\nNight: crowd='+wiz.v7CrowdPatterns.night.crowdSize+'%, energy='+wiz.v7CrowdPatterns.night.energy+', mood='+wiz.v7CrowdPatterns.night.mood+', trend='+wiz.v7CrowdPatterns.night.trend:'';const controlCtx=wiz.v7ControlStrategy?'\n\nCONTROL STRATEGY:\nEscalation: '+wiz.v7ControlStrategy.escalationPlan+'\nRecovery: '+wiz.v7ControlStrategy.recoveryPlan+'\nPeak design: '+wiz.v7ControlStrategy.peakDesign+'\nFallback: '+wiz.v7ControlStrategy.fallbackLogic+'\nEnergy ceilings: m='+wiz.v7ControlStrategy.energyCeilings.morning+' a='+wiz.v7ControlStrategy.energyCeilings.afternoon+' e='+wiz.v7ControlStrategy.energyCeilings.evening+' n='+wiz.v7ControlStrategy.energyCeilings.night+'\nRisk profile: m='+wiz.v7ControlStrategy.riskProfile.morning+' a='+wiz.v7ControlStrategy.riskProfile.afternoon+' e='+wiz.v7ControlStrategy.riskProfile.evening+' n='+wiz.v7ControlStrategy.riskProfile.night:'';const conflictCtx=wiz.v6Conflicts?.length?'\nConflicts to resolve: '+wiz.v6Conflicts.join(', '):'';const failureModes=V7_FAILURE_MODES.map(function(f){return f.mode+': detect='+f.detect+', fix='+f.fix}).join('\n');st.textContent='V7: Simulating crowd + generating candidates...';const v7phase1Raw=await callOpenAI([{role:'system',content:'You are V7 LIVE — music is a CONTROL SYSTEM for crowd behavior.\n'+baseRulesText+'\n\nPRINCIPLE: Every song is an ACTION that MOVES the crowd state.\nYou dont choose "good songs". You choose songs that CHANGE the state toward the target.\n\nPHASE 1: SIMULATE + GENERATE\nSimulate the crowd state across 4 time slots.\nFor each slot, generate candidates considering:\n- Current crowd state → Target state → Delta needed\n- Momentum (rising/stable/falling/peak/recovery)\n- Risk level appropriate for momentum\n- Failure mode prevention\n\nGenerate 48 candidates total (12 per slot).\nFor each: score by IMPACT (how much it moves state) not just FIT.\n\nMUST be real Spotify tracks. JSON only.'},{role:'user',content:'Business: "'+wiz.desc+'"\nDNA: '+dna.label+' — '+dna.vibe+'\nBase genres: '+dna.baseGenres.join(', ')+'\nBPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+realityCtx+intentCtx+sonicCtx+crowdCtx+controlCtx+conflictCtx+sliderBlock+'\nPersona: '+pData.label+' — '+pBehavior.transitionStyle+'\n\nFAILURE MODES TO PREVENT:\n'+failureModes+'\n\nSliders: familiarity='+f.familiarity+', hebrew='+f.hebrew+'%, vocal='+f.vocal+', energy='+f.energy+'\nEnergy curve: m='+wiz.energy.morning+'/5 a='+wiz.energy.afternoon+'/5 e='+wiz.energy.evening+'/5 n='+wiz.energy.night+'/5'+((f.familiarity<40)?'\nCRITICAL: Niche mode!':'')+'\n'+(strategy?'Strategy: '+JSON.stringify(strategy):'Profile: '+JSON.stringify(profile))+'\n\nReturn: {"simulation":{"morning":{"currentState":"","targetState":"","delta":"","momentum":"rising|stable|falling"},"afternoon":{"currentState":"","targetState":"","delta":"","momentum":""},"evening":{"currentState":"","targetState":"","delta":"","momentum":""},"night":{"currentState":"","targetState":"","delta":"","momentum":""}},"candidates":[{"artist":"","title":"","slot":"morning|afternoon|evening|night","impact":{"energyDelta":0,"moodShift":"","engagementChange":0,"riskLevel":"safe|moderate|risky"},"scores":{"impactScore":0-10,"fitScore":0-10,"flowScore":0-10,"novelty":0-10},"lang":"he|en","bpm_est":0,"energy_est":0.0-1.0,"reason":"5 words","momentumEffect":"builds|maintains|recovers|peaks|cools"}]}'}],{max_tokens:8000,stage:'5️⃣a V7 Simulate+Candidates'});const v7phase1=safeJSON(v7phase1Raw);const v7candidates=v7phase1.candidates||[];wiz.v7Simulation=v7phase1.simulation;brainLog('🧍','V7 Sim','M:'+v7phase1.simulation.morning.momentum+' A:'+v7phase1.simulation.afternoon.momentum+' E:'+v7phase1.simulation.evening.momentum+' N:'+v7phase1.simulation.night.momentum,true);brainLog('🎲','V7 Candidates',v7candidates.length+' tracks generated',true);st.textContent='V7: Decision loop — selecting + arranging...';const v7phase2Raw=await callOpenAI([{role:'system',content:'V7 LIVE — PHASE 2: DECISION LOOP + ARRANGEMENT\n'+baseRulesText+'\n\nYou are running a real-time decision loop (simulated).\nFor each track position (1-40), you:\n1. Read current crowd state\n2. Compare to target\n3. Calculate delta needed\n4. Select best candidate by IMPACT\n5. Update crowd state after selection\n6. Check for failure modes\n7. Proceed to next\n\nRULES:\n- Max 2 tracks per artist\n- Hebrew ratio: '+str(f.hebrew)+'%\n- ~10 tracks per slot\n- Smooth BPM transitions (no >25 jump)\n- Momentum-appropriate risk levels\n- Prevent ALL failure modes\n- Every 6-8 tracks: surprise injection\n\nThe output must feel like a DJ set, not a playlist.\nJSON only.'},{role:'user',content:'Candidates ('+str(len(v7candidates))+' tracks):\n'+JSON.stringify(v7candidates)+'\n\nSimulation:\n'+JSON.stringify(v7phase1.simulation)+controlCtx+'\n\nReturn: {"tracks":[{"artist":"","title":"","slot":"","reason":"10 words Hebrew","position_rationale":"why this track HERE","impact_description":"what this does to the crowd","momentum_at_point":"rising|stable|falling|peak|recovery","risk_taken":"safe|moderate|risky","crowd_state_after":"brief description","mood":"one word","bpm_est":0,"energy_level":0.0-1.0,"is_discovery":false,"lang":"he|en"}],"simulation_summary":{"total_peaks":0,"total_recoveries":0,"avg_risk":"","narrative":"3 sentences describing the musical journey as crowd experience"},"confidence":0-100}'}],{max_tokens:8000,stage:'5️⃣b V7 Decision Loop (40)'});const v7phase2=safeJSON(v7phase2Raw);if(v7phase2.simulation_summary){brainLog('🌊','V7 Journey','Peaks:'+v7phase2.simulation_summary.total_peaks+' Recoveries:'+v7phase2.simulation_summary.total_recoveries+' Risk:'+v7phase2.simulation_summary.avg_risk,true);brainLog('📖','V7 Narrative',(v7phase2.simulation_summary.narrative||'').substring(0,150),true);wiz.v7SimSummary=v7phase2.simulation_summary}wiz.v7Confidence=v7phase2.confidence;if(v7phase2.confidence!==undefined)brainLog('💯','V7 Confidence',v7phase2.confidence+'/100',true);updateBrainV5Live();tRaw=JSON.stringify({tracks:v7phase2.tracks})}else{tRaw=await callOpenAI([{role:'system',content:'אתה אוצר מוזיקלי מומחה של SonicBrand. אתה מכיר שירים נישתיים, B-sides, אמנים עצמאיים — לא רק להיטים. כשמבקשים ממך נישתי, אתה באמת מביא שירים שרוב האנשים לא מכירים. Valid JSON only. 40 real Spotify tracks.'},{role:'user',content:tp}],{max_tokens:6000,stage:'5️⃣ 40 שירים'})}const tracks=safeJSON(tRaw).tracks;if(!tracks?.length)throw new Error('לא התקבלו שירים');brainLog('🎵','פלייליסט',tracks.length+' שירים',true);st.textContent='מאמת...';nav('playlist');document.getElementById('playlistEmpty').style.display='none';document.getElementById('playlistLive').style.display='block';document.getElementById('spotifyConnectBanner').style.display=isSpotifyConnected()?'none':'block';document.getElementById('playlistTitle').textContent=(profile.business_name||'Business')+' — Signature Mix';document.getElementById('tracksContainer').innerHTML='';const hs=isSpotifyConnected(),gs=document.getElementById('playlistGenStatus');if(hs)document.getElementById('saveToSpotifyBtn').style.display='inline-flex';if(hs){gs.style.display='block';const vd=[];for(let i=0;i<tracks.length;i++){const t=tracks[i];try{const sp=await searchTrack(t.artist,t.title);if(sp)vd.push({artist:sp.artists.map(a=>a.name).join(', '),title:sp.name,id:sp.id,url:sp.external_urls.spotify,cover:sp.album.images[sp.album.images.length-1]?.url,bigCover:sp.album.images[0]?.url,preview:sp.preview_url,duration:sp.duration_ms,reason:t.reason,slot:t.slot})}catch(e){}gs.textContent='מאמת... ('+(i+1)+'/'+tracks.length+', '+vd.length+')'}vd.forEach((t,i)=>renderTrack(i+1,t));window.currentPlaylist={profile,tracks:vd,user:wiz.user};document.getElementById('playlistMeta').textContent=vd.length+' שירים · '+Math.round(vd.reduce((a,t)=>a+(t.duration||0),0)/60000)+' דק · '+wiz.user+(wiz.v7Confidence!==undefined?' · Confidence: '+wiz.v7Confidence+'/100':wiz.v6Confidence!==undefined?' · Confidence: '+wiz.v6Confidence+'/100':'');if(vd[0]?.bigCover){const c=document.getElementById('playlistCover');c.style.backgroundImage='url('+vd[0].bigCover+')';c.textContent=''}gs.style.display='none';brainLog('✅','אימות',vd.length+'/'+tracks.length,true);if(wiz.brainVersion!=='v5turbo'){try{const expText2=await generatePlaylistExplanation(profile,vd,wiz);document.getElementById('explanationContent').textContent=expText2;document.getElementById('playlistExplanation').style.display='block';brainLog('📝','הסבר','Playlist explanation generated',true)}catch(ex){}}if(wiz.brainVersion==='v5turbo'){st.textContent='Audio Features...';await validateAudioFeatures(vd,f,dna);st.textContent='Flow Check...';await flowValidationPass(vd);st.textContent='';st.textContent='Building explanation...';try{const expText=await generatePlaylistExplanation(profile,vd,wiz);document.getElementById('explanationContent').textContent=expText;document.getElementById('playlistExplanation').style.display='block';brainLog('📝','הסבר','Playlist explanation generated',true)}catch(ex){};st.textContent=''}}else{tracks.forEach((t,i)=>renderTrack(i+1,{artist:t.artist,title:t.title,reason:t.reason,slot:t.slot,url:'https://open.spotify.com/search/'+encodeURIComponent(t.artist+' '+t.title)}));window.currentPlaylist={profile,tracks,user:wiz.user};document.getElementById('playlistMeta').textContent=tracks.length+' שירים · '+wiz.user;try{generatePlaylistExplanation(profile,tracks,wiz).then(function(expText3){document.getElementById('explanationContent').textContent=expText3;document.getElementById('playlistExplanation').style.display='block'})}catch(ex){}}}catch(e){st.innerHTML='❌ '+e.message+'<br><button class="btn btn-ghost" onclick="finishWizard()" style="margin-top:8px">נסה שוב</button>';brainLog('❌','שגיאה',e.message)}}
+
+/* ═══════════════════════════════════════════════════════
+   NEW PIPELINE ARCHITECTURE v2.0
+   15 Mechanism Improvements
+   ═══════════════════════════════════════════════════════ */
+
+/* #9 — CONSTRAINT SOLVER: Pre-compute all numeric targets */
+function solveConstraints(wiz,dna){
+const f=wiz.faders||{familiarity:50,hebrew:50,vocal:50,energy:50};
+const total=40;
+const hebrewCount=Math.round(total*f.hebrew/100);
+const slotsTarget={morning:10,afternoon:10,evening:10,night:10};
+const e=wiz.energy||{morning:3,afternoon:3,evening:3,night:3};
+const energyTargets={morning:e.morning/5,afternoon:e.afternoon/5,evening:e.evening/5,night:e.night/5};
+const bpmRange=dna.bpmRange||[80,130];
+const energyBase=dna.energy==='low'?0.3:dna.energy==='low-mid'?0.4:dna.energy==='mid'?0.5:dna.energy==='mid-high'?0.65:dna.energy==='high'?0.8:0.5;
+const famLevel=f.familiarity<30?'niche':f.familiarity>70?'commercial':'mixed';
+const maxPerArtist=2;
+const minGenres=4;
+const surpriseCount=Math.max(2,Math.round(total*0.12));
+const discoveryCount=Math.round(total*0.15);
+brainLog('🔢','Constraints','heb='+hebrewCount+'/'+total+' fam='+famLevel+' surprise='+surpriseCount+' discovery='+discoveryCount,true);
+return{total,hebrewCount,englishCount:total-hebrewCount,slotsTarget,energyTargets,bpmRange,energyBase,famLevel,maxPerArtist,minGenres,surpriseCount,discoveryCount,curatorialDistance:dna.curatorialDistance||5}}
+
+/* #5 — GENRE PALETTE: Primary/Secondary/Accent/Wildcard */
+function buildGenrePalette(dna,faders){
+const base=dna.baseGenres||['Pop','Indie','R&B'];
+const primary=base.slice(0,2);
+const secondary=base.slice(2,4);
+const accent=base.slice(4,5);
+const allGenres=['Rock','Jazz','Electronic','Hip Hop','Soul','Funk','R&B','Indie','Pop','Classical','Ambient','Lo-Fi','Folk','Acoustic','House','Techno','Latin','World','Reggae','Blues','Country','Punk','Metal','Alternative','Bossa Nova','Trip Hop','Neo Soul','Afrobeat'];
+const wildcard=allGenres.filter(function(g){return !base.includes(g)&&!(dna.avoid||[]).includes(g)}).sort(function(){return Math.random()-0.5}).slice(0,3);
+const palette={primary:primary,secondary:secondary,accent:accent,wildcard:wildcard,distribution:{primary:50,secondary:25,accent:15,wildcard:10}};
+brainLog('🎨','Palette','P:'+primary.join(',')+' S:'+secondary.join(',')+' A:'+accent.join(',')+' W:'+wildcard.join(','),true);
+return palette}
+
+/* #3 — TARGET AUDIO PROFILE: Numeric targets from DNA+sliders */
+function buildTargetAudioProfile(dna,faders,energy){
+const f=faders||{familiarity:50,hebrew:50,vocal:50,energy:50};
+const e=energy||{morning:3,afternoon:3,evening:3,night:3};
+const baseEnergy=dna.energy==='low'?0.3:dna.energy==='low-mid'?0.4:dna.energy==='mid'?0.5:dna.energy==='mid-high'?0.65:dna.energy==='high'?0.8:0.5;
+const energyMod=(f.energy-50)/100;
+const targetEnergy=Math.max(0.1,Math.min(0.95,baseEnergy+energyMod));
+const targetValence=targetEnergy*0.7+0.15;
+const targetDanceability=dna.energy==='high'?0.7:dna.energy==='low'?0.3:0.5;
+const targetAcousticness=f.vocal<30?0.6:f.vocal>70?0.3:0.4;
+const targetInstrumentalness=f.vocal<30?0.6:f.vocal>70?0.05:0.2;
+const bpm=dna.bpmRange||[80,130];
+const profile={energy:{min:Math.max(0,targetEnergy-0.2),max:Math.min(1,targetEnergy+0.2),target:targetEnergy},valence:{min:Math.max(0,targetValence-0.25),max:Math.min(1,targetValence+0.25),target:targetValence},danceability:{min:Math.max(0,targetDanceability-0.2),max:Math.min(1,targetDanceability+0.2),target:targetDanceability},acousticness:{target:targetAcousticness},instrumentalness:{target:targetInstrumentalness},tempo:{min:bpm[0],max:bpm[1],target:Math.round((bpm[0]+bpm[1])/2)},slotTargets:{morning:{energy:e.morning/5,tempo:bpm[0]+Math.round((bpm[1]-bpm[0])*e.morning/10)},afternoon:{energy:e.afternoon/5,tempo:bpm[0]+Math.round((bpm[1]-bpm[0])*e.afternoon/10)},evening:{energy:e.evening/5,tempo:bpm[0]+Math.round((bpm[1]-bpm[0])*e.evening/10)},night:{energy:e.night/5,tempo:bpm[0]+Math.round((bpm[1]-bpm[0])*e.night/10)}}};
+brainLog('🎯','Audio Target','energy='+targetEnergy.toFixed(2)+' valence='+targetValence.toFixed(2)+' bpm='+bpm[0]+'-'+bpm[1],true);
+return profile}
+
+/* #7 — REFERENCE TRACK AMPLIFICATION */
+async function amplifyReferences(refs){
+if(!refs||!refs.length)return null;
+const t=await getSpotifyToken();
+if(!t)return{tracks:refs,audioProfile:null,relatedArtists:[],tasteVector:null};
+brainLog('🔍','Ref Amplify','Analyzing '+refs.length+' reference tracks...',true);
+const verified=[];const audioFeats=[];const artistIds=new Set();
+for(let i=0;i<Math.min(refs.length,5);i++){
+try{const sp=await searchTrack(refs[i].artist,refs[i].title);
+if(sp){verified.push({artist:sp.artists.map(function(a){return a.name}).join(', '),title:sp.name,id:sp.id,artistId:sp.artists[0].id});sp.artists.forEach(function(a){artistIds.add(a.id)})}}catch(e){}}
+if(verified.length){
+try{const ids=verified.map(function(v){return v.id}).join(',');
+const afr=await fetch('https://api.spotify.com/v1/audio-features?ids='+ids,{headers:{'Authorization':'Bearer '+t}});
+const afd=await afr.json();
+if(afd.audio_features){afd.audio_features.forEach(function(af){if(af)audioFeats.push(af)})}}catch(e){}}
+const relatedArtists=[];
+const artistArr=Array.from(artistIds).slice(0,3);
+for(let i=0;i<artistArr.length;i++){
+try{const rar=await fetch('https://api.spotify.com/v1/artists/'+artistArr[i]+'/related-artists',{headers:{'Authorization':'Bearer '+t}});
+const rad=await rar.json();
+if(rad.artists){rad.artists.slice(0,5).forEach(function(a){if(!relatedArtists.find(function(r){return r.id===a.id}))relatedArtists.push({name:a.name,id:a.id,genres:a.genres.slice(0,3)})})}}catch(e){}}
+let tasteVector=null;
+if(audioFeats.length){
+const avg=function(arr,key){return arr.reduce(function(s,a){return s+(a[key]||0)},0)/arr.length};
+tasteVector={energy:avg(audioFeats,'energy'),valence:avg(audioFeats,'valence'),danceability:avg(audioFeats,'danceability'),acousticness:avg(audioFeats,'acousticness'),instrumentalness:avg(audioFeats,'instrumentalness'),tempo:avg(audioFeats,'tempo'),loudness:avg(audioFeats,'loudness')}}
+brainLog('🎵','Ref Profile','verified='+verified.length+' related='+relatedArtists.length+(tasteVector?' energy='+tasteVector.energy.toFixed(2)+' valence='+tasteVector.valence.toFixed(2):''),true);
+return{tracks:verified,audioProfile:audioFeats,relatedArtists:relatedArtists.slice(0,15),tasteVector:tasteVector}}
+
+/* #1 — SEED TRACK GENERATION + VERIFICATION */
+async function generateAndVerifySeeds(wiz,dna,palette,targetAudio,constraints,refAmplified){
+brainLog('🌱','Seeds','Generating 5 seed tracks...',true);
+const f=wiz.faders;
+const refCtx=refAmplified?.tracks?.length?'\nReference tracks taste: '+refAmplified.tracks.map(function(t){return t.artist+' - '+t.title}).join(', ')+(refAmplified.tasteVector?'\nTaste vector: energy='+refAmplified.tasteVector.energy.toFixed(2)+' valence='+refAmplified.tasteVector.valence.toFixed(2)+' tempo='+Math.round(refAmplified.tasteVector.tempo):''):'';
+const seedPrompt=[{role:'system',content:'You select 5 SEED TRACKS that define the sonic center of a playlist. These are anchor points — every other track will orbit around them. Pick tracks that are: (1) real Spotify tracks, (2) diverse in mood/tempo but unified in vibe, (3) representative of the brand identity. One seed per time slot + one wildcard. JSON only.'},{role:'user',content:JSON.stringify({business:wiz.desc,category:dna.label,genre_palette:palette,audio_targets:{energy:targetAudio.energy.target,valence:targetAudio.valence.target,tempo_range:[targetAudio.tempo.min,targetAudio.tempo.max]},constraints:{hebrew_count:Math.round(5*f.hebrew/100),familiarity:constraints.famLevel,curatorial_distance:constraints.curatorialDistance},negative:{avoid_genres:dna.avoid,avoid_moods:dna.avoidMoods,avoid_cliches:dna.avoidCliches},ref_context:refCtx})+'\n\nReturn: {"seeds":[{"artist":"","title":"","slot":"morning|afternoon|evening|night|wildcard","role":"Sets the vibe anchor for this slot","energy_est":0.5,"bpm_est":100,"lang":"en|he"}]}'}];
+const seedRaw=await callOpenAIWithFallback(seedPrompt,{max_tokens:800,stage:'🌱 Seed Generation',temperature:0.6});
+const seedData=safeJSON(seedRaw);
+const seeds=seedData.seeds||[];
+const t=await getSpotifyToken();
+const verified=[];
+if(t&&seeds.length){
+for(let i=0;i<seeds.length;i++){
+try{const sp=await searchTrack(seeds[i].artist,seeds[i].title);
+if(sp){verified.push({...seeds[i],artist:sp.artists.map(function(a){return a.name}).join(', '),title:sp.name,id:sp.id,verified:true})}else{verified.push({...seeds[i],verified:false})}}catch(e){verified.push({...seeds[i],verified:false})}}}else{seeds.forEach(function(s){verified.push({...s,verified:false})})}
+const vCount=verified.filter(function(s){return s.verified}).length;
+brainLog('🌱','Seeds',vCount+'/'+verified.length+' verified: '+verified.map(function(s){return(s.verified?'✅':'⚠️')+s.artist}).join(', '),true);
+return verified}
+
+/* #6 — SPOTIFY PRE-FETCH: Recommendations API */
+async function prefetchFromSpotify(seeds,dna,targetAudio,constraints){
+const t=await getSpotifyToken();
+if(!t){brainLog('⚠️','Pre-fetch','No Spotify token — skipping pool',true);return[]}
+const verifiedSeeds=seeds.filter(function(s){return s.verified&&s.id});
+if(!verifiedSeeds.length){brainLog('⚠️','Pre-fetch','No verified seeds — skipping pool',true);return[]}
+brainLog('🔄','Pre-fetch','Fetching recommendations from Spotify...',true);
+const pool=[];
+const seedChunks=[];
+for(let i=0;i<verifiedSeeds.length;i+=5){seedChunks.push(verifiedSeeds.slice(i,i+5))}
+for(let c=0;c<seedChunks.length;c++){
+const chunk=seedChunks[c];
+const seedIds=chunk.map(function(s){return s.id}).join(',');
+let url='https://api.spotify.com/v1/recommendations?seed_tracks='+seedIds+'&limit=100';
+url+='&target_energy='+targetAudio.energy.target.toFixed(2);
+url+='&min_energy='+Math.max(0,targetAudio.energy.min).toFixed(2);
+url+='&max_energy='+Math.min(1,targetAudio.energy.max).toFixed(2);
+url+='&min_tempo='+targetAudio.tempo.min;
+url+='&max_tempo='+Math.min(200,targetAudio.tempo.max+15);
+try{const r=await fetch(url,{headers:{'Authorization':'Bearer '+t}});
+const d=await r.json();
+if(d.tracks){d.tracks.forEach(function(tr){
+if(!pool.find(function(p){return p.id===tr.id})){
+pool.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,id:tr.id,duration:tr.duration_ms,popularity:tr.popularity,preview:tr.preview_url,isHebrew:false})}})}}catch(e){brainLog('⚠️','Pre-fetch','Error: '+e.message)}}
+const genreSeeds=(dna.baseGenres||[]).slice(0,2).map(function(g){return g.toLowerCase().replace(/ /g,'-')}).join(',');
+if(genreSeeds){
+try{let gUrl='https://api.spotify.com/v1/recommendations?seed_genres='+encodeURIComponent(genreSeeds)+'&limit=50';
+gUrl+='&target_energy='+targetAudio.energy.target.toFixed(2);
+gUrl+='&min_tempo='+targetAudio.tempo.min+'&max_tempo='+Math.min(200,targetAudio.tempo.max+15);
+if(constraints.famLevel==='niche')gUrl+='&max_popularity=40';
+else if(constraints.famLevel==='commercial')gUrl+='&min_popularity=50';
+const gr=await fetch(gUrl,{headers:{'Authorization':'Bearer '+t}});
+const gd=await gr.json();
+if(gd.tracks){gd.tracks.forEach(function(tr){
+if(!pool.find(function(p){return p.id===tr.id})){
+pool.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,id:tr.id,duration:tr.duration_ms,popularity:tr.popularity,isHebrew:false})}})}}catch(e){}}
+brainLog('🎵','Pool',pool.length+' real Spotify tracks pre-fetched',true);
+return pool}
+
+/* #11 — PROMPT COMPRESSION: Structured JSON context */
+function buildCompressedContext(wiz,dna,constraints,palette,targetAudio,seeds,pool,refAmplified,strategy,profile){
+const f=wiz.faders;
+const ctx={biz:{type:wiz.bizCategory||'general',label:dna.label,vibe:dna.vibe,core_genres:palette.primary.concat(palette.secondary),accent_genres:palette.accent,wildcard_genres:palette.wildcard},
+constraints:{total:40,hebrew:constraints.hebrewCount,english:constraints.englishCount,per_slot:10,max_artist:2,bpm:[targetAudio.tempo.min,targetAudio.tempo.max],familiarity:constraints.famLevel,curatorial_dist:constraints.curatorialDistance},
+audio:{energy:targetAudio.energy.target,valence:targetAudio.valence.target,dance:targetAudio.danceability.target,tempo:targetAudio.tempo.target},
+slots:{morning:{energy:targetAudio.slotTargets.morning.energy,tempo:targetAudio.slotTargets.morning.tempo},afternoon:{energy:targetAudio.slotTargets.afternoon.energy,tempo:targetAudio.slotTargets.afternoon.tempo},evening:{energy:targetAudio.slotTargets.evening.energy,tempo:targetAudio.slotTargets.evening.tempo},night:{energy:targetAudio.slotTargets.night.energy,tempo:targetAudio.slotTargets.night.tempo}},
+negative:{genres:dna.avoid||[],moods:dna.avoidMoods||[],textures:dna.avoidTextures||[],cliches:dna.avoidCliches||[]},
+palette_pct:palette.distribution,
+seeds:seeds.map(function(s){return{a:s.artist,t:s.title,slot:s.slot,e:s.energy_est}}),
+anchor_artists:(dna.anchorArtists||[]).slice(0,5),
+adjacent_worlds:(dna.adjacentWorlds||[]).slice(0,5)};
+if(refAmplified?.tasteVector)ctx.ref_taste=refAmplified.tasteVector;
+if(refAmplified?.relatedArtists?.length)ctx.related_artists=refAmplified.relatedArtists.slice(0,8).map(function(a){return a.name});
+if(pool.length)ctx.pool_hint=pool.slice(0,30).map(function(p){return p.artist+' - '+p.title});
+if(strategy)ctx.strategy_summary={core_genres:strategy.core_genres,anchor_artists:strategy.anchor_artists,discovery_artists:strategy.discovery_artists,energy_curve:strategy.energy_curve};
+return ctx}
+
+/* #12 — FALLBACK CHAIN: Retry with adjustments */
+async function callOpenAIWithFallback(messages,opts,maxRetries){
+maxRetries=maxRetries||3;
+const temps=[opts.temperature||0.7,0.5,0.9];
+const maxToks=[opts.max_tokens||3000,Math.round((opts.max_tokens||3000)*0.8),Math.round((opts.max_tokens||3000)*1.2)];
+for(let attempt=0;attempt<maxRetries;attempt++){
+try{const result=await callOpenAI(messages,{...opts,temperature:temps[attempt]||0.7,max_tokens:maxToks[attempt]||3000});
+const parsed=safeJSON(result);
+if(parsed)return result;
+brainLog('⚠️','Fallback','Attempt '+(attempt+1)+' — bad JSON, retrying...',true)}catch(e){
+brainLog('⚠️','Fallback','Attempt '+(attempt+1)+': '+e.message,true);
+if(attempt===maxRetries-1)throw e;
+await new Promise(function(r){setTimeout(r,(attempt+1)*3000)})}}
+throw new Error('All fallback attempts failed')}
+
+/* #14 — TEMPERATURE GRADIENT: Different temps for different roles */
+function getTemperatureForRole(role){
+const temps={seeds:0.6,anchor:0.4,safe:0.5,stretch:0.7,wildcard:0.9,surprise:0.95,critic:0.3,arrangement:0.5,slot_morning:0.5,slot_afternoon:0.6,slot_evening:0.7,slot_night:0.65};
+return temps[role]||0.7}
+
+/* #10 — SIMILARITY CHECK: Audio feature distance */
+async function checkTrackSimilarity(tracks){
+const t=await getSpotifyToken();
+if(!t)return tracks;
+const ids=tracks.filter(function(tr){return tr.id}).map(function(tr){return tr.id});
+if(ids.length<10)return tracks;
+brainLog('📐','Similarity','Checking '+ids.length+' tracks for diversity...',true);
+try{
+const chunks=[];for(let i=0;i<ids.length;i+=100)chunks.push(ids.slice(i,i+100));
+const allFeats=[];
+for(let c=0;c<chunks.length;c++){
+const r=await fetch('https://api.spotify.com/v1/audio-features?ids='+chunks[c].join(','),{headers:{'Authorization':'Bearer '+t}});
+const d=await r.json();
+if(d.audio_features)allFeats.push(...d.audio_features)}
+const validFeats=allFeats.filter(function(f){return f!==null});
+if(validFeats.length<10)return tracks;
+const keys=['energy','valence','danceability','tempo','acousticness'];
+function cosineSim(a,b){
+let dot=0,magA=0,magB=0;
+keys.forEach(function(k){const av=k==='tempo'?(a[k]||100)/200:(a[k]||0);const bv=k==='tempo'?(b[k]||100)/200:(b[k]||0);dot+=av*bv;magA+=av*av;magB+=bv*bv});
+return magA&&magB?dot/(Math.sqrt(magA)*Math.sqrt(magB)):0}
+let tooSimilar=0;let tooDistant=0;
+const featMap={};validFeats.forEach(function(f){featMap[f.id]=f});
+for(let i=0;i<tracks.length;i++){
+const fi=featMap[tracks[i].id];if(!fi)continue;
+for(let j=i+1;j<Math.min(i+3,tracks.length);j++){
+const fj=featMap[tracks[j].id];if(!fj)continue;
+const sim=cosineSim(fi,fj);
+if(sim>0.98)tooSimilar++;
+if(sim<0.3)tooDistant++}}
+brainLog('📐','Similarity','Too similar pairs: '+tooSimilar+' | Too distant: '+tooDistant,true);
+if(tooSimilar>3)brainLog('⚠️','Similarity','Warning: '+tooSimilar+' near-duplicate pairs detected',true);
+return tracks}catch(e){return tracks}}
+
+/* #2 — TWO-PASS VALIDATION (CRITIC) */
+async function criticReview(tracks,wiz,dna,constraints,targetAudio){
+if(!tracks||tracks.length<20)return tracks;
+brainLog('🎭','Critic','Running critic review on '+tracks.length+' tracks...',true);
+const f=wiz.faders;
+const heCount=tracks.filter(function(t){return t.lang==='he'||t.language==='he'}).length;
+const slotCounts={};tracks.forEach(function(t){slotCounts[t.slot]=(slotCounts[t.slot]||0)+1});
+const artistCounts={};tracks.forEach(function(t){artistCounts[t.artist]=(artistCounts[t.artist]||0)+1});
+const overRepresented=Object.entries(artistCounts).filter(function(e){return e[1]>2}).map(function(e){return e[0]+'('+e[1]+')'});
+const trackList=tracks.map(function(t,i){return(i+1)+'.'+t.artist+' - '+t.title+' ['+t.slot+']'+(t.lang==='he'?' 🇮🇱':'')}).join('\n');
+try{
+const criticRaw=await callOpenAIWithFallback([
+{role:'system',content:'You are a ruthless music critic and playlist quality auditor. You review playlists and identify problems. You are NOT the curator — you are the editor who checks their work. Be harsh but constructive. Return specific track-level fixes. JSON only.'},
+{role:'user',content:'Review this '+tracks.length+'-track playlist for: '+dna.label+'\n\nCONSTRAINTS TO VERIFY:\n- Hebrew tracks: target='+constraints.hebrewCount+', actual='+heCount+'\n- Max 2 per artist. Over-represented: '+(overRepresented.length?overRepresented.join(', '):'none')+'\n- Slots: m='+( slotCounts.morning||0)+' a='+(slotCounts.afternoon||0)+' e='+(slotCounts.evening||0)+' n='+(slotCounts.night||0)+' (target: 10 each)\n- BPM range: '+targetAudio.tempo.min+'-'+targetAudio.tempo.max+'\n- Familiarity: '+constraints.famLevel+'\n- Avoid genres: '+(dna.avoid||[]).join(',')+'\n- Avoid moods: '+(dna.avoidMoods||[]).join(',')+'\n\nTRACKLIST:\n'+trackList+'\n\nCHECK FOR:\n1. Constraint violations\n2. Flow problems (energy spikes, BPM jumps, mood whiplash)\n3. Cliché/obvious picks (generic AI playlist tracks)\n4. Missing variety (genre monotony, era clustering)\n5. Brand misfit (tracks that dont match the business)\n6. Adjacent track compatibility\n\nReturn: {"score":0-100,"issues":[{"track_num":0,"problem":"description","severity":"critical|warning|minor","fix":"suggestion"}],"strengths":["what works well"],"replacements":[{"remove_num":0,"replace_with":{"artist":"","title":"","reason":"why this is better"}}]}'}
+],{max_tokens:2000,stage:'🎭 Critic Review',temperature:0.3});
+const critic=safeJSON(criticRaw);
+brainLog('🎭','Critic Score',critic.score+'/100 | Issues: '+(critic.issues||[]).length+' | Strengths: '+(critic.strengths||[]).length,true);
+if(critic.issues){const critical=critic.issues.filter(function(i){return i.severity==='critical'});
+if(critical.length)brainLog('🚨','Critical Issues',critical.map(function(i){return'#'+i.track_num+': '+i.problem}).join(' | '),true)}
+if(critic.replacements&&critic.replacements.length>0){
+brainLog('🔄','Replacements','Critic suggests '+critic.replacements.length+' replacements',true);
+const t=await getSpotifyToken();
+for(let i=0;i<Math.min(critic.replacements.length,5);i++){
+const rep=critic.replacements[i];
+if(rep.remove_num>0&&rep.remove_num<=tracks.length&&rep.replace_with){
+if(t){try{const sp=await searchTrack(rep.replace_with.artist,rep.replace_with.title);
+if(sp){const idx=rep.remove_num-1;const oldTrack=tracks[idx];
+tracks[idx]={...tracks[idx],artist:sp.artists.map(function(a){return a.name}).join(', '),title:sp.name,id:sp.id,url:sp.external_urls.spotify,cover:sp.album.images[sp.album.images.length-1]?.url,bigCover:sp.album.images[0]?.url,preview:sp.preview_url,duration:sp.duration_ms,reason:rep.replace_with.reason||tracks[idx].reason,criticReplaced:true};
+brainLog('🔄','Replaced','#'+rep.remove_num+': '+oldTrack.artist+' → '+tracks[idx].artist,true)}}catch(e){}}else{const idx=rep.remove_num-1;tracks[idx]={...tracks[idx],artist:rep.replace_with.artist,title:rep.replace_with.title,reason:rep.replace_with.reason||tracks[idx].reason,criticReplaced:true}}}}}
+wiz.criticScore=critic.score;wiz.criticIssues=critic.issues;
+return tracks}catch(e){brainLog('⚠️','Critic','Failed: '+e.message);return tracks}}
+
+/* #8+#4 — SLOT-BY-SLOT GENERATION WITH ITERATIVE CONTEXT */
+async function generateSlotTracks(slot,wiz,compressedCtx,prevTracks,pool,constraints,targetAudio,dna,seeds,palette){
+const slotSeeds=seeds.filter(function(s){return s.slot===slot||s.slot==='wildcard'});
+const slotPool=pool.length?pool.filter(function(p){
+return true}).slice(0,20).map(function(p){return p.artist+' - '+p.title}):[];
+const prevContext=prevTracks.length?'\n\nPREVIOUS TRACKS (already selected — maintain flow from last track):\n'+prevTracks.slice(-5).map(function(t,i){return t.artist+' - '+t.title+' ['+t.slot+'] energy='+( t.energy_level||'?')}).join('\n'):'';
+const usedArtists={};prevTracks.forEach(function(t){usedArtists[t.artist]=(usedArtists[t.artist]||0)+1});
+const blockedArtists=Object.entries(usedArtists).filter(function(e){return e[1]>=2}).map(function(e){return e[0]});
+const hebrewUsed=prevTracks.filter(function(t){return t.lang==='he'}).length;
+const hebrewTarget=constraints.hebrewCount;
+const hebrewRemaining=hebrewTarget-hebrewUsed;
+const slotsRemaining=4-['morning','afternoon','evening','night'].indexOf(slot);
+const hebrewForSlot=Math.round(hebrewRemaining/slotsRemaining);
+const slotEnergy=targetAudio.slotTargets[slot];
+const temp=getTemperatureForRole('slot_'+slot);
+const prompt=[{role:'system',content:'You are building slot "'+slot+'" of a 40-track playlist. Generate EXACTLY 10 tracks for this slot. Each track is a REAL Spotify track.\n\nYou are building a continuous listening experience. The tracks must flow naturally from one to the next.'+prevContext+'\n\nBLOCKED ARTISTS (already at max): '+(blockedArtists.length?blockedArtists.join(', '):'none')+'\n\nHebrew tracks for this slot: '+hebrewForSlot+'\nSlot energy target: '+slotEnergy.energy.toFixed(2)+'\nSlot tempo target: ~'+slotEnergy.tempo+' BPM\n\nJSON only.'},
+{role:'user',content:'Context: '+JSON.stringify(compressedCtx)+'\n\nSeed tracks for reference: '+slotSeeds.map(function(s){return s.artist+' - '+s.title}).join(', ')+(slotPool.length?'\n\nSuggested pool (prefer these REAL tracks): '+slotPool.join(', '):'')+'\n\nRETURN 10 tracks, energy arc: gentle start → build → peak around track 6-7 → resolve.\nReturn: {"tracks":[{"artist":"","title":"","reason":"8 words Hebrew","mood":"one word","bpm_est":0,"energy_level":0.0-1.0,"lang":"he|en","candidateRole":"anchor|bridge|lift|settle|textureShift|identity|surprise|recovery","trackRole":"opener|stabilizer|connector|lift|deepener|peakTouch|release|closer"}]}'}];
+const raw=await callOpenAIWithFallback(prompt,{max_tokens:2000,stage:'🎵 '+slot+' (10 tracks)',temperature:temp});
+const parsed=safeJSON(raw);
+const slotTracks=(parsed.tracks||[]).map(function(t){return{...t,slot:slot}});
+brainLog('🎵','Slot '+slot,slotTracks.length+' tracks | he:'+slotTracks.filter(function(t){return t.lang==='he'}).length,true);
+return slotTracks}
+
+/* #13 — HUMAN CHECKPOINT: Show seeds + pool for review */
+function showSeedCheckpoint(seeds,poolSize){
+return new Promise(function(resolve){
+const modal=document.getElementById('checkpointModal');
+const content=document.getElementById('checkpointContent');
+if(!modal||!content){resolve(true);return}
+let html='<h3 style="margin-bottom:12px;font-size:18px">🌱 Seed Tracks — עוגני הפלייליסט</h3>';
+html+='<p style="color:var(--muted);margin-bottom:16px;font-size:13px">5 שירים שמגדירים את המרכז הסוני. כל שאר השירים יסתובבו סביבם.</p>';
+seeds.forEach(function(s,i){
+html+='<div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--card-2);border-radius:10px;margin-bottom:8px">';
+html+='<span style="font-size:20px">'+(s.verified?'✅':'⚠️')+'</span>';
+html+='<div style="flex:1"><div style="font-weight:600;font-size:14px">'+esc(s.artist)+' — '+esc(s.title)+'</div>';
+html+='<div style="font-size:11px;color:var(--muted)">'+s.slot+' · energy '+( s.energy_est||'?')+' · '+(s.lang==='he'?'עברית':'English')+'</div></div></div>'});
+html+='<div style="background:var(--card-2);border-radius:10px;padding:12px;margin-top:12px;font-size:13px;color:var(--muted)">';
+html+='🎵 נמצאו <b>'+poolSize+'</b> שירים אמיתיים מ-Spotify כמאגר מועמדים</div>';
+html+='<div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">';
+html+='<button class="btn btn-ghost" onclick="document.getElementById(\'checkpointModal\').style.display=\'none\';window._checkpointResolve&&window._checkpointResolve(true)" style="padding:10px 20px">▶ המשך</button>';
+html+='</div>';
+content.innerHTML=html;
+modal.style.display='flex';
+window._checkpointResolve=resolve})}
+
+/* ═══════════════════════════════════════════════════════
+   MASTER PIPELINE: runNewPipeline
+   Orchestrates all 15 improvements
+   ═══════════════════════════════════════════════════════ */
+async function runNewPipeline(wiz,profile,strategy,dna,liked,disliked,f,st){
+brainLog('🚀','Pipeline v2','Starting new pipeline architecture...',true);
+
+/* Phase 0: Constraint Solver (#9) */
+st.textContent='Solving constraints...';
+const constraints=solveConstraints(wiz,dna);
+
+/* Phase 1: Genre Palette (#5) */
+const palette=buildGenrePalette(dna,f);
+
+/* Phase 2: Target Audio Profile (#3) */
+const targetAudio=buildTargetAudioProfile(dna,f,wiz.energy);
+
+/* Phase 3: Reference Amplification (#7) */
+st.textContent='Amplifying references...';
+let refAmplified=null;
+try{refAmplified=await amplifyReferences(refTracks)}catch(e){brainLog('⚠️','Refs','Amplification failed: '+e.message)}
+
+/* Phase 4: Seed Generation + Verification (#1) */
+st.textContent='Generating seed tracks...';
+const seeds=await generateAndVerifySeeds(wiz,dna,palette,targetAudio,constraints,refAmplified);
+
+/* Phase 5: Spotify Pre-fetch (#6) */
+st.textContent='Pre-fetching from Spotify...';
+let pool=[];
+try{pool=await prefetchFromSpotify(seeds,dna,targetAudio,constraints)}catch(e){brainLog('⚠️','Pool','Pre-fetch failed: '+e.message)}
+
+/* Phase 5.5: Human Checkpoint (#13) */
+try{await showSeedCheckpoint(seeds,pool.length)}catch(e){}
+
+/* Phase 6: Compressed Context (#11) */
+const compressed=buildCompressedContext(wiz,dna,constraints,palette,targetAudio,seeds,pool,refAmplified,strategy,profile);
+
+/* Phase 7: Track Generation — brain-version-aware */
+let tracks=[];
+const brainV=wiz.brainVersion;
+
+if(brainV==='v6'){
+/* V6 DEEP: Keep 2-phase but enriched */
+st.textContent='V6: Generating enriched candidates...';
+brainLog('🔮','V6 Pipeline','Decision Engine with enriched context...',true);
+const sliderBlock=buildV5SliderBlock(f);
+const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);
+const pData=V5_PERSONAS[persona];
+const pBehavior=V6_PERSONA_BEHAVIORS[persona]||V6_PERSONA_BEHAVIORS.eclectic;
+const realityCtx=wiz.v6Reality?'\nReality: dwell='+wiz.v6Reality.avgDwellMinutes+'m, talk='+wiz.v6Reality.talkingLevel+', music='+wiz.v6Reality.musicAttention:'';
+const intentCtx=wiz.v6IntentForce?'\nIntent: goal='+wiz.v6IntentForce.emotionalGoal+', social='+wiz.v6IntentForce.socialMode+', risk='+wiz.v6IntentForce.riskTolerance:'';
+const sonicCtx=wiz.v6SonicId?'\nSonic: texture='+wiz.v6SonicId.texture+', density='+wiz.v6SonicId.density+', rhythm='+wiz.v6SonicId.rhythmFeel:'';
+const conflictCtx=wiz.v6Conflicts?.length?'\nConflicts: '+wiz.v6Conflicts.join(', '):'';
+const baseRulesText=buildBaseRulesBlock(wiz);
+
+const phase1Raw=await callOpenAIWithFallback([
+{role:'system',content:'You are V6 DEEP — a decision engine. PHASE 1: Generate 45 candidates in 3 tiers (25 safe, 12 stretch, 8 wildcard). Use the pre-fetched pool as priority source. All tracks MUST be real Spotify tracks.\n'+baseRulesText},
+{role:'user',content:'Compressed context: '+JSON.stringify(compressed)+realityCtx+intentCtx+sonicCtx+conflictCtx+'\nPersona: '+pData.label+' — '+pBehavior.transitionStyle+sliderBlock+'\n\nReturn: {"candidates":[{"artist":"","title":"","tier":"safe|stretch|wildcard","slot":"morning|afternoon|evening|night","candidateRole":"anchor|bridge|lift|settle|textureShift|identity|surprise|recovery","scores":{"bizFit":0-10,"sonicFit":0-10,"novelty":0-10,"flowPotential":0-10},"lang":"he|en","bpm_est":0,"energy_est":0.0-1.0,"reason":"5 words"}]}'}
+],{max_tokens:7000,stage:'5️⃣a V6 Candidates',temperature:0.7});
+const phase1=safeJSON(phase1Raw);
+const candidates=phase1.candidates||[];
+brainLog('🎲','V6 Candidates',candidates.length+' tracks',true);
+
+st.textContent='V6: Selecting & arranging...';
+const phase2Raw=await callOpenAIWithFallback([
+{role:'system',content:'V6 DEEP — PHASE 2: SELECT 40 + ARRANGE.\n'+baseRulesText+'\nBalance safe/stretch/wildcard ~60/25/15%. Assign track roles. Hebrew='+constraints.hebrewCount+'. ~10 per slot. JSON only.'},
+{role:'user',content:'Candidates: '+JSON.stringify(candidates)+'\nBusiness: '+dna.label+'\nPersona: '+pData.label+realityCtx+intentCtx+sonicCtx+conflictCtx+'\nSliders: fam='+f.familiarity+' heb='+f.hebrew+'% vocal='+f.vocal+' energy='+f.energy+'\nEnergy: m='+wiz.energy.morning+' a='+wiz.energy.afternoon+' e='+wiz.energy.evening+' n='+wiz.energy.night+'\n\nReturn: {"tracks":[{"artist":"","title":"","slot":"","reason":"10 words Hebrew","tier":"","trackRole":"opener|stabilizer|connector|lift|deepener|peakTouch|release|closer","mood":"","bpm_est":0,"energy_level":0.0-1.0,"lang":"he|en","is_discovery":false}],"decisions":{"conflicts_resolved":[],"selection_philosophy":"","flow_strategy":""},"confidence":0-100,"confidenceBreakdown":{"brandFit":0-100,"flowQuality":0-100,"diversityScore":0-100,"surpriseFactor":0-100,"languageAccuracy":0-100,"energyArcQuality":0-100,"audienceMatch":0-100},"selfCritique":[]}'}
+],{max_tokens:7000,stage:'5️⃣b V6 Select+Arrange',temperature:0.5});
+const phase2=safeJSON(phase2Raw);
+tracks=phase2.tracks||[];
+if(phase2.decisions)wiz.v6Decisions=phase2.decisions;
+if(phase2.confidence!==undefined)wiz.v6Confidence=phase2.confidence;
+if(phase2.confidenceBreakdown)wiz.v6ConfidenceBreakdown=phase2.confidenceBreakdown;
+if(phase2.selfCritique)wiz.v6SelfCritique=phase2.selfCritique;
+brainLog('🧠','V6',tracks.length+' tracks | confidence='+( phase2.confidence||'?'),true);
+updateBrainV5Live();
+
+}else if(brainV==='v7'){
+/* V7 LIVE: Keep 2-phase with crowd control */
+st.textContent='V7: Crowd simulation + candidates...';
+brainLog('🌊','V7 LIVE','Crowd Control Pipeline with enriched context...',true);
+const sliderBlock=buildV5SliderBlock(f);
+const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);
+const pData=V5_PERSONAS[persona];
+const pBehavior=V6_PERSONA_BEHAVIORS[persona]||V6_PERSONA_BEHAVIORS.eclectic;
+const realityCtx=wiz.v6Reality?'\nReality: dwell='+wiz.v6Reality.avgDwellMinutes+'m, talk='+wiz.v6Reality.talkingLevel+', music='+wiz.v6Reality.musicAttention:'';
+const intentCtx=wiz.v6IntentForce?'\nIntent: goal='+wiz.v6IntentForce.emotionalGoal+', social='+wiz.v6IntentForce.socialMode+', risk='+wiz.v6IntentForce.riskTolerance:'';
+const sonicCtx=wiz.v6SonicId?'\nSonic: texture='+wiz.v6SonicId.texture+', density='+wiz.v6SonicId.density+', rhythm='+wiz.v6SonicId.rhythmFeel:'';
+const crowdCtx=wiz.v7CrowdPatterns?'\nCrowd: M:'+wiz.v7CrowdPatterns.morning.energy+'/'+wiz.v7CrowdPatterns.morning.mood+' A:'+wiz.v7CrowdPatterns.afternoon.energy+'/'+wiz.v7CrowdPatterns.afternoon.mood+' E:'+wiz.v7CrowdPatterns.evening.energy+'/'+wiz.v7CrowdPatterns.evening.mood+' N:'+wiz.v7CrowdPatterns.night.energy+'/'+wiz.v7CrowdPatterns.night.mood:'';
+const controlCtx=wiz.v7ControlStrategy?'\nControl: escalation='+wiz.v7ControlStrategy.escalationPlan+' | recovery='+wiz.v7ControlStrategy.recoveryPlan:'';
+const failureModes=V7_FAILURE_MODES.map(function(fm){return fm.mode+':'+fm.detect}).join('; ');
+const baseRulesText=buildBaseRulesBlock(wiz);
+
+const v7p1Raw=await callOpenAIWithFallback([
+{role:'system',content:'V7 LIVE — music is a CONTROL SYSTEM. Every song MOVES the crowd state. PHASE 1: Simulate + generate 48 candidates.\n'+baseRulesText+'\nFAILURE MODES: '+failureModes},
+{role:'user',content:'Context: '+JSON.stringify(compressed)+realityCtx+intentCtx+sonicCtx+crowdCtx+controlCtx+sliderBlock+'\nPersona: '+pData.label+'\n\nReturn: {"simulation":{"morning":{"state":"","target":"","momentum":""},"afternoon":{"state":"","target":"","momentum":""},"evening":{"state":"","target":"","momentum":""},"night":{"state":"","target":"","momentum":""}},"candidates":[{"artist":"","title":"","slot":"","impact":{"energyDelta":0,"moodShift":""},"scores":{"impactScore":0-10,"fitScore":0-10},"lang":"he|en","bpm_est":0,"energy_est":0.0-1.0,"reason":"5 words","momentumEffect":"builds|maintains|recovers|peaks|cools"}]}'}
+],{max_tokens:7000,stage:'5️⃣a V7 Simulate',temperature:0.7});
+const v7p1=safeJSON(v7p1Raw);
+const v7candidates=v7p1.candidates||[];
+wiz.v7Simulation=v7p1.simulation;
+brainLog('🧍','V7 Sim',v7candidates.length+' candidates',true);
+
+st.textContent='V7: Decision loop...';
+const v7p2Raw=await callOpenAIWithFallback([
+{role:'system',content:'V7 LIVE — PHASE 2: DECISION LOOP. Select 40 from '+v7candidates.length+' candidates. Each position is a crowd-state decision.\n'+baseRulesText+'\nHebrew='+constraints.hebrewCount+'. ~10/slot. Max 2/artist. Prevent failure modes. JSON only.'},
+{role:'user',content:'Candidates: '+JSON.stringify(v7candidates)+'\nSim: '+JSON.stringify(v7p1.simulation)+controlCtx+'\n\nReturn: {"tracks":[{"artist":"","title":"","slot":"","reason":"10 words Hebrew","trackRole":"","impact_description":"","momentum_at_point":"","mood":"","bpm_est":0,"energy_level":0.0-1.0,"lang":"he|en","is_discovery":false}],"simulation_summary":{"total_peaks":0,"total_recoveries":0,"narrative":"3 sentences"},"confidence":0-100}'}
+],{max_tokens:7000,stage:'5️⃣b V7 Decision Loop',temperature:0.5});
+const v7p2=safeJSON(v7p2Raw);
+tracks=v7p2.tracks||[];
+if(v7p2.simulation_summary){wiz.v7SimSummary=v7p2.simulation_summary;brainLog('📖','V7 Narrative',(v7p2.simulation_summary.narrative||'').substring(0,120),true)}
+wiz.v7Confidence=v7p2.confidence;
+brainLog('🌊','V7',tracks.length+' tracks | confidence='+(v7p2.confidence||'?'),true);
+updateBrainV5Live();
+
+}else{
+/* V1 + V5 TURBO: Slot-by-Slot Generation (#8, #4) */
+brainLog('🎵','Slot-by-Slot','Building 4 slots × 10 tracks...',true);
+const baseRulesText=buildBaseRulesBlock(wiz);
+
+if(brainV==='v5turbo'){
+const eDNA=V5_ENHANCED_DNA[wiz.bizCategory||'general']||V5_ENHANCED_DNA.general;
+const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);
+const pData=V5_PERSONAS[persona];
+compressed.v5={persona:pData.label,texture:eDNA.texture,groove:eDNA.grooveLevel,moods:eDNA.moodProfile};
+if(wiz.v5Intent)compressed.v5.intent={dwell:wiz.v5Intent.dwellTime,social:wiz.v5Intent.socialEnergy,premium:wiz.v5Intent.premiumFeel};
+compressed.anti_ai={no_obvious:V5_ANTI_AI.antiObvious,surprise_pct:V5_ANTI_AI.surprisePct,discovery_pct:V5_ANTI_AI.discoveryPct}}
+
+compressed.base_rules_summary='Apply: '+baseRulesText.substring(0,500);
+const slots=['morning','afternoon','evening','night'];
+for(let si=0;si<slots.length;si++){
+st.textContent='Building '+slots[si]+' ('+(si+1)+'/4)...';
+const slotResult=await generateSlotTracks(slots[si],wiz,compressed,tracks,pool,constraints,targetAudio,dna,seeds,palette);
+slotResult.forEach(function(t){tracks.push(t)})}
+brainLog('✅','Slots Complete',tracks.length+' total tracks',true);
+if(brainV==='v5turbo')updateBrainV5Live()}
+
+/* Phase 8: Two-Pass Critic (#2) */
+st.textContent='Critic review...';
+tracks=await criticReview(tracks,wiz,dna,constraints,targetAudio);
+
+/* Phase 9: Similarity Check (#10) */
+st.textContent='Similarity check...';
+tracks=await checkTrackSimilarity(tracks);
+
+brainLog('✅','Pipeline v2','Complete! '+tracks.length+' tracks generated + validated',true);
+return tracks}
+
+async function finishWizard(){wiz.energy={morning:+document.getElementById('eMorning').value,afternoon:+document.getElementById('eAfternoon').value,evening:+document.getElementById('eEvening').value,night:+document.getElementById('eNight').value};const st=document.getElementById('wizStatus');st.textContent='בונה פרופיל...';brainLog('⚡','אנרגיה','בוקר:'+wiz.energy.morning+' צהריים:'+wiz.energy.afternoon+' ערב:'+wiz.energy.evening+' לילה:'+wiz.energy.night);brainLog('🏗️','פרופיל','משלב נתונים...',true);try{const liked=Object.entries(wiz.votes).filter(([,v])=>v).map(([k])=>wiz.samples[+k]).filter(Boolean),disliked=Object.entries(wiz.votes).filter(([,v])=>!v).map(([k])=>wiz.samples[+k]).filter(Boolean),f=wiz.faders,g=wiz.genres.length?'\nGenres: '+wiz.genres.join(', '):'',rf=wiz.refs.length?'\nRef: '+wiz.refs.map(r=>r.artist+' - '+r.title).join(', '):'';const famDesc2=f.familiarity>70?'Commercial/mainstream songs':f.familiarity<30?'NICHE/deep cuts/indie/unknown artists - CRITICAL: avoid mainstream hits!':'Mix of known and lesser-known';const hebDesc2='Hebrew songs: '+f.hebrew+'% of total';const vocDesc2=f.vocal>70?'Prefer vocal tracks':'Prefer instrumental/minimal vocals';const nrgDesc2=f.energy>70?'Energetic, upbeat, high-tempo':'Low energy, calm, relaxed, chill';const dna=wiz.bizDNA||BIZ_DNA.general;const dnaCtx='\n\n🏷️ BUSINESS DNA ('+dna.label+'):\nVibe: '+dna.vibe+'\nBase genres: '+dna.baseGenres.join(', ')+'\nAvoid: '+(dna.avoid.length?dna.avoid.join(', '):'none')+'\nBPM range: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nBase energy: '+dna.energy+'\nRef artists: '+(dna.refArtists.concat(dna.hebrewRef).join(', ')||'general');const pRaw=await callOpenAI([{role:'system',content:'SonicBrand AI music profiler. You MUST use the BUSINESS DNA as your starting point — it defines the core musical identity of the business type. Then apply the slider values on top. CRITICAL: The familiarity slider is the MOST important parameter. When set to niche/low, you MUST pick obscure artists and deep cuts, NOT mainstream hits. JSON only.'},{role:'user',content:'Business: "'+wiz.desc+'"'+dnaCtx+g+rf+'\n\nSLIDER VALUES (these MUST be respected, they override DNA defaults):\n- Familiarity ('+f.familiarity+'/100): '+famDesc2+'\n- Language: '+hebDesc2+'\n- Vocal ('+f.vocal+'/100): '+vocDesc2+'\n- Overall Energy ('+f.energy+'/100): '+nrgDesc2+'\n\nLiked: '+(liked.map(s=>s.artist+' - '+s.title).join(', ')||'none')+'\nDisliked: '+(disliked.map(s=>s.artist+' - '+s.title).join(', ')||'none')+'\nEnergy: morning:'+wiz.energy.morning+'/5,afternoon:'+wiz.energy.afternoon+'/5,evening:'+wiz.energy.evening+'/5,night:'+wiz.energy.night+'/5\nUser: '+wiz.user+'\nReturn: {"business_name":"","business_type":"","target_audience":"","core_genres":[],"reference_artists":[],"bpm_range":{"min":0,"max":0},"language_preference":{"hebrew_pct":'+f.hebrew+',"english_pct":'+(100-f.hebrew)+'},"energy_curve":{"morning":'+wiz.energy.morning+',"afternoon":'+wiz.energy.afternoon+',"evening":'+wiz.energy.evening+',"night":'+wiz.energy.night+'},"brand_personality":"","familiarity_level":"'+(f.familiarity<30?'niche':f.familiarity>70?'mainstream':'mixed')+'","blacklist":[]}'}],{max_tokens:1500,stage:'3️⃣ פרופיל'});const profile=safeJSON(pRaw);window.brandProfile=profile;brainLog('📊','פרופיל',profile.business_name+' | '+(profile.core_genres||[]).join(', '),true);if(wiz.brainVersion==='v5turbo'){const eDNA=V5_ENHANCED_DNA[wiz.bizCategory||'general']||V5_ENHANCED_DNA.general;const persona=wiz.v5Persona||detectV5Persona(f,wiz.bizDNA);profile.v5_sonic_attributes=eDNA.sonicAttributes;profile.v5_mood_profile=eDNA.moodProfile;profile.v5_texture=eDNA.texture;profile.v5_persona=persona;profile.v5_persona_label=V5_PERSONAS[persona].label;if(wiz.v5Intent){profile.v5_intent=wiz.v5Intent}brainLog('⚡','V5 Profile','persona:'+V5_PERSONAS[persona].label+' texture:'+eDNA.texture,true);updateBrainV5Live()}st.textContent='Strategist...';let strategy=null;try{const v5Strat=wiz.brainVersion==='v5turbo'||wiz.brainVersion==='v6'||wiz.brainVersion==='v7';const stratSys=v5Strat?'V5 TURBO Music Strategist. Create an ENHANCED MusicStrategy with sonic direction, emotional arc, transition logic, and flow rules. Include: core_genres (with why), avoid_genres, energy_curve, bpm_ranges, language_mix, anchor_artists, discovery_artists (lesser-known), blacklist_final, sonic_direction (warmth/brightness/density targets), emotional_arc (per time slot), transition_logic (how to move between slots), flow_rules, rationale. JSON only.':STRATEGIST_PROMPT;const stratUser=v5Strat?'BusinessProfile:\n'+JSON.stringify(profile,null,2)+'\n\nV5 Enhanced Context:\n- Persona: '+(profile.v5_persona_label||'eclectic')+'\n- Texture: '+(profile.v5_texture||'balanced')+'\n- Mood: '+(profile.v5_mood_profile||[]).join(', ')+'\n'+(wiz.v5Intent?'- Intent: dwell='+wiz.v5Intent.dwellTime+', social='+wiz.v5Intent.socialEnergy+', premium='+wiz.v5Intent.premiumFeel:'')+'\nReturn enhanced MusicStrategy JSON.':'BusinessProfile:\n'+JSON.stringify(profile,null,2)+'\nReturn MusicStrategy JSON.';const sRaw=await callOpenAI([{role:'system',content:stratSys},{role:'user',content:stratUser}],{max_tokens:2500,stage:v5Strat?'4️⃣ V5 אסטרטג':'4️⃣ אסטרטג'});strategy=safeJSON(sRaw);brainLog('🎯','אסטרטגיה',(strategy.anchor_artists||[]).join(', '),true)}catch(e){}st.textContent='Pipeline starting...';const tracks=await runNewPipeline(wiz,profile,strategy,dna,liked,disliked,f,st);if(!tracks?.length)throw new Error('לא התקבלו שירים');brainLog('🎵','פלייליסט',tracks.length+' שירים',true);st.textContent='מאמת...';nav('playlist');document.getElementById('playlistEmpty').style.display='none';document.getElementById('playlistLive').style.display='block';document.getElementById('spotifyConnectBanner').style.display=isSpotifyConnected()?'none':'block';document.getElementById('playlistTitle').textContent=(profile.business_name||'Business')+' — Signature Mix';document.getElementById('tracksContainer').innerHTML='';const hs=isSpotifyConnected(),gs=document.getElementById('playlistGenStatus');if(hs)document.getElementById('saveToSpotifyBtn').style.display='inline-flex';if(hs){gs.style.display='block';const vd=[];for(let i=0;i<tracks.length;i++){const t=tracks[i];try{const sp=await searchTrack(t.artist,t.title);if(sp)vd.push({artist:sp.artists.map(a=>a.name).join(', '),title:sp.name,id:sp.id,url:sp.external_urls.spotify,cover:sp.album.images[sp.album.images.length-1]?.url,bigCover:sp.album.images[0]?.url,preview:sp.preview_url,duration:sp.duration_ms,reason:t.reason,slot:t.slot})}catch(e){}gs.textContent='מאמת... ('+(i+1)+'/'+tracks.length+', '+vd.length+')'}vd.forEach((t,i)=>renderTrack(i+1,t));window.currentPlaylist={profile,tracks:vd,user:wiz.user};document.getElementById('playlistMeta').textContent=vd.length+' שירים · '+Math.round(vd.reduce((a,t)=>a+(t.duration||0),0)/60000)+' דק · '+wiz.user+(wiz.v7Confidence!==undefined?' · Confidence: '+wiz.v7Confidence+'/100':wiz.v6Confidence!==undefined?' · Confidence: '+wiz.v6Confidence+'/100':'');if(vd[0]?.bigCover){const c=document.getElementById('playlistCover');c.style.backgroundImage='url('+vd[0].bigCover+')';c.textContent=''}gs.style.display='none';brainLog('✅','אימות',vd.length+'/'+tracks.length,true);if(wiz.brainVersion!=='v5turbo'){try{const expText2=await generatePlaylistExplanation(profile,vd,wiz);document.getElementById('explanationContent').textContent=expText2;document.getElementById('playlistExplanation').style.display='block';brainLog('📝','הסבר','Playlist explanation generated',true)}catch(ex){}}if(wiz.brainVersion==='v5turbo'){st.textContent='Audio Features...';await validateAudioFeatures(vd,f,dna);st.textContent='Flow Check...';await flowValidationPass(vd);st.textContent='';st.textContent='Building explanation...';try{const expText=await generatePlaylistExplanation(profile,vd,wiz);document.getElementById('explanationContent').textContent=expText;document.getElementById('playlistExplanation').style.display='block';brainLog('📝','הסבר','Playlist explanation generated',true)}catch(ex){};st.textContent=''}}else{tracks.forEach((t,i)=>renderTrack(i+1,{artist:t.artist,title:t.title,reason:t.reason,slot:t.slot,url:'https://open.spotify.com/search/'+encodeURIComponent(t.artist+' '+t.title)}));window.currentPlaylist={profile,tracks,user:wiz.user};document.getElementById('playlistMeta').textContent=tracks.length+' שירים · '+wiz.user;try{generatePlaylistExplanation(profile,tracks,wiz).then(function(expText3){document.getElementById('explanationContent').textContent=expText3;document.getElementById('playlistExplanation').style.display='block'})}catch(ex){}}}catch(e){st.innerHTML='❌ '+e.message+'<br><button class="btn btn-ghost" onclick="finishWizard()" style="margin-top:8px">נסה שוב</button>';brainLog('❌','שגיאה',e.message)}}
 const STRATEGIST_PROMPT='Music Strategist של SonicBrand. קיבלת BusinessProfile. החזר MusicStrategy JSON:\n{"core_genres":[{"name":"","why":""}],"avoid_genres":[],"energy_curve":{"morning":0,"midday":0,"peak":0,"evening":0},"bpm_ranges":{"morning":[0,0],"midday":[0,0],"peak":[0,0],"evening":[0,0]},"language_mix":{"en":0,"he":0},"anchor_artists":[],"blacklist_final":[],"rationale":""}\nJSON בלבד.';
 
 async function validateAudioFeatures(validatedTracks,faders,bizDNA){if(!isSpotifyConnected()||!validatedTracks.length)return validatedTracks;brainLog('🔬','Audio Features','בודק BPM/אנרגיה/ריקודיות...',true);const ids=validatedTracks.filter(t=>t.id).map(t=>t.id);if(!ids.length)return validatedTracks;try{const batchSize=50;let allFeatures=[];for(let i=0;i<ids.length;i+=batchSize){const batch=ids.slice(i,i+batchSize);const r=await spotifyFetch('https://api.spotify.com/v1/audio-features?ids='+batch.join(','));if(r){const j=await r.json();if(j.audio_features)allFeatures=allFeatures.concat(j.audio_features)}}const featMap={};allFeatures.forEach(f=>{if(f&&f.id)featMap[f.id]=f});let issues=[];const bpmRange=bizDNA?.bpmRange||[70,140];const targetEnergy=faders.energy/100;validatedTracks.forEach((t,i)=>{const feat=featMap[t.id];if(!feat)return;t.audioFeatures={bpm:Math.round(feat.tempo),energy:Math.round(feat.energy*100)/100,danceability:Math.round(feat.danceability*100)/100,valence:Math.round(feat.valence*100)/100,acousticness:Math.round(feat.acousticness*100)/100,instrumentalness:Math.round(feat.instrumentalness*100)/100,key:feat.key,mode:feat.mode};const bpmOk=feat.tempo>=bpmRange[0]-15&&feat.tempo<=bpmRange[1]+15;const energyDiff=Math.abs(feat.energy-targetEnergy);const energyOk=energyDiff<0.4;if(!bpmOk)issues.push({idx:i,issue:'BPM '+Math.round(feat.tempo)+' outside '+bpmRange[0]+'-'+bpmRange[1],track:t.artist+' - '+t.title});if(!energyOk)issues.push({idx:i,issue:'Energy '+feat.energy.toFixed(2)+' vs target '+targetEnergy.toFixed(2),track:t.artist+' - '+t.title})});if(issues.length){brainLog('⚠️','AF Issues',issues.length+' tracks with mismatches: '+issues.slice(0,5).map(i=>i.track+' ('+i.issue+')').join(' | '),true)}else{brainLog('✅','AF Valid','All tracks within BPM/energy range',true)}const stats={avgBpm:0,avgEnergy:0,avgDance:0,avgValence:0,count:0};validatedTracks.forEach(t=>{if(t.audioFeatures){stats.avgBpm+=t.audioFeatures.bpm;stats.avgEnergy+=t.audioFeatures.energy;stats.avgDance+=t.audioFeatures.danceability;stats.avgValence+=t.audioFeatures.valence;stats.count++}});if(stats.count){stats.avgBpm=Math.round(stats.avgBpm/stats.count);stats.avgEnergy=Math.round(stats.avgEnergy/stats.count*100)/100;stats.avgDance=Math.round(stats.avgDance/stats.count*100)/100;stats.avgValence=Math.round(stats.avgValence/stats.count*100)/100;brainLog('📊','AF Stats','BPM:'+stats.avgBpm+' E:'+stats.avgEnergy+' D:'+stats.avgDance+' V:'+stats.avgValence,true);window.playlistAudioStats=stats}return validatedTracks}catch(e){brainLog('⚠️','AF Error',e.message);return validatedTracks}}
@@ -860,5 +1294,6 @@ function copyJSON(){if(!window.currentPlaylist)return;navigator.clipboard.writeT
 let shazamRecorder=null,shazamStream=null;function openShazam(){document.getElementById('shazamModal').classList.add('open')}function closeShazam(){document.getElementById('shazamModal').classList.remove('open');if(shazamRecorder&&shazamRecorder.state==='recording')shazamRecorder.stop();if(shazamStream)shazamStream.getTracks().forEach(t=>t.stop())}
 async function startShazam(){const circle=document.getElementById('shazamCircle'),status=document.getElementById('shazamStatus'),result=document.getElementById('shazamResult');if(circle.classList.contains('listening')){if(shazamRecorder&&shazamRecorder.state==='recording')shazamRecorder.stop();return}result.style.display='none';status.textContent='מאזין...';circle.classList.add('listening');brainLog('🎤','Shazam','מקליט...');try{shazamStream=await navigator.mediaDevices.getUserMedia({audio:true});shazamRecorder=new MediaRecorder(shazamStream);const chunks=[];shazamRecorder.ondataavailable=e=>chunks.push(e.data);shazamRecorder.onstop=async()=>{circle.classList.remove('listening');status.textContent='מזהה...';shazamStream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:'audio/webm'}),fd=new FormData();fd.append('file',blob,'rec.webm');fd.append('api_token','test');fd.append('return','spotify');try{const r=await fetch('https://api.audd.io/',{method:'POST',body:fd});const j=await r.json();if(j.result){result.style.display='block';result.innerHTML='<div style="font-size:18px;font-weight:700">'+esc(j.result.title)+'</div><div style="color:var(--muted)">'+esc(j.result.artist)+'</div>'+(j.result.spotify?'<a href="'+j.result.spotify.external_urls.spotify+'" target="_blank" class="btn btn-primary" style="margin-top:12px;padding:8px 16px;font-size:13px">Spotify ↗</a>':'');status.textContent='נמצא!';brainLog('✅','זוהה',j.result.artist+' - '+j.result.title);refTracks.push({artist:j.result.artist,title:j.result.title});renderRefTracks()}else{status.textContent='לא זוהה';brainLog('❌','Shazam','לא זוהה')}}catch(e){status.textContent='שגיאה'}};shazamRecorder.start();setTimeout(()=>{if(shazamRecorder.state==='recording')shazamRecorder.stop()},8000)}catch(e){circle.classList.remove('listening');status.textContent='נא לאשר מיקרופון'}}
 </script>
+<div id="checkpointModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.8);z-index:1000;align-items:center;justify-content:center;padding:20px"><div id="checkpointContent" style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;padding:24px;max-width:560px;width:100%;max-height:80vh;overflow-y:auto"></div></div>
 </body>
 </html>

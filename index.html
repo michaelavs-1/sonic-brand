@@ -130,21 +130,24 @@
   .spotify-user{display:flex;align-items:center;gap:12px;padding:14px;background:var(--bg-2);border-radius:12px;margin-top:12px}
   .spotify-user img{width:40px;height:40px;border-radius:50%;object-fit:cover}
   .spotify-user .info{flex:1}.spotify-user .name{font-weight:700;font-size:14px}.spotify-user .plan{font-size:12px;color:var(--accent)}
-  #brainToggle{position:fixed;bottom:20px;left:20px;z-index:200;width:56px;height:56px;border-radius:50%;background:var(--gradient);border:none;font-size:28px;cursor:pointer;box-shadow:0 4px 20px rgba(155,92,255,.4);transition:.3s}
-  #brainToggle:hover{transform:scale(1.1)}
-  #brainPanel{position:fixed;top:0;left:-400px;width:380px;height:100vh;background:var(--bg-2);border-right:1px solid var(--border);z-index:300;transition:left .3s ease;display:flex;flex-direction:column}
-  #brainPanel.open{left:0}
-  .brain-header{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
-  .brain-header h3{font-size:18px;font-weight:900}
-  .brain-close{background:none;border:none;color:var(--text);font-size:24px;cursor:pointer}
-  .brain-log{flex:1;overflow-y:auto;padding:12px}
-  .brain-entry{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 14px;margin-bottom:10px;font-size:13px;line-height:1.6}
+  #brainToggle{display:none}
+  #brainPanel{position:fixed;inset:0;background:var(--bg);z-index:300;display:none;flex-direction:column}
+  #brainPanel.open{display:flex}
+  .brain-header{padding:20px 28px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+  .brain-header h3{font-size:22px;font-weight:900}
+  .brain-close{background:var(--card);border:1px solid var(--border);color:var(--text);font-size:16px;cursor:pointer;padding:8px 16px;border-radius:10px;font-family:inherit}
+  .brain-body{flex:1;overflow-y:auto;display:flex;gap:0}
+  .brain-col{flex:1;overflow-y:auto;padding:20px 24px;min-width:0}
+  .brain-col:first-child{border-left:1px solid var(--border)}
+  .brain-col-title{font-size:15px;font-weight:700;color:var(--accent);margin-bottom:16px;position:sticky;top:0;background:var(--bg);padding:8px 0;z-index:1}
+  .brain-log{flex:1;overflow-y:auto;padding:0}
+  .brain-entry{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:10px;font-size:13px;line-height:1.6}
   .brain-entry .brain-time{font-size:11px;color:var(--muted);margin-bottom:4px}
   .brain-entry .brain-title{font-weight:700;margin-bottom:4px}
   .brain-entry .brain-detail{color:var(--muted)}
   .brain-entry.ai{border-color:var(--accent-2);background:rgba(155,92,255,.08)}
-  .brain-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:250}
-  .brain-overlay.open{display:block}
+  .brain-overlay{display:none}
+  @media(max-width:700px){.brain-body{flex-direction:column}.brain-col:first-child{border-left:none;border-bottom:1px solid var(--border)}}
   .shazam-btn{position:fixed;bottom:20px;left:86px;z-index:200;width:56px;height:56px;border-radius:50%;background:var(--card);border:2px solid var(--accent-3);font-size:24px;cursor:pointer;box-shadow:0 4px 20px rgba(255,71,133,.3);transition:.3s;color:var(--accent-3)}
   .shazam-btn:hover{transform:scale(1.1);background:rgba(255,71,133,.15)}
   .shazam-modal{display:none;position:fixed;inset:0;z-index:400;background:rgba(0,0,0,.8);justify-content:center;align-items:center}
@@ -193,6 +196,7 @@
   <button onclick="nav('onboarding')">Onboarding</button>
   <button onclick="nav('playlist')">Playlist</button>
   <button onclick="nav('settings')" style="margin-right:auto;background:var(--card-2)">⚙ Settings</button>
+  <button onclick="toggleBrain()" style="background:var(--gradient);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;padding:8px 16px;border-radius:10px;font-family:inherit">🧠 מוח</button>
   <span style="font-size:18px;font-weight:900;color:var(--accent);margin-left:12px;background:rgba(29,185,84,.15);padding:4px 12px;border-radius:8px" id="appVersion">v2</span>
   <button onclick="hardRefresh()" style="background:var(--card);border:1px solid var(--border);color:var(--text);font-size:22px;cursor:pointer;padding:6px 14px;border-radius:10px;font-weight:700;transition:.2s" title="רענן" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⟳</button>
 </nav>
@@ -335,46 +339,56 @@
   </div>
 </section>
 </div>
-<button id="brainToggle" onclick="toggleBrain()">🧠</button>
-<div class="brain-overlay" id="brainOverlay" onclick="toggleBrain()"></div>
-<div id="brainPanel"><div class="brain-header"><h3>🧠 מוח <span style="font-size:12px;background:var(--accent);color:#000;padding:2px 8px;border-radius:6px;font-weight:900;margin-right:8px" id="brainVersion">BRAIN v1</span></h3><button class="brain-close" onclick="toggleBrain()">✕</button></div><div id="brainArch" style="padding:12px 16px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted);line-height:1.7;max-height:60vh;overflow-y:auto">
-<div style="font-weight:700;color:var(--accent);margin-bottom:8px;font-size:13px">ארכיטקטורת פרומפט — BRAIN v1</div>
-<div style="font-weight:700;color:var(--accent-2);margin-top:10px">🔄 Pipeline (6 שלבים):</div>
-<div>1️⃣ <b>ניתוח + סיווג</b> → AI מזהה סוג עסק → מקצה קטגוריה מ-BIZ_DNA</div>
-<div>2️⃣ <b>סאמפלים</b> → 5 שירי דוגמה (DNA + סליידרים)</div>
-<div>3️⃣ <b>פרופיל</b> → DNA + סליידרים + דוגמאות + הצבעות → BusinessProfile</div>
-<div>4️⃣ <b>אסטרטג</b> → Profile → MusicStrategy (BPM, ז׳אנרים, אמנים)</div>
-<div>5️⃣ <b>40 שירים</b> → DNA + Strategy + סליידרים + אנרגיה/שעה</div>
-<div>6️⃣ <b>אימות Spotify</b> → חיפוש כל שיר ב-API</div>
-<div style="font-weight:700;color:var(--accent-2);margin-top:12px">🏷️ סיווג עסק (13 קטגוריות):</div>
-<div>cafe · restaurant · bar · nightclub · fashion · tattoo · spa · gym · office · retail · kids · gallery · general</div>
-<div style="font-weight:700;color:var(--accent-2);margin-top:12px">🎚️ חוקי סליידרים:</div>
-<div><span style="color:var(--accent)">מסחריות</span> &gt;70 → "שירים מוכרים ומסחריים בלבד"</div>
-<div><span style="color:var(--accent)">מסחריות</span> &lt;30 → "חובה נישתי! B-sides, אמנים עצמאיים, אסור להיטים"</div>
-<div><span style="color:var(--accent)">מסחריות</span> 30-70 → "תמהיל מוכרים + פחות מוכרים"</div>
-<div><span style="color:var(--accent)">עברית</span> → "בדיוק X% בעברית ו-Y% בלועזית — חובה!"</div>
-<div><span style="color:var(--accent)">ווקלי</span> &gt;70 → "העדפה לשירים ווקליים עם שירה בולטת"</div>
-<div><span style="color:var(--accent)">ווקלי</span> &lt;30 → "העדפה לאינסטרומנטלי או מינימום מילים"</div>
-<div><span style="color:var(--accent)">אנרגיה</span> &gt;70 → "אנרגיה גבוהה, קצבי, תוסס, אפטמפו"</div>
-<div><span style="color:var(--accent)">אנרגיה</span> &lt;30 → "אנרגיה נמוכה, רגוע, איטי, chill"</div>
-<div style="font-weight:700;color:var(--accent-2);margin-top:12px">🧬 DNA עסקי → פרומפט:</div>
-<div>כל קטגוריה מכניסה: <b>vibe</b> (תיאור אופי), <b>baseGenres</b> (ז׳אנרים מומלצים), <b>avoid</b> (ז׳אנרים אסורים), <b>bpmRange</b>, <b>energy</b>, <b>refArtists</b> (עברית + לועזית)</div>
-<div style="font-weight:700;color:var(--accent-2);margin-top:12px">⚡ חוקי אנרגיה/שעה:</div>
-<div>morning/afternoon/evening/night — כל חלק מקבל ערך 1-5</div>
-<div>~10 שירים לכל time slot, מותאמים לרמת אנרגיה</div>
-<div style="font-weight:700;color:var(--accent-2);margin-top:12px">🗳️ חוקי פידבק:</div>
-<div>👍 שירים שאהבו → "more like these" בפרומפט</div>
-<div>👎 שירים שלא אהבו → "avoid similar" בפרומפט</div>
-<div>ללא הצבעה → לא משפיע</div>
-<div style="font-weight:700;color:var(--accent-2);margin-top:12px">📋 כללים קשיחים:</div>
-<div>• מקסימום 2 שירים לאמן</div>
-<div>• כל השירים חייבים להיות אמיתיים ב-Spotify</div>
-<div>• שפה: אחוז מדויק לפי סליידר</div>
-<div>• DNA = נקודת מוצא, סליידרים = override</div>
-<div>• אם familiarity &lt;40 → אזהרה כפולה בפרומפט</div>
-<div>• ולידציה: lenient מאוד, רק ג׳יבריש נדחה</div>
-<div id="brainDnaInfo" style="margin-top:10px;display:none;padding:10px;background:rgba(29,185,84,.1);border-radius:8px;font-size:12px"></div>
-</div><div class="brain-log" id="brainLog"></div></div>
+<div id="brainPanel">
+<div class="brain-header">
+  <h3>🧠 מוח <span style="font-size:13px;background:var(--accent);color:#000;padding:3px 10px;border-radius:6px;font-weight:900;margin-right:8px" id="brainVersion">BRAIN v1</span></h3>
+  <button class="brain-close" onclick="toggleBrain()">✕ סגור</button>
+</div>
+<div class="brain-body">
+  <div class="brain-col">
+    <div class="brain-col-title">📋 לוג פעולות</div>
+    <div class="brain-log" id="brainLog"></div>
+  </div>
+  <div class="brain-col" style="border-left:1px solid var(--border)">
+    <div class="brain-col-title">🧬 ארכיטקטורה</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.9">
+      <div style="font-weight:700;color:var(--accent-2);margin-top:4px;font-size:13px">🔄 Pipeline</div>
+      <div>1️⃣ <b>ניתוח + סיווג</b> → AI מזהה סוג עסק → מקצה קטגוריה מ-BIZ_DNA</div>
+      <div>2️⃣ <b>סאמפלים</b> → 5 שירי דוגמה (DNA + סליידרים)</div>
+      <div>3️⃣ <b>פרופיל</b> → DNA + סליידרים + דוגמאות + הצבעות → BusinessProfile</div>
+      <div>4️⃣ <b>אסטרטג</b> → Profile → MusicStrategy (BPM, ז׳אנרים, אמנים)</div>
+      <div>5️⃣ <b>40 שירים</b> → DNA + Strategy + סליידרים + אנרגיה/שעה</div>
+      <div>6️⃣ <b>אימות Spotify</b> → חיפוש כל שיר ב-API</div>
+      <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">🏷️ קטגוריות עסק (13)</div>
+      <div>cafe · restaurant · bar · nightclub · fashion · tattoo · spa · gym · office · retail · kids · gallery · general</div>
+      <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">🎚️ חוקי סליידרים</div>
+      <div><span style="color:var(--accent)">מסחריות</span> &gt;70 → "שירים מוכרים ומסחריים בלבד"</div>
+      <div><span style="color:var(--accent)">מסחריות</span> &lt;30 → "חובה נישתי! B-sides, אמנים עצמאיים, אסור להיטים"</div>
+      <div><span style="color:var(--accent)">מסחריות</span> 30-70 → "תמהיל מוכרים + פחות מוכרים"</div>
+      <div><span style="color:var(--accent)">עברית</span> → "בדיוק X% בעברית ו-Y% בלועזית — חובה!"</div>
+      <div><span style="color:var(--accent)">ווקלי</span> &gt;70 → "שירים ווקליים עם שירה בולטת"</div>
+      <div><span style="color:var(--accent)">ווקלי</span> &lt;30 → "אינסטרומנטלי או מינימום מילים"</div>
+      <div><span style="color:var(--accent)">אנרגיה</span> &gt;70 → "אנרגיה גבוהה, קצבי, תוסס"</div>
+      <div><span style="color:var(--accent)">אנרגיה</span> &lt;30 → "אנרגיה נמוכה, רגוע, chill"</div>
+      <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">🧬 DNA עסקי</div>
+      <div>כל קטגוריה מכניסה: <b>vibe</b>, <b>baseGenres</b>, <b>avoid</b>, <b>bpmRange</b>, <b>energy</b>, <b>refArtists</b></div>
+      <div id="brainDnaInfo" style="margin-top:10px;display:none;padding:12px;background:rgba(29,185,84,.1);border-radius:10px"></div>
+      <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">⚡ אנרגיה/שעה</div>
+      <div>morning / afternoon / evening / night — ערך 1-5 לכל חלק</div>
+      <div>~10 שירים לכל slot, מותאמים לרמת אנרגיה</div>
+      <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">🗳️ פידבק</div>
+      <div>👍 → "more like these" · 👎 → "avoid similar" · ללא → לא משפיע</div>
+      <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">📋 כללים קשיחים</div>
+      <div>• מקסימום 2 שירים לאמן</div>
+      <div>• כל השירים חייבים להיות אמיתיים ב-Spotify</div>
+      <div>• שפה: אחוז מדויק לפי סליידר</div>
+      <div>• DNA = נקודת מוצא, סליידרים = override</div>
+      <div>• familiarity &lt;40 → אזהרה כפולה בפרומפט</div>
+      <div>• ולידציה lenient — רק ג׳יבריש נדחה</div>
+    </div>
+  </div>
+</div>
+</div>
 <button class="shazam-btn" onclick="openShazam()">🎤</button>
 <div class="shazam-modal" id="shazamModal"><div class="shazam-content" style="position:relative"><button onclick="closeShazam()" style="position:absolute;top:16px;left:16px;background:none;border:none;color:var(--text);font-size:24px;cursor:pointer">✕</button><h2>🎵 זיהוי שיר</h2><p style="color:var(--muted);font-size:14px">לחצו להאזנה — המערכת תזהה את השיר</p><div class="shazam-circle" id="shazamCircle" onclick="startShazam()">🎤</div><div id="shazamStatus" style="color:var(--muted);font-size:14px;margin-top:12px"></div><div id="shazamResult" class="shazam-result"></div></div></div>
 <script>
@@ -394,7 +408,7 @@ async function saveUserSpotifyTokens(){if(!authUser||isGuest)return;try{const at
 const HARDCODED_API_KEY=['sk-proj-CetQIHSroWfiQ-w3dUeL','xjzlS0-dFQYQ-rM_hNIUQn59rBt-aavbhIWHgz6K_dPIrTWE2bDlAeT3Blbk','FJZdBgV1JQUPwz2SzPqnCCnH8o0gLkjVqNaQdwxwMtN7P75oEaUCNs0PjyDqgdmEF_LWqrjuaIAA'].join('');
 const brainLogs=[];
 function brainLog(e,t,d,ai){const time=new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});brainLogs.push({e,t,d,ai,time});const el=document.getElementById('brainLog'),div=document.createElement('div');div.className='brain-entry'+(ai?' ai':'');div.innerHTML='<div class="brain-time">'+time+'</div><div class="brain-title">'+e+' '+esc(t)+'</div><div class="brain-detail">'+esc(d)+'</div>';el.prepend(div);try{localStorage.setItem('sb_brain_logs',JSON.stringify(brainLogs))}catch(x){}}
-function toggleBrain(){document.getElementById('brainPanel').classList.toggle('open');document.getElementById('brainOverlay').classList.toggle('open')}
+function toggleBrain(){document.getElementById('brainPanel').classList.toggle('open')}
 function nav(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.screen-nav button').forEach(b=>b.classList.remove('active'));event?.target?.classList.add('active');window.scrollTo({top:0,behavior:'smooth'});const k=localStorage.getItem('openai_key')||HARDCODED_API_KEY;if(id==='onboarding'&&!k)document.getElementById('apiWarning').style.display='block';else if(id==='onboarding')document.getElementById('apiWarning').style.display='none'}
 async function callOpenAI(messages,opts={}){const k=localStorage.getItem('openai_key')||HARDCODED_API_KEY;if(!k)throw new Error('אין מפתח API');const model=opts.model||localStorage.getItem('openai_model')||'gpt-4o';brainLog('🤖','OpenAI','מודל: '+model,true);for(let a=0;a<3;a++){const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+k,'Content-Type':'application/json'},body:JSON.stringify({model,temperature:0.7,messages,max_tokens:opts.max_tokens||3000,...(opts.noJson?{}:{response_format:{type:'json_object'}})})});if(r.status===429){const w=Math.max(parseFloat(r.headers.get('retry-after')||'20'),10)*1000+a*5000;updateWizStatus('⏳ ממתין '+Math.ceil(w/1000)+'שניות...');await new Promise(r=>setTimeout(r,w));continue}const j=await r.json();if(j.error?.message?.includes('Rate limit')){await new Promise(r=>setTimeout(r,(a+1)*20000));continue}if(j.error)throw new Error(j.error.message);const c=j.choices[0].message.content;brainLog('✅','תשובה','אורך: '+c.length,true);return c}throw new Error('מגבלת API')}
 function updateWizStatus(m){const el=document.getElementById('wizStatus');if(el)el.textContent=m}

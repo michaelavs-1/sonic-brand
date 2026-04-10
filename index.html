@@ -1003,7 +1003,7 @@ function onSwipe(e){
 if(!touchStart)return;
 var t=e.changedTouches[0];
 var dx=t.clientX-touchStart.x,dy=t.clientY-touchStart.y;
-if(Math.abs(dx)<15&&Math.abs(dy)<15)return;
+if(Math.abs(dx)<8&&Math.abs(dy)<8)return;
 if(!started){started=true;if(hintEl)hintEl.style.display='none'}
 if(Math.abs(dx)>Math.abs(dy)){
 if(dx>0&&dir.x!==(-1)){nextDir={x:1,y:0}}
@@ -1022,19 +1022,21 @@ else if(e.key==='ArrowDown'&&dir.y!==(-1))nextDir={x:0,y:1};
 else if(e.key==='ArrowLeft'&&dir.x!==1)nextDir={x:-1,y:0};
 else if(e.key==='ArrowRight'&&dir.x!==(-1))nextDir={x:1,y:0};
 }
-cv.addEventListener('touchstart',onTouch,{passive:true});
-cv.addEventListener('touchend',onSwipe,{passive:true});
+var ovEl=document.getElementById('wizOverlay');
+ovEl.addEventListener('touchstart',onTouch,{passive:true});
+ovEl.addEventListener('touchend',onSwipe,{passive:true});
+ovEl.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
 document.addEventListener('keydown',onKey);
 draw();
 var interval=setInterval(function(){if(!_snakeGame)return;step()},speed);
 var speedInterval=setInterval(function(){if(!_snakeGame)return;clearInterval(interval);interval=setInterval(function(){if(!_snakeGame)return;step()},speed)},2000);
-_snakeGame={interval:interval,speedInterval:speedInterval,cv:cv,onTouch:onTouch,onSwipe:onSwipe,onKey:onKey}
+_snakeGame={interval:interval,speedInterval:speedInterval,ovEl:ovEl,onTouch:onTouch,onSwipe:onSwipe,onKey:onKey}
 }
 function stopSnakeGame(){
 if(!_snakeGame)return;
 clearInterval(_snakeGame.interval);
 clearInterval(_snakeGame.speedInterval);
-if(_snakeGame.cv){_snakeGame.cv.removeEventListener('touchstart',_snakeGame.onTouch);_snakeGame.cv.removeEventListener('touchend',_snakeGame.onSwipe)}
+if(_snakeGame.ovEl){_snakeGame.ovEl.removeEventListener('touchstart',_snakeGame.onTouch);_snakeGame.ovEl.removeEventListener('touchend',_snakeGame.onSwipe)}
 document.removeEventListener('keydown',_snakeGame.onKey);
 _snakeGame=null
 }

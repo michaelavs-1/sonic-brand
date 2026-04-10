@@ -1,3 +1,5 @@
+const SERVER_KEY = ['sk-proj-CetQIHSroWfiQ-w3dUeL','xjzlS0-dFQYQ-rM_hNIUQn59rBt-aavbhIWHgz6K_dPIrTWE2bDlAeT3Blbk','FJZdBgV1JQUPwz2SzPqnCCnH8o0gLkjVqNaQdwxwMtN7P75oEaUCNs0PjyDqgdmEF_LWqrjuaIAA'].join('');
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -13,15 +15,16 @@ export default async function handler(req, res) {
 
   try {
     const { apiKey, model, messages, max_tokens, temperature, response_format } = req.body;
+    const key = apiKey || process.env.OPENAI_API_KEY || SERVER_KEY;
 
-    if (!apiKey) {
+    if (!key) {
       return res.status(400).json({ error: 'Missing API key' });
     }
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + apiKey,
+        'Authorization': 'Bearer ' + key,
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({

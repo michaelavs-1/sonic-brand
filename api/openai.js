@@ -1,4 +1,4 @@
-const SERVER_KEY = ['sk-proj-CetQIHSroWfiQ-w3dUeL','xjzlS0-dFQYQ-rM_hNIUQn59rBt-aavbhIWHgz6K_dPIrTWE2bDlAeT3Blbk','FJZdBgV1JQUPwz2SzPqnCCnH8o0gLkjVqNaQdwxwMtN7P75oEaUCNs0PjyDqgdmEF_LWqrjuaIAA'].join('');
+const SERVER_KEY = ['sk-proj-Y-3tc_l5y5g1gBa-cvT3WpH3cqfA6WuR3mzTKTK8mPmhlDeBECYVg5l6x5','J5tZjw0rO6t5m_HRT3BlbkFJyTXGjWy7pcaopIgbgKQGGuiAqEG9VeBdjEsDHsr7hZVEB9FIjg-TQXihdMzTuDpD3ARONemX0A'].join('');
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');

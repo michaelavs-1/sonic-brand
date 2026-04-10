@@ -1,0 +1,10 @@
+{
+  "functions": {
+    "api/openai.js": {
+      "maxDuration": 60
+    },
+    "api/spotify.js": {
+      "maxDuration": 30
+    }
+  }
+}

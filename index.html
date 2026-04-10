@@ -122,7 +122,7 @@
   .playlist-cover{width:140px;height:140px;border-radius:16px;background:var(--gradient);display:flex;align-items:center;justify-content:center;font-size:56px;flex-shrink:0;background-size:cover;background-position:center}
   .playlist-meta{color:var(--muted);font-size:14px;margin-top:4px}
   .chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
-  .track{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);transition:.15s}
+  .track{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:10px 16px;border-bottom:1px solid var(--border);transition:.15s}
   .track:hover{background:var(--bg-2)}
   .track .num{width:28px;text-align:center;color:var(--muted);font-size:13px}
   .track .thumb{width:40px;height:40px;border-radius:8px;background:var(--card-2);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;background-size:cover;background-position:center}
@@ -202,7 +202,9 @@
     .playlist-header{flex-direction:column;gap:14px;text-align:center}
     .playlist-cover{width:100px;height:100px;margin:0 auto}
     .chip-row{justify-content:center}
-    .track{padding:8px 10px;gap:6px}
+    .track{padding:10px 12px;gap:8px;flex-wrap:wrap}
+    .track .track-top{display:flex;align-items:center;gap:8px;width:100%}
+    .track .track-bottom{display:flex;align-items:center;gap:6px;width:100%;justify-content:flex-end}
     .track .info{min-width:0}
     .track .title{font-size:13px}
     .track .artist{font-size:11px}
@@ -294,14 +296,14 @@
 </section>
 <section id="onboarding" class="screen" style="position:relative">
   <div id="wizOverlay" class="wiz-overlay">
-    <canvas id="snakeCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;opacity:0.6"></canvas>
-    <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;pointer-events:none">
-      <div class="wo-icon" id="woIcon">🧠</div>
-      <div class="wo-text" id="woText">מנתח...</div>
-      <div class="wo-sub" id="woSub">רגע, חושבים על המוזיקה שלכם</div>
-      <div class="wo-dots"><span></span><span></span><span></span></div>
-      <div id="snakeHint" style="margin-top:24px;font-size:13px;color:rgba(29,185,84,.6);pointer-events:none">🐍 שלא ישעמם לכם — החליקו לשחק סנייק!</div>
-      <div id="snakeScore" style="margin-top:8px;font-size:14px;font-weight:700;color:var(--accent);display:none;pointer-events:none">🏆 <span id="snakeScoreVal">0</span></div>
+    <div class="wo-icon" id="woIcon">🧠</div>
+    <div class="wo-text" id="woText">מנתח...</div>
+    <div class="wo-sub" id="woSub">רגע, חושבים על המוזיקה שלכם</div>
+    <div class="wo-dots"><span></span><span></span><span></span></div>
+    <div id="funFactBox" style="margin-top:32px;max-width:340px;text-align:center;padding:0 20px">
+      <div style="font-size:13px;color:var(--accent);font-weight:700;letter-spacing:1px;margin-bottom:10px">?הידעת</div>
+      <div id="funFactText" style="font-size:15px;line-height:1.6;color:var(--text);min-height:60px;transition:opacity .4s ease"></div>
+      <button id="funFactBtn" onclick="nextFunFact()" style="margin-top:16px;background:transparent;border:1px solid rgba(29,185,84,.4);color:var(--accent);padding:10px 24px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s">תן לי עוד</button>
     </div>
   </div>
   <div class="wizard">
@@ -929,119 +931,69 @@ const _wizLoadingMsgs=[
 {icon:'🎯',text:'מדייקים...',sub:'כמעט מוכן!'}
 ];
 var _wizLoadingInterval=null;
-function showWizLoading(initialIdx){var ov=document.getElementById('wizOverlay');if(!ov)return;var idx=initialIdx||0;var m=_wizLoadingMsgs[idx]||_wizLoadingMsgs[0];document.getElementById('woIcon').textContent=m.icon;document.getElementById('woText').textContent=m.text;document.getElementById('woSub').textContent=m.sub;ov.classList.add('active');document.body.style.overflow='hidden';setTimeout(function(){startSnakeGame()},300);if(_wizLoadingInterval)clearInterval(_wizLoadingInterval);_wizLoadingInterval=setInterval(function(){idx=(idx+1)%_wizLoadingMsgs.length;var nm=_wizLoadingMsgs[idx];document.getElementById('woIcon').textContent=nm.icon;document.getElementById('woText').textContent=nm.text;document.getElementById('woSub').textContent=nm.sub},4000)}
-function hideWizLoading(){var ov=document.getElementById('wizOverlay');if(ov)ov.classList.remove('active');document.body.style.overflow='';if(_wizLoadingInterval){clearInterval(_wizLoadingInterval);_wizLoadingInterval=null}stopSnakeGame()}
+function showWizLoading(initialIdx){var ov=document.getElementById('wizOverlay');if(!ov)return;var idx=initialIdx||0;var m=_wizLoadingMsgs[idx]||_wizLoadingMsgs[0];document.getElementById('woIcon').textContent=m.icon;document.getElementById('woText').textContent=m.text;document.getElementById('woSub').textContent=m.sub;ov.classList.add('active');document.body.style.overflow='hidden';initFunFacts();if(_wizLoadingInterval)clearInterval(_wizLoadingInterval);_wizLoadingInterval=setInterval(function(){idx=(idx+1)%_wizLoadingMsgs.length;var nm=_wizLoadingMsgs[idx];document.getElementById('woIcon').textContent=nm.icon;document.getElementById('woText').textContent=nm.text;document.getElementById('woSub').textContent=nm.sub},4000)}
+function hideWizLoading(){var ov=document.getElementById('wizOverlay');if(ov)ov.classList.remove('active');document.body.style.overflow='';if(_wizLoadingInterval){clearInterval(_wizLoadingInterval);_wizLoadingInterval=null}}
 
-/* ====== SNAKE GAME ON LOADING SCREEN ====== */
-var _snakeGame=null;
-function startSnakeGame(){
-if(_snakeGame)stopSnakeGame();
-var cv=document.getElementById('snakeCanvas');
-if(!cv)return;
-var ctx=cv.getContext('2d');
-var dpr=window.devicePixelRatio||1;
-cv.width=cv.offsetWidth*dpr;
-cv.height=cv.offsetHeight*dpr;
-ctx.scale(dpr,dpr);
-var W=cv.offsetWidth,H=cv.offsetHeight;
-var gs=16;
-var cols=Math.floor(W/gs),rows=Math.floor(H/gs);
-var ox=Math.floor((W-cols*gs)/2),oy=Math.floor((H-rows*gs)/2);
-var snake=[{x:Math.floor(cols/2),y:Math.floor(rows/2)}];
-var dir={x:0,y:-1};
-var nextDir={x:0,y:-1};
-var food=null;
-var score=0;
-var alive=true;
-var started=false;
-var speed=120;
-var scoreEl=document.getElementById('snakeScore');
-var scoreVal=document.getElementById('snakeScoreVal');
-var hintEl=document.getElementById('snakeHint');
-if(scoreEl)scoreEl.style.display='none';
-if(hintEl)hintEl.style.display='block';
-function placeFood(){
-var tries=0;
-do{food={x:Math.floor(Math.random()*cols),y:Math.floor(Math.random()*rows)};tries++}while(tries<200&&snake.some(function(s){return s.x===food.x&&s.y===food.y}))
-}
-placeFood();
-function draw(){
-ctx.clearRect(0,0,W,H);
-ctx.fillStyle='rgba(29,185,84,0.08)';
-ctx.fillRect(ox,oy,cols*gs,rows*gs);
-for(var b=0;b<cols;b++){for(var r=0;r<rows;r++){ctx.fillStyle='rgba(29,185,84,0.03)';ctx.fillRect(ox+b*gs,oy+r*gs,gs-1,gs-1)}}
-if(food){ctx.fillStyle='#ff4789';ctx.shadowColor='#ff4789';ctx.shadowBlur=8;ctx.beginPath();ctx.arc(ox+food.x*gs+gs/2,oy+food.y*gs+gs/2,gs/2-2,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}
-for(var i=0;i<snake.length;i++){var s=snake[i];var alpha=1-i*0.02;if(alpha<0.3)alpha=0.3;if(i===0){ctx.fillStyle='rgba(29,185,84,'+alpha+')';ctx.shadowColor='#1db954';ctx.shadowBlur=6;ctx.beginPath();ctx.arc(ox+s.x*gs+gs/2,oy+s.y*gs+gs/2,gs/2-1,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}else{ctx.fillStyle='rgba(29,185,84,'+alpha+')';var r2=gs/2-2;ctx.beginPath();ctx.moveTo(ox+s.x*gs+r2+1,oy+s.y*gs+1);ctx.lineTo(ox+s.x*gs+gs-1,oy+s.y*gs+r2+1);ctx.lineTo(ox+s.x*gs+r2+1,oy+s.y*gs+gs-1);ctx.lineTo(ox+s.x*gs+1,oy+s.y*gs+r2+1);ctx.fill()}}
-if(!alive){ctx.fillStyle='rgba(255,71,133,0.8)';ctx.font='bold 20px system-ui';ctx.textAlign='center';ctx.fillText('Game Over! Score: '+score,W/2,H/2+80)}
-}
-function step(){
-if(!alive)return;
-dir=nextDir;
-var head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
-if(head.x<0)head.x=cols-1;if(head.x>=cols)head.x=0;
-if(head.y<0)head.y=rows-1;if(head.y>=rows)head.y=0;
-for(var i=0;i<snake.length;i++){if(snake[i].x===head.x&&snake[i].y===head.y){alive=false;draw();setTimeout(function(){resetGame()},1500);return}}
-snake.unshift(head);
-if(food&&head.x===food.x&&head.y===food.y){score++;if(scoreVal)scoreVal.textContent=score;if(scoreEl)scoreEl.style.display='block';placeFood();if(speed>60)speed-=2}else{snake.pop()}
-draw()
-}
-function resetGame(){
-snake=[{x:Math.floor(cols/2),y:Math.floor(rows/2)}];
-dir={x:0,y:-1};nextDir={x:0,y:-1};
-score=0;alive=true;started=false;speed=120;
-if(scoreVal)scoreVal.textContent='0';
-if(scoreEl)scoreEl.style.display='none';
-if(hintEl)hintEl.style.display='block';
-placeFood();draw()
-}
-var touchStart=null;
-function onTouch(e){
-if(!alive){resetGame();return}
-var t=e.touches[0];touchStart={x:t.clientX,y:t.clientY}
-}
-function onSwipe(e){
-if(!touchStart)return;
-var t=e.changedTouches[0];
-var dx=t.clientX-touchStart.x,dy=t.clientY-touchStart.y;
-if(Math.abs(dx)<8&&Math.abs(dy)<8)return;
-if(!started){started=true;if(hintEl)hintEl.style.display='none'}
-if(Math.abs(dx)>Math.abs(dy)){
-if(dx>0&&dir.x!==(-1)){nextDir={x:1,y:0}}
-else if(dx<0&&dir.x!==1){nextDir={x:-1,y:0}}
-}else{
-if(dy>0&&dir.y!==(-1)){nextDir={x:0,y:1}}
-else if(dy<0&&dir.y!==1){nextDir={x:0,y:-1}}
-}
-touchStart=null
-}
-function onKey(e){
-if(!alive)return;
-if(!started){started=true;if(hintEl)hintEl.style.display='none'}
-if(e.key==='ArrowUp'&&dir.y!==1)nextDir={x:0,y:-1};
-else if(e.key==='ArrowDown'&&dir.y!==(-1))nextDir={x:0,y:1};
-else if(e.key==='ArrowLeft'&&dir.x!==1)nextDir={x:-1,y:0};
-else if(e.key==='ArrowRight'&&dir.x!==(-1))nextDir={x:1,y:0};
-}
-var ovEl=document.getElementById('wizOverlay');
-ovEl.addEventListener('touchstart',onTouch,{passive:true});
-ovEl.addEventListener('touchend',onSwipe,{passive:true});
-ovEl.addEventListener('touchmove',function(e){e.preventDefault()},{passive:false});
-document.addEventListener('keydown',onKey);
-draw();
-var interval=setInterval(function(){if(!_snakeGame)return;step()},speed);
-var speedInterval=setInterval(function(){if(!_snakeGame)return;clearInterval(interval);interval=setInterval(function(){if(!_snakeGame)return;step()},speed)},2000);
-_snakeGame={interval:interval,speedInterval:speedInterval,ovEl:ovEl,onTouch:onTouch,onSwipe:onSwipe,onKey:onKey}
-}
-function stopSnakeGame(){
-if(!_snakeGame)return;
-clearInterval(_snakeGame.interval);
-clearInterval(_snakeGame.speedInterval);
-if(_snakeGame.ovEl){_snakeGame.ovEl.removeEventListener('touchstart',_snakeGame.onTouch);_snakeGame.ovEl.removeEventListener('touchend',_snakeGame.onSwipe)}
-document.removeEventListener('keydown',_snakeGame.onKey);
-_snakeGame=null
-}
-/* ====== END SNAKE GAME ====== */
-const vizMap={0:0,1:1,4:2,7:3,5:4};
+/* ====== FUN FACTS — MUSIC & BUSINESS ====== */
+var _funFacts=[
+'מחקר של HUI Research מצא שמוזיקה מותאמת לעסק מעלה מכירות ב-9% בממוצע.',
+'קצב מוזיקה איטי בסופר גורם ללקוחות להאט ולקנות יותר — עד 38% יותר.',
+'רשת Abercrombie & Fitch השתמשה במוזיקה חזקה כדי למשוך קהל צעיר — וזה עבד, עד שזה לא עבד.',
+'מוזיקה קלאסית במסעדה גורמת ללקוחות להזמין יין יקר יותר — עלייה של 24%.',
+'78% מבעלי עסקים קטנים מאמינים שמוזיקה משפיעה על חוויית הלקוח, אבל רק 36% בוחרים אותה בקפידה.',
+'Spotify יצרה פלייליסטים ייעודיים לעסקים אחרי שגילתה שבעלי חנויות משתמשים בחשבונות פרטיים.',
+'מחקר של ניו יורק טיימס הראה שמוזיקה ברקע משפיעה על תפיסת הטעם של אוכל.',
+'שרשרת Starbucks מוכרת גם מוזיקה — הם הבינו שהסאונד הוא חלק מהמותג כמו הקפה.',
+'כשמנגנים מוזיקה צרפתית בסופר, אנשים קונים יותר יין צרפתי. אותו דבר עם גרמנית.',
+'מחקרים מראים שמוזיקה בעוצמה גבוהה גורמת לאנשים לשתות מהר יותר בבר.',
+'טמפו של 72-76 BPM נחשב ל"דופק לב במנוחה" ויוצר תחושת רוגע בחנויות.',
+'מוזיקה ללא מילים מגבירה פרודוקטיביות ב-15% בסביבות עבודה, כי היא לא מסיחה את הדעת.',
+'רשת H&M מחליפה פלייליסטים לפי עונה, שעה ביום, ואפילו מזג אוויר.',
+'המוח האנושי מעבד מוזיקה ב-0.05 שניות — מהר יותר מכל גירוי חושי אחר.',
+'עסקים שמנגנים מוזיקה מותאמת מדווחים על עלייה של 46% בזמן השהייה של לקוחות.',
+'Apple Stores משתמשים בפלייליסטים שעוברים קוריישן של צוות מוזיקה פנימי ייעודי.',
+'מוזיקה שמחה גורמת ללקוחות להעריך מוצרים כחיוביים יותר — גם אם הם לא קשורים.',
+'71% מהלקוחות מעדיפים חנות עם מוזיקה על חנות שקטה.',
+'מוזיקת ג\'אז בלאונג\' מלון מעלה את ההוצאה הממוצעת של אורחים ב-12%.',
+'מחקר של University of Leicester מצא שמוזיקה איטית במסעדה מעלה את החשבון ב-10%.',
+'כשהמוזיקה מתאימה למותג, לקוחות נשארים 20% יותר זמן בחנות.',
+'IKEA משתמשת במוזיקה שונה באזורי המבצעים לעומת אזורי ההשראה.',
+'מוזיקה ב-528Hz נחשבת ל"תדר אהבה" ומשמשת ספאים ברחבי העולם.',
+'המוח משחרר דופמין כשהוא שומע מוזיקה שהוא אוהב — אותו כימיקל שמשתחרר מאוכל טוב.',
+'רשת Zara מנגנת מוזיקה אלקטרונית בעוצמה גבוהה כדי ליצור תחושת דחיפות לקנות.',
+'מחקר מ-2019 הראה ש-85% מהלקוחות מושפעים מהמוזיקה בהחלטות קנייה, גם אם הם לא מודעים לכך.',
+'קזינו בלאס וגאס עיצב מחדש את הפלייליסט שלו והגדיל הכנסות ב-$12M בשנה.',
+'Coca-Cola משקיעה מיליונים בסאונד ברנדינג — הצליל של פתיחת הפחית מעוצב בקפידה.',
+'מוזיקה מהירה בחדר כושר מגבירה ביצועים ב-20% — הגוף נע בקצב.',
+'McDonald\'s משתמש במוזיקה שונה לחלוטין בארוחת בוקר לעומת ערב.',
+'מחקר של Millward Brown מצא שמותגים עם זהות סאונד חזקה מזוהים פי 5 יותר.',
+'מוזיקת רקע נכונה בהמתנה טלפונית מפחיתה תחושת זמן המתנה ב-33%.',
+'Lush Cosmetics מנגנת מוזיקה אינדי ואלטרנטיבית כדי למשוך את קהל היעד שלה.',
+'בית קפה שמנגן מוזיקה בטמפו איטי מוכר יותר קינוחים — אנשים לא ממהרים.',
+'73% מבני דור ה-Z אומרים שמוזיקה בחנות משפיעה על הרצון שלהם לחזור.',
+'Nike Stores מנגנים מוזיקה עם BPM גבוה כדי לעורר תחושת אנרגיה ומוטיבציה.',
+'מוזיקה בעוצמה נמוכה מעודדת שיחה בין לקוחות — מעולה למסעדות ובתי קפה.',
+'מחקר של Soundtrack Your Brand מצא ש-44% מהלקוחות יוצאים מחנות עם מוזיקה לא מתאימה.',
+'Whole Foods משתמשת במוזיקה אקוסטית ואורגנית שמשקפת את ערכי המותג.',
+'מוזיקה עם באס חזק מעוררת תחושת כוח ובטחון — לכן היא פופולרית בחנויות ספורט.',
+'מוזיקה מוכרת גורמת לתחושת ביטחון, אבל מוזיקה חדשה יוצרת סקרנות — צריך את שניהם.',
+'אפילו ריח של חנות מושפע מהמוזיקה — מוזיקה רגועה גורמת לאנשים לשים לב יותר לריחות.',
+'Prada Stores מנגנים מוזיקה שנבחרה בקפידה כדי שתתאים לקולקציה הנוכחית.',
+'מוזיקה בטמפו של 60 BPM מסנכרנת עם דופק הלב ויוצרת תחושת רוגע עמוקה.',
+'עסקים שמשתמשים במוזיקה מקורית (לא רדיו) מדווחים על 67% יותר שביעות רצון לקוחות.',
+'כש-Harrods שינו את המוזיקה למותאמת אישית, זמן השהייה של לקוחות עלה ב-25%.',
+'מחקר של Mood Media מצא ש-1 מכל 2 לקוחות ישארו זמן רב יותר עם מוזיקה שמתאימה לאווירה.',
+'Trader Joe\'s משתמשת במוזיקה ייחודית שיוצרת תחושה של חנות שכונתית, לא רשת.',
+'כל 10 דציבלים של עלייה בעוצמת מוזיקה מגבירים שתיית אלכוהול ב-22%.',
+'המוח שלנו יכול לזהות שיר מוכר תוך 100-300 אלפיות שנייה בלבד.'
+];
+var _funFactOrder=[];
+var _funFactIdx=0;
+function shuffleArray(arr){var a=arr.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=a[i];a[i]=a[j];a[j]=tmp}return a}
+function initFunFacts(){_funFactOrder=shuffleArray(_funFacts.map(function(_,i){return i}));_funFactIdx=0;showFunFact()}
+function showFunFact(){var el=document.getElementById('funFactText');if(!el)return;el.style.opacity='0';setTimeout(function(){el.textContent=_funFacts[_funFactOrder[_funFactIdx%_funFacts.length]];el.style.opacity='1'},300)}
+function nextFunFact(){_funFactIdx++;showFunFact()}
+/* ====== END FUN FACTS ====== */
 function wizGo(step){document.querySelectorAll('.wiz-panel').forEach(p=>p.classList.remove('active'));document.getElementById('wizStep'+step).classList.add('active');const viz=(step in vizMap?vizMap[step]:-1);document.querySelectorAll('.wstep').forEach(s=>{const n=+s.dataset.step;s.classList.toggle('active',n===viz);s.classList.toggle('done',n<viz)});document.querySelectorAll('.wline').forEach((l,i)=>l.classList.toggle('done',i<viz));document.getElementById('wizProgress').style.display=(step===2||step===3||step===6)?'none':'flex';if(step===7){document.getElementById('bizHoursSection').style.display='block';document.getElementById('hoursQuestion').style.display='none'}window.scrollTo({top:0,behavior:'smooth'})}
 function wizNext(cur){if(_wizBusy)return;if(cur===0){if(!selectedUser){const c=document.getElementById('customUserInput').value.trim();if(!c){alert('נא לבחור משתמש');return}selectedUser=c}wiz.user=selectedUser;brainLog('👤','משתמש',selectedUser);wizGo(1)}else if(cur===2){wiz.genres=Array.from(selectedGenres);brainLog('🎶','ז׳אנרים',wiz.genres.join(', ')||'ללא');wizGo(3)}else if(cur===4){wiz.faders={familiarity:+document.getElementById('fFamiliarity').value,hebrew:100-(+document.getElementById('fHebrew').value),vocal:100-(+document.getElementById('fVocal').value),energy:100-(+document.getElementById('fEnergy').value)};brainLog('🎚️','סליידרים','מסחרי:'+wiz.faders.familiarity+' עברית:'+wiz.faders.hebrew+'%');wizGo(7)}}
 var _wizBusy=false;
@@ -1511,7 +1463,7 @@ function rerenderPlaylist(){if(!window.currentPlaylist||!window.currentPlaylist.
 
 async function flowValidationPass(tracks){if(wiz.brainVersion!=='v5turbo'||!tracks&&tracks.length)return;brainLog('🌊','Flow Check','בודק זרימה בין שירים...',true);const trackList=tracks.map((t,i)=>(i+1)+'. '+t.artist+' - '+t.title+' ['+t.slot+']'+(t.audioFeatures?' BPM:'+t.audioFeatures.bpm+' E:'+t.audioFeatures.energy:'')).join('\n');try{const raw=await callOpenAI([{role:'system',content:'You are a Flow Validator. Check a playlist for flow issues. Look for:\n1. Same artist within 5 tracks of each other\n2. More than 2 Hebrew tracks in a row\n3. Sudden BPM jumps (>30 BPM between adjacent tracks)\n4. Energy jumps (>0.4 between adjacent tracks)\n5. Same genre cluster >4 tracks\n6. Missing surprise/discovery tracks\nReturn JSON with issues found and suggested fixes. Be concise.'},{role:'user',content:'Validate this playlist flow:\n'+trackList+'\n\nReturn: {"score":0-100,"issues":[{"position":0,"type":"","description":"","fix":""}],"summary":"2 sentences"}'}],{max_tokens:1500,stage:'🌊 Flow Validation',noJson:false});const result=safeJSON(raw);if(result.score!==undefined){brainLog('🌊','Flow Score',result.score+'/100 — '+(result.issues&&result.issues.length||0)+' issues',true)}if(result.issues&&result.issues.length){result.issues.slice(0,5).forEach(iss=>{brainLog('⚠️','Flow Issue','#'+iss.position+' '+iss.type+': '+iss.description)})}if(result.summary){brainLog('📝','Flow Summary',result.summary,true)}window.flowValidation=result;try{const badge=document.getElementById('flowScoreBadge');if(badge&&result.score!==undefined){badge.style.display='block';document.getElementById('flowScoreVal').textContent=result.score+'/100';document.getElementById('flowScoreIssues').textContent=(result.issues&&result.issues.length||0)+' issues'+(result.summary?' · '+result.summary:'')}}catch(e){}}catch(e){brainLog('⚠️','Flow Error',e.message)}}
 
-function renderTrack(num,t){const c=document.getElementById('tracksContainer'),row=document.createElement('div');row.className='track';const sa=esc(t.artist).replace(/'/g,'&#39;'),st2=esc(t.title).replace(/'/g,'&#39;');const embed=t.id?'<iframe src="https://open.spotify.com/embed/track/'+t.id+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>':'';row.innerHTML=(embed?'<div style="flex:1;min-width:0">'+embed+'</div>':'<div class="num"><a href="https://open.spotify.com/search/'+encodeURIComponent(t.artist+' '+t.title)+'" target="_blank" style="color:var(--accent);text-decoration:none">'+num+'</a></div><div class="thumb" style="background-image:url(\''+(t.cover||'')+'\');background-size:cover">'+(t.cover?'':'🎵')+'</div><div class="info"><div class="title">'+esc(t.title)+'</div><div class="artist">'+esc(t.artist)+'</div></div>')+'<div style="display:flex;align-items:center;gap:4px;flex-shrink:0"><span style="font-size:11px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(t.slot||'')+(t.reason?' · '+esc(t.reason):'')+'</span><div class="track-rating" style="display:flex;gap:2px;margin:0 6px" data-idx="'+(num-1)+'"><select onchange="rateTrack('+(num-1)+',this.value)" style="background:var(--card-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 4px;font-size:11px;cursor:pointer;min-width:42px"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div><button class="fb-up" onclick="voteTrk(\''+sa+'\',\''+st2+'\',\'up\',this)">👍</button><button class="fb-down" onclick="voteTrk(\''+sa+'\',\''+st2+'\',\'down\',this)">👎</button></div>';c.appendChild(row)}
+function renderTrack(num,t){const c=document.getElementById('tracksContainer'),row=document.createElement('div');row.className='track';const sa=esc(t.artist).replace(/'/g,'&#39;'),st2=esc(t.title).replace(/'/g,'&#39;');const embed=t.id?'<iframe src="https://open.spotify.com/embed/track/'+t.id+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>':'';var topRow=embed?'<div class="track-top" style="flex:1;min-width:0;width:100%">'+embed+'</div>':'<div class="track-top" style="display:flex;align-items:center;gap:8px;width:100%"><div class="num"><a href="https://open.spotify.com/search/'+encodeURIComponent(t.artist+' '+t.title)+'" target="_blank" style="color:var(--accent);text-decoration:none">'+num+'</a></div><div class="thumb" style="background-image:url(\''+(t.cover||'')+'\');background-size:cover">'+(t.cover?'':'🎵')+'</div><div class="info"><div class="title">'+esc(t.title)+'</div><div class="artist">'+esc(t.artist)+'</div></div></div>';var bottomRow='<div class="track-bottom" style="display:flex;align-items:center;gap:6px;width:100%;justify-content:flex-end"><span style="font-size:11px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">'+(t.reason?esc(t.reason):'')+(t.slot?' · '+t.slot:'')+'</span><div class="track-rating" style="display:flex;gap:2px;margin:0 4px" data-idx="'+(num-1)+'"><select onchange="rateTrack('+(num-1)+',this.value)" style="background:var(--card-2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:2px 4px;font-size:11px;cursor:pointer;min-width:42px"><option value="">—</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option></select></div><button class="fb-up" onclick="voteTrk(\''+sa+'\',\''+st2+'\',\'up\',this)">👍</button><button class="fb-down" onclick="voteTrk(\''+sa+'\',\''+st2+'\',\'down\',this)">👎</button></div>';row.innerHTML=topRow+bottomRow;c.appendChild(row)}
 function esc(s){return(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 const FB_KEY='sb_feedback';function getFB(){try{return JSON.parse(localStorage.getItem(FB_KEY)||'{}')}catch(e){return{}}}
 function rateTrack(idx,val){if(!window.currentPlaylist||!window.currentPlaylist.tracks[idx])return;window.currentPlaylist.tracks[idx].rating=val?parseInt(val):null;var rated=window.currentPlaylist.tracks.filter(function(t){return t.rating});if(rated.length){var avg=(rated.reduce(function(s,t){return s+t.rating},0)/rated.length).toFixed(1);brainLog('⭐','דירוג','שיר '+(idx+1)+': '+val+'/10 (ממוצע: '+avg+')')}}

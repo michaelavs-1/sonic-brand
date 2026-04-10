@@ -913,6 +913,7 @@ async function addRefFromUrl(){const url=document.getElementById('refSpotifyUrl'
 function renderRefTracks(){document.getElementById('refTrackList').innerHTML=refTracks.map((t,i)=>'<div class="ref-track-item"><span style="flex:1">'+esc(t.artist)+' — '+esc(t.title)+'</span><button class="remove" onclick="removeRef('+i+')">✕</button></div>').join('')}
 function removeRef(i){refTracks.splice(i,1);renderRefTracks()}
 let wiz={desc:'',faders:{},samples:[],votes:{},energy:{},genres:[],refs:[],user:'',brainVersion:'v1',useHours:false};
+var _tasteDigest=null;
 const _wizLoadingMsgs=[
 {icon:'🧠',text:'מנתח את העסק שלכם...',sub:'חושבים על אווירה, קהל וסגנון'},
 {icon:'🎵',text:'בוחרים סגנונות מוזיקליים...',sub:'מחפשים את הסאונד המושלם'},
@@ -1238,7 +1239,7 @@ async function runNewPipeline(wiz,profile,strategy,dna,liked,disliked,f,st){
 brainLog('🚀','Pipeline v2','Starting new pipeline architecture...',true);
 var _noHoursMode=!wiz.useHours;
 var _noHoursDirective=_noHoursMode?'\n\n⚠️ HOURS MODE OFF: This client explicitly said they do NOT need different music at different hours. You MUST NOT organize tracks by time slots (morning/afternoon/evening/night). Do NOT assign slot values. Do NOT reference time of day in reasons. Build ONE unified playlist with consistent energy and mood. Set slot to "general" for all tracks.':'';
-var _tasteDigest=null;try{var _bizKey=(profile&&profile.business_name)||wiz.desc||'default';_tasteDigest=await loadTasteMemory(_bizKey);if(_tasteDigest)brainLog('🧠','זיכרון טעם','נמצא פתק: '+_tasteDigest.substring(0,80)+'...',true)}catch(e){}
+_tasteDigest=null;try{var _bizKey=(profile&&profile.business_name)||wiz.desc||'default';_tasteDigest=await loadTasteMemory(_bizKey);if(_tasteDigest)brainLog('🧠','זיכרון טעם','נמצא פתק: '+_tasteDigest.substring(0,80)+'...',true)}catch(e){}
 
 /* Phase 0: Constraint Solver (#9) */
 st.textContent='Solving constraints...';

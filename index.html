@@ -1113,25 +1113,7 @@ return slotTracks}
 
 /* #13 — HUMAN CHECKPOINT: Show seeds + pool for review */
 function showSeedCheckpoint(seeds,poolSize){
-return new Promise(function(resolve){
-const modal=document.getElementById('checkpointModal');
-const content=document.getElementById('checkpointContent');
-if(!modal||!content){resolve(true);return}
-let html='<h3 style="margin-bottom:12px;font-size:18px">🌱 Seed Tracks — עוגני הפלייליסט</h3>';
-html+='<p style="color:var(--muted);margin-bottom:16px;font-size:13px">5 שירים שמגדירים את המרכז הסוני. כל שאר השירים יסתובבו סביבם.</p>';
-seeds.forEach(function(s,i){
-html+='<div style="display:flex;align-items:center;gap:12px;padding:10px;background:var(--card-2);border-radius:10px;margin-bottom:8px">';
-html+='<span style="font-size:20px">'+(s.verified?'✅':'⚠️')+'</span>';
-html+='<div style="flex:1"><div style="font-weight:600;font-size:14px">'+esc(s.artist)+' — '+esc(s.title)+'</div>';
-html+='<div style="font-size:11px;color:var(--muted)">'+s.slot+' · energy '+( s.energy_est||'?')+' · '+(s.lang==='he'?'עברית':'English')+'</div></div></div>'});
-html+='<div style="background:var(--card-2);border-radius:10px;padding:12px;margin-top:12px;font-size:13px;color:var(--muted)">';
-html+='🎵 נמצאו <b>'+poolSize+'</b> שירים אמיתיים מ-Spotify כמאגר מועמדים</div>';
-html+='<div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">';
-html+='<button class="btn btn-ghost" onclick="document.getElementById(\'checkpointModal\').style.display=\'none\';window._checkpointResolve&&window._checkpointResolve(true)" style="padding:10px 20px">▶ המשך</button>';
-html+='</div>';
-content.innerHTML=html;
-modal.style.display='flex';
-window._checkpointResolve=resolve;setTimeout(function(){if(modal.style.display==='flex'){modal.style.display='none';resolve(true)}},8000)})}
+return new Promise(function(resolve){resolve(true)})}
 
 /* ═══════════════════════════════════════════════════════
    MASTER PIPELINE: runNewPipeline

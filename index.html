@@ -266,7 +266,7 @@
   <button onclick="nav('analytics')">📊 ניתוחים</button>
   <button onclick="nav('settings')" style="margin-right:auto;background:var(--card-2)">⚙ Settings</button>
   <button onclick="toggleBrain()" style="background:var(--gradient);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;padding:8px 16px;border-radius:10px;font-family:inherit">🧠 מוח</button>
-  <span style="font-size:18px;font-weight:900;color:var(--accent);margin-left:12px;background:rgba(29,185,84,.15);padding:4px 12px;border-radius:8px" id="appVersion">v4.5.3</span>
+  <span style="font-size:18px;font-weight:900;color:var(--accent);margin-left:12px;background:rgba(29,185,84,.15);padding:4px 12px;border-radius:8px" id="appVersion">v4.6</span>
   <button onclick="hardRefresh()" style="background:var(--card);border:1px solid var(--border);color:var(--text);font-size:22px;cursor:pointer;padding:6px 14px;border-radius:10px;font-weight:700;transition:.2s" title="רענן" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⟳</button>
 </nav>
 <div class="container">
@@ -423,6 +423,12 @@
     <div id="flowScoreBadge" style="display:none;margin-top:8px;padding:8px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;font-size:13px"><span id="flowScoreVal" style="font-weight:900;color:var(--accent)"></span> <span style="color:var(--muted)">Flow Score</span> · <span id="flowScoreIssues" style="color:var(--muted)"></span></div>
     <div class="card" style="padding:0;margin-top:16px"><div id="playlistExplanation" style="display:none;background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><h3 style="font-size:16px;margin:0">🧠 איך הורכב הפלייליסט</h3><button onclick="document.getElementById('playlistExplanation').style.display='none'" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px">✕</button></div><div id="explanationContent" style="color:var(--muted);line-height:1.8;font-size:14px;white-space:pre-wrap"></div></div><div id="tracksContainer"></div></div>
   </div>
+</section>
+<section id="analytics" class="screen">
+  <h2 style="margin-bottom:20px">📊 ניתוחים</h2>
+  <div id="analyticsLoading" style="text-align:center;padding:40px;color:var(--muted)"><div class="spinner"></div><p>טוען ניתוחים...</p></div>
+  <div id="analyticsEmpty" style="display:none;text-align:center;padding:40px;color:var(--muted)"><p>אין ניתוחים שמורים עדיין. צרו פלייליסט ולחצו "שמור לניתוח".</p></div>
+  <div id="analyticsList" style="display:flex;flex-direction:column;gap:12px"></div>
 </section>
 <section id="settings" class="screen">
   <h2>הגדרות API</h2>

@@ -7,7 +7,7 @@ let cachedExpiry = 0;
 let cachedRefresh = null;
 
 async function getRefreshTokenFromSupabase() {
-  const res = await fetch(SUPABASE_URL + '/rest/v1/user_spotify?select=*&order=updated_at.desc&limit=1', {
+  const res = await fetch(SUPABASE_URL + '/rest/v1/spotify_tokens?select=*&order=updated_at.desc&limit=1', {
     headers: {
       'apikey': SUPABASE_ANON,
       'Authorization': 'Bearer ' + SUPABASE_ANON
@@ -70,6 +70,27 @@ export default async function handler(req, res) {
 
   try {
     const { action, query, url } = req.body;
+
+    if (action === 'save_token') {
+      const { access_token, refresh_token, expiry } = req.body;
+      if (!refresh_token) return res.status(400).json({ error: 'Missing refresh_token' });
+      // Delete old rows and insert new one
+      await fetch(SUPABASE_URL + '/rest/v1/spotify_tokens?id=neq.00000000-0000-0000-0000-000000000000', {
+        method: 'DELETE',
+        headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
+      });
+      const saveRes = await fetch(SUPABASE_URL + '/rest/v1/spotify_tokens', {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON, 'Content-Type': 'application/json', 'Prefer': 'return=representation' },
+        body: JSON.stringify({ access_token, refresh_token, expiry, updated_at: new Date().toISOString() })
+      });
+      const saved = await saveRes.json();
+      cachedToken = access_token;
+      cachedExpiry = Number(expiry) || 0;
+      cachedRefresh = refresh_token;
+      return res.status(200).json({ ok: true, saved });
+    }
+
     const token = await getValidToken();
 
     if (!token) {

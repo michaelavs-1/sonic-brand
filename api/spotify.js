@@ -1,10 +1,16 @@
 const SUPABASE_URL = 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
 const CLIENT_ID = 'b6404b5ae1684143b79d9a86bb4b6cba';
+const CLIENT_SECRET = '158fe44d006a47209daa375898fd835e';
 
+// User token cache (from refresh token)
 let cachedToken = null;
 let cachedExpiry = 0;
 let cachedRefresh = null;
+
+// Client Credentials token cache (always works, no user needed)
+let ccToken = null;
+let ccExpiry = 0;
 
 async function getRefreshTokenFromSupabase() {
   const res = await fetch(SUPABASE_URL + '/rest/v1/spotify_tokens?select=*&order=updated_at.desc&limit=1', {
@@ -38,6 +44,29 @@ async function refreshAccessToken(refreshToken) {
   return cachedToken;
 }
 
+// Client Credentials flow — ALWAYS works, no user login needed
+// Good for: search, audio-features, recommendations, artists, tracks
+// Cannot do: /me, create_playlist, add_tracks (those need user token)
+async function getClientCredentialsToken() {
+  if (ccToken && Date.now() < ccExpiry) return ccToken;
+  const basic = Buffer.from(CLIENT_ID + ':' + CLIENT_SECRET).toString('base64');
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': 'Basic ' + basic
+    },
+    body: 'grant_type=client_credentials'
+  });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data.error) return null;
+  ccToken = data.access_token;
+  ccExpiry = Date.now() + (data.expires_in * 1000) - 60000;
+  return ccToken;
+}
+
+// Try user token first (can do everything), fall back to CC token
 async function getValidToken() {
   if (cachedToken && Date.now() < cachedExpiry) return cachedToken;
 
@@ -47,17 +76,54 @@ async function getValidToken() {
   }
 
   const row = await getRefreshTokenFromSupabase();
+  if (row && row.refresh_token) {
+    cachedRefresh = row.refresh_token;
+    if (row.access_token && row.expiry && Number(row.expiry) > Date.now() + 60000) {
+      cachedToken = row.access_token;
+      cachedExpiry = Number(row.expiry);
+      return cachedToken;
+    }
+    const refreshed = await refreshAccessToken(row.refresh_token);
+    if (refreshed) return refreshed;
+  }
+
+  // Fallback: Client Credentials (works for non-user endpoints)
+  return await getClientCredentialsToken();
+}
+
+// For user-specific actions (me, playlists), we NEED the user token
+async function getUserToken() {
+  if (cachedToken && Date.now() < cachedExpiry) return cachedToken;
+  if (cachedRefresh) {
+    const token = await refreshAccessToken(cachedRefresh);
+    if (token) return token;
+  }
+  const row = await getRefreshTokenFromSupabase();
   if (!row || !row.refresh_token) return null;
-
   cachedRefresh = row.refresh_token;
-
   if (row.access_token && row.expiry && Number(row.expiry) > Date.now() + 60000) {
     cachedToken = row.access_token;
     cachedExpiry = Number(row.expiry);
     return cachedToken;
   }
-
   return await refreshAccessToken(row.refresh_token);
+}
+
+async function spotifyFetchWithRetry(url, token, options) {
+  const opts = Object.assign({}, options || {}, {
+    headers: Object.assign({}, (options && options.headers) || {}, { 'Authorization': 'Bearer ' + token })
+  });
+  let spRes = await fetch(url, opts);
+  if (spRes.status === 401) {
+    // Token expired, try refresh
+    cachedToken = null;
+    cachedExpiry = 0;
+    const newToken = await getValidToken();
+    if (!newToken) return null;
+    opts.headers['Authorization'] = 'Bearer ' + newToken;
+    spRes = await fetch(url, opts);
+  }
+  return spRes;
 }
 
 export default async function handler(req, res) {
@@ -74,7 +140,6 @@ export default async function handler(req, res) {
     if (action === 'save_token') {
       const { access_token, refresh_token, expiry } = req.body;
       if (!refresh_token) return res.status(400).json({ error: 'Missing refresh_token' });
-      // Delete old rows and insert new one
       await fetch(SUPABASE_URL + '/rest/v1/spotify_tokens?id=neq.00000000-0000-0000-0000-000000000000', {
         method: 'DELETE',
         headers: { 'apikey': SUPABASE_ANON, 'Authorization': 'Bearer ' + SUPABASE_ANON }
@@ -91,107 +156,73 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, saved });
     }
 
-    const token = await getValidToken();
+    // For user-specific actions, we need user token
+    if (action === 'me' || action === 'create_playlist' || action === 'add_tracks') {
+      const userToken = await getUserToken();
+      if (!userToken) {
+        return res.status(503).json({ error: 'No user Spotify token available. Admin must connect Spotify first.' });
+      }
 
+      if (action === 'me') {
+        const spRes = await spotifyFetchWithRetry('https://api.spotify.com/v1/me', userToken);
+        if (!spRes) return res.status(503).json({ error: 'Token refresh failed' });
+        return res.status(spRes.status).json(await spRes.json());
+      }
+
+      if (action === 'create_playlist') {
+        const { name, description } = req.body;
+        const meRes = await spotifyFetchWithRetry('https://api.spotify.com/v1/me', userToken);
+        if (!meRes) return res.status(503).json({ error: 'Token refresh failed' });
+        const me = await meRes.json();
+        if (!me.id) return res.status(500).json({ error: 'Cannot get user ID' });
+        const currentToken = cachedToken || userToken;
+        const spRes = await spotifyFetchWithRetry('https://api.spotify.com/v1/users/' + me.id + '/playlists', currentToken, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name || 'SonicBrand Mix', description: description || 'Generated by SonicBrand AI', public: false })
+        });
+        if (!spRes) return res.status(503).json({ error: 'Token refresh failed' });
+        return res.status(spRes.status).json(await spRes.json());
+      }
+
+      if (action === 'add_tracks') {
+        const { playlist_id, uris } = req.body;
+        if (!playlist_id || !uris || !uris.length) return res.status(400).json({ error: 'Missing playlist_id or uris' });
+        const results = [];
+        for (let i = 0; i < uris.length; i += 100) {
+          const batch = uris.slice(i, i + 100);
+          const currentToken = cachedToken || userToken;
+          const spRes = await spotifyFetchWithRetry('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', currentToken, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uris: batch })
+          });
+          if (spRes) results.push(await spRes.json());
+          else results.push({ error: 'Token refresh failed' });
+        }
+        return res.status(200).json({ results });
+      }
+    }
+
+    // For non-user actions: use any token (CC works fine)
+    const token = await getValidToken();
     if (!token) {
-      return res.status(503).json({ error: 'No Spotify token available. Admin must connect Spotify first.' });
+      return res.status(503).json({ error: 'No Spotify token available' });
     }
 
     if (action === 'search') {
-      const spRes = await fetch(
+      const spRes = await spotifyFetchWithRetry(
         'https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=track&limit=5',
-        { headers: { 'Authorization': 'Bearer ' + token } }
+        token
       );
-      if (spRes.status === 401) {
-        cachedToken = null;
-        cachedExpiry = 0;
-        const newToken = await getValidToken();
-        if (!newToken) return res.status(503).json({ error: 'Token refresh failed' });
-        const retry = await fetch(
-          'https://api.spotify.com/v1/search?q=' + encodeURIComponent(query) + '&type=track&limit=5',
-          { headers: { 'Authorization': 'Bearer ' + newToken } }
-        );
-        return res.status(retry.status).json(await retry.json());
-      }
+      if (!spRes) return res.status(503).json({ error: 'Token refresh failed' });
       return res.status(spRes.status).json(await spRes.json());
     }
 
     if (action === 'fetch' && url) {
-      const spRes = await fetch(url, {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      if (spRes.status === 401) {
-        cachedToken = null;
-        cachedExpiry = 0;
-        const newToken = await getValidToken();
-        if (!newToken) return res.status(503).json({ error: 'Token refresh failed' });
-        const retry = await fetch(url, { headers: { 'Authorization': 'Bearer ' + newToken } });
-        return res.status(retry.status).json(await retry.json());
-      }
+      const spRes = await spotifyFetchWithRetry(url, token);
+      if (!spRes) return res.status(503).json({ error: 'Token refresh failed' });
       return res.status(spRes.status).json(await spRes.json());
-    }
-
-    if (action === 'me') {
-      const spRes = await fetch('https://api.spotify.com/v1/me', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      return res.status(spRes.status).json(await spRes.json());
-    }
-
-    if (action === 'create_playlist') {
-      const { name, description } = req.body;
-      const meRes = await fetch('https://api.spotify.com/v1/me', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      const me = await meRes.json();
-      if (!me.id) return res.status(500).json({ error: 'Cannot get user ID' });
-      const spRes = await fetch('https://api.spotify.com/v1/users/' + me.id + '/playlists', {
-        method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name || 'SonicBrand Mix', description: description || 'Generated by SonicBrand AI', public: false })
-      });
-      if (spRes.status === 401) {
-        cachedToken = null; cachedExpiry = 0;
-        const newToken = await getValidToken();
-        if (!newToken) return res.status(503).json({ error: 'Token refresh failed' });
-        const meRetry = await fetch('https://api.spotify.com/v1/me', { headers: { 'Authorization': 'Bearer ' + newToken } });
-        const me2 = await meRetry.json();
-        const retry = await fetch('https://api.spotify.com/v1/users/' + me2.id + '/playlists', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + newToken, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name || 'SonicBrand Mix', description: description || 'Generated by SonicBrand AI', public: false })
-        });
-        return res.status(retry.status).json(await retry.json());
-      }
-      return res.status(spRes.status).json(await spRes.json());
-    }
-
-    if (action === 'add_tracks') {
-      const { playlist_id, uris } = req.body;
-      if (!playlist_id || !uris || !uris.length) return res.status(400).json({ error: 'Missing playlist_id or uris' });
-      const results = [];
-      for (let i = 0; i < uris.length; i += 100) {
-        const batch = uris.slice(i, i + 100);
-        const spRes = await fetch('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', {
-          method: 'POST',
-          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ uris: batch })
-        });
-        if (spRes.status === 401) {
-          cachedToken = null; cachedExpiry = 0;
-          const newToken = await getValidToken();
-          if (!newToken) return res.status(503).json({ error: 'Token refresh failed' });
-          const retry = await fetch('https://api.spotify.com/v1/playlists/' + playlist_id + '/tracks', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + newToken, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uris: batch })
-          });
-          results.push(await retry.json());
-        } else {
-          results.push(await spRes.json());
-        }
-      }
-      return res.status(200).json({ results });
     }
 
     return res.status(400).json({ error: 'Invalid action' });

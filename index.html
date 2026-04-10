@@ -294,10 +294,15 @@
 </section>
 <section id="onboarding" class="screen" style="position:relative">
   <div id="wizOverlay" class="wiz-overlay">
-    <div class="wo-icon" id="woIcon">🧠</div>
-    <div class="wo-text" id="woText">מנתח...</div>
-    <div class="wo-sub" id="woSub">רגע, חושבים על המוזיקה שלכם</div>
-    <div class="wo-dots"><span></span><span></span><span></span></div>
+    <canvas id="snakeCanvas" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;opacity:0.6"></canvas>
+    <div style="position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;pointer-events:none">
+      <div class="wo-icon" id="woIcon">🧠</div>
+      <div class="wo-text" id="woText">מנתח...</div>
+      <div class="wo-sub" id="woSub">רגע, חושבים על המוזיקה שלכם</div>
+      <div class="wo-dots"><span></span><span></span><span></span></div>
+      <div id="snakeHint" style="margin-top:24px;font-size:13px;color:rgba(29,185,84,.6);pointer-events:none">🐍 שלא ישעמם לכם — החליקו לשחק סנייק!</div>
+      <div id="snakeScore" style="margin-top:8px;font-size:14px;font-weight:700;color:var(--accent);display:none;pointer-events:none">🏆 <span id="snakeScoreVal">0</span></div>
+    </div>
   </div>
   <div class="wizard">
     <div id="apiWarning" style="display:none;background:rgba(255,71,133,.15);border:1px solid var(--accent-3);color:var(--accent-3);padding:14px;border-radius:12px;margin-bottom:16px;text-align:center">⚠ לא מוגדר מפתח OpenAI. <a href="#" onclick="nav('settings');return false" style="color:var(--accent-3);text-decoration:underline">הגדר עכשיו</a></div>
@@ -924,8 +929,116 @@ const _wizLoadingMsgs=[
 {icon:'🎯',text:'מדייקים...',sub:'כמעט מוכן!'}
 ];
 var _wizLoadingInterval=null;
-function showWizLoading(initialIdx){var ov=document.getElementById('wizOverlay');if(!ov)return;var idx=initialIdx||0;var m=_wizLoadingMsgs[idx]||_wizLoadingMsgs[0];document.getElementById('woIcon').textContent=m.icon;document.getElementById('woText').textContent=m.text;document.getElementById('woSub').textContent=m.sub;ov.classList.add('active');document.body.style.overflow='hidden';if(_wizLoadingInterval)clearInterval(_wizLoadingInterval);_wizLoadingInterval=setInterval(function(){idx=(idx+1)%_wizLoadingMsgs.length;var nm=_wizLoadingMsgs[idx];document.getElementById('woIcon').textContent=nm.icon;document.getElementById('woText').textContent=nm.text;document.getElementById('woSub').textContent=nm.sub},4000)}
-function hideWizLoading(){var ov=document.getElementById('wizOverlay');if(ov)ov.classList.remove('active');document.body.style.overflow='';if(_wizLoadingInterval){clearInterval(_wizLoadingInterval);_wizLoadingInterval=null}}
+function showWizLoading(initialIdx){var ov=document.getElementById('wizOverlay');if(!ov)return;var idx=initialIdx||0;var m=_wizLoadingMsgs[idx]||_wizLoadingMsgs[0];document.getElementById('woIcon').textContent=m.icon;document.getElementById('woText').textContent=m.text;document.getElementById('woSub').textContent=m.sub;ov.classList.add('active');document.body.style.overflow='hidden';setTimeout(function(){startSnakeGame()},300);if(_wizLoadingInterval)clearInterval(_wizLoadingInterval);_wizLoadingInterval=setInterval(function(){idx=(idx+1)%_wizLoadingMsgs.length;var nm=_wizLoadingMsgs[idx];document.getElementById('woIcon').textContent=nm.icon;document.getElementById('woText').textContent=nm.text;document.getElementById('woSub').textContent=nm.sub},4000)}
+function hideWizLoading(){var ov=document.getElementById('wizOverlay');if(ov)ov.classList.remove('active');document.body.style.overflow='';if(_wizLoadingInterval){clearInterval(_wizLoadingInterval);_wizLoadingInterval=null}stopSnakeGame()}
+
+/* ====== SNAKE GAME ON LOADING SCREEN ====== */
+var _snakeGame=null;
+function startSnakeGame(){
+if(_snakeGame)stopSnakeGame();
+var cv=document.getElementById('snakeCanvas');
+if(!cv)return;
+var ctx=cv.getContext('2d');
+var dpr=window.devicePixelRatio||1;
+cv.width=cv.offsetWidth*dpr;
+cv.height=cv.offsetHeight*dpr;
+ctx.scale(dpr,dpr);
+var W=cv.offsetWidth,H=cv.offsetHeight;
+var gs=16;
+var cols=Math.floor(W/gs),rows=Math.floor(H/gs);
+var ox=Math.floor((W-cols*gs)/2),oy=Math.floor((H-rows*gs)/2);
+var snake=[{x:Math.floor(cols/2),y:Math.floor(rows/2)}];
+var dir={x:0,y:-1};
+var nextDir={x:0,y:-1};
+var food=null;
+var score=0;
+var alive=true;
+var started=false;
+var speed=120;
+var scoreEl=document.getElementById('snakeScore');
+var scoreVal=document.getElementById('snakeScoreVal');
+var hintEl=document.getElementById('snakeHint');
+if(scoreEl)scoreEl.style.display='none';
+if(hintEl)hintEl.style.display='block';
+function placeFood(){
+var tries=0;
+do{food={x:Math.floor(Math.random()*cols),y:Math.floor(Math.random()*rows)};tries++}while(tries<200&&snake.some(function(s){return s.x===food.x&&s.y===food.y}))
+}
+placeFood();
+function draw(){
+ctx.clearRect(0,0,W,H);
+ctx.fillStyle='rgba(29,185,84,0.08)';
+ctx.fillRect(ox,oy,cols*gs,rows*gs);
+for(var b=0;b<cols;b++){for(var r=0;r<rows;r++){ctx.fillStyle='rgba(29,185,84,0.03)';ctx.fillRect(ox+b*gs,oy+r*gs,gs-1,gs-1)}}
+if(food){ctx.fillStyle='#ff4789';ctx.shadowColor='#ff4789';ctx.shadowBlur=8;ctx.beginPath();ctx.arc(ox+food.x*gs+gs/2,oy+food.y*gs+gs/2,gs/2-2,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}
+for(var i=0;i<snake.length;i++){var s=snake[i];var alpha=1-i*0.02;if(alpha<0.3)alpha=0.3;if(i===0){ctx.fillStyle='rgba(29,185,84,'+alpha+')';ctx.shadowColor='#1db954';ctx.shadowBlur=6;ctx.beginPath();ctx.arc(ox+s.x*gs+gs/2,oy+s.y*gs+gs/2,gs/2-1,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0}else{ctx.fillStyle='rgba(29,185,84,'+alpha+')';var r2=gs/2-2;ctx.beginPath();ctx.moveTo(ox+s.x*gs+r2+1,oy+s.y*gs+1);ctx.lineTo(ox+s.x*gs+gs-1,oy+s.y*gs+r2+1);ctx.lineTo(ox+s.x*gs+r2+1,oy+s.y*gs+gs-1);ctx.lineTo(ox+s.x*gs+1,oy+s.y*gs+r2+1);ctx.fill()}}
+if(!alive){ctx.fillStyle='rgba(255,71,133,0.8)';ctx.font='bold 20px system-ui';ctx.textAlign='center';ctx.fillText('Game Over! Score: '+score,W/2,H/2+80)}
+}
+function step(){
+if(!alive)return;
+dir=nextDir;
+var head={x:snake[0].x+dir.x,y:snake[0].y+dir.y};
+if(head.x<0)head.x=cols-1;if(head.x>=cols)head.x=0;
+if(head.y<0)head.y=rows-1;if(head.y>=rows)head.y=0;
+for(var i=0;i<snake.length;i++){if(snake[i].x===head.x&&snake[i].y===head.y){alive=false;draw();setTimeout(function(){resetGame()},1500);return}}
+snake.unshift(head);
+if(food&&head.x===food.x&&head.y===food.y){score++;if(scoreVal)scoreVal.textContent=score;if(scoreEl)scoreEl.style.display='block';placeFood();if(speed>60)speed-=2}else{snake.pop()}
+draw()
+}
+function resetGame(){
+snake=[{x:Math.floor(cols/2),y:Math.floor(rows/2)}];
+dir={x:0,y:-1};nextDir={x:0,y:-1};
+score=0;alive=true;started=false;speed=120;
+if(scoreVal)scoreVal.textContent='0';
+if(scoreEl)scoreEl.style.display='none';
+if(hintEl)hintEl.style.display='block';
+placeFood();draw()
+}
+var touchStart=null;
+function onTouch(e){
+if(!alive){resetGame();return}
+var t=e.touches[0];touchStart={x:t.clientX,y:t.clientY}
+}
+function onSwipe(e){
+if(!touchStart)return;
+var t=e.changedTouches[0];
+var dx=t.clientX-touchStart.x,dy=t.clientY-touchStart.y;
+if(Math.abs(dx)<15&&Math.abs(dy)<15)return;
+if(!started){started=true;if(hintEl)hintEl.style.display='none'}
+if(Math.abs(dx)>Math.abs(dy)){
+if(dx>0&&dir.x!==(-1)){nextDir={x:1,y:0}}
+else if(dx<0&&dir.x!==1){nextDir={x:-1,y:0}}
+}else{
+if(dy>0&&dir.y!==(-1)){nextDir={x:0,y:1}}
+else if(dy<0&&dir.y!==1){nextDir={x:0,y:-1}}
+}
+touchStart=null
+}
+function onKey(e){
+if(!alive)return;
+if(!started){started=true;if(hintEl)hintEl.style.display='none'}
+if(e.key==='ArrowUp'&&dir.y!==1)nextDir={x:0,y:-1};
+else if(e.key==='ArrowDown'&&dir.y!==(-1))nextDir={x:0,y:1};
+else if(e.key==='ArrowLeft'&&dir.x!==1)nextDir={x:-1,y:0};
+else if(e.key==='ArrowRight'&&dir.x!==(-1))nextDir={x:1,y:0};
+}
+cv.addEventListener('touchstart',onTouch,{passive:true});
+cv.addEventListener('touchend',onSwipe,{passive:true});
+document.addEventListener('keydown',onKey);
+draw();
+var interval=setInterval(function(){if(!_snakeGame)return;step()},speed);
+var speedInterval=setInterval(function(){if(!_snakeGame)return;clearInterval(interval);interval=setInterval(function(){if(!_snakeGame)return;step()},speed)},2000);
+_snakeGame={interval:interval,speedInterval:speedInterval,cv:cv,onTouch:onTouch,onSwipe:onSwipe,onKey:onKey}
+}
+function stopSnakeGame(){
+if(!_snakeGame)return;
+clearInterval(_snakeGame.interval);
+clearInterval(_snakeGame.speedInterval);
+if(_snakeGame.cv){_snakeGame.cv.removeEventListener('touchstart',_snakeGame.onTouch);_snakeGame.cv.removeEventListener('touchend',_snakeGame.onSwipe)}
+document.removeEventListener('keydown',_snakeGame.onKey);
+_snakeGame=null
+}
+/* ====== END SNAKE GAME ====== */
 const vizMap={0:0,1:1,4:2,7:3,5:4};
 function wizGo(step){document.querySelectorAll('.wiz-panel').forEach(p=>p.classList.remove('active'));document.getElementById('wizStep'+step).classList.add('active');const viz=(step in vizMap?vizMap[step]:-1);document.querySelectorAll('.wstep').forEach(s=>{const n=+s.dataset.step;s.classList.toggle('active',n===viz);s.classList.toggle('done',n<viz)});document.querySelectorAll('.wline').forEach((l,i)=>l.classList.toggle('done',i<viz));document.getElementById('wizProgress').style.display=(step===2||step===3||step===6)?'none':'flex';if(step===7){document.getElementById('bizHoursSection').style.display='block';document.getElementById('hoursQuestion').style.display='none'}window.scrollTo({top:0,behavior:'smooth'})}
 function wizNext(cur){if(_wizBusy)return;if(cur===0){if(!selectedUser){const c=document.getElementById('customUserInput').value.trim();if(!c){alert('נא לבחור משתמש');return}selectedUser=c}wiz.user=selectedUser;brainLog('👤','משתמש',selectedUser);wizGo(1)}else if(cur===2){wiz.genres=Array.from(selectedGenres);brainLog('🎶','ז׳אנרים',wiz.genres.join(', ')||'ללא');wizGo(3)}else if(cur===4){wiz.faders={familiarity:+document.getElementById('fFamiliarity').value,hebrew:100-(+document.getElementById('fHebrew').value),vocal:100-(+document.getElementById('fVocal').value),energy:100-(+document.getElementById('fEnergy').value)};brainLog('🎚️','סליידרים','מסחרי:'+wiz.faders.familiarity+' עברית:'+wiz.faders.hebrew+'%');wizGo(7)}}

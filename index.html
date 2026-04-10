@@ -300,10 +300,17 @@
     <div class="wo-text" id="woText">מנתח...</div>
     <div class="wo-sub" id="woSub">רגע, חושבים על המוזיקה שלכם</div>
     <div class="wo-dots"><span></span><span></span><span></span></div>
-    <div id="funFactBox" style="margin-top:32px;max-width:340px;text-align:center;padding:0 20px">
-      <div style="font-size:13px;color:var(--accent);font-weight:700;letter-spacing:1px;margin-bottom:10px">?הידעת</div>
-      <div id="funFactText" style="font-size:15px;line-height:1.6;color:var(--text);min-height:60px;transition:opacity .4s ease"></div>
-      <button id="funFactBtn" onclick="nextFunFact()" style="margin-top:16px;background:transparent;border:1px solid rgba(29,185,84,.4);color:var(--accent);padding:10px 24px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;transition:all .2s">תן לי עוד</button>
+    <div id="tfGameBox" style="margin-top:28px;max-width:360px;text-align:center;padding:0 16px;width:100%">
+      <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:14px">
+        <span style="font-size:13px;color:var(--accent);font-weight:700;letter-spacing:1px">נכון או לא נכון?</span>
+        <span id="tfScore" style="font-size:13px;color:var(--muted)">0/0</span>
+      </div>
+      <div id="tfFactText" style="font-size:15px;line-height:1.7;color:var(--text);min-height:50px;transition:opacity .35s ease;direction:rtl"></div>
+      <div id="tfButtons" style="display:flex;gap:12px;justify-content:center;margin-top:18px">
+        <button onclick="tfAnswer(true)" style="flex:1;max-width:140px;padding:12px 0;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:1px solid rgba(29,185,84,.5);background:rgba(29,185,84,.1);color:var(--accent);font-family:inherit;transition:all .2s">נכון</button>
+        <button onclick="tfAnswer(false)" style="flex:1;max-width:140px;padding:12px 0;border-radius:12px;font-size:15px;font-weight:700;cursor:pointer;border:1px solid rgba(255,71,133,.5);background:rgba(255,71,133,.1);color:var(--accent-3);font-family:inherit;transition:all .2s">לא נכון</button>
+      </div>
+      <div id="tfResult" style="margin-top:14px;min-height:60px;font-size:14px;line-height:1.5;transition:opacity .3s ease;opacity:0"></div>
     </div>
   </div>
   <div class="wizard">
@@ -931,69 +938,117 @@ const _wizLoadingMsgs=[
 {icon:'🎯',text:'מדייקים...',sub:'כמעט מוכן!'}
 ];
 var _wizLoadingInterval=null;
-function showWizLoading(initialIdx){var ov=document.getElementById('wizOverlay');if(!ov)return;var idx=initialIdx||0;var m=_wizLoadingMsgs[idx]||_wizLoadingMsgs[0];document.getElementById('woIcon').textContent=m.icon;document.getElementById('woText').textContent=m.text;document.getElementById('woSub').textContent=m.sub;ov.classList.add('active');document.body.style.overflow='hidden';initFunFacts();if(_wizLoadingInterval)clearInterval(_wizLoadingInterval);_wizLoadingInterval=setInterval(function(){idx=(idx+1)%_wizLoadingMsgs.length;var nm=_wizLoadingMsgs[idx];document.getElementById('woIcon').textContent=nm.icon;document.getElementById('woText').textContent=nm.text;document.getElementById('woSub').textContent=nm.sub},4000)}
+function showWizLoading(initialIdx){var ov=document.getElementById('wizOverlay');if(!ov)return;var idx=initialIdx||0;var m=_wizLoadingMsgs[idx]||_wizLoadingMsgs[0];document.getElementById('woIcon').textContent=m.icon;document.getElementById('woText').textContent=m.text;document.getElementById('woSub').textContent=m.sub;ov.classList.add('active');document.body.style.overflow='hidden';initTFGame();if(_wizLoadingInterval)clearInterval(_wizLoadingInterval);_wizLoadingInterval=setInterval(function(){idx=(idx+1)%_wizLoadingMsgs.length;var nm=_wizLoadingMsgs[idx];document.getElementById('woIcon').textContent=nm.icon;document.getElementById('woText').textContent=nm.text;document.getElementById('woSub').textContent=nm.sub},4000)}
 function hideWizLoading(){var ov=document.getElementById('wizOverlay');if(ov)ov.classList.remove('active');document.body.style.overflow='';if(_wizLoadingInterval){clearInterval(_wizLoadingInterval);_wizLoadingInterval=null}}
 
-/* ====== FUN FACTS — MUSIC & BUSINESS ====== */
-var _funFacts=[
-'מחקר של HUI Research מצא שמוזיקה מותאמת לעסק מעלה מכירות ב-9% בממוצע.',
-'קצב מוזיקה איטי בסופר גורם ללקוחות להאט ולקנות יותר — עד 38% יותר.',
-'רשת Abercrombie & Fitch השתמשה במוזיקה חזקה כדי למשוך קהל צעיר — וזה עבד, עד שזה לא עבד.',
-'מוזיקה קלאסית במסעדה גורמת ללקוחות להזמין יין יקר יותר — עלייה של 24%.',
-'78% מבעלי עסקים קטנים מאמינים שמוזיקה משפיעה על חוויית הלקוח, אבל רק 36% בוחרים אותה בקפידה.',
-'Spotify יצרה פלייליסטים ייעודיים לעסקים אחרי שגילתה שבעלי חנויות משתמשים בחשבונות פרטיים.',
-'מחקר של ניו יורק טיימס הראה שמוזיקה ברקע משפיעה על תפיסת הטעם של אוכל.',
-'שרשרת Starbucks מוכרת גם מוזיקה — הם הבינו שהסאונד הוא חלק מהמותג כמו הקפה.',
-'כשמנגנים מוזיקה צרפתית בסופר, אנשים קונים יותר יין צרפתי. אותו דבר עם גרמנית.',
-'מחקרים מראים שמוזיקה בעוצמה גבוהה גורמת לאנשים לשתות מהר יותר בבר.',
-'טמפו של 72-76 BPM נחשב ל"דופק לב במנוחה" ויוצר תחושת רוגע בחנויות.',
-'מוזיקה ללא מילים מגבירה פרודוקטיביות ב-15% בסביבות עבודה, כי היא לא מסיחה את הדעת.',
-'רשת H&M מחליפה פלייליסטים לפי עונה, שעה ביום, ואפילו מזג אוויר.',
-'המוח האנושי מעבד מוזיקה ב-0.05 שניות — מהר יותר מכל גירוי חושי אחר.',
-'עסקים שמנגנים מוזיקה מותאמת מדווחים על עלייה של 46% בזמן השהייה של לקוחות.',
-'Apple Stores משתמשים בפלייליסטים שעוברים קוריישן של צוות מוזיקה פנימי ייעודי.',
-'מוזיקה שמחה גורמת ללקוחות להעריך מוצרים כחיוביים יותר — גם אם הם לא קשורים.',
-'71% מהלקוחות מעדיפים חנות עם מוזיקה על חנות שקטה.',
-'מוזיקת ג\'אז בלאונג\' מלון מעלה את ההוצאה הממוצעת של אורחים ב-12%.',
-'מחקר של University of Leicester מצא שמוזיקה איטית במסעדה מעלה את החשבון ב-10%.',
-'כשהמוזיקה מתאימה למותג, לקוחות נשארים 20% יותר זמן בחנות.',
-'IKEA משתמשת במוזיקה שונה באזורי המבצעים לעומת אזורי ההשראה.',
-'מוזיקה ב-528Hz נחשבת ל"תדר אהבה" ומשמשת ספאים ברחבי העולם.',
-'המוח משחרר דופמין כשהוא שומע מוזיקה שהוא אוהב — אותו כימיקל שמשתחרר מאוכל טוב.',
-'רשת Zara מנגנת מוזיקה אלקטרונית בעוצמה גבוהה כדי ליצור תחושת דחיפות לקנות.',
-'מחקר מ-2019 הראה ש-85% מהלקוחות מושפעים מהמוזיקה בהחלטות קנייה, גם אם הם לא מודעים לכך.',
-'קזינו בלאס וגאס עיצב מחדש את הפלייליסט שלו והגדיל הכנסות ב-$12M בשנה.',
-'Coca-Cola משקיעה מיליונים בסאונד ברנדינג — הצליל של פתיחת הפחית מעוצב בקפידה.',
-'מוזיקה מהירה בחדר כושר מגבירה ביצועים ב-20% — הגוף נע בקצב.',
-'McDonald\'s משתמש במוזיקה שונה לחלוטין בארוחת בוקר לעומת ערב.',
-'מחקר של Millward Brown מצא שמותגים עם זהות סאונד חזקה מזוהים פי 5 יותר.',
-'מוזיקת רקע נכונה בהמתנה טלפונית מפחיתה תחושת זמן המתנה ב-33%.',
-'Lush Cosmetics מנגנת מוזיקה אינדי ואלטרנטיבית כדי למשוך את קהל היעד שלה.',
-'בית קפה שמנגן מוזיקה בטמפו איטי מוכר יותר קינוחים — אנשים לא ממהרים.',
-'73% מבני דור ה-Z אומרים שמוזיקה בחנות משפיעה על הרצון שלהם לחזור.',
-'Nike Stores מנגנים מוזיקה עם BPM גבוה כדי לעורר תחושת אנרגיה ומוטיבציה.',
-'מוזיקה בעוצמה נמוכה מעודדת שיחה בין לקוחות — מעולה למסעדות ובתי קפה.',
-'מחקר של Soundtrack Your Brand מצא ש-44% מהלקוחות יוצאים מחנות עם מוזיקה לא מתאימה.',
-'Whole Foods משתמשת במוזיקה אקוסטית ואורגנית שמשקפת את ערכי המותג.',
-'מוזיקה עם באס חזק מעוררת תחושת כוח ובטחון — לכן היא פופולרית בחנויות ספורט.',
-'מוזיקה מוכרת גורמת לתחושת ביטחון, אבל מוזיקה חדשה יוצרת סקרנות — צריך את שניהם.',
-'אפילו ריח של חנות מושפע מהמוזיקה — מוזיקה רגועה גורמת לאנשים לשים לב יותר לריחות.',
-'Prada Stores מנגנים מוזיקה שנבחרה בקפידה כדי שתתאים לקולקציה הנוכחית.',
-'מוזיקה בטמפו של 60 BPM מסנכרנת עם דופק הלב ויוצרת תחושת רוגע עמוקה.',
-'עסקים שמשתמשים במוזיקה מקורית (לא רדיו) מדווחים על 67% יותר שביעות רצון לקוחות.',
-'כש-Harrods שינו את המוזיקה למותאמת אישית, זמן השהייה של לקוחות עלה ב-25%.',
-'מחקר של Mood Media מצא ש-1 מכל 2 לקוחות ישארו זמן רב יותר עם מוזיקה שמתאימה לאווירה.',
-'Trader Joe\'s משתמשת במוזיקה ייחודית שיוצרת תחושה של חנות שכונתית, לא רשת.',
-'כל 10 דציבלים של עלייה בעוצמת מוזיקה מגבירים שתיית אלכוהול ב-22%.',
-'המוח שלנו יכול לזהות שיר מוכר תוך 100-300 אלפיות שנייה בלבד.'
+/* ====== TRUE OR FALSE GAME ====== */
+var _tfFacts=[
+{q:'מוזיקה איטית בסופרמרקט גורמת ללקוחות לבזבז עד 38% יותר כסף.',t:true,e:'מחקר של Ronald Milliman הוכיח שטמפו איטי מאט את הצעדים ומגדיל קניות.'},
+{q:'Spotify היא חברת המוזיקה הראשונה שנוסדה בשוודיה.',t:false,e:'Spotify אכן משוודיה, אבל היא חברת סטרימינג — לא חברת מוזיקה. לפניה היו חברות כמו Polar Music.'},
+{q:'מוזיקה קלאסית במסעדה מעלה את ההזמנות של יין יקר ב-24%.',t:true,e:'מחקר של Adrian North הראה שמוזיקה קלאסית יוצרת תפיסה של יוקרה.'},
+{q:'המוח האנושי מעבד מוזיקה מהר יותר מכל גירוי חושי אחר.',t:true,e:'עיבוד שמיעתי קורה תוך 0.05 שניות — מהר יותר מראייה ומגע.'},
+{q:'IKEA מנגנת את אותה מוזיקה בכל החנויות בעולם.',t:false,e:'IKEA מתאימה פלייליסטים לפי מדינה, עונה ואזור בחנות.'},
+{q:'כשמנגנים מוזיקה צרפתית בסופר, קונים יותר יין צרפתי.',t:true,e:'מחקר מפורסם של North, Hargreaves & McKendrick (1999) הוכיח את זה.'},
+{q:'Apple הקימה צוות מוזיקה פנימי ייעודי לחנויות שלה.',t:true,e:'Apple מעסיקה צוות קוריישן שבוחר מוזיקה לכל חנות Apple Store.'},
+{q:'מוזיקה בעוצמה גבוהה בבר גורמת לאנשים לשתות לאט יותר.',t:false,e:'ההיפך — מוזיקה חזקה מגבירה את קצב השתייה.'},
+{q:'Coca-Cola מעצבת את צליל פתיחת הפחית כחלק מהברנדינג.',t:true,e:'סאונד ברנדינג הוא חלק מרכזי באסטרטגיה של Coca-Cola.'},
+{q:'72-76 BPM נחשב לטמפו שמדמה דופק לב במנוחה.',t:true,e:'לכן מוזיקה בטווח הזה יוצרת תחושת רוגע טבעית.'},
+{q:'מוזיקה ללא מילים מגבירה פרודוקטיביות ב-15% במשרדים.',t:true,e:'מילים מסיחות את הדעת — מוזיקה אינסטרומנטלית מאפשרת ריכוז.'},
+{q:'H&M מחליפה פלייליסטים גם לפי מזג האוויר.',t:true,e:'H&M משתמשת באלגוריתם שמתאים מוזיקה לעונה, שעה ומזג אוויר.'},
+{q:'המוח משחרר דופמין כשהוא שומע מוזיקה אהובה.',t:true,e:'אותו כימיקל שמשתחרר מאוכל טוב, סקס ומשחקי מזל.'},
+{q:'Zara מנגנת מוזיקת ג\'אז רגועה כדי ליצור תחושת יוקרה.',t:false,e:'Zara מנגנת מוזיקה אלקטרונית חזקה כדי ליצור תחושת דחיפות.'},
+{q:'85% מהלקוחות מושפעים מהמוזיקה בהחלטות קנייה.',t:true,e:'גם אם הם לא מודעים לכך — המוזיקה פועלת ברמה הלא-מודעת.'},
+{q:'McDonald\'s משתמש באותה מוזיקה כל היום.',t:false,e:'McDonald\'s מחליף פלייליסטים בין ארוחת בוקר, צהריים וערב.'},
+{q:'מותגים עם זהות סאונד חזקה מזוהים פי 5 יותר.',t:true,e:'מחקר של Millward Brown הוכיח את הכוח של Sonic Branding.'},
+{q:'מוזיקת המתנה טלפונית מפחיתה תחושת זמן המתנה ב-33%.',t:true,e:'מוזיקה מתאימה גורמת לזמן "להרגיש" קצר יותר.'},
+{q:'Nike Stores מנגנים מוזיקה עם BPM גבוה לעורר אנרגיה.',t:true,e:'מוזיקה מהירה מעוררת מוטיבציה — מתאים למותג ספורט.'},
+{q:'44% מהלקוחות יוצאים מחנות אם המוזיקה לא מתאימה.',t:true,e:'מחקר של Soundtrack Your Brand — מוזיקה לא מתאימה מבריחה לקוחות.'},
+{q:'מוזיקה בטמפו של 60 BPM מסנכרנת עם דופק הלב.',t:true,e:'זה יוצר תחושת רוגע עמוקה — נפוץ בספאים.'},
+{q:'Starbucks אף פעם לא מכרה מוזיקה.',t:false,e:'Starbucks מכרה CDים בחנויות והבינה שסאונד הוא חלק מהמותג.'},
+{q:'מוזיקה רגועה גורמת לאנשים לשים לב יותר לריחות.',t:true,e:'החושים עובדים יחד — סביבה שקטה מחדדת את חוש הריח.'},
+{q:'Prada מחליפה מוזיקה בחנויות לפי הקולקציה הנוכחית.',t:true,e:'כל עונת אופנה מגיעה עם פלייליסט חדש שמותאם לה.'},
+{q:'עסקים עם מוזיקה מותאמת מדווחים על 67% יותר שביעות רצון.',t:true,e:'בהשוואה לעסקים שמשתמשים ברדיו רגיל.'},
+{q:'בית קפה עם מוזיקה איטית מוכר יותר קינוחים.',t:true,e:'אנשים לא ממהרים ומזמינים עוד — הטמפו משפיע על קצב הסעודה.'},
+{q:'73% מבני דור Z אומרים שמוזיקה בחנות משפיעה על רצונם לחזור.',t:true,e:'הדור הצעיר מייחס חשיבות רבה לחוויה הכוללת.'},
+{q:'מוזיקה מהירה בחדר כושר מגבירה ביצועים ב-20%.',t:true,e:'הגוף מסתנכרן עם הקצב — BPM גבוה = אנרגיה גבוהה.'},
+{q:'Whole Foods משתמשת במוזיקת רוק כבד בחנויות.',t:false,e:'Whole Foods משתמשת במוזיקה אקוסטית ואורגנית שמשקפת את ערכי המותג.'},
+{q:'קזינו בלאס וגאס הגדיל הכנסות ב-$12M משינוי פלייליסט.',t:true,e:'מוזיקה מותאמת השפיעה על זמן שהייה ומספר הימורים.'},
+{q:'מוזיקה עם באס חזק מעוררת תחושת כוח ובטחון.',t:true,e:'לכן היא פופולרית בחנויות ספורט ובמכוני כושר.'},
+{q:'המוח מזהה שיר מוכר תוך 100-300 אלפיות שנייה.',t:true,e:'מהירות מדהימה — עוד לפני שהמוח מעבד את המילים.'},
+{q:'Trader Joe\'s משתמשת בפלייליסטים של Spotify הסטנדרטיים.',t:false,e:'Trader Joe\'s יוצרת מוזיקה ייחודית שמרגישה כמו חנות שכונתית.'},
+{q:'Mozart Effect — מוזיקה קלאסית מעלה אינטליגנציה באופן קבוע.',t:false,e:'אפקט מוצרט הוא מיתוס — ההשפעה זמנית ומוגבלת.'},
+{q:'ג\'ינגל של McDonald\'s מזוהה ב-90% מהמדינות בעולם.',t:true,e:'"Ba da ba ba ba" הוא אחד הג\'ינגלים המזוהים ביותר בהיסטוריה.'},
+{q:'מוזיקה במפעלים מפחיתה תאונות עבודה.',t:true,e:'מוזיקה מרגיעה מפחיתה לחץ ומגבירה ריכוז — פחות טעויות.'},
+{q:'השיר "Happy" של Pharrell הוגש כתביעת זכויות יוצרים 14 פעם.',t:false,e:'מספר בדיוני — אבל השיר כן היה מעורב במספר מחלוקות זכויות.'},
+{q:'מוזיקה בסולם מינורי גורמת לאנשים לאכול פחות.',t:false,e:'אין ראיות מדעיות לקשר בין סולם מינורי לכמות אכילה.'},
+{q:'ספריית המוזיקה של YouTube היא הגדולה בעולם.',t:false,e:'Spotify מחזיקה בספרייה גדולה יותר עם מעל 100 מיליון שירים.'},
+{q:'מוזיקה לבנה (White Noise) מגבירה ריכוז ב-47%.',t:false,e:'רעש לבן עוזר לישון, אבל ההשפעה על ריכוז קטנה בהרבה.'},
+{q:'חברת Muzak נוסדה ב-1934 והפכה את "מוזיקת מעלית" לענף.',t:true,e:'Muzak הייתה חלוצת מוזיקת הרקע לעסקים — פעילה עד 2013.'},
+{q:'מוזיקה בחדר ניתוח מפחיתה חרדה של המנתח ב-45%.',t:false,e:'מוזיקה בחדר ניתוח כן עוזרת, אבל המספר 45% אינו מדויק — המחקרים מדברים על 30%.'},
+{q:'האנושות יוצרת מוזיקה כבר לפחות 40,000 שנה.',t:true,e:'חלילים מעצם שנמצאו במערות גרמניה מתוארכים ל-40,000 שנה.'},
+{q:'Lush Cosmetics מנגנת מוזיקה אינדי למשיכת קהל יעד צעיר.',t:true,e:'המוזיקה האלטרנטיבית מתאימה לאתוס המותג.'},
+{q:'מוזיקה שמחה גורמת ללקוחות להעריך מוצרים כחיוביים יותר.',t:true,e:'אפילו אם המוצר לא קשור למוזיקה — המצב רוח מתגלגל.'},
+{q:'71% מהלקוחות מעדיפים חנות עם מוזיקה על חנות שקטה.',t:true,e:'שקט מוחלט מרגיש לא נעים ומגביר מודעות עצמית.'},
+{q:'רשת Abercrombie & Fitch ניגנה מוזיקה ב-90 דציבלים.',t:true,e:'האסטרטגיה של "מועדון לילה" עבדה לקהל צעיר, אבל הרחיקה קהלים אחרים.'},
+{q:'Spotify מייצרת 70% מההכנסות שלה מפרסומות.',t:false,e:'רוב ההכנסות של Spotify באות ממנויים, לא פרסומות.'},
+{q:'מוזיקה בעוצמה נמוכה מעודדת שיחה בין לקוחות.',t:true,e:'מצוין למסעדות ובתי קפה שרוצים אווירה חברתית.'},
+{q:'כל 10 דציבלים של עלייה בעוצמת מוזיקה מגבירים שתיית אלכוהול ב-22%.',t:true,e:'מוזיקה חזקה יותר = שתייה מהירה יותר = הזמנות נוספות.'},
+{q:'תדר 528Hz מכונה "תדר אהבה" ומשמש ספאים.',t:true,e:'אין הוכחה מדעית חזקה, אבל תעשיית הספא אימצה את זה.'},
+{q:'78% מבעלי עסקים מאמינים שמוזיקה משפיעה על הלקוח.',t:true,e:'אבל רק 36% בוחרים את המוזיקה שלהם בקפידה.'},
+{q:'מוזיקת ג\'אז בלאונג\' מלון מעלה הוצאות אורחים ב-12%.',t:true,e:'ג\'אז יוצר תחושת יוקרה שמתרגמת להוצאה גדולה יותר.'},
+{q:'גוגל משתמשת בצלילים ייחודיים שפותחו על ידי מלחינים יפניים בלבד.',t:false,e:'גוגל עובדת עם מעצבי סאונד מכל העולם, לא רק יפנים.'},
+{q:'מחקר של University of Leicester מצא שמוזיקה איטית מעלה חשבון במסעדה ב-10%.',t:true,e:'טמפו איטי = ישיבה ארוכה יותר = הזמנות נוספות.'},
+{q:'כשהמוזיקה מתאימה למותג, לקוחות נשארים 20% יותר זמן.',t:true,e:'התאמה בין מוזיקה למותג יוצרת חוויה קוהרנטית.'},
+{q:'מוזיקה ברקע משפיעה על תפיסת טעם של אוכל.',t:true,e:'צלילים גבוהים מגבירים תפיסת מתיקות, באס מגביר מרירות.'},
+{q:'Harrods העלו זמן שהייה ב-25% כששינו למוזיקה מותאמת.',t:true,e:'הוכחה שקוריישן מקצועי עדיף על בחירה אקראית.'},
+{q:'בתקופת הרנסנס, מוזיקה שימשה ככלי שיווקי בשווקים.',t:true,e:'נגנים שיחקו ליד דוכנים כדי למשוך קונים — שיווק מוזיקלי מקורי.'},
+{q:'1 מכל 2 לקוחות ישאר זמן רב יותר עם מוזיקה מתאימה.',t:true,e:'מחקר של Mood Media — מוזיקה נכונה = שהייה ארוכה יותר.'},
+{q:'Netflix משקיעה יותר מ-$200M בשנה על מוזיקה לפרויקטים.',t:true,e:'מוזיקה היא חלק קריטי מחוויית הצפייה.'},
+{q:'מוזיקה בטמפו גבוה גורמת לנהגים לנהוג מהר יותר.',t:true,e:'מחקרים הראו שנהגים מסנכרנים מהירות נסיעה עם BPM.'},
+{q:'אמזון משתמשת בסאונד ברנדינג ייחודי לכל קטגוריית מוצר.',t:false,e:'אמזון לא משתמשת בסאונד ברנדינג מבוסס קטגוריות.'},
+{q:'הצליל של Intel Inside מורכב מ-5 תווים בלבד.',t:true,e:'Da-da-da-da-da — אחד הלוגואים הסוניים המפורסמים בעולם.'},
+{q:'מוזיקה פסיכדלית שימשה בחנויות קנאביס להגדלת מכירות.',t:false,e:'אין ראיות מדעיות שמוזיקה פסיכדלית מגדילה מכירות קנאביס.'},
+{q:'מוזיקה מוכרת גורמת לתחושת ביטחון, וחדשה יוצרת סקרנות.',t:true,e:'פלייליסט טוב צריך גם מוכר וגם חדש.'},
+{q:'בעולם יש מעל 1,000 חברות שעוסקות במוזיקה לעסקים.',t:true,e:'הענף גדל משמעותית עם Soundtrack Your Brand, Mood Media, Cloud Cover ועוד.'},
+{q:'ביטלס הקליטו את כל האלבומים שלהם בסטודיו אחד בלבד.',t:false,e:'למרות שAbbey Road מזוהה איתם, הם הקליטו גם בסטודיואים אחרים.'},
+{q:'קונצרט חי מעלה רמות אוקסיטוצין בקהל.',t:true,e:'אוקסיטוצין — "הורמון החיבור" — עולה בחוויות מוזיקליות משותפות.'},
+{q:'מוזיקה מפחיתה תחושת כאב ב-21% על פי מחקרים רפואיים.',t:true,e:'מוזיקה מפעילה מנגנוני שיכוך כאב טבעיים במוח.'},
+{q:'Adidas פיתחה אלגוריתם AI שמלחין מוזיקה לחנויות בזמן אמת.',t:false,e:'בדיוני — Adidas עובדת עם קוריטורים אנושיים.'},
+{q:'מלחינים קלאסיים כמו מוצרט סבלו מעוני חרף תהילתם.',t:true,e:'מוצרט מת בגיל 35 כמעט ללא כסף למרות מאות יצירות.'},
+{q:'מוזיקה יכולה לשנות את תפיסת הצבע של חדר.',t:true,e:'מחקרים הראו שמוזיקה שמחה גורמת לחדר להרגיש בהיר יותר.'},
+{q:'Burger King שילם $50M לריהאנה כדי שתזכיר את המותג בשיר.',t:false,e:'סיפור בדיוני — Burger King לא שילם לריהאנה.'},
+{q:'מוזיקה מסייעת לחולי אלצהיימר לזכור זיכרונות ישנים.',t:true,e:'מוזיקה מפעילה אזורים במוח שנשמרים גם בדמנציה.'},
+{q:'רעש רקע ברמה בינונית (70dB) מגביר יצירתיות.',t:true,e:'מחקר של Journal of Consumer Research — קפה עם רעש רקע מעודד חשיבה יצירתית.'},
+{q:'Sony המציאה את פורמט ה-MP3.',t:false,e:'MP3 פותח על ידי Fraunhofer Society בגרמניה.'},
+{q:'מוזיקה עצובה גורמת לאנשים לתת יותר טיפים במסעדות.',t:false,e:'דווקא מוזיקה שמחה מעלה טיפים — מצב רוח טוב = נדיבות.'},
+{q:'נאפולי, איטליה, הייתה מרכז תעשיית מוזיקה עולמית במאה ה-18.',t:true,e:'Conservatories של נאפולי הכשירו את המוזיקאים הגדולים של אירופה.'},
+{q:'פייסבוק רכשה חברת סאונד ברנדינג ב-2020.',t:false,e:'בדיוני — Meta לא רכשה חברת סאונד ברנדינג.'},
+{q:'מוזיקת לו-פיי הפכה לז\'אנר הפופולרי ביותר לעבודה מרחוק.',t:true,e:'ערוצי "lo-fi beats to study to" צברו מיליארדי צפיות.'},
+{q:'מנויי Spotify Premium מאזינים בממוצע 148 דקות ביום.',t:true,e:'כמעט שעתיים וחצי של האזנה — מוזיקה כחלק מהשגרה.'},
+{q:'מוזיקה בחנויות פרחים מגדילה נכונות לשלם יותר.',t:true,e:'אווירה רומנטית + מוזיקה = תפיסת ערך גבוהה יותר.'},
+{q:'מייקל ג\'קסון המציא את הקונספט של מוזיקה בחנויות.',t:false,e:'מוזיקה בחנויות קיימת מאז שנות ה-30 עם חברת Muzak.'},
+{q:'כ-400,000 שירים חדשים מועלים ל-Spotify כל שבוע.',t:false,e:'המספר האמיתי הוא כ-100,000 שירים ביום — הרבה יותר.'},
+{q:'מוזיקה מפחיתה רמות קורטיזול (הורמון סטרס) בגוף.',t:true,e:'לכן מוזיקה רגועה בספא עוזרת להרגיע — זה פיזיולוגי.'},
+{q:'מוזיקה בסגנון בוסה נובה הומצאה בברזיל בשנות ה-50.',t:true,e:'ג\'ואאו ג\'ילברטו וטום ג\'ובים יצרו את הסגנון בריו דה ז\'ניירו.'},
+{q:'Tesla מנגנת מוזיקה מותאמת אישית בתצוגות שלה על סמך מזג האוויר.',t:false,e:'בדיוני — Tesla לא מתאימה מוזיקה למזג אוויר בתצוגות.'},
+{q:'בארות הברית, תעשיית מוזיקת הרקע לעסקים שווה מעל $1B.',t:true,e:'שוק עצום שכולל Mood Media, Soundtrack Your Brand, Rockbot ועוד.'},
+{q:'מוזיקה עם מילים מפריעה למשימות שדורשות קריאה.',t:true,e:'המוח מנסה לעבד גם את המילים בשיר וגם את הטקסט — קונפליקט.'},
+{q:'ביטהובן המציא את הפסנתר.',t:false,e:'הפסנתר הומצא על ידי ברתולומאו כריסטופורי בסביבות 1700.'},
+{q:'מוזיקה בחדרי המתנה של רופאים מפחיתה חרדה ב-65%.',t:false,e:'מוזיקה כן מפחיתה חרדה, אבל 65% זה מוגזם — המספר קרוב ל-30%.'},
+{q:'הלוגו הסוני של Netflix נוצר מצליל "Ta-Dum" בלבד.',t:true,e:'הצליל המפורסם הפך לזהות של המותג ברחבי העולם.'},
+{q:'מוזיקה בטמפו 120 BPM נחשבת ל"טמפו הטבעי" של הליכה אנושית.',t:true,e:'לכן שירים ב-120 BPM מרגישים טבעיים ונוחים.'},
+{q:'תעשיית הפודקאסטים עקפה את תעשיית המוזיקה בהכנסות ב-2024.',t:false,e:'תעשיית המוזיקה עדיין גדולה בהרבה מתעשיית הפודקאסטים.'},
+{q:'מוזיקה יכולה לגרום לצמרמורת פיזית (Frisson).',t:true,e:'כ-50% מהאנשים חווים צמרמורת ממוזיקה — תגובה נוירולוגית.'},
+{q:'שירים בסולם מז\'ור נתפסים כשמחים ובמינור כעצובים.',t:true,e:'זה עיקרון בסיסי בתורת המוזיקה המערבית.'},
+{q:'אמזון פיתחה שירות סטרימינג מוזיקה לפני Spotify.',t:false,e:'Spotify הושקה ב-2008, Amazon Music רק ב-2014.'},
+{q:'מוזיקה משפיעה על מהירות ההליכה של אנשים ברחוב.',t:true,e:'מוזיקה מהירה מרמקולים ברחוב מאיצה את קצב ההליכה.'}
 ];
-var _funFactOrder=[];
-var _funFactIdx=0;
 function shuffleArray(arr){var a=arr.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var tmp=a[i];a[i]=a[j];a[j]=tmp}return a}
-function initFunFacts(){_funFactOrder=shuffleArray(_funFacts.map(function(_,i){return i}));_funFactIdx=0;showFunFact()}
-function showFunFact(){var el=document.getElementById('funFactText');if(!el)return;el.style.opacity='0';setTimeout(function(){el.textContent=_funFacts[_funFactOrder[_funFactIdx%_funFacts.length]];el.style.opacity='1'},300)}
-function nextFunFact(){_funFactIdx++;showFunFact()}
-/* ====== END FUN FACTS ====== */
+var _tfOrder=[];var _tfIdx=0;var _tfCorrect=0;var _tfTotal=0;var _tfLocked=false;
+function initTFGame(){_tfOrder=shuffleArray(_tfFacts.map(function(_,i){return i}));_tfIdx=0;_tfCorrect=0;_tfTotal=0;_tfLocked=false;showTFFact()}
+function showTFFact(){var el=document.getElementById('tfFactText');var res=document.getElementById('tfResult');var btns=document.getElementById('tfButtons');if(!el)return;_tfLocked=false;btns.style.opacity='1';btns.style.pointerEvents='auto';res.style.opacity='0';el.style.opacity='0';setTimeout(function(){el.textContent=_tfFacts[_tfOrder[_tfIdx%_tfFacts.length]].q;el.style.opacity='1'},250)}
+function tfAnswer(userSaidTrue){if(_tfLocked)return;_tfLocked=true;var fact=_tfFacts[_tfOrder[_tfIdx%_tfFacts.length]];var correct=userSaidTrue===fact.t;_tfTotal++;if(correct)_tfCorrect++;document.getElementById('tfScore').textContent=_tfCorrect+'/'+_tfTotal;var res=document.getElementById('tfResult');var btns=document.getElementById('tfButtons');btns.style.opacity='0.4';btns.style.pointerEvents='none';res.innerHTML=(correct?'<span style="color:var(--accent);font-weight:700">נכון!</span>':'<span style="color:var(--accent-3);font-weight:700">'+(fact.t?'לא נכון — זה דווקא נכון!':'לא נכון — זה בדיוני!')+'</span>')+'<div style="margin-top:6px;font-size:13px;color:var(--muted)">'+fact.e+'</div>';res.style.opacity='1';setTimeout(function(){_tfIdx++;showTFFact()},3500)}
+/* ====== END TRUE/FALSE GAME ====== */
 var vizMap={0:0,1:1,4:2,7:3,5:4};
 function wizGo(step){_wizBusy=false;document.querySelectorAll('.wiz-panel').forEach(p=>p.classList.remove('active'));document.getElementById('wizStep'+step).classList.add('active');const viz=(step in vizMap?vizMap[step]:-1);document.querySelectorAll('.wstep').forEach(s=>{const n=+s.dataset.step;s.classList.toggle('active',n===viz);s.classList.toggle('done',n<viz)});document.querySelectorAll('.wline').forEach((l,i)=>l.classList.toggle('done',i<viz));document.getElementById('wizProgress').style.display=(step===2||step===3||step===6)?'none':'flex';if(step===7){document.getElementById('bizHoursSection').style.display='block';document.getElementById('hoursQuestion').style.display='none'}window.scrollTo({top:0,behavior:'smooth'})}
 function wizNext(cur){if(_wizBusy)return;if(cur===0){if(!selectedUser){const c=document.getElementById('customUserInput').value.trim();if(!c){alert('נא לבחור משתמש');return}selectedUser=c}wiz.user=selectedUser;brainLog('👤','משתמש',selectedUser);wizGo(1)}else if(cur===2){wiz.genres=Array.from(selectedGenres);brainLog('🎶','ז׳אנרים',wiz.genres.join(', ')||'ללא');wizGo(3)}else if(cur===4){wiz.faders={familiarity:+document.getElementById('fFamiliarity').value,hebrew:100-(+document.getElementById('fHebrew').value),vocal:100-(+document.getElementById('fVocal').value),energy:100-(+document.getElementById('fEnergy').value)};brainLog('🎚️','סליידרים','מסחרי:'+wiz.faders.familiarity+' עברית:'+wiz.faders.hebrew+'%');wizGo(7)}}

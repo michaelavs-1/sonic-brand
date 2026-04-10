@@ -542,7 +542,7 @@ function updateBrainV5Live(){const el=document.getElementById('brainV5LiveData')
 function toggleBrain(){document.getElementById('brainPanel').classList.toggle('open')}
 function nav(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById(id).classList.add('active');document.querySelectorAll('.screen-nav button').forEach(b=>b.classList.remove('active'));event?.target?.classList.add('active');window.scrollTo({top:0,behavior:'smooth'});const k=localStorage.getItem('openai_key')||HARDCODED_API_KEY;if(id==='onboarding'&&!k)document.getElementById('apiWarning').style.display='block';else if(id==='onboarding')document.getElementById('apiWarning').style.display='none'}
 function safeJSON(str){try{return JSON.parse(str)}catch(e){let s=str.replace(/,\s*$/,'');let ob=0,cb=0,os=0,cs=0;for(let i=0;i<s.length;i++){if(s[i]==='{')ob++;if(s[i]==='}')cb++;if(s[i]==='[')os++;if(s[i]===']')cs++}while(cb<ob){s+='}';cb++}while(cs<os){s+=']';cs++}try{return JSON.parse(s)}catch(e2){throw new Error('JSON Parse error')}}}
-async function callOpenAI(messages,opts={}){const k=localStorage.getItem('openai_key')||HARDCODED_API_KEY;if(!k)throw new Error('אין מפתח API');const model=opts.model||localStorage.getItem('openai_model')||'gpt-4o';brainLog('🤖','OpenAI','מודל: '+model,true);try{const sys=messages.find(m=>m.role==='system');const usr=messages.find(m=>m.role==='user');brainPrompt(opts.stage||model,sys?.content||'',usr?.content||'')}catch(e){}var hasJ=messages.some(function(m){return(m.content||'').toLowerCase().includes('json')});if(!hasJ){messages=messages.map(function(m){return{...m}});var sm=messages.find(function(m){return m.role==='system'});if(sm)sm.content+=' JSON only.';else messages.unshift({role:'system',content:'Return JSON only.'})}for(let a=0;a<3;a++){const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+k,'Content-Type':'application/json'},body:JSON.stringify({model,temperature:0.7,messages,max_tokens:opts.max_tokens||3000,...(opts.noJson?{}:{response_format:{type:'json_object'}})})});if(r.status===429){const w=Math.max(parseFloat(r.headers.get('retry-after')||'20'),10)*1000+a*5000;updateWizStatus('⏳ ממתין '+Math.ceil(w/1000)+'שניות...');await new Promise(r=>setTimeout(r,w));continue}const j=await r.json();if(j.error?.message?.includes('Rate limit')){await new Promise(r=>setTimeout(r,(a+1)*20000));continue}if(j.error)throw new Error(j.error.message);const c=j.choices[0].message.content;brainLog('✅','תשובה','אורך: '+c.length,true);return c}throw new Error('מגבלת API')}
+async function callOpenAI(messages,opts={}){const k=localStorage.getItem('openai_key')||HARDCODED_API_KEY;if(!k)throw new Error('אין מפתח API');const model=opts.model||localStorage.getItem('openai_model')||'gpt-4o';brainLog('🤖','OpenAI','מודל: '+model,true);try{const sys=messages.find(m=>m.role==='system');const usr=messages.find(m=>m.role==='user');brainPrompt(opts.stage||model,sys?.content||'',usr?.content||'')}catch(e){}var hasJ=messages.some(function(m){return(m.content||'').toLowerCase().includes('json')});if(!hasJ){messages=messages.map(function(m){return{...m}});var sm=messages.find(function(m){return m.role==='system'});if(sm)sm.content+=' JSON only.';else messages.unshift({role:'system',content:'Return JSON only.'})}for(let a=0;a<3;a++){const _ac=new AbortController();const _to=setTimeout(function(){_ac.abort()},90000);const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+k,'Content-Type':'application/json'},body:JSON.stringify({model,temperature:opts.temperature||0.7,messages,max_tokens:opts.max_tokens||3000,...(opts.noJson?{}:{response_format:{type:'json_object'}})}),signal:_ac.signal}).finally(function(){clearTimeout(_to)});if(r.status===429){const w=Math.max(parseFloat(r.headers.get('retry-after')||'20'),10)*1000+a*5000;updateWizStatus('⏳ ממתין '+Math.ceil(w/1000)+'שניות...');await new Promise(r=>setTimeout(r,w));continue}const j=await r.json();if(j.error?.message?.includes('Rate limit')){await new Promise(r=>setTimeout(r,(a+1)*20000));continue}if(j.error)throw new Error(j.error.message);const c=j.choices[0].message.content;brainLog('✅','תשובה','אורך: '+c.length,true);return c}throw new Error('שגיאת רשת — בדקו חיבור אינטרנט ונסו שוב')}
 function updateWizStatus(m){const el=document.getElementById('wizStatus');if(el)el.textContent=m}
 const SPOTIFY_SCOPES='playlist-modify-public playlist-modify-private user-read-private user-read-email',SPOTIFY_REDIRECT=location.origin+location.pathname;let spotifyToken=null,spotifyExpiry=0,spotifyUser=null;
 function genRandomString(l){const a=new Uint8Array(l);crypto.getRandomValues(a);return Array.from(a,b=>b.toString(16).padStart(2,'0')).join('').slice(0,l)}
@@ -889,6 +889,13 @@ brainLog('🎯','Audio Target','energy='+targetEnergy.toFixed(2)+' valence='+tar
 return profile}
 
 /* #7 — REFERENCE TRACK AMPLIFICATION */
+
+async function spotifyFetch(url,token,timeout){
+timeout=timeout||15000;
+try{const ac=new AbortController();const to=setTimeout(function(){ac.abort()},timeout);
+const r=await fetch(url,{headers:{'Authorization':'Bearer '+token},signal:ac.signal}).finally(function(){clearTimeout(to)});
+return await r.json()}catch(e){return null}}
+
 async function amplifyReferences(refs){
 if(!refs||!refs.length)return null;
 const t=await getSpotifyToken();
@@ -900,8 +907,7 @@ try{const sp=await searchTrack(refs[i].artist,refs[i].title);
 if(sp){verified.push({artist:sp.artists.map(function(a){return a.name}).join(', '),title:sp.name,id:sp.id,artistId:sp.artists[0].id});sp.artists.forEach(function(a){artistIds.add(a.id)})}}catch(e){}}
 if(verified.length){
 try{const ids=verified.map(function(v){return v.id}).join(',');
-const afr=await fetch('https://api.spotify.com/v1/audio-features?ids='+ids,{headers:{'Authorization':'Bearer '+t}});
-const afd=await afr.json();
+const afr_data=await spotifyFetch('https://api.spotify.com/v1/audio-features?ids='+ids,t);const afd=afr_data||{};
 if(afd.audio_features){afd.audio_features.forEach(function(af){if(af)audioFeats.push(af)})}}catch(e){}}
 const relatedArtists=[];
 const artistArr=Array.from(artistIds).slice(0,3);

@@ -2881,10 +2881,16 @@ var _genreOk=true;
 if(_ct._genres&&_ct._genres.length){_genreOk=artistMatchesFamily(_ct._genres,_family)}
 else{_genreOk=true} /* No genre data — allow but mark */
 if(!_genreOk){brainLog('⚠️','Filter',_ct.artist+' ['+(_ct._genres||[]).slice(0,2).join(', ')+'] ≠ '+_family+' — skipped',true);continue}
-/* Israeli preference — when hebrew>50, prefer Israeli tracks but don't hard-block international */
-if(_isHebrew){
+/* Language preference based on hebrew fader */
 var _isIsraeli=hasHebrewChars(_ct.artist)||hasHebrewChars(_ct.title)||isIsraeliArtist(_ct._genres||[]);
-if(!_isIsraeli){_ct._notIsraeli=true}}
+if(_isHebrew){
+/* hebrew>50: prefer Israeli, mark international for lower sort priority */
+if(!_isIsraeli){_ct._langPenalty=true}}
+else{
+/* hebrew<=50: prefer international, mark Israeli for lower sort priority */
+if(_isIsraeli){_ct._langPenalty=true}
+/* hebrew<20: hard-skip Israeli tracks to ensure international output */
+if(f.hebrew<20&&_isIsraeli){brainLog('⚠️','Filter',_ct.artist+' — Israeli track skipped (hebrew='+f.hebrew+'%)',true);continue}}
 /* Same song different version check across vibes */
 var _dupSong=wiz.samples.some(function(s){return isSameSong(s.title,_ct.title)});
 if(_dupSong){continue}
@@ -2905,8 +2911,8 @@ var vPrimary=(v.artist||'').split(',')[0].trim().toLowerCase();
 return vPrimary===_primaryArtist||(v._artistId&&_primaryArtistId&&v._artistId===_primaryArtistId)});
 if(_artistInThisVibe){brainLog('⚠️','Filter',_ct.artist+' — already in this vibe — skipped',true);continue}
 _verified.push(_ct)}
-/* Sort: Israeli tracks first (when hebrew>50), then by popularity */
-if(_isHebrew){_verified.sort(function(a,b){var aI=a._notIsraeli?1:0;var bI=b._notIsraeli?1:0;if(aI!==bI)return aI-bI;return(b._pop||0)-(a._pop||0)})}
+/* Sort: preferred language first, then by popularity */
+_verified.sort(function(a,b){var aP=a._langPenalty?1:0;var bP=b._langPenalty?1:0;if(aP!==bP)return aP-bP;return(b._pop||0)-(a._pop||0)})
 /* Take top 3 verified tracks */
 var _picked=_verified.slice(0,3);
 /* Fallback: if less than 3 tracks, try broader search with different queries */
@@ -2916,8 +2922,10 @@ var _fallbackQueries=[];
 /* Try DNA reference artists */
 if(_isHebrew&&dna.hebrewRef&&dna.hebrewRef.length){dna.hebrewRef.forEach(function(a){_fallbackQueries.push(a)})}
 if(dna.refArtists&&dna.refArtists.length){dna.refArtists.forEach(function(a){_fallbackQueries.push(a)})}
-/* Try generic family searches with different terms */
-var _altSeeds={mizrahi:['מזרחי','ים תיכוני','israeli oriental'],rock:['רוק ישראלי','israeli alternative','indie israel'],jazz:['jazz israel','ג׳אז'],electronic:['אלקטרוני','israeli electronic','minimal techno'],hiphop:['ראפ ישראלי','israeli rap','hip hop israel'],pop:['פופ ישראלי','israeli hits','להיטים ישראליים'],folk:['זמר יוצר','israeli folk','שירי ארץ ישראל'],soul:['soul funk','סול','disco'],world:['world music','מוזיקה אתנית'],rnb:['r&b','neo soul'],classical:['classical piano','קלאסי']};
+/* Try generic family searches — different seeds for Hebrew vs International */
+var _altSeedsHeb={mizrahi:['מזרחי','ים תיכוני','israeli oriental'],rock:['רוק ישראלי','israeli alternative'],jazz:['ג׳אז ישראלי','jazz israel'],electronic:['אלקטרוני ישראלי','israeli electronic'],hiphop:['ראפ ישראלי','israeli rap'],pop:['פופ ישראלי','להיטים ישראליים'],folk:['זמר יוצר','שירי ארץ ישראל'],soul:['סול ישראלי','soul israel'],world:['מוזיקה ישראלית'],rnb:['r&b ישראלי'],classical:['קלאסי ישראלי']};
+var _altSeedsInt={mizrahi:['turkish pop','greek music','arabic pop','mediterranean'],rock:['indie rock','alternative rock','classic rock'],jazz:['jazz vocal','smooth jazz','bossa nova'],electronic:['deep house','minimal techno','ambient electronic','chillwave'],hiphop:['hip hop','rap','trap beats'],pop:['indie pop','dream pop','synth pop','dance pop'],folk:['folk acoustic','singer songwriter','americana'],soul:['neo soul','funk','motown','disco'],world:['world music','latin','afrobeat','reggae'],rnb:['r&b','neo soul','contemporary rnb'],classical:['classical piano','orchestral','chamber music']};
+var _altSeeds=_isHebrew?_altSeedsHeb:_altSeedsInt;
 if(_altSeeds[_family])_fallbackQueries=_fallbackQueries.concat(_altSeeds[_family]);
 var _usedPrimaryArtists={};_picked.forEach(function(p){_usedPrimaryArtists[(p.artist||'').split(',')[0].trim().toLowerCase()]=true;if(p._artistId)_usedPrimaryArtists[p._artistId]=true});
 wiz.samples.forEach(function(s){_usedPrimaryArtists[(s.artist||'').split(',')[0].trim().toLowerCase()]=true;if(s._artistId)_usedPrimaryArtists[s._artistId]=true});
@@ -2939,7 +2947,10 @@ var _fbArtData=await getArtistsAnyway([_fbArtId]);
 if(_fbArtData&&_fbArtData.artists&&_fbArtData.artists[0]){
 var _fbGenres=_fbArtData.artists[0].genres||[];
 if(!artistMatchesFamily(_fbGenres,_family))continue;
-if(_isHebrew&&!hasHebrewChars(_fbArtist)&&!hasHebrewChars(_fbTrack.name)&&!isIsraeliArtist(_fbGenres))continue;
+/* Language filter in fallback — respect hebrew fader */
+var _fbIsIsraeli=hasHebrewChars(_fbArtist)||hasHebrewChars(_fbTrack.name)||isIsraeliArtist(_fbGenres);
+if(_isHebrew&&!_fbIsIsraeli)continue;
+if(!_isHebrew&&f.hebrew<20&&_fbIsIsraeli)continue;
 _picked.push({artist:_fbArtist,title:_fbTrack.name,spotifyId:_fbTrack.id,_artistId:_fbArtId,_genres:_fbGenres,_pop:_fbTrack.popularity,vibeIdx:_di});
 _usedPrimaryArtists[_fbPrimaryArtist]=true;if(_fbArtId)_usedPrimaryArtists[_fbArtId]=true;
 brainLog('✅','Fallback','Added: '+_fbArtist+' — '+_fbTrack.name,true)}}}}}catch(e){}}

@@ -2171,12 +2171,9 @@ general:{label:'עסק כללי',baseGenres:['Pop','Indie','R&B','Acoustic','Ele
    business type + location, even with minimal user input
    ═══════════════════════════════════════════════════════ */
 
-const LOCATION_INTEL={
-/* Israeli cities/areas → demographic music profile */
-/* mizrahiAffinity: 0-100 how strong Mizrahi music preference is */
-/* russianAffinity: 0-100 Russian-speaking population influence */
-/* cosmopolitan: 0-100 how international/diverse the music taste */
-/* hebrewDefault: 40-90 default hebrew % if user doesn't specify */
+/* LOCATION_INTEL removed — replaced by dynamic GPT analysis in analyzeDescription */
+/* GPT analyzes ANY location worldwide and returns demographic/music context */
+const _LOCATION_INTEL_DEPRECATED={
 /* arabAffinity: 0-100 Arab population / Arabic music influence */
 /* religiousAffinity: 0-100 religious population influence */
 /* hipster: 0-100 indie/alternative scene strength */
@@ -2246,7 +2243,29 @@ const LOCATION_INTEL={
 'לוד':{mizrahiAffinity:70,russianAffinity:20,cosmopolitan:20,hebrewDefault:70,arabAffinity:30,religiousAffinity:25,hipster:5,profile:'קהל מעורב יהודי-ערבי, מזרחי, מעמד עובד'},
 'lod':{mizrahiAffinity:70,russianAffinity:20,cosmopolitan:20,hebrewDefault:70,arabAffinity:30,religiousAffinity:25,hipster:5,profile:'קהל מעורב יהודי-ערבי, מזרחי, מעמד עובד'},
 'רמלה':{mizrahiAffinity:70,russianAffinity:15,cosmopolitan:20,hebrewDefault:65,arabAffinity:35,religiousAffinity:25,hipster:5,profile:'קהל מעורב, מזרחי-ערבי, שוק, מסורתי'},
-'ramle':{mizrahiAffinity:70,russianAffinity:15,cosmopolitan:20,hebrewDefault:65,arabAffinity:35,religiousAffinity:25,hipster:5,profile:'קהל מעורב, מזרחי-ערבי, שוק, מסורתי'}
+'ramle':{mizrahiAffinity:70,russianAffinity:15,cosmopolitan:20,hebrewDefault:65,arabAffinity:35,religiousAffinity:25,hipster:5,profile:'קהל מעורב, מזרחי-ערבי, שוק, מסורתי'},
+'שכונת התקווה':{mizrahiAffinity:85,russianAffinity:10,cosmopolitan:20,hebrewDefault:85,arabAffinity:10,religiousAffinity:20,hipster:10,profile:'קהל מזרחי מובהק, מעמד עובד, שוק, אותנטי, שורשי'},
+'התקווה':{mizrahiAffinity:85,russianAffinity:10,cosmopolitan:20,hebrewDefault:85,arabAffinity:10,religiousAffinity:20,hipster:10,profile:'קהל מזרחי מובהק, מעמד עובד, שוק, אותנטי, שורשי'},
+'hatikva':{mizrahiAffinity:85,russianAffinity:10,cosmopolitan:20,hebrewDefault:85,arabAffinity:10,religiousAffinity:20,hipster:10,profile:'קהל מזרחי מובהק, מעמד עובד, שוק, אותנטי, שורשי'},
+'דרום תל אביב':{mizrahiAffinity:65,russianAffinity:15,cosmopolitan:40,hebrewDefault:70,arabAffinity:15,religiousAffinity:10,hipster:35,profile:'קהל מעורב — מזרחי, עובדים זרים, צעירים, גנטריפיקציה'},
+'south tel aviv':{mizrahiAffinity:65,russianAffinity:15,cosmopolitan:40,hebrewDefault:70,arabAffinity:15,religiousAffinity:10,hipster:35,profile:'קהל מעורב — מזרחי, עובדים זרים, צעירים, גנטריפיקציה'},
+'שוק הכרמל':{mizrahiAffinity:55,russianAffinity:10,cosmopolitan:55,hebrewDefault:65,arabAffinity:15,religiousAffinity:10,hipster:50,profile:'שוק — מעורב, תיירים, צעירים, מזרחי, בארים'},
+'הכרמל':{mizrahiAffinity:55,russianAffinity:10,cosmopolitan:55,hebrewDefault:65,arabAffinity:15,religiousAffinity:10,hipster:50,profile:'שוק — מעורב, תיירים, צעירים, מזרחי, בארים'},
+'שפירא':{mizrahiAffinity:60,russianAffinity:10,cosmopolitan:45,hebrewDefault:70,arabAffinity:15,religiousAffinity:10,hipster:40,profile:'שכונה מתחדשת, מזרחי-היפסטרי, בארים, צעירים'},
+'כפר שלם':{mizrahiAffinity:75,russianAffinity:10,cosmopolitan:25,hebrewDefault:80,arabAffinity:10,religiousAffinity:15,hipster:10,profile:'קהל מזרחי, משפחות, מעמד עובד'},
+'יד אליהו':{mizrahiAffinity:55,russianAffinity:15,cosmopolitan:45,hebrewDefault:70,arabAffinity:5,religiousAffinity:10,hipster:25,profile:'קהל מעורב, מעמד ביניים, מכבי ת״א, ספורט'},
+'עפולה':{mizrahiAffinity:75,russianAffinity:20,cosmopolitan:20,hebrewDefault:80,arabAffinity:20,religiousAffinity:20,hipster:8,profile:'קהל צפוני-מזרחי, מעמד ביניים, משפחות'},
+'afula':{mizrahiAffinity:75,russianAffinity:20,cosmopolitan:20,hebrewDefault:80,arabAffinity:20,religiousAffinity:20,hipster:8,profile:'קהל צפוני-מזרחי, מעמד ביניים, משפחות'},
+'נהריה':{mizrahiAffinity:40,russianAffinity:30,cosmopolitan:35,hebrewDefault:72,arabAffinity:10,religiousAffinity:15,hipster:12,profile:'קהל צפוני, מעורב, חוף ים, מעמד ביניים'},
+'nahariya':{mizrahiAffinity:40,russianAffinity:30,cosmopolitan:35,hebrewDefault:72,arabAffinity:10,religiousAffinity:15,hipster:12,profile:'קהל צפוני, מעורב, חוף ים, מעמד ביניים'},
+'כרמיאל':{mizrahiAffinity:50,russianAffinity:25,cosmopolitan:25,hebrewDefault:75,arabAffinity:15,religiousAffinity:20,hipster:10,profile:'קהל צפוני, מעורב, משפחות מעמד ביניים'},
+'karmiel':{mizrahiAffinity:50,russianAffinity:25,cosmopolitan:25,hebrewDefault:75,arabAffinity:15,religiousAffinity:20,hipster:10,profile:'קהל צפוני, מעורב, משפחות מעמד ביניים'},
+'בני ברק':{mizrahiAffinity:35,russianAffinity:10,cosmopolitan:10,hebrewDefault:85,arabAffinity:3,religiousAffinity:85,hipster:3,profile:'קהל חרדי בעיקר, מסורתי, משפחות גדולות'},
+'bnei brak':{mizrahiAffinity:35,russianAffinity:10,cosmopolitan:10,hebrewDefault:85,arabAffinity:3,religiousAffinity:85,hipster:3,profile:'קהל חרדי בעיקר, מסורתי, משפחות גדולות'},
+'רחובות':{mizrahiAffinity:45,russianAffinity:20,cosmopolitan:45,hebrewDefault:68,arabAffinity:5,religiousAffinity:15,hipster:20,profile:'קהל מעורב, סטודנטים (ויצמן), מעמד ביניים'},
+'rehovot':{mizrahiAffinity:45,russianAffinity:20,cosmopolitan:45,hebrewDefault:68,arabAffinity:5,religiousAffinity:15,hipster:20,profile:'קהל מעורב, סטודנטים (ויצמן), מעמד ביניים'},
+'נס ציונה':{mizrahiAffinity:40,russianAffinity:15,cosmopolitan:45,hebrewDefault:68,arabAffinity:5,religiousAffinity:12,hipster:18,profile:'קהל משפחתי, מעמד ביניים-גבוה, פרברי'},
+'ness ziona':{mizrahiAffinity:40,russianAffinity:15,cosmopolitan:45,hebrewDefault:68,arabAffinity:5,religiousAffinity:12,hipster:18,profile:'קהל משפחתי, מעמד ביניים-גבוה, פרברי'}
 };
 
 const SUBTYPE_INTEL={
@@ -2258,7 +2277,7 @@ const SUBTYPE_INTEL={
 'sushi':{keywords:['סושי','sushi','יפני','japanese'],shift:{mizrahiBoost:-15,hebrewBoost:-10,cosmopolitanDrop:-25,genreInject:['Lo-Fi','Chill','Electronic','Indie','R&B'],avoidInject:[],artistInject:['Nujabes','Tycho','Bonobo','Khruangbin'],vibe:'מינימליסטי, אסייתי, מודרני, מגניב'}},
 'burger':{keywords:['בורגר','המבורגר','burger'],shift:{mizrahiBoost:-5,hebrewBoost:0,cosmopolitanDrop:-10,genreInject:['Rock','Indie','Funk','Alternative'],avoidInject:['Classical','Ambient'],artistInject:['Arctic Monkeys','The Black Keys','Queens of the Stone Age'],vibe:'אמריקאי, רוקי, אנרגטי, גברי'}},
 'pizza':{keywords:['פיצה','פיצריה','pizza'],shift:{mizrahiBoost:5,hebrewBoost:5,cosmopolitanDrop:-5,genreInject:['Pop','Rock','Funk','Israeli Pop'],avoidInject:['Ambient','Classical'],artistInject:['Bruno Mars','Dua Lipa','The Weeknd'],vibe:'משפחתי, עליז, נגיש'}},
-'steak':{keywords:['סטייק','steak','בשרים','בשרית','steakhouse'],shift:{mizrahiBoost:5,hebrewBoost:0,cosmopolitanDrop:-10,genreInject:['Jazz','Blues','Soul','Rock','R&B'],avoidInject:['Pop','EDM'],artistInject:['Ray Charles','B.B. King','Gregory Porter','Sade'],vibe:'גברי, פרימיום, חשוך, אלגנטי'}},
+'steak':{keywords:['סטייק','steak','בשרים','בשרית','steakhouse','מעשנה','על האש','גריל'],shift:{mizrahiBoost:15,hebrewBoost:10,cosmopolitanDrop:5,genreInject:['Israeli Pop','Mizrahi','Rock','Hip Hop'],avoidInject:['Classical','Ambient','Bossa Nova'],artistInject:['עומר אדם','סטטיק ובן אל','שטויות במיץ','אתניקס','AC/DC','Queen'],vibe:'גברי, בשרי, אנרגטי, ישראלי. סטקייה ישראלית = לא אמריקאית — מזרחי רוק עם אנרגיה'}},
 'wine_bar':{keywords:['יין','בר יין','wine','wine bar','יקב'],shift:{mizrahiBoost:-15,hebrewBoost:-5,cosmopolitanDrop:-20,genreInject:['Jazz','Bossa Nova','Chanson','Classical','Indie'],avoidInject:['Trap','EDM','Hip Hop'],artistInject:['Chet Baker','Bill Evans','Stan Getz','Melody Gardot'],vibe:'אלגנטי, מתוחכם, אירופאי, אינטימי'}},
 'bakery':{keywords:['מאפייה','בייקרי','bakery','לחם','קרואסון'],shift:{mizrahiBoost:5,hebrewBoost:5,cosmopolitanDrop:-5,genreInject:['Chanson','Acoustic','Indie','Folk','Bossa Nova'],avoidInject:['Metal','Trap'],artistInject:['Édith Piaf','Carla Bruni','Norah Jones'],vibe:'צרפתי, חם, בוקרי, נעים'}},
 'shuk':{keywords:['שוק','market','מרקט'],shift:{mizrahiBoost:25,hebrewBoost:15,cosmopolitanDrop:10,genreInject:['Mizrahi','World','Ethnic','Israeli Pop'],avoidInject:['Ambient','Classical'],artistInject:['אתניקס','עומר אדם','A-WA','שרית חדד'],vibe:'שוק, המוני, אנרגטי, ישראלי'}},
@@ -2271,20 +2290,7 @@ const SUBTYPE_INTEL={
 'sport_pub':{keywords:['ספורט','sport','כדורגל','football','ביליארד','billiard'],shift:{mizrahiBoost:15,hebrewBoost:10,cosmopolitanDrop:10,genreInject:['Rock','Pop','Israeli Pop','Mizrahi'],avoidInject:['Ambient','Classical','Experimental'],artistInject:['Queen','AC/DC','Guns N\' Roses','פורטנוי'],vibe:'ספורט, גברי, המוני, אנרגטי'}}
 };
 
-/* Extract location from business description */
-function extractLocationIntel(desc){
-if(!desc)return null;
-var d=desc.toLowerCase().replace(/[״"]/g,'"');
-var bestMatch=null;var bestLen=0;
-var locKeys=Object.keys(LOCATION_INTEL);
-for(var li=0;li<locKeys.length;li++){
-var loc=locKeys[li];
-if(d.indexOf(loc)!==-1||d.indexOf(loc.replace(/ /g,''))!==-1){
-if(loc.length>bestLen){bestLen=loc.length;bestMatch=loc}}}
-if(bestMatch)return{location:bestMatch,data:LOCATION_INTEL[bestMatch]};
-return null}
-
-/* Extract business subtype from description */
+/* Extract business subtype from description — local keyword matching for genre rules */
 function extractSubtypeIntel(desc){
 if(!desc)return null;
 var d=desc.toLowerCase();
@@ -2297,42 +2303,46 @@ if(d.indexOf(st.keywords[ki])!==-1||d.indexOf(st.keywords[ki].toLowerCase())!==-
 matches.push({type:stKeys[si],data:st});break}}}
 return matches.length?matches:null}
 
-/* Build demographic context string for AI prompts */
-function buildDemographicContext(desc){
-var locIntel=extractLocationIntel(desc);
-var subIntel=extractSubtypeIntel(desc);
-if(!locIntel&&!subIntel)return'';
-var ctx='\n\n🧠 BUSINESS INTELLIGENCE — DEMOGRAPHIC CONTEXT:\n';
-if(locIntel){
-ctx+='📍 Location detected: '+locIntel.location+'\n';
-ctx+='👥 Audience profile: '+locIntel.data.profile+'\n';
-ctx+='🎵 Music demographics: ';
-if(locIntel.data.mizrahiAffinity>55)ctx+='Strong Mizrahi music affinity ('+locIntel.data.mizrahiAffinity+'/100). ';
-if(locIntel.data.russianAffinity>30)ctx+='Notable Russian-speaking population ('+locIntel.data.russianAffinity+'/100). ';
-if(locIntel.data.cosmopolitan>60)ctx+='Cosmopolitan/international taste ('+locIntel.data.cosmopolitan+'/100). ';
-if(locIntel.data.arabAffinity>25)ctx+='Significant Arabic music audience ('+locIntel.data.arabAffinity+'/100). ';
-if(locIntel.data.hipster>50)ctx+='Strong indie/alternative scene ('+locIntel.data.hipster+'/100). ';
-if(locIntel.data.religiousAffinity>40)ctx+='Religious population influence ('+locIntel.data.religiousAffinity+'/100). ';
-ctx+='\n';}
-if(subIntel&&subIntel.length){
-subIntel.forEach(function(s){
-ctx+='🍽️ Business subtype: '+s.type+'\n';
-ctx+='🎯 Vibe: '+s.data.shift.vibe+'\n';
-if(s.data.shift.genreInject.length)ctx+='✅ INJECT genres: '+s.data.shift.genreInject.join(', ')+'\n';
-if(s.data.shift.avoidInject.length)ctx+='🚫 AVOID genres (override DNA): '+s.data.shift.avoidInject.join(', ')+'\n';
-if(s.data.shift.artistInject.length)ctx+='⚓ Reference artists: '+s.data.shift.artistInject.join(', ')+'\n';
-if(s.data.shift.mizrahiBoost>15)ctx+='📊 Audience skews STRONGLY toward Mizrahi/Israeli music\n';
-if(s.data.shift.mizrahiBoost<-10)ctx+='📊 Audience skews AWAY from Mizrahi toward international\n'});}
-ctx+='⚠️ IMPORTANT: This demographic context should HEAVILY influence genre selection, artist choices, and overall vibe. ';
-ctx+='A hummus restaurant in Rishon LeZion should NOT get Jazz/Bossa Nova — it should get Mizrahi/Israeli Pop. ';
-ctx+='Location + business type demographics OVERRIDE generic category DNA when they conflict.\n';
+/* GPT-powered demographic analysis — analyzes ANY location dynamically */
+async function analyzeDemographics(desc){
+if(!desc||desc.length<3)return null;
+try{
+var raw=await callOpenAI([{role:'system',content:'You are a demographic and cultural analyst for music curation. Given a business description that may include a location (city, neighborhood, area), analyze the likely AUDIENCE and their MUSIC PREFERENCES.\n\nYou must use your knowledge of demographics, culture, and local music scenes to infer what kind of music the audience expects.\n\nExamples of your reasoning:\n- "חומוסיה בראשון לציון" → Rishon LeZion has strong Mizrahi population, hummus is working-class Middle Eastern food → audience loves Mizrahi music (עומר אדם, אייל גולן, שרית חדד)\n- "Wine bar in Neve Tzedek" → upscale Tel Aviv neighborhood → cosmopolitan, jazz, chanson, indie\n- "Steakhouse in Shkhunat HaTikva" → very Mizrahi neighborhood in south Tel Aviv → Israeli pop, Mizrahi, rock\n- "Sushi restaurant in Ramat Aviv" → affluent, academic area → cosmopolitan, lo-fi, chill, indie\n- "Bar in Brooklyn" → hipster, diverse → indie, alternative, hip hop\n\nReturn JSON only.'},{role:'user',content:'Analyze the demographics and music preferences for this business:\n"'+desc+'"\n\nReturn:\n{"has_location":true/false,"location_name":"detected city/neighborhood or empty","audience_profile":"Hebrew 1-2 sentences describing the typical audience","music_context":"Hebrew 2-3 sentences about what music this audience expects and why","recommended_genres":["genre1","genre2",...],"avoid_genres":["genre1",...],"reference_artists":["artist1","artist2",...],"hebrew_reference_artists":["אמן1","אמן2",...],"mizrahi_affinity":"none/low/medium/high/very_high","cosmopolitan_level":"low/medium/high","energy_tendency":"low/medium/high","vibe_summary":"Hebrew 1 sentence — the overall vibe"}'}],{max_tokens:600,stage:'🧠 ניתוח דמוגרפי',model:'gpt-4o-mini'});
+var parsed=safeJSON(raw);
+if(parsed&&parsed.has_location!==undefined)return parsed;
+return null;
+}catch(e){brainLog('⚠️','דמוגרפיה',e.message);return null}}
+
+/* Build demographic context string from GPT analysis */
+function buildDemographicContextFromAI(demoData,subtypeData){
+if(!demoData&&(!subtypeData||!subtypeData.length))return'';
+var ctx='\n\n🧠 BUSINESS INTELLIGENCE — DEMOGRAPHIC CONTEXT (AI-analyzed):\n';
+if(demoData){
+if(demoData.location_name)ctx+='📍 Location: '+demoData.location_name+'\n';
+if(demoData.audience_profile)ctx+='👥 Audience: '+demoData.audience_profile+'\n';
+if(demoData.music_context)ctx+='🎵 Music context: '+demoData.music_context+'\n';
+if(demoData.recommended_genres&&demoData.recommended_genres.length)ctx+='✅ Recommended genres: '+demoData.recommended_genres.join(', ')+'\n';
+if(demoData.avoid_genres&&demoData.avoid_genres.length)ctx+='🚫 Avoid genres: '+demoData.avoid_genres.join(', ')+'\n';
+if(demoData.reference_artists&&demoData.reference_artists.length)ctx+='⚓ Reference artists: '+demoData.reference_artists.join(', ')+'\n';
+if(demoData.hebrew_reference_artists&&demoData.hebrew_reference_artists.length)ctx+='🇮🇱 Hebrew artists: '+demoData.hebrew_reference_artists.join(', ')+'\n';
+if(demoData.mizrahi_affinity&&demoData.mizrahi_affinity!=='none')ctx+='📊 Mizrahi affinity: '+demoData.mizrahi_affinity+'\n';
+if(demoData.vibe_summary)ctx+='🎯 Vibe: '+demoData.vibe_summary+'\n';}
+if(subtypeData&&subtypeData.length){
+subtypeData.forEach(function(s){
+ctx+='🍽️ Business subtype: '+s.type+' — '+s.data.shift.vibe+'\n';
+if(s.data.shift.genreInject.length)ctx+='✅ Subtype genres: '+s.data.shift.genreInject.join(', ')+'\n';
+if(s.data.shift.avoidInject.length)ctx+='🚫 Subtype avoid: '+s.data.shift.avoidInject.join(', ')+'\n';
+if(s.data.shift.artistInject.length)ctx+='⚓ Subtype artists: '+s.data.shift.artistInject.join(', ')+'\n'});}
+ctx+='\n⚠️ CRITICAL: This demographic + location context OVERRIDES the generic business category DNA. ';
+ctx+='The AI-analyzed audience profile is the PRIMARY guide for music selection. ';
+ctx+='If the analysis says Mizrahi audience, do NOT default to Jazz/Bossa Nova from the category template.\n';
 return ctx}
 
-/* Apply demographic shifts to BIZ_DNA for a given description */
-function applyDemographicShifts(bizDNA,desc){
+/* Apply demographic shifts to BIZ_DNA using AI analysis + subtype data */
+function applyDemographicShifts(bizDNA,desc,demoData){
 var shifted=JSON.parse(JSON.stringify(bizDNA));
-var locIntel=extractLocationIntel(desc);
 var subIntel=extractSubtypeIntel(desc);
+/* Apply subtype overrides (local rules — food type → genre mapping) */
 if(subIntel&&subIntel.length){
 subIntel.forEach(function(s){
 var sh=s.data.shift;
@@ -2346,13 +2356,19 @@ if(sh.artistInject&&sh.artistInject.length){
 shifted.anchorArtists=sh.artistInject.concat(shifted.anchorArtists||[]);
 shifted.hebrewRef=sh.artistInject.filter(function(a){return/[\u0590-\u05FF]/.test(a)}).concat(shifted.hebrewRef||[]);}
 if(sh.vibe)shifted.vibe=sh.vibe+' | '+shifted.vibe});}
-if(locIntel){
-if(locIntel.data.mizrahiAffinity>55&&shifted.baseGenres.indexOf('Mizrahi')===-1){
-shifted.baseGenres.unshift('Mizrahi');shifted.baseGenres.unshift('Israeli Pop');}
-if(locIntel.data.arabAffinity>30&&shifted.baseGenres.indexOf('Middle Eastern')===-1){
-shifted.baseGenres.push('Middle Eastern');shifted.baseGenres.push('Arabic');}
-if(locIntel.data.hipster>60&&shifted.baseGenres.indexOf('Indie')===-1){
-shifted.baseGenres.push('Indie');shifted.baseGenres.push('Alternative');}}
+/* Apply GPT demographic analysis */
+if(demoData){
+if(demoData.recommended_genres&&demoData.recommended_genres.length){
+demoData.recommended_genres.forEach(function(g){if(shifted.baseGenres.indexOf(g)===-1)shifted.baseGenres.unshift(g)});}
+if(demoData.avoid_genres&&demoData.avoid_genres.length){
+demoData.avoid_genres.forEach(function(g){
+var idx=shifted.baseGenres.indexOf(g);if(idx!==-1)shifted.baseGenres.splice(idx,1);
+if(shifted.avoid.indexOf(g)===-1)shifted.avoid.push(g)});}
+if(demoData.reference_artists&&demoData.reference_artists.length){
+shifted.anchorArtists=(demoData.reference_artists||[]).concat(shifted.anchorArtists||[]);}
+if(demoData.hebrew_reference_artists&&demoData.hebrew_reference_artists.length){
+shifted.hebrewRef=(demoData.hebrew_reference_artists||[]).concat(shifted.hebrewRef||[]);}
+if(demoData.vibe_summary)shifted.vibe=demoData.vibe_summary+' | '+shifted.vibe;}
 return shifted}
 
 const refTracks=[];
@@ -2612,13 +2628,22 @@ if(wiz.brainVersion==='v6'||wiz.brainVersion==='v5turbo'||wiz.brainVersion==='v7
 if(wiz.brainVersion==='v6'||wiz.brainVersion==='v7'||wiz.brainVersion==='v7.6'){brainLog('🔮','v6 Deep','Building Business Reality (רקע)...',true);try{var v6Raw=await callOpenAI([{role:'system',content:'You are the V6 DEEP Business Reality Analyzer. You build a complete multi-dimensional model of a business, not a category. Think like a music supervisor visiting the space. JSON only.'},{role:'user',content:'Build a complete Business Reality model for: "'+d+'"\nBusiness type detected: '+(r.business_type||'unknown')+'\nAtmosphere: '+(r.atmosphere||'unknown')+'\n\nReturn JSON:\n{"reality":{"whyPeopleCome":"primary reason customers visit","avgDwellMinutes":0,"talkingLevel":"silent|whisper|conversation|loud|shouting","groupSize":"solo|pairs|small_groups|large_groups|mixed","musicAttention":"background|ambient|noticed|featured|primary","foregroundBackground":0.0-1.0,"physicalNoise":"quiet|moderate|loud","hasAlcohol":false,"hasMovement":false,"intimacyLevel":0.0-1.0,"peakMoments":"description of highest-energy moments","quietMoments":"description of lowest-energy moments"},"intentForceField":{"dwellTime":0,"turnoverPressure":0.0-1.0,"revenueMode":"seating|volume|experience|subscription","emotionalGoal":"relax|excite|impress|comfort|stimulate|focus","socialMode":"private|mixed|social|communal","brandDistance":0.0-1.0,"riskTolerance":0.0-1.0},"sonicIdentity":{"texture":"dry|warm|lush|raw|crystalline|gritty","density":"minimal|sparse|mid|full|dense","rhythmFeel":"straight|groovy|broken|swung|organic","vocalPresence":"none|light|featured|dominant","harmonicComplexity":"simple|moderate|rich|complex","productionPolish":"lo-fi|natural|polished|hyper-produced","temporalFeel":"nostalgic|retro|contemporary|futuristic|timeless","culturalIdentity":"local|global|hybrid"},"conflictsDetected":["list any contradictions in the brief, e.g. calm vibe but high energy request"]}'}],{max_tokens:1200,stage:'1️⃣c V6 Business Reality',model:'gpt-4o-mini'});var v6=safeJSON(v6Raw);wiz.v6Reality=v6.reality;wiz.v6IntentForce=v6.intentForceField;wiz.v6SonicId=v6.sonicIdentity;wiz.v6Conflicts=v6.conflictsDetected||[];brainLog('🏢','Reality','dwell:'+v6.reality.avgDwellMinutes+'m | music:'+v6.reality.musicAttention+' | noise:'+v6.reality.physicalNoise,true);brainLog('⚡','Intent Force','goal:'+v6.intentForceField.emotionalGoal+' | risk:'+v6.intentForceField.riskTolerance+' | social:'+v6.intentForceField.socialMode,true);brainLog('🔊','Sonic ID','texture:'+v6.sonicIdentity.texture+' | density:'+v6.sonicIdentity.density+' | rhythm:'+v6.sonicIdentity.rhythmFeel,true);if(v6.conflictsDetected&&v6.conflictsDetected.length){brainLog('⚠️','Conflicts',v6.conflictsDetected.join(' | '),true)}updateBrainV5Live()}catch(e){brainLog('⚠️','v6 Reality','fallback: '+e.message)}}
 if(wiz.brainVersion==='v7'){brainLog('🌊','v7 LIVE','Building Crowd Simulation (רקע)...',true);try{var v7Raw=await callOpenAI([{role:'system',content:'You are V7 LIVE — a crowd control system through music. Music is not content, it is a control mechanism for audience behavior. You simulate crowd states and design control strategies. JSON only.'},{role:'user',content:'Business: "'+d+'"\nType: '+(r.business_type||'')+'\nAtmosphere: '+(r.atmosphere||'')+'\n'+(wiz.v6Reality?'Reality: dwell='+wiz.v6Reality.avgDwellMinutes+'m, talk='+wiz.v6Reality.talkingLevel+', music='+wiz.v6Reality.musicAttention+', noise='+wiz.v6Reality.physicalNoise:'')+(wiz.v6IntentForce?'\nIntent: goal='+wiz.v6IntentForce.emotionalGoal+', social='+wiz.v6IntentForce.socialMode+', risk='+wiz.v6IntentForce.riskTolerance:'')+'\n\nBuild a full-day crowd simulation + music control strategy.\nReturn JSON:\n{"crowdPatterns":{"morning":{"crowdSize":0,"energy":0,"mood":"","engagement":0,"socialState":"","trend":""},"afternoon":{"crowdSize":0,"energy":0,"mood":"","engagement":0,"socialState":"","trend":""},"evening":{"crowdSize":0,"energy":0,"mood":"","engagement":0,"socialState":"","trend":""},"night":{"crowdSize":0,"energy":0,"mood":"","engagement":0,"socialState":"","trend":""}},"controlStrategy":{"escalationPlan":"how to build energy across the day","recoveryPlan":"how to recover from energy dips","peakDesign":"how to design peak moments","fallbackLogic":"what to do when things go wrong","energyCeilings":{"morning":0,"afternoon":0,"evening":0,"night":0},"riskProfile":{"morning":"safe|moderate|adventurous","afternoon":"","evening":"","night":""}},"simulationNarrative":"3 sentences describing the ideal musical day"}'}],{max_tokens:1500,stage:'1️⃣d V7 Crowd Simulation',model:'gpt-4o-mini'});var v7=safeJSON(v7Raw);wiz.v7CrowdPatterns=v7.crowdPatterns;wiz.v7ControlStrategy=v7.controlStrategy;wiz.v7Narrative=v7.simulationNarrative;brainLog('🧍','Crowd Sim','M:'+v7.crowdPatterns.morning.energy+'/'+v7.crowdPatterns.morning.mood+' A:'+v7.crowdPatterns.afternoon.energy+'/'+v7.crowdPatterns.afternoon.mood+' E:'+v7.crowdPatterns.evening.energy+'/'+v7.crowdPatterns.evening.mood+' N:'+v7.crowdPatterns.night.energy+'/'+v7.crowdPatterns.night.mood,true);brainLog('🎮','Control','Escalation: '+(v7.controlStrategy.escalationPlan||'').substring(0,80),true);brainLog('📖','Narrative',(v7.simulationNarrative||'').substring(0,120),true);updateBrainV5Live()}catch(e){brainLog('⚠️','v7 Crowd','fallback: '+e.message)}}
 brainLog('✅','ניתוח עמוק','הושלם ברקע',true)}catch(e){brainLog('⚠️','ניתוח עמוק','fallback: '+e.message)}}
-async function analyzeDescription(){if(_wizBusy)return;_wizBusy=true;var typed=document.getElementById('bizDescription').value.trim();var voiceParts=voiceRecordings.length?voiceRecordings.join('. '):'';var d=[typed,voiceParts].filter(Boolean).join('. ');if(d.length<3){document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='נא לכתוב או להקליט תיאור קצר על העסק';_wizBusy=false;return}document.getElementById('descError').style.display='none';document.getElementById('descLoading').style.display='block';document.getElementById('descNav').style.display='none';document.getElementById('descNextBtn').disabled=true;brainLog('🧠','ניתוח','מנתח וקטגוריה...',true);try{var cats=Object.keys(BIZ_DNA).join(',');var raw=await callOpenAI([{role:'system',content:'You analyze business descriptions for music curation AND classify them. Be VERY lenient — accept any text that mentions a real business, place, or service. Only reject complete nonsense. IMPORTANT: When you see a location (city/neighborhood), use your knowledge of Israeli demographics to infer the likely audience. For example: a hummus place in Rishon LeZion → Mizrahi music audience. A cocktail bar in Florentin → hipster/cosmopolitan audience. Factor location + business subtype into your target_audience, atmosphere, and music_direction fields. Hebrew responses. JSON only.'},{role:'user',content:'Analyze this business description: "'+d+'"\nIMPORTANT: Be lenient! Even short descriptions are VALID.\nIf valid, return:\n{"valid":true,"biz_category":"ONE of: '+cats+'","business_type":"סוג העסק","target_audience":"קהל יעד","atmosphere":"אווירה מתאימה","music_direction":"כיוון מוזיקלי קצר","insights":"2-3 משפטים"}\n\nClassification guide:\n- cafe = בית קפה, קפיטריה, קפה\n- restaurant = מסעדה, ביסטרו, שף, אוכל\n- bar = בר, פאב, ברביקיו בר, ביר גארדן\n- nightclub = מועדון, לאונג׳, בר לילה, מסיבות\n- fashion = אופנה, בוטיק, בגדים, נעליים, אקססוריז\n- tattoo = קעקועים, פירסינג, סטודיו לקעקוע\n- spa = ספא, יופי, מספרה, ציפורניים, טיפוח, מכון יופי\n- gym = כושר, יוגה, פילאטיס, סטודיו ספורט, קרוספיט\n- office = משרד, חלל עבודה משותף, co-working, היי-טק\n- retail = חנות, סופר, קמעונאות, חנות מתנות\n- kids = ילדים, גן, פעוטון, צעצועים, משפחה\n- gallery = גלריה, מוזיאון, תערוכה, אמנות\n- general = כל דבר אחר'}],{max_tokens:500,stage:'1️⃣ ניתוח + סיווג'});var r=safeJSON(raw);if(!r.valid){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false;document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='🤔 לא הצלחנו להבין את התיאור. נסו לתאר את העסק בצורה ברורה יותר — מה העסק, מי הקהל, מה האווירה.';_wizBusy=false;return}var cat=r.biz_category&&BIZ_DNA[r.biz_category]?r.biz_category:'general';wiz.desc=d;wiz.bizAnalysis=r;wiz.bizCategory=cat;
-/* Apply BUSINESS_INTEL demographic shifts */
+async function analyzeDescription(){if(_wizBusy)return;_wizBusy=true;var typed=document.getElementById('bizDescription').value.trim();var voiceParts=voiceRecordings.length?voiceRecordings.join('. '):'';var d=[typed,voiceParts].filter(Boolean).join('. ');if(d.length<3){document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='נא לכתוב או להקליט תיאור קצר על העסק';_wizBusy=false;return}document.getElementById('descError').style.display='none';document.getElementById('descLoading').style.display='block';document.getElementById('descNav').style.display='none';document.getElementById('descNextBtn').disabled=true;brainLog('🧠','ניתוח','מנתח וקטגוריה...',true);try{var cats=Object.keys(BIZ_DNA).join(',');var raw=await callOpenAI([{role:'system',content:'You are an expert business & audience analyst for music curation. Your job is to extract MAXIMUM insight from EVERY word the user writes.\n\nANALYZE EVERYTHING:\n- Business type → what kind of place is this?\n- Food/drink type → what does the cuisine say about the audience? (hummus=working class/Mizrahi, sushi=cosmopolitan, wine=upscale)\n- Location → what are the demographics of this area? (שכונת התקווה=Mizrahi, פלורנטין=hipster, רמת אביב=affluent)\n- Adjectives → what vibe are they going for? (אינטימי=intimate, אנרגטי=energetic)\n- Price signals → upscale? casual? street food?\n- Cultural signals → any hint of ethnicity, subculture, lifestyle?\n- Even SINGLE WORDS matter — "חומוסיה" tells you more about the audience than a full paragraph\n\nBe VERY lenient — accept any text that mentions a real business, place, or service. Only reject complete nonsense.\nFactor ALL of the above into target_audience, atmosphere, and music_direction.\nHebrew responses. JSON only.'},{role:'user',content:'Analyze this business description: "'+d+'"\nIMPORTANT: Be lenient! Even short descriptions are VALID.\nIf valid, return:\n{"valid":true,"biz_category":"ONE of: '+cats+'","business_type":"סוג העסק","target_audience":"קהל יעד","atmosphere":"אווירה מתאימה","music_direction":"כיוון מוזיקלי קצר","insights":"2-3 משפטים"}\n\nClassification guide:\n- cafe = בית קפה, קפיטריה, קפה\n- restaurant = מסעדה, ביסטרו, שף, אוכל\n- bar = בר, פאב, ברביקיו בר, ביר גארדן\n- nightclub = מועדון, לאונג׳, בר לילה, מסיבות\n- fashion = אופנה, בוטיק, בגדים, נעליים, אקססוריז\n- tattoo = קעקועים, פירסינג, סטודיו לקעקוע\n- spa = ספא, יופי, מספרה, ציפורניים, טיפוח, מכון יופי\n- gym = כושר, יוגה, פילאטיס, סטודיו ספורט, קרוספיט\n- office = משרד, חלל עבודה משותף, co-working, היי-טק\n- retail = חנות, סופר, קמעונאות, חנות מתנות\n- kids = ילדים, גן, פעוטון, צעצועים, משפחה\n- gallery = גלריה, מוזיאון, תערוכה, אמנות\n- general = כל דבר אחר'}],{max_tokens:500,stage:'1️⃣ ניתוח + סיווג'});var r=safeJSON(raw);if(!r.valid){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false;document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='🤔 לא הצלחנו להבין את התיאור. נסו לתאר את העסק בצורה ברורה יותר — מה העסק, מי הקהל, מה האווירה.';_wizBusy=false;return}var cat=r.biz_category&&BIZ_DNA[r.biz_category]?r.biz_category:'general';wiz.desc=d;wiz.bizAnalysis=r;wiz.bizCategory=cat;
+/* Run GPT demographic analysis in parallel with UI update */
+brainLog('🧠','דמוגרפיה','מנתח מיקום, קהל יעד ותרבות מוזיקלית...',true);
+var _demoData=await analyzeDemographics(d);
+var _subI=extractSubtypeIntel(d);
+/* Apply demographic shifts to BIZ_DNA */
 var _rawDNA=JSON.parse(JSON.stringify(BIZ_DNA[cat]));
-var _shiftedDNA=applyDemographicShifts(_rawDNA,d);
-wiz.bizDNA=_shiftedDNA;wiz.demoContext=buildDemographicContext(d);
-var _locI=extractLocationIntel(d);var _subI=extractSubtypeIntel(d);
-if(_locI)brainLog('📍','מיקום',_locI.location+' — '+_locI.data.profile,true);
+var _shiftedDNA=applyDemographicShifts(_rawDNA,d,_demoData);
+wiz.bizDNA=_shiftedDNA;wiz.demoData=_demoData;
+wiz.demoContext=buildDemographicContextFromAI(_demoData,_subI);
+if(_demoData){
+if(_demoData.location_name)brainLog('📍','מיקום',_demoData.location_name,true);
+if(_demoData.audience_profile)brainLog('👥','קהל',_demoData.audience_profile,true);
+if(_demoData.vibe_summary)brainLog('🎯','וייב',_demoData.vibe_summary,true);
+if(_demoData.recommended_genres)brainLog('🎵','ז׳אנרים',_demoData.recommended_genres.join(', '),true);
+if(_demoData.mizrahi_affinity&&_demoData.mizrahi_affinity!=='none')brainLog('📊','מזרחי',_demoData.mizrahi_affinity,true)}
 if(_subI&&_subI.length)_subI.forEach(function(s){brainLog('🍽️','תת-סוג',s.type+' — '+s.data.shift.vibe,true)});brainLog('🏷️','סיווג',BIZ_DNA[cat].label+' ('+cat+')',true);brainLog('🎵','DNA','ז׳אנרים: '+BIZ_DNA[cat].baseGenres.slice(0,4).join(', ')+' | אנרגיה: '+BIZ_DNA[cat].energy,true);var di=document.getElementById('brainDnaInfo');if(di){di.style.display='block';di.innerHTML='<b>🏷️ '+BIZ_DNA[cat].label+'</b><br>'+BIZ_DNA[cat].vibe+'<br>ז׳אנרים: '+BIZ_DNA[cat].baseGenres.join(', ')+'<br>BPM: '+BIZ_DNA[cat].bpmRange[0]+'-'+BIZ_DNA[cat].bpmRange[1]+' | אנרגיה: '+BIZ_DNA[cat].energy}brainLog('✅','ניתוח',r.business_type+' | '+r.atmosphere,true);document.getElementById('descLoading').style.display='none';_wizBusy=false;wizGo(4);wiz._deepAnalysisPromise=_runDeepAnalysis(d,r)}catch(e){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false;document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='שגיאה: '+e.message;_wizBusy=false}}
 var bizHourOpen='12-15',bizHourClose='21-00';
 function toggle247(cb){var dd=document.getElementById('bizHoursDropdowns');dd.style.opacity=cb.checked?'0.3':'1';dd.style.pointerEvents=cb.checked?'none':'auto'}
@@ -2682,9 +2707,12 @@ if(f.familiarity>75&&tr&&tr.popularity<35){ok=false}
 if(ok){if(af.instrumentalness>0.6)desc.push('inst');else desc.push('vocal');
 desc.push('E:'+af.energy.toFixed(1));if(tr)desc.push('P:'+tr.popularity);
 _recsBackupPool.push({artist:t.artists.map(function(a){return a.name}).join(', '),title:t.name,spotifyId:t.id,_inst:af.instrumentalness,_energy:af.energy,_tempo:Math.round(af.tempo),_pop:tr?tr.popularity:null,reason:'מאומת ×ספוטיפיי ('+desc.join(' ')+')'})}});
-brainLog('✅','Recs Pool','Built: '+_recsBackupPool.length+' verified tracks matching ALL fader constraints',true)}}const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'');const famDesc=f.familiarity>70?'שירים מוכרים ומסחריים':f.familiarity<30?'🚨 מצב נישה קיצוני — שירים נישתיים בלבד!':f.familiarity<50?'נטייה לנישה':'תמהיל מסחרי ונישתי';const hebDesc=f.hebrew>70?'רוב בעברית':f.hebrew<30?'רוב בלועזית':'מיקס';const vocDesc=f.vocal>80?'ווקלי בלבד':f.vocal<20?'אינסטרומנטלי בלבד':'תמהיל ווקלי ואינסטרומנטלי';const nrgDesc=f.energy>70?'אנרגטי':f.energy<30?'רגוע':'בינוני';
+brainLog('✅','Recs Pool','Built: '+_recsBackupPool.length+' verified tracks matching ALL fader constraints',true)}}const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'');const famDesc=f.familiarity>70?'שירים מוכרים ומסחריים — להיטים שכולם מכירים':f.familiarity<30?'🚨 מצב נישה קיצוני — שירים נישתיים בלבד! אסור להביא שום שיר מוכר או להיט. רק אמנים קטנים (מתחת ל-100K מאזינים), B-sides, שירים עמוקים. אם מישהו רגיל שמע את השיר — הוא פסול!':f.familiarity<50?'נטייה לנישה — רוב השירים פחות מוכרים, מעט עוגנים מוכרים':'תמהיל של שירים מוכרים ופחות מוכרים';
+const hebDesc=f.hebrew>70?'רוב השירים חייבים להיות בעברית ('+f.hebrew+'%)':f.hebrew<30?'רוב השירים חייבים להיות בלועזית (רק '+f.hebrew+'% עברית)':'מיקס עברית ('+f.hebrew+'%) ולועזית ('+(100-f.hebrew)+'%)';
+const vocDesc=f.vocal>80?'🚨 ווקלי בלבד — כל השירים חייבים לכלול שירה ומילים בולטות. אסור אינסטרומנטלי!':f.vocal>60?'העדפה לשירים ווקליים עם שירה בולטת':f.vocal<20?'🚨 אינסטרומנטלי בלבד! אסור שירים עם מילים או שירה. רק מוזיקה אינסטרומנטלית.':f.vocal<40?'העדפה חזקה לאינסטרומנטלי — מקסימום 1 שיר עם שירה':'תמהיל ווקלי ואינסטרומנטלי';
+const nrgDesc=f.energy>70?'🚨 אנרגטי! כל השירים חייבים להיות תוססים, קצביים, אנרגטיים. אסור שירים רגועים או שקטים!':f.energy<30?'🚨 רגוע! כל השירים חייבים להיות שקטים ונינוחים. אסור שירים אנרגטיים!':'אנרגיה בינונית — תמהיל';
 /* Generate 3 vibe directions instead of 8 individual tracks */
-var _vibePrompt='Generate 3 distinct VIBE DIRECTIONS for this business. Each vibe is a different musical approach — all valid for the business, but each with its own character. For each vibe, suggest 3 example tracks (real Spotify songs).\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\nSliders: familiarity='+f.familiarity+'/100 ('+famDesc+'), hebrew='+f.hebrew+'%, vocal='+f.vocal+'/100 ('+vocDesc+'), energy='+f.energy+'/100 ('+nrgDesc+')\n\nReturn JSON:\n{"vibes":[\n{"name":"Hebrew 2-3 word vibe name","emoji":"single emoji","desc":"Hebrew 1 sentence describing this direction","tracks":[{"artist":"real artist","title":"exact Spotify title"},{"artist":"real artist","title":"exact Spotify title"},{"artist":"real artist","title":"exact Spotify title"}]},\n... 3 vibes total\n]}\n\nRules:\n- Each vibe must be genuinely DIFFERENT (not just slight variations)\n- Vibe 1: The most natural/obvious fit for this business\n- Vibe 2: A more interesting/unexpected but still fitting approach\n- Vibe 3: A bold/creative direction that could make this business stand out\n- All 9 tracks must be REAL Spotify songs\n- ~'+Math.round(9*f.hebrew/100)+' Hebrew tracks total across all vibes\n- Respect all slider values!';
+var _vibePrompt='Generate 3 distinct VIBE DIRECTIONS for this business. Each vibe is a different musical approach — all valid for the business, but each with its own character. For each vibe, suggest 3 example tracks (real Spotify songs).\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🚨🚨🚨 SLIDER VALUES — HIGHEST PRIORITY — MUST BE RESPECTED IN ALL 3 VIBES:\n- Familiarity ('+f.familiarity+'/100): '+famDesc+'\n- Hebrew percentage ('+f.hebrew+'%): '+hebDesc+'\n- Vocal/Instrumental ('+f.vocal+'/100): '+vocDesc+'\n- Energy ('+f.energy+'/100): '+nrgDesc+'\n\n⚠️ CRITICAL: The sliders OVERRIDE everything else. If the user set energy to 80, ALL vibes must be energetic. If hebrew is 70%, ALL vibes must have mostly Hebrew tracks. Do NOT create a "calm jazz" vibe when energy is high. Do NOT suggest English-only tracks when hebrew is high. The vibes differ in GENRE and STYLE, not in slider compliance.\n\nReturn JSON:\n{"vibes":[\n{"name":"Hebrew 2-3 word vibe name","emoji":"single emoji","desc":"Hebrew 1 sentence describing this direction","tracks":[{"artist":"real artist","title":"exact Spotify title"},{"artist":"real artist","title":"exact Spotify title"},{"artist":"real artist","title":"exact Spotify title"}]},\n... 3 vibes total\n]}\n\nRules:\n- Each vibe must be genuinely DIFFERENT in genre/style (not just slight variations)\n- But ALL 3 vibes MUST respect the slider values above\n- Vibe 1: The most natural/obvious fit for this business + location\n- Vibe 2: A more interesting/unexpected but still fitting approach\n- Vibe 3: A bold/creative direction that could make this business stand out\n- All 9 tracks must be REAL Spotify songs\n- ~'+Math.round(9*f.hebrew/100)+' Hebrew tracks total across all vibes\n- If demographic context mentions Mizrahi affinity > 50, at least one vibe MUST be Mizrahi-oriented\n- NEVER suggest Jazz/Bossa Nova for a business where the demographic context indicates Mizrahi audience';
 var raw=await callOpenAI([{role:'system',content:'You are SonicBrand AI music curator. You suggest vibe directions for businesses. Each direction is a coherent musical world — not just random songs. Think like a creative director choosing a sonic identity. JSON only.'},{role:'user',content:_vibePrompt}],{max_tokens:1200,stage:'2️⃣ כיוונים מוזיקליים',model:'gpt-4o-mini'});
 var parsed=safeJSON(raw);wiz.vibes=parsed.vibes||[];
 /* Flatten all vibe tracks into samples array for Spotify verification */

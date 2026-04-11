@@ -317,6 +317,10 @@
     <div class="wo-text" id="woText">מנתח...</div>
     <div class="wo-sub" id="woSub">רגע, חושבים על המוזיקה שלכם</div>
     <div class="wo-dots"><span></span><span></span><span></span></div>
+    <div id="wizProgressBarBox" style="width:100%;max-width:340px;margin:18px auto 0;padding:0 16px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px"><span id="wizProgressLabel">מתחילים...</span><span id="wizProgressTime">~2:30</span></div>
+      <div style="height:6px;background:var(--bg-2);border-radius:3px;overflow:hidden"><div id="wizProgressFill" style="height:100%;width:0%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .5s ease"></div></div>
+    </div>
     <div id="tfGameBox" style="margin-top:28px;max-width:360px;text-align:center;padding:0 16px;width:100%">
       <div style="margin-bottom:18px;font-size:15px;color:var(--muted);line-height:1.6;direction:rtl">בזמן שאנחנו בונים לך את הפלייליסט, בואו נשחק קצת...</div>
       <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:14px">
@@ -990,9 +994,35 @@ const _wizLoadingMsgs=[
 {icon:'🌊',text:'בודקים זרימה...',sub:'כל שיר צריך להתחבר הלאה'},
 {icon:'🎯',text:'מדייקים...',sub:'כמעט מוכן!'}
 ];
-var _wizLoadingInterval=null;
-function showWizLoading(initialIdx){var ov=document.getElementById('wizOverlay');if(!ov)return;var idx=initialIdx||0;var m=_wizLoadingMsgs[idx]||_wizLoadingMsgs[0];document.getElementById('woIcon').textContent=m.icon;document.getElementById('woText').textContent=m.text;document.getElementById('woSub').textContent=m.sub;ov.classList.add('active');document.body.style.overflow='hidden';initTFGame();if(_wizLoadingInterval)clearInterval(_wizLoadingInterval);_wizLoadingInterval=setInterval(function(){idx=(idx+1)%_wizLoadingMsgs.length;var nm=_wizLoadingMsgs[idx];document.getElementById('woIcon').textContent=nm.icon;document.getElementById('woText').textContent=nm.text;document.getElementById('woSub').textContent=nm.sub},4000)}
-function hideWizLoading(){var ov=document.getElementById('wizOverlay');if(ov)ov.classList.remove('active');document.body.style.overflow='';if(_wizLoadingInterval){clearInterval(_wizLoadingInterval);_wizLoadingInterval=null}}
+var _wizLoadingInterval=null;var _wizProgressInterval=null;var _wizProgressStart=0;
+var _wizProgressStages=[
+{pct:0,label:'מתחילים...',time:'~2:30'},
+{pct:8,label:'מנתחים את העסק...',time:'~2:15'},
+{pct:18,label:'בונים פרופיל מוזיקלי...',time:'~2:00'},
+{pct:28,label:'מגבשים אסטרטגיה...',time:'~1:45'},
+{pct:38,label:'יוצרים שירים (1/5)...',time:'~1:30'},
+{pct:48,label:'יוצרים שירים (2/5)...',time:'~1:15'},
+{pct:58,label:'יוצרים שירים (3/5)...',time:'~1:00'},
+{pct:66,label:'יוצרים שירים (4/5)...',time:'~0:45'},
+{pct:74,label:'יוצרים שירים (5/5)...',time:'~0:35'},
+{pct:82,label:'מאמתים ב-Spotify...',time:'~0:20'},
+{pct:92,label:'מסיימים...',time:'~0:10'},
+{pct:97,label:'כמעט מוכן!',time:'עוד רגע'}
+];
+function _updateWizProgress(){
+var elapsed=(Date.now()-_wizProgressStart)/1000;
+var totalSec=150;
+var pct=Math.min(98,Math.round(elapsed/totalSec*100));
+var remaining=Math.max(0,Math.round(totalSec-elapsed));
+var min=Math.floor(remaining/60);var sec=remaining%60;
+var timeStr=remaining>0?(min+':'+(sec<10?'0':'')+sec):'עוד רגע';
+var stage=_wizProgressStages[0];
+for(var i=_wizProgressStages.length-1;i>=0;i--){if(pct>=_wizProgressStages[i].pct){stage=_wizProgressStages[i];break}}
+var fill=document.getElementById('wizProgressFill');if(fill)fill.style.width=pct+'%';
+var lbl=document.getElementById('wizProgressLabel');if(lbl)lbl.textContent=stage.label;
+var tm=document.getElementById('wizProgressTime');if(tm)tm.textContent=timeStr}
+function showWizLoading(initialIdx){var ov=document.getElementById('wizOverlay');if(!ov)return;var idx=initialIdx||0;var m=_wizLoadingMsgs[idx]||_wizLoadingMsgs[0];document.getElementById('woIcon').textContent=m.icon;document.getElementById('woText').textContent=m.text;document.getElementById('woSub').textContent=m.sub;ov.classList.add('active');document.body.style.overflow='hidden';initTFGame();if(_wizLoadingInterval)clearInterval(_wizLoadingInterval);_wizLoadingInterval=setInterval(function(){idx=(idx+1)%_wizLoadingMsgs.length;var nm=_wizLoadingMsgs[idx];document.getElementById('woIcon').textContent=nm.icon;document.getElementById('woText').textContent=nm.text;document.getElementById('woSub').textContent=nm.sub},4000);_wizProgressStart=Date.now();var fill=document.getElementById('wizProgressFill');if(fill)fill.style.width='0%';_updateWizProgress();if(_wizProgressInterval)clearInterval(_wizProgressInterval);_wizProgressInterval=setInterval(_updateWizProgress,1000)}
+function hideWizLoading(){var ov=document.getElementById('wizOverlay');if(ov)ov.classList.remove('active');document.body.style.overflow='';if(_wizLoadingInterval){clearInterval(_wizLoadingInterval);_wizLoadingInterval=null}if(_wizProgressInterval){clearInterval(_wizProgressInterval);_wizProgressInterval=null}var fill=document.getElementById('wizProgressFill');if(fill)fill.style.width='100%'}
 
 /* ====== TRUE OR FALSE GAME ====== */
 var _tfFacts=[

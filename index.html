@@ -2805,12 +2805,14 @@ async function generateSamples(){const ld=document.getElementById('sampleLoading
 const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'');
 /* ═══ STEP 1: GPT picks 3 genre FAMILIES (not moods) ═══ */
 brainLog('🧠','Step 1','GPT picking 3 genre families...',true);
-var _familyPrompt='You are SonicBrand AI. Pick 3 GENRE DIRECTIONS for this business.\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🎚️ SLIDER CONTEXT:\n- Hebrew: '+f.hebrew+'% ('+((f.hebrew>70)?'mostly Hebrew':(f.hebrew<30)?'mostly international':'mixed')+')\n- Energy: '+f.energy+'/100\n- Familiarity: '+f.familiarity+'/100\n- Vocal: '+f.vocal+'/100\n\nIMPORTANT RULES:\n1. Each direction MUST be a specific GENRE FAMILY — not a mood or vibe like "Summer Vibes" or "Good Energy"\n2. Valid genre families: mizrahi, rock, jazz, electronic, hiphop, rnb, pop, classical, soul, folk, world\n3. Pick 3 DIFFERENT families that make sense for this business + location + audience\n4. Direction 1: The most natural/obvious genre fit\n5. Direction 2: A complementary but different genre\n6. Direction 3: A bold/creative genre choice\n7. If demographic context mentions Mizrahi affinity > 50, at least one direction MUST be mizrahi\n8. If demographic context mentions avoid_genres, do NOT pick those families\n9. Hebrew slider affects which LANGUAGE tracks should be in, NOT which genre to pick\n\nReturn JSON:\n{"directions":[\n{"family":"one of the valid family names","hebrewName":"שם הכיוון בעברית (2-3 words, genre-specific)","emoji":"single emoji","desc":"תיאור קצר בעברית — מה הסאונד הזה","searchQueries":["spotify search query 1","spotify search query 2","spotify search query 3"]},\n... 3 directions total\n]}\n\nThe searchQueries should be specific Spotify search terms for finding tracks in this genre that fit the business. Include artist names when possible. If hebrew>50, include Hebrew/Israeli search terms.';
+var _familyPrompt='You are SonicBrand AI. Pick 3 GENRE DIRECTIONS for this business.\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🎚️ SLIDER CONTEXT:\n- Hebrew: '+f.hebrew+'% ('+((f.hebrew>70)?'mostly Hebrew':(f.hebrew<30)?'mostly international':'mixed')+')\n- Energy: '+f.energy+'/100\n- Familiarity: '+f.familiarity+'/100\n- Vocal: '+f.vocal+'/100\n\nIMPORTANT RULES:\n1. Each direction MUST be a specific GENRE FAMILY — not a mood or vibe like "Summer Vibes" or "Good Energy"\n2. Valid genre families: mizrahi, rock, jazz, electronic, hiphop, rnb, pop, classical, soul, folk, world\n3. Pick 3 DIFFERENT families that make sense for this business + location + audience\n4. Direction 1: The most natural/obvious genre fit\n5. Direction 2: A complementary but different genre\n6. Direction 3: A bold/creative genre choice\n7. If demographic context mentions Mizrahi affinity > 50, at least one direction MUST be mizrahi\n8. If demographic context mentions avoid_genres, do NOT pick those families\n9. Hebrew slider affects which LANGUAGE tracks should be in, NOT which genre to pick\n\nReturn JSON:\n{"bizInsight":"פסקה קצרה בעברית (3-4 משפטים) שמסבירה ללקוח: מה הבנת על העסק שלו, מי הקהל, מה האווירה, ולמה בחרת את 3 הכיוונים האלה. תדבר ישירות ללקוח בגוף שני — כאילו אתה יועץ מוזיקלי שמכיר את המקום. דוגמה: העסק שלך הוא X, שמושך קהל Y. האווירה שאתה מחפש היא Z, ולכן בחרתי 3 כיוונים שמשלבים...","directions":[\n{"family":"one of the valid family names","hebrewName":"שם הכיוון בעברית (2-3 words, genre-specific)","emoji":"single emoji","desc":"תיאור קצר בעברית — מה הסאונד הזה","searchQueries":["spotify search query 1","spotify search query 2","spotify search query 3"]},\n... 3 directions total\n]}\n\nThe searchQueries should be specific Spotify search terms for finding tracks in this genre that fit the business. Include artist names when possible. If hebrew>50, include Hebrew/Israeli search terms.';
 var _famRaw=await callOpenAI([{role:'system',content:'You are SonicBrand AI music curator. You pick genre directions for businesses. Each direction must be anchored to a specific genre FAMILY — never vague moods. JSON only.'},{role:'user',content:_familyPrompt}],{max_tokens:800,stage:'2️⃣ כיוונים מוזיקליים — שלב 1',model:'gpt-4o-mini'});
 var _famParsed=safeJSON(_famRaw);
 var _directions=_famParsed.directions||[];
+wiz.bizInsight=_famParsed.bizInsight||'';
 if(!_directions.length)throw new Error('GPT returned no directions');
 brainLog('✅','Step 1',_directions.map(function(d){return d.emoji+' '+d.family+': '+d.hebrewName}).join(' | '),true);
+if(wiz.bizInsight)brainLog('💡','Insight',wiz.bizInsight.substring(0,80)+'...',true);
 /* ═══ STEP 2: Spotify finds tracks for each genre family ═══ */
 brainLog('🔍','Step 2','Spotify finding tracks per family...',true);
 wiz.vibes=[];wiz.samples=[];wiz.votes={};wiz.selectedVibe=null;
@@ -2887,12 +2889,50 @@ if(f.familiarity<30&&_ct._pop>65){brainLog('⚠️','Filter',_ct.artist+' pop='+
 if(f.familiarity>75&&_ct._pop<20){continue}
 /* Follower filter for niche */
 if(f.familiarity<30&&_ct._followers&&_ct._followers>300000){continue}
-/* Avoid duplicate artists across vibes */
+/* Avoid duplicate artists — max 1 per artist WITHIN this vibe AND across all vibes */
 var _artistInOther=wiz.samples.some(function(s){return s.artist===_ct.artist});
 if(_artistInOther)continue;
+var _artistInThisVibe=_verified.some(function(v){return v.artist===_ct.artist});
+if(_artistInThisVibe){brainLog('⚠️','Filter',_ct.artist+' — already in this vibe — skipped',true);continue}
 _verified.push(_ct)}
 /* Take top 3 verified tracks */
 var _picked=_verified.slice(0,3);
+/* Fallback: if less than 3 tracks, try broader search with different queries */
+if(_picked.length<3&&_t){
+brainLog('🔄','Fallback','Family '+_family+': only '+_picked.length+' tracks, trying broader search...',true);
+var _fallbackQueries=[];
+/* Try DNA reference artists */
+if(_isHebrew&&dna.hebrewRef&&dna.hebrewRef.length){dna.hebrewRef.forEach(function(a){_fallbackQueries.push(a)})}
+if(dna.refArtists&&dna.refArtists.length){dna.refArtists.forEach(function(a){_fallbackQueries.push(a)})}
+/* Try generic family searches with different terms */
+var _altSeeds={mizrahi:['מזרחי','ים תיכוני','israeli oriental'],rock:['רוק ישראלי','israeli alternative','indie israel'],jazz:['jazz israel','ג׳אז'],electronic:['אלקטרוני','israeli electronic','minimal techno'],hiphop:['ראפ ישראלי','israeli rap','hip hop israel'],pop:['פופ ישראלי','israeli hits','להיטים ישראליים'],folk:['זמר יוצר','israeli folk','שירי ארץ ישראל'],soul:['soul funk','סול','disco'],world:['world music','מוזיקה אתנית'],rnb:['r&b','neo soul'],classical:['classical piano','קלאסי']};
+if(_altSeeds[_family])_fallbackQueries=_fallbackQueries.concat(_altSeeds[_family]);
+var _usedArtists={};_picked.forEach(function(p){_usedArtists[p.artist]=true});
+wiz.samples.forEach(function(s){_usedArtists[s.artist]=true});
+for(var _fqi=0;_fqi<_fallbackQueries.length&&_picked.length<3;_fqi++){
+try{
+var _fbUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_fallbackQueries[_fqi])+'&type=track&limit=10&market=IL';
+var _fbResp=await fetch(_fbUrl,{headers:{'Authorization':'Bearer '+_t}});
+var _fbData=await _fbResp.json();
+if(_fbData.tracks&&_fbData.tracks.items){
+for(var _fbi=0;_fbi<_fbData.tracks.items.length&&_picked.length<3;_fbi++){
+var _fbTrack=_fbData.tracks.items[_fbi];
+var _fbArtist=_fbTrack.artists.map(function(a){return a.name}).join(', ');
+if(_usedArtists[_fbArtist])continue;
+if(_picked.some(function(p){return p.spotifyId===_fbTrack.id}))continue;
+if(_picked.some(function(p){return isSameSong(p.title,_fbTrack.name)}))continue;
+/* Quick artist check */
+var _fbArtId=_fbTrack.artists[0]?_fbTrack.artists[0].id:null;
+if(_fbArtId){
+var _fbArtData=await getArtistsAnyway([_fbArtId]);
+if(_fbArtData&&_fbArtData.artists&&_fbArtData.artists[0]){
+var _fbGenres=_fbArtData.artists[0].genres||[];
+if(!artistMatchesFamily(_fbGenres,_family))continue;
+if(_isHebrew&&!hasHebrewChars(_fbArtist)&&!hasHebrewChars(_fbTrack.name)&&!isIsraeliArtist(_fbGenres))continue;
+_picked.push({artist:_fbArtist,title:_fbTrack.name,spotifyId:_fbTrack.id,_artistId:_fbArtId,_genres:_fbGenres,_pop:_fbTrack.popularity,vibeIdx:_di});
+_usedArtists[_fbArtist]=true;
+brainLog('✅','Fallback','Added: '+_fbArtist+' — '+_fbTrack.name,true)}}}}}catch(e){}}
+}
 brainLog('✅','Step 4','Family '+_family+': '+_picked.length+' verified tracks',true);
 _picked.forEach(function(p){wiz.samples.push(p);_vibeObj.tracks.push({artist:p.artist,title:p.title})});
 }
@@ -2971,7 +3011,10 @@ s.reason=_descParts.join(' · ')})}}catch(e){brainLog('⚠️','AF',e.message)}}
 brainLog('✅','Done','Pipeline complete — '+wiz.samples.filter(function(s){return!s._genreMismatch}).length+' verified tracks across '+wiz.vibes.length+' directions',true);
 /* ═══ RENDER VIBE CARDS ═══ */
 var _bbBtn=document.getElementById('sampleBackBtn');if(_bbBtn)_bbBtn.style.display='';
-var html='';var _renderedVibes=0;for(var vi=0;vi<wiz.vibes.length;vi++){var vb=wiz.vibes[vi];
+var html='';
+/* Show business insight paragraph */
+if(wiz.bizInsight){html+='<div style="background:rgba(29,185,84,.06);border:1px solid rgba(29,185,84,.15);border-radius:14px;padding:18px 22px;margin-bottom:20px;text-align:right;direction:rtl"><p style="color:var(--text);font-size:14px;line-height:1.7;margin:0;opacity:.9">'+esc(wiz.bizInsight)+'</p></div>'}
+var _renderedVibes=0;for(var vi=0;vi<wiz.vibes.length;vi++){var vb=wiz.vibes[vi];
 var vTracks=wiz.samples.filter(function(s){return s.vibeIdx===vi&&!s._genreMismatch});
 if(!vTracks.length){brainLog('⚠️','Render','Hiding empty vibe card: '+vb.name,true);continue}
 _renderedVibes++;

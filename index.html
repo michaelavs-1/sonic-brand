@@ -2893,10 +2893,16 @@ if(f.familiarity<30&&_ct._pop>65){brainLog('⚠️','Filter',_ct.artist+' pop='+
 if(f.familiarity>75&&_ct._pop<20){continue}
 /* Follower filter for niche */
 if(f.familiarity<30&&_ct._followers&&_ct._followers>300000){continue}
-/* Avoid duplicate artists — max 1 per artist WITHIN this vibe AND across all vibes */
-var _artistInOther=wiz.samples.some(function(s){return s.artist===_ct.artist});
+/* Avoid duplicate artists — max 1 per PRIMARY artist WITHIN this vibe AND across all vibes */
+var _primaryArtist=(_ct.artist||'').split(',')[0].trim().toLowerCase();
+var _primaryArtistId=_ct._artistId||null;
+var _artistInOther=wiz.samples.some(function(s){
+var sPrimary=(s.artist||'').split(',')[0].trim().toLowerCase();
+return sPrimary===_primaryArtist||(s._artistId&&_primaryArtistId&&s._artistId===_primaryArtistId)});
 if(_artistInOther)continue;
-var _artistInThisVibe=_verified.some(function(v){return v.artist===_ct.artist});
+var _artistInThisVibe=_verified.some(function(v){
+var vPrimary=(v.artist||'').split(',')[0].trim().toLowerCase();
+return vPrimary===_primaryArtist||(v._artistId&&_primaryArtistId&&v._artistId===_primaryArtistId)});
 if(_artistInThisVibe){brainLog('⚠️','Filter',_ct.artist+' — already in this vibe — skipped',true);continue}
 _verified.push(_ct)}
 /* Sort: Israeli tracks first (when hebrew>50), then by popularity */
@@ -2913,16 +2919,17 @@ if(dna.refArtists&&dna.refArtists.length){dna.refArtists.forEach(function(a){_fa
 /* Try generic family searches with different terms */
 var _altSeeds={mizrahi:['מזרחי','ים תיכוני','israeli oriental'],rock:['רוק ישראלי','israeli alternative','indie israel'],jazz:['jazz israel','ג׳אז'],electronic:['אלקטרוני','israeli electronic','minimal techno'],hiphop:['ראפ ישראלי','israeli rap','hip hop israel'],pop:['פופ ישראלי','israeli hits','להיטים ישראליים'],folk:['זמר יוצר','israeli folk','שירי ארץ ישראל'],soul:['soul funk','סול','disco'],world:['world music','מוזיקה אתנית'],rnb:['r&b','neo soul'],classical:['classical piano','קלאסי']};
 if(_altSeeds[_family])_fallbackQueries=_fallbackQueries.concat(_altSeeds[_family]);
-var _usedArtists={};_picked.forEach(function(p){_usedArtists[p.artist]=true});
-wiz.samples.forEach(function(s){_usedArtists[s.artist]=true});
+var _usedPrimaryArtists={};_picked.forEach(function(p){_usedPrimaryArtists[(p.artist||'').split(',')[0].trim().toLowerCase()]=true;if(p._artistId)_usedPrimaryArtists[p._artistId]=true});
+wiz.samples.forEach(function(s){_usedPrimaryArtists[(s.artist||'').split(',')[0].trim().toLowerCase()]=true;if(s._artistId)_usedPrimaryArtists[s._artistId]=true});
 for(var _fqi=0;_fqi<_fallbackQueries.length&&_picked.length<3;_fqi++){
 try{
 var _fbData=await neutralSpotifySearch(_fallbackQueries[_fqi],'track',10,'IL');
-if(_fbData.tracks&&_fbData.tracks.items){
+if(_fbData&&_fbData.tracks&&_fbData.tracks.items){
 for(var _fbi=0;_fbi<_fbData.tracks.items.length&&_picked.length<3;_fbi++){
 var _fbTrack=_fbData.tracks.items[_fbi];
 var _fbArtist=_fbTrack.artists.map(function(a){return a.name}).join(', ');
-if(_usedArtists[_fbArtist])continue;
+var _fbPrimaryArtist=_fbTrack.artists[0]?_fbTrack.artists[0].name.toLowerCase():'';
+if(_usedPrimaryArtists[_fbPrimaryArtist])continue;
 if(_picked.some(function(p){return p.spotifyId===_fbTrack.id}))continue;
 if(_picked.some(function(p){return isSameSong(p.title,_fbTrack.name)}))continue;
 /* Quick artist check */
@@ -2934,7 +2941,7 @@ var _fbGenres=_fbArtData.artists[0].genres||[];
 if(!artistMatchesFamily(_fbGenres,_family))continue;
 if(_isHebrew&&!hasHebrewChars(_fbArtist)&&!hasHebrewChars(_fbTrack.name)&&!isIsraeliArtist(_fbGenres))continue;
 _picked.push({artist:_fbArtist,title:_fbTrack.name,spotifyId:_fbTrack.id,_artistId:_fbArtId,_genres:_fbGenres,_pop:_fbTrack.popularity,vibeIdx:_di});
-_usedArtists[_fbArtist]=true;
+_usedPrimaryArtists[_fbPrimaryArtist]=true;if(_fbArtId)_usedPrimaryArtists[_fbArtId]=true;
 brainLog('✅','Fallback','Added: '+_fbArtist+' — '+_fbTrack.name,true)}}}}}catch(e){}}
 }
 brainLog('✅','Step 4','Family '+_family+': '+_picked.length+' verified tracks',true);

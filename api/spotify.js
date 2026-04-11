@@ -135,7 +135,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { action, query, url } = req.body;
+    const { action, query, url, neutral } = req.body;
 
     if (action === 'save_token') {
       const { access_token, refresh_token, expiry } = req.body;
@@ -204,8 +204,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // For non-user actions: use any token (CC works fine)
-    const token = await getValidToken();
+    // For non-user actions: use CC token when neutral=true (no personalization bias)
+    const token = neutral ? await getClientCredentialsToken() : await getValidToken();
     if (!token) {
       return res.status(503).json({ error: 'No Spotify token available' });
     }

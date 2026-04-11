@@ -1973,12 +1973,16 @@ function isSpotifyConnected(){return !!(spotifyToken||localStorage.getItem('sp_a
 function isSpotifyFullyConnected(){return !!(spotifyToken||localStorage.getItem('sp_access'))}
 async function searchTrackViaProxy(artist,title){try{var r=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'search',query:'track:"'+title+'" artist:"'+artist+'"'})});var j=await r.json();if(j.tracks&&j.tracks.items&&j.tracks.items.length)return j.tracks.items[0];r=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'search',query:artist+' '+title})});j=await r.json();if(j.tracks&&j.tracks.items&&j.tracks.items.length){var aL=artist.toLowerCase();var found=j.tracks.items.find(function(it){return it.artists.some(function(a){return a.name.toLowerCase().indexOf(aL)!==-1||aL.indexOf(a.name.toLowerCase())!==-1})});if(found)return found;return j.tracks.items[0]}r=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'search',query:artist})});j=await r.json();if(j.tracks&&j.tracks.items&&j.tracks.items.length)return j.tracks.items[0];return null}catch(e){return null}}
 async function fetchSpotifyViaProxy(url){try{var r=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'fetch',url:url})});if(!r.ok)return null;return await r.json()}catch(e){return null}}
-async function getAudioFeaturesAnyway(ids){var t=await getSpotifyToken();if(t){try{var r=await fetch('https://api.spotify.com/v1/audio-features?ids='+ids.join(','),{headers:{'Authorization':'Bearer '+t}});if(r.ok)return await r.json()}catch(e){}}brainLog('🔄','Verify','No user token — using server proxy for audio features',true);return fetchSpotifyViaProxy('https://api.spotify.com/v1/audio-features?ids='+ids.join(','))}
-async function getTracksAnyway(ids){var t=await getSpotifyToken();if(t){try{var r=await fetch('https://api.spotify.com/v1/tracks?ids='+ids.join(','),{headers:{'Authorization':'Bearer '+t}});if(r.ok)return await r.json()}catch(e){}}return fetchSpotifyViaProxy('https://api.spotify.com/v1/tracks?ids='+ids.join(','))}
-async function getArtistsAnyway(ids){if(!ids||!ids.length)return null;var uniq=ids.filter(function(v,i,a){return a.indexOf(v)===i}).slice(0,50);var t=await getSpotifyToken();if(t){try{var r=await fetch('https://api.spotify.com/v1/artists?ids='+uniq.join(','),{headers:{'Authorization':'Bearer '+t}});if(r.ok)return await r.json()}catch(e){}}return fetchSpotifyViaProxy('https://api.spotify.com/v1/artists?ids='+uniq.join(','))}
-async function getSpotifyRecommendations(params){var qs=Object.keys(params).map(function(k){return k+'='+encodeURIComponent(params[k])}).join('&');var url='https://api.spotify.com/v1/recommendations?'+qs;var t=await getSpotifyToken();if(t){try{var r=await fetch(url,{headers:{'Authorization':'Bearer '+t}});if(r.ok)return await r.json()}catch(e){}}return fetchSpotifyViaProxy(url)}
+/* NEUTRAL Spotify fetch — uses Client Credentials token (NO personalization bias).
+   Use this for ALL curation/search calls. User token only for saving playlists. */
+async function neutralSpotifyFetch(url){try{var r=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'fetch',url:url,neutral:true})});if(!r.ok)return null;return await r.json()}catch(e){return null}}
+async function neutralSpotifySearch(query,type,limit,market){type=type||'track';limit=limit||15;market=market||'IL';var url='https://api.spotify.com/v1/search?q='+encodeURIComponent(query)+'&type='+type+'&limit='+limit+'&market='+market;return neutralSpotifyFetch(url)}
+async function getAudioFeaturesAnyway(ids){return neutralSpotifyFetch('https://api.spotify.com/v1/audio-features?ids='+ids.join(','))}
+async function getTracksAnyway(ids){return neutralSpotifyFetch('https://api.spotify.com/v1/tracks?ids='+ids.join(','))}
+async function getArtistsAnyway(ids){if(!ids||!ids.length)return null;var uniq=ids.filter(function(v,i,a){return a.indexOf(v)===i}).slice(0,50);return neutralSpotifyFetch('https://api.spotify.com/v1/artists?ids='+uniq.join(','))}
+async function getSpotifyRecommendations(params){var qs=Object.keys(params).map(function(k){return k+'='+encodeURIComponent(params[k])}).join('&');var url='https://api.spotify.com/v1/recommendations?'+qs;return neutralSpotifyFetch(url)}
 async function enrichTracksWithArtistData(tracks){try{var artistIds=[];tracks.forEach(function(t){if(t.spotifyId||t.id){var aid=t._artistId;if(aid&&artistIds.indexOf(aid)===-1)artistIds.push(aid)}});if(!artistIds.length){var trackIds=tracks.filter(function(t){return t.spotifyId||t.id}).map(function(t){return t.spotifyId||t.id});if(trackIds.length){var trd=await getTracksAnyway(trackIds);if(trd&&trd.tracks){trd.tracks.forEach(function(tr,i){if(tr&&tr.artists&&tr.artists[0]){tracks[i]._artistId=tr.artists[0].id;if(artistIds.indexOf(tr.artists[0].id)===-1)artistIds.push(tr.artists[0].id)}})}}}if(!artistIds.length)return tracks;var artData=await getArtistsAnyway(artistIds);if(!artData||!artData.artists)return tracks;var artMap={};artData.artists.forEach(function(a){if(a&&a.id)artMap[a.id]={genres:a.genres||[],followers:a.followers?a.followers.total:0,name:a.name}});tracks.forEach(function(t){var aid=t._artistId;if(aid&&artMap[aid]){t._genres=artMap[aid].genres;t._followers=artMap[aid].followers;t._artistName=artMap[aid].name}});brainLog('🎨','Artists','Enriched '+Object.keys(artMap).length+' artists with genres & followers',true);return tracks}catch(e){brainLog('⚠️','Artists',e.message);return tracks}}
-async function searchTrack(artist,title){var t=await getSpotifyToken();if(t){try{var r=await fetch('https://api.spotify.com/v1/search?q='+encodeURIComponent('track:"'+title+'" artist:"'+artist+'"')+'&type=track&limit=1',{headers:{'Authorization':'Bearer '+t}});var j=await r.json();if(j.tracks&&j.tracks.items&&j.tracks.items.length)return j.tracks.items[0];r=await fetch('https://api.spotify.com/v1/search?q='+encodeURIComponent(artist+' '+title)+'&type=track&limit=5',{headers:{'Authorization':'Bearer '+t}});j=await r.json();if(j.tracks&&j.tracks.items&&j.tracks.items.length){var aL=artist.toLowerCase();var found=j.tracks.items.find(function(it){return it.artists.some(function(a){return a.name.toLowerCase().indexOf(aL)!==-1||aL.indexOf(a.name.toLowerCase())!==-1})});if(found)return found;return j.tracks.items[0]}r=await fetch('https://api.spotify.com/v1/search?q='+encodeURIComponent(artist)+'&type=track&limit=3',{headers:{'Authorization':'Bearer '+t}});j=await r.json();if(j.tracks&&j.tracks.items&&j.tracks.items.length)return j.tracks.items[0]}catch(e){}}return searchTrackViaProxy(artist,title)}
+async function searchTrack(artist,title){try{var j=await neutralSpotifySearch('track:"'+title+'" artist:"'+artist+'"','track',1);if(j&&j.tracks&&j.tracks.items&&j.tracks.items.length)return j.tracks.items[0];j=await neutralSpotifySearch(artist+' '+title,'track',5);if(j&&j.tracks&&j.tracks.items&&j.tracks.items.length){var aL=artist.toLowerCase();var found=j.tracks.items.find(function(it){return it.artists.some(function(a){return a.name.toLowerCase().indexOf(aL)!==-1||aL.indexOf(a.name.toLowerCase())!==-1})});if(found)return found;return j.tracks.items[0]}j=await neutralSpotifySearch(artist,'track',3);if(j&&j.tracks&&j.tracks.items&&j.tracks.items.length)return j.tracks.items[0];return null}catch(e){return searchTrackViaProxy(artist,title)}}
 async function savePlaylistToSpotify(){if(!window.currentPlaylist||!window.currentPlaylist.tracks||!window.currentPlaylist.tracks.length){alert('אין פלייליסט');return}var btn=document.getElementById('saveToSpotifyBtn'),orig=btn.innerHTML;btn.innerHTML='⏳ מחפש שירים...';btn.disabled=true;var tracksToSave=window.currentPlaylist.tracks||[];brainLog('💾','Spotify',tracksToSave.length+' שירים ('+(window.currentPlaylist.activeTab||'shuffle')+')');var nm=((window.currentPlaylist.profile&&window.currentPlaylist.profile.business_name)||'SonicBrand')+' — Signature Mix'+' ('+((window.currentPlaylist.activeTab==='sequential')?'▶️ רציף':'🔀 שאפל')+')';var uris=tracksToSave.filter(function(t){return t.id}).map(function(t){return'spotify:track:'+t.id});if(!uris.length){brainLog('🔄','Spotify','שירים בלי ID — מחפש מחדש...');var trx=tracksToSave;for(var si=0;si<trx.length;si++){if(trx[si].id)continue;try{var sp=await searchTrackViaProxy(trx[si].artist,trx[si].title);if(sp&&sp.id){trx[si].id=sp.id;trx[si].spotifyId=sp.id;if(sp.external_urls)trx[si].url=sp.external_urls.spotify;if(sp.album&&sp.album.images&&sp.album.images.length){trx[si].cover=sp.album.images[sp.album.images.length-1].url;trx[si].bigCover=sp.album.images[0].url}}}catch(e){}btn.innerHTML='⏳ מחפש... ('+(si+1)+'/'+trx.length+')'}uris=trx.filter(function(t){return t.id}).map(function(t){return'spotify:track:'+t.id});brainLog('🔍','Spotify','נמצאו '+uris.length+'/'+trx.length+' שירים')}if(!uris.length){brainLog('❌','Spotify','לא נמצאו שירים ב-Spotify');btn.innerHTML='❌ לא נמצאו שירים';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false},3000);return}btn.innerHTML='⏳ שומר... ('+uris.length+' שירים)';try{var localToken=await getSpotifyToken();if(!localToken){var refreshed=await refreshSpotifyToken();if(refreshed)localToken=refreshed}if(localToken){var uid=null;if(spotifyUser&&spotifyUser.id){uid=spotifyUser.id}else{var meRes=await spotifyFetch('https://api.spotify.com/v1/me');if(meRes){var meData=await meRes.json();uid=meData&&meData.id?meData.id:null}}if(!uid)throw new Error('no user id');var cr=await spotifyFetch('https://api.spotify.com/v1/users/'+uid+'/playlists',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nm,description:'Generated by SonicBrand AI',public:false})});if(!cr)throw new Error('create playlist request failed');var pl=await cr.json();if(!pl.id)throw new Error('local fail: '+(pl.error&&pl.error.message||JSON.stringify(pl)));for(var i=0;i<uris.length;i+=100){var addRes=await spotifyFetch('https://api.spotify.com/v1/playlists/'+pl.id+'/tracks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uris:uris.slice(i,i+100)})});if(!addRes)brainLog('⚠️','Spotify','batch add failed at '+i)}btn.innerHTML='✓ נשמר! ('+uris.length+' שירים)';btn.style.background='rgba(29,185,84,.3)';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false;btn.style.background=''},4000);if(pl.external_urls&&pl.external_urls.spotify)window.open(pl.external_urls.spotify,'_blank');brainLog('✅','Spotify','פלייליסט נשמר: '+nm);return}throw new Error('no local token')}catch(e){brainLog('🔄','Spotify','local failed: '+e.message+' — fallback to proxy...');try{await saveUserSpotifyTokens();await new Promise(function(r){setTimeout(r,500)});var cpRes=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_playlist',name:nm,description:'Generated by SonicBrand AI'})});var plRes=await cpRes.json();if(!plRes.id){if(plRes.error&&plRes.error.indexOf('token')!==-1){btn.innerHTML='❌ נא להתחבר מחדש ל-Spotify';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false},4000);return}throw new Error('proxy create fail: '+(plRes.error||'unknown'))}var atRes=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add_tracks',playlist_id:plRes.id,uris:uris})});var atData=await atRes.json();if(atRes.status!==200||atData.error)throw new Error('add_tracks fail: '+(atData.error||'status '+atRes.status));btn.innerHTML='✓ נשמר! ('+uris.length+' שירים)';btn.style.background='rgba(29,185,84,.3)';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false;btn.style.background=''},4000);if(plRes.external_urls&&plRes.external_urls.spotify)window.open(plRes.external_urls.spotify,'_blank');brainLog('✅','Spotify','פלייליסט נשמר via proxy: '+nm)}catch(e2){brainLog('❌','Spotify','שגיאה: '+e2.message);btn.innerHTML='❌ שגיאה — נסה להתחבר מחדש';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false},4000)}}}
 function saveKey(){const k=document.getElementById('apiKey').value.trim();if(!k.startsWith('sk-')){showMsg('openaiStatus','מפתח לא תקין','err');return}localStorage.setItem('openai_key',k);localStorage.setItem('openai_model',document.getElementById('apiModel').value);showMsg('openaiStatus','✓ נשמר','ok');brainLog('🔑','מפתח נשמר','')}
 async function testKey(){try{var inputKey=document.getElementById('apiKey').value.trim();if(inputKey&&inputKey.startsWith('sk-')){localStorage.setItem('openai_key',inputKey);localStorage.setItem('openai_model',document.getElementById('apiModel').value)}showMsg('openaiStatus','בודק...','ok');await callOpenAI([{role:'user',content:'Say OK'}],{max_tokens:10,noJson:true});showMsg('openaiStatus','✓ תקין','ok')}catch(e){showMsg('openaiStatus','שגיאה: '+e.message,'err')}}
@@ -2427,11 +2431,8 @@ async function analyzePlaylistContext(artistName){
 if(!artistName)return null;
 var cacheKey=artistName.toLowerCase().trim();
 if(_playlistContextCache[cacheKey])return _playlistContextCache[cacheKey];
-var t=await getSpotifyToken();if(!t)return null;
 try{
-var url='https://api.spotify.com/v1/search?q='+encodeURIComponent(artistName)+'&type=playlist&limit=20&market=IL';
-var resp=await fetch(url,{headers:{'Authorization':'Bearer '+t}});
-var data=await resp.json();
+var data=await neutralSpotifySearch(artistName,'playlist',20,'IL');
 if(!data.playlists||!data.playlists.items||!data.playlists.items.length)return null;
 /* Collect all playlist names + descriptions */
 var titles=data.playlists.items.map(function(p){return((p.name||'')+' '+(p.description||'')).toLowerCase()}).join(' ');
@@ -2838,15 +2839,12 @@ _queries.unshift(_hebGenreMap[_family]);
 /* Add proportional Israeli searches based on hebrew fader */
 if(f.hebrew>70)_queries.unshift(_hebGenreMap[_family]+' להיטים')}
 var _candidateTracks=[];
-var _t=await getSpotifyToken();
-if(_t){
+/* Use NEUTRAL proxy (Client Credentials) — no personalization bias */
 for(var _qi=0;_qi<_queries.length&&_candidateTracks.length<12;_qi++){
 try{
 var _sq=_queries[_qi];
-var _srUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_sq)+'&type=track&limit=15&market=IL';
-var _srResp=await fetch(_srUrl,{headers:{'Authorization':'Bearer '+_t}});
-var _srData=await _srResp.json();
-if(_srData.tracks&&_srData.tracks.items){
+var _srData=await neutralSpotifySearch(_sq,'track',15,'IL');
+if(_srData&&_srData.tracks&&_srData.tracks.items){
 _srData.tracks.items.forEach(function(tr){
 /* Skip exact duplicates */
 if(_candidateTracks.some(function(c){return c.spotifyId===tr.id}))return;
@@ -2858,15 +2856,12 @@ _candidateTracks.push({artist:tr.artists.map(function(a){return a.name}).join(',
 if(_candidateTracks.length<6){
 try{
 var _genreQ='genre:"'+(_spotifyGenreSeeds[_family]||_family).split(' ')[0]+'"'+(_hebSearchMod?' '+_hebSearchMod:'');
-var _gUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_genreQ)+'&type=track&limit=15&market=IL';
-var _gResp=await fetch(_gUrl,{headers:{'Authorization':'Bearer '+_t}});
-var _gData=await _gResp.json();
-if(_gData.tracks&&_gData.tracks.items){
+var _gData=await neutralSpotifySearch(_genreQ,'track',15,'IL');
+if(_gData&&_gData.tracks&&_gData.tracks.items){
 _gData.tracks.items.forEach(function(tr){
 if(_candidateTracks.some(function(c){return c.spotifyId===tr.id}))return;
 if(_candidateTracks.some(function(c){return isSameSong(c.title,tr.name)}))return;
 _candidateTracks.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,spotifyId:tr.id,_artistId:tr.artists[0]?tr.artists[0].id:null,_pop:tr.popularity,vibeIdx:_di})})}}catch(e){}}
-}
 brainLog('🔍','Step 2','Family '+_family+': '+_candidateTracks.length+' candidates found',true);
 /* ═══ STEP 3: Enrich candidates with artist genre data ═══ */
 var _artIds=[];_candidateTracks.forEach(function(c){if(c._artistId&&_artIds.indexOf(c._artistId)===-1)_artIds.push(c._artistId)});
@@ -2922,9 +2917,7 @@ var _usedArtists={};_picked.forEach(function(p){_usedArtists[p.artist]=true});
 wiz.samples.forEach(function(s){_usedArtists[s.artist]=true});
 for(var _fqi=0;_fqi<_fallbackQueries.length&&_picked.length<3;_fqi++){
 try{
-var _fbUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_fallbackQueries[_fqi])+'&type=track&limit=10&market=IL';
-var _fbResp=await fetch(_fbUrl,{headers:{'Authorization':'Bearer '+_t}});
-var _fbData=await _fbResp.json();
+var _fbData=await neutralSpotifySearch(_fallbackQueries[_fqi],'track',10,'IL');
 if(_fbData.tracks&&_fbData.tracks.items){
 for(var _fbi=0;_fbi<_fbData.tracks.items.length&&_picked.length<3;_fbi++){
 var _fbTrack=_fbData.tracks.items[_fbi];
@@ -3084,19 +3077,17 @@ async function spotifyFetchWithToken(url,token,timeout){timeout=timeout||15000;t
 
 async function amplifyReferences(refs){
 if(!refs||!refs.length)return null;
-const t=await getSpotifyToken();
-if(!t)return{tracks:refs,audioProfile:null,relatedArtists:[],tasteVector:null};
 brainLog('🔍','Ref Amplify','Analyzing '+refs.length+' reference tracks...',true);
 const verified=[];const audioFeats=[];const artistIds=new Set();
 var refSearchResults=await Promise.allSettled(refs.slice(0,5).map(function(ref){return searchTrack(ref.artist,ref.title)}));
 refSearchResults.forEach(function(r){if(r.status==='fulfilled'&&r.value){var sp=r.value;verified.push({artist:sp.artists.map(function(a){return a.name}).join(', '),title:sp.name,id:sp.id,artistId:sp.artists[0].id});sp.artists.forEach(function(a){artistIds.add(a.id)})}});
 if(verified.length){
 try{const ids=verified.map(function(v){return v.id}).join(',');
-const afr_data=await spotifyFetchWithToken('https://api.spotify.com/v1/audio-features?ids='+ids,t);const afd=afr_data||{};
+const afd=await neutralSpotifyFetch('https://api.spotify.com/v1/audio-features?ids='+ids)||{};
 if(afd.audio_features){afd.audio_features.forEach(function(af){if(af)audioFeats.push(af)})}}catch(e){}}
 const relatedArtists=[];
 const artistArr=Array.from(artistIds).slice(0,3);
-var relResults=await Promise.allSettled(artistArr.map(function(aid){return fetch('https://api.spotify.com/v1/artists/'+aid+'/related-artists',{headers:{'Authorization':'Bearer '+t}}).then(function(r){return r.json()})}));
+var relResults=await Promise.allSettled(artistArr.map(function(aid){return neutralSpotifyFetch('https://api.spotify.com/v1/artists/'+aid+'/related-artists')}));
 relResults.forEach(function(r){if(r.status==='fulfilled'&&r.value&&r.value.artists){r.value.artists.slice(0,5).forEach(function(a){if(!relatedArtists.find(function(x){return x.id===a.id}))relatedArtists.push({name:a.name,id:a.id,genres:a.genres.slice(0,3)})})}});
 let tasteVector=null;
 if(audioFeats.length){
@@ -3115,9 +3106,8 @@ const seedPrompt=[{role:'system',content:'You select 5 SEED TRACKS that define t
 const seedRaw=await callOpenAIWithFallback(seedPrompt,{max_tokens:800,stage:'🌱 Seed Generation',temperature:0.6});
 const seedData=safeJSON(seedRaw);
 const seeds=seedData.seeds||[];
-const t=await getSpotifyToken();
 var verified=[];
-if(t&&seeds.length){
+if(seeds.length){
 var seedResults=await Promise.allSettled(seeds.map(function(seed){return searchTrack(seed.artist,seed.title).then(function(sp){if(sp)return Object.assign({},seed,{artist:sp.artists.map(function(a){return a.name}).join(', '),title:sp.name,id:sp.id,verified:true});return Object.assign({},seed,{verified:false})}).catch(function(){return Object.assign({},seed,{verified:false})})}));
 seedResults.forEach(function(r){verified.push(r.status==='fulfilled'?r.value:Object.assign({},seeds[0],{verified:false}))})}else{seeds.forEach(function(s){verified.push(Object.assign({},s,{verified:false}))})}
 const vCount=verified.filter(function(s){return s.verified}).length;
@@ -3126,8 +3116,6 @@ return verified}
 
 /* #6 — SPOTIFY PRE-FETCH: Recommendations API */
 async function prefetchFromSpotify(seeds,dna,targetAudio,constraints){
-const t=await getSpotifyToken();
-if(!t){brainLog('⚠️','Pre-fetch','No Spotify token — skipping pool',true);return[]}
 const verifiedSeeds=seeds.filter(function(s){return s.verified&&s.id});
 if(!verifiedSeeds.length){brainLog('⚠️','Pre-fetch','No verified seeds — skipping pool',true);return[]}
 brainLog('🔄','Pre-fetch','Fetching recommendations from Spotify...',true);
@@ -3142,7 +3130,7 @@ url+='&min_energy='+Math.max(0,targetAudio.energy.min).toFixed(2);
 url+='&max_energy='+Math.min(1,targetAudio.energy.max).toFixed(2);
 url+='&min_tempo='+targetAudio.tempo.min;
 url+='&max_tempo='+Math.min(200,targetAudio.tempo.max+15);
-return fetch(url,{headers:{'Authorization':'Bearer '+t}}).then(function(r){return r.json()})}));
+return neutralSpotifyFetch(url)}));
 chunkResults.forEach(function(r){if(r.status==='fulfilled'&&r.value&&r.value.tracks){r.value.tracks.forEach(function(tr){
 if(!pool.find(function(p){return p.id===tr.id})){
 pool.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,id:tr.id,duration:tr.duration_ms,popularity:tr.popularity,preview:tr.preview_url,isHebrew:false})}})}});
@@ -3155,8 +3143,7 @@ if(constraints.famLevel==='ultra_niche')gUrl+='&max_popularity=15';
 else if(constraints.famLevel==='niche')gUrl+='&max_popularity=25';
 else if(constraints.famLevel==='mixed')gUrl+='&max_popularity=65&min_popularity=15';
 else if(constraints.famLevel==='commercial')gUrl+='&min_popularity=50';
-const gr=await fetch(gUrl,{headers:{'Authorization':'Bearer '+t}});
-const gd=await gr.json();
+const gd=await neutralSpotifyFetch(gUrl)||{};
 if(gd.tracks){gd.tracks.forEach(function(tr){
 if(!pool.find(function(p){return p.id===tr.id})){
 pool.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,id:tr.id,duration:tr.duration_ms,popularity:tr.popularity,isHebrew:false})}})}}catch(e){}}

@@ -1217,13 +1217,13 @@ async function czLoadProfile() {
   var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
   var latestAnalysis = null;
   try {
-    var res = await sb.from('analyses').select('*').order('created_at', {ascending: false}).limit(1);
-    if (res.data && res.data.length) {
-      var filtered = res.data.filter(function(a) {
-        return a.user_name && a.user_name.toLowerCase() === userName.toLowerCase();
-      });
-      if (filtered.length) latestAnalysis = filtered[0];
-      else if (res.data.length) latestAnalysis = res.data[0];
+    if (userName) {
+      var res = await sb.from('analyses').select('*').ilike('user_name', userName).order('created_at', {ascending: false}).limit(1);
+      if (res.data && res.data.length) latestAnalysis = res.data[0];
+    }
+    if (!latestAnalysis) {
+      var res2 = await sb.from('analyses').select('*').order('created_at', {ascending: false}).limit(1);
+      if (res2.data && res2.data.length) latestAnalysis = res2.data[0];
     }
   } catch(e) {}
   

@@ -2947,69 +2947,32 @@ brainLog('✅','Fallback','Added: '+_fbArtist+' — '+_fbTrack.name,true)}}}}}ca
 brainLog('✅','Step 4','Family '+_family+': '+_picked.length+' verified tracks',true);
 _picked.forEach(function(p){wiz.samples.push(p);_vibeObj.tracks.push({artist:p.artist,title:p.title})});
 }
-/* ═══ STEP 5: Playlist Context Verification — the self-audit ═══ */
-brainLog('📋','Step 5','Playlist context verification...',true);
-var _plFails=[];
+/* ═══ STEP 5: Playlist Context Verification — ADVISORY ONLY (logs insights, never blocks) ═══ */
+brainLog('📋','Step 5','Playlist context verification (advisory)...',true);
+var _plWarnings=0;
 for(var _pi=0;_pi<wiz.samples.length;_pi++){
 var _ps=wiz.samples[_pi];
 var _pvibe=wiz.vibes[_ps.vibeIdx];
 if(!_pvibe)continue;
 var _pFamily=_pvibe.family;
+try{
 var _vResult=await verifyTrackFamily(_ps,_pFamily);
 _ps._playlistVerified=_vResult.verified;
 _ps._playlistConfidence=_vResult.confidence||'unknown';
 _ps._verifyReason=_vResult.reason;
-if(!_vResult.verified){
-_plFails.push({idx:_pi,artist:_ps.artist,family:_pFamily,reason:_vResult.reason});
-brainLog('🚫','Playlist',_ps.artist+': FAILED — '+_vResult.reason,true);
-_ps._genreMismatch=true}
-else{brainLog('✅','Playlist',_ps.artist+': '+_vResult.confidence+' — '+_vResult.reason,true)}}
-/* ═══ STEP 6: Replace failed tracks ═══ */
-if(_plFails.length){
-brainLog('🔄','Step 6','Replacing '+_plFails.length+' failed tracks...',true);
-for(var _fi=0;_fi<_plFails.length;_fi++){
-var _fail=_plFails[_fi];
-var _failVibe=wiz.vibes[wiz.samples[_fail.idx].vibeIdx];
-var _failFamily=_failVibe?_failVibe.family:'pop';
-var _replQ=(_spotifyGenreSeeds[_failFamily]||_failFamily)+(_isHebrew&&!(_spotifyGenreSeeds[_failFamily]||'').match(/ישראלי/)?' ישראלי':'');
-try{
-var _rt=await getSpotifyToken();if(!_rt)continue;
-var _rUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_replQ)+'&type=track&limit=20&market=IL';
-var _rResp=await fetch(_rUrl,{headers:{'Authorization':'Bearer '+_rt}});
-var _rData=await _rResp.json();
-if(_rData.tracks&&_rData.tracks.items){
-var _existingIds={};wiz.samples.forEach(function(s){if(s.spotifyId)_existingIds[s.spotifyId]=true});
-for(var _rri=0;_rri<_rData.tracks.items.length;_rri++){
-var _rTrack=_rData.tracks.items[_rri];
-if(_existingIds[_rTrack.id])continue;
-/* Quick artist genre check */
-var _rArtId=_rTrack.artists&&_rTrack.artists[0]?_rTrack.artists[0].id:null;
-if(!_rArtId)continue;
-var _rArtData=await getArtistsAnyway([_rArtId]);
-if(!_rArtData||!_rArtData.artists||!_rArtData.artists[0])continue;
-var _rGenres=_rArtData.artists[0].genres||[];
-if(!artistMatchesFamily(_rGenres,_failFamily))continue;
-/* Israeli preference for replacements — prefer but don't block */
-/* Same song check */
-if(wiz.samples.some(function(s){return isSameSong(s.title,_rTrack.name)}))continue;
-/* Playlist context check for replacement */
-var _rPl=await analyzePlaylistContext(_rTrack.artists[0].name);
-if(_rPl&&_rPl.primaryFamily!==_failFamily&&_rPl.secondaryFamily!==_failFamily)continue;
-/* This replacement passed both checks */
-var _oldArtist=wiz.samples[_fail.idx].artist;
-wiz.samples[_fail.idx]={artist:_rTrack.artists.map(function(a){return a.name}).join(', '),title:_rTrack.name,spotifyId:_rTrack.id,_artistId:_rArtId,_genres:_rGenres,_followers:_rArtData.artists[0].followers?_rArtData.artists[0].followers.total:0,_pop:_rTrack.popularity,vibeIdx:wiz.samples[_fail.idx].vibeIdx,_playlistVerified:true,_playlistConfidence:'high',_verifyReason:'replacement — artist genres + playlists confirm',reason:'✅ מאומת'};
-wiz.samples[_fail.idx]._genreMismatch=false;
-brainLog('✅','Replace',_oldArtist+' → '+_rTrack.artists[0].name+' ['+_rGenres.slice(0,2).join(', ')+']',true);
-break}}}catch(e){brainLog('⚠️','Replace',e.message)}}}
+if(!_vResult.verified){_plWarnings++;brainLog('⚠️','Playlist',_ps.artist+': advisory warning — '+_vResult.reason,true)}
+else{brainLog('✅','Playlist',_ps.artist+': '+_vResult.confidence,true)}
+}catch(e){brainLog('⚠️','Playlist','Skip verification for '+_ps.artist+': '+e.message,true)}}
+brainLog('📋','Step 5','Done — '+_plWarnings+' advisory warnings (no tracks blocked)',true);
 /* ═══ STEP 7: Audio features verification for fader compliance ═══ */
-var _verifiedIds=wiz.samples.filter(function(s){return s.spotifyId&&!s._genreMismatch}).map(function(s){return s.spotifyId});
+var _verifiedIds=wiz.samples.filter(function(s){return s.spotifyId}).map(function(s){return s.spotifyId});
 if(_verifiedIds.length){
 try{
 var _afData=await getAudioFeaturesAnyway(_verifiedIds);
 if(_afData&&_afData.audio_features){
 var _afMap={};_afData.audio_features.forEach(function(af){if(af&&af.id)_afMap[af.id]=af});
 wiz.samples.forEach(function(s){
-if(!s.spotifyId||s._genreMismatch)return;
+if(!s.spotifyId)return;
 var af=_afMap[s.spotifyId];if(!af)return;
 s._inst=af.instrumentalness;s._energy=af.energy;s._tempo=Math.round(af.tempo);s._dance=af.danceability;
 var _descParts=[];
@@ -3018,14 +2981,14 @@ if(af.energy>0.7)_descParts.push('אנרגטי');else if(af.energy<0.3)_descPart
 _descParts.push('BPM:'+Math.round(af.tempo));
 if(s._pop)_descParts.push('pop:'+s._pop);
 s.reason=_descParts.join(' · ')})}}catch(e){brainLog('⚠️','AF',e.message)}}
-brainLog('✅','Done','Pipeline complete — '+wiz.samples.filter(function(s){return!s._genreMismatch}).length+' verified tracks across '+wiz.vibes.length+' directions',true);
+brainLog('✅','Done','Pipeline complete — '+wiz.samples.length+' tracks across '+wiz.vibes.length+' directions',true);
 /* ═══ RENDER VIBE CARDS ═══ */
 var _bbBtn=document.getElementById('sampleBackBtn');if(_bbBtn)_bbBtn.style.display='';
 var html='';
 /* Show business insight paragraph */
 if(wiz.bizInsight){html+='<div style="background:rgba(29,185,84,.06);border:1px solid rgba(29,185,84,.15);border-radius:14px;padding:18px 22px;margin-bottom:20px;text-align:right;direction:rtl"><p style="color:var(--text);font-size:14px;line-height:1.7;margin:0;opacity:.9">'+esc(wiz.bizInsight)+'</p></div>'}
 var _renderedVibes=0;for(var vi=0;vi<wiz.vibes.length;vi++){var vb=wiz.vibes[vi];
-var vTracks=wiz.samples.filter(function(s){return s.vibeIdx===vi&&!s._genreMismatch});
+var vTracks=wiz.samples.filter(function(s){return s.vibeIdx===vi});
 if(!vTracks.length){brainLog('⚠️','Render','Hiding empty vibe card: '+vb.name,true);continue}
 _renderedVibes++;
 html+='<div class="vibe-card" id="vibeCard'+vi+'" onclick="selectVibe('+vi+')" style="position:relative">';

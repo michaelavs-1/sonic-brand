@@ -987,7 +987,8 @@ function switchCZTab(tabId, btn) {
 
 async function loadPersonalArea() {
   var notLoggedIn = document.getElementById('czNotLoggedIn');
-  if (isGuest || !authUser) {
+  var isAuthenticated = (authUser && !isGuest) || isSpotifySSO || (localStorage.getItem('sp_access') && localStorage.getItem('sp_user_name'));
+  if (!isAuthenticated) {
     if(notLoggedIn) notLoggedIn.style.display = 'block';
     document.getElementById('czTabs').style.display = 'none';
     document.querySelectorAll('.cz-panel').forEach(function(p) { p.style.display = 'none' });
@@ -1109,9 +1110,13 @@ async function czLoadPlaylists() {
   try {
     var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
     var res = await sb.from('analyses').select('*').order('created_at', {ascending: false}).limit(50);
-    var data = (res.data || []).filter(function(a) {
-      return userName && a.user_name && a.user_name.toLowerCase() === userName.toLowerCase();
-    });
+    var data = (res.data || []);
+    if (userName) {
+      var filtered = data.filter(function(a) {
+        return a.user_name && a.user_name.toLowerCase() === userName.toLowerCase();
+      });
+      if (filtered.length) data = filtered;
+    }
     loading.style.display = 'none';
     if (!data.length) { empty.style.display = 'block'; return; }
     

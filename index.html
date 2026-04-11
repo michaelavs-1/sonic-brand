@@ -2805,8 +2805,8 @@ async function generateSamples(){const ld=document.getElementById('sampleLoading
 const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'');
 /* ═══ STEP 1: GPT picks 3 genre FAMILIES (not moods) ═══ */
 brainLog('🧠','Step 1','GPT picking 3 genre families...',true);
-var _familyPrompt='You are SonicBrand AI. Pick 3 GENRE DIRECTIONS for this business.\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🎚️ SLIDER CONTEXT:\n- Hebrew: '+f.hebrew+'% ('+((f.hebrew>70)?'mostly Hebrew':(f.hebrew<30)?'mostly international':'mixed')+')\n- Energy: '+f.energy+'/100\n- Familiarity: '+f.familiarity+'/100\n- Vocal: '+f.vocal+'/100\n\nIMPORTANT RULES:\n1. Each direction MUST be a specific GENRE FAMILY — not a mood or vibe like "Summer Vibes" or "Good Energy"\n2. Valid genre families: mizrahi, rock, jazz, electronic, hiphop, rnb, pop, classical, soul, folk, world\n3. Pick 3 DIFFERENT families that make sense for this business + location + audience\n4. Direction 1: The most natural/obvious genre fit\n5. Direction 2: A complementary but different genre\n6. Direction 3: A bold/creative genre choice\n7. If demographic context mentions Mizrahi affinity > 50, at least one direction MUST be mizrahi\n8. If demographic context mentions avoid_genres, do NOT pick those families\n9. Hebrew slider affects which LANGUAGE tracks should be in, NOT which genre to pick\n\nReturn JSON:\n{"bizInsight":"פסקה קצרה בעברית (3-4 משפטים) שמסבירה ללקוח: מה הבנת על העסק שלו, מי הקהל, מה האווירה, ולמה בחרת את 3 הכיוונים האלה. תדבר ישירות ללקוח בגוף שני — כאילו אתה יועץ מוזיקלי שמכיר את המקום. דוגמה: העסק שלך הוא X, שמושך קהל Y. האווירה שאתה מחפש היא Z, ולכן בחרתי 3 כיוונים שמשלבים...","directions":[\n{"family":"one of the valid family names","hebrewName":"שם הכיוון בעברית (2-3 words, genre-specific)","emoji":"single emoji","desc":"תיאור קצר בעברית — מה הסאונד הזה","searchQueries":["spotify search query 1","spotify search query 2","spotify search query 3"]},\n... 3 directions total\n]}\n\nThe searchQueries should be specific Spotify search terms for finding tracks in this genre that fit the business. Include artist names when possible. If hebrew>50, include Hebrew/Israeli search terms.';
-var _famRaw=await callOpenAI([{role:'system',content:'You are SonicBrand AI music curator. You pick genre directions for businesses. Each direction must be anchored to a specific genre FAMILY — never vague moods. JSON only.'},{role:'user',content:_familyPrompt}],{max_tokens:800,stage:'2️⃣ כיוונים מוזיקליים — שלב 1',model:'gpt-4o-mini'});
+var _familyPrompt='You are SonicBrand AI. Pick EXACTLY 3 GENRE DIRECTIONS for this business.\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🎚️ SLIDER CONTEXT:\n- Hebrew: '+f.hebrew+'% ('+((f.hebrew>70)?'mostly Hebrew':(f.hebrew<30)?'mostly international':'mixed')+')\n- Energy: '+f.energy+'/100\n- Familiarity: '+f.familiarity+'/100\n- Vocal: '+f.vocal+'/100\n\nIMPORTANT RULES:\n1. Each direction MUST be a specific GENRE FAMILY — not a mood or vibe like "Summer Vibes" or "Good Energy"\n2. Valid genre families: mizrahi, rock, jazz, electronic, hiphop, rnb, pop, classical, soul, folk, world\n3. Pick EXACTLY 3 DIFFERENT families — no less, no more\n4. Direction 1: The most natural/obvious genre fit\n5. Direction 2: A complementary but different genre\n6. Direction 3: A bold/creative genre choice\n7. If demographic context mentions Mizrahi affinity > 50, at least one direction MUST be mizrahi\n8. If demographic context mentions avoid_genres, do NOT pick those families\n9. Hebrew slider affects LANGUAGE MIX inside each direction — NOT the genre name. A "folk" direction can include both Israeli and international folk. Do NOT add "ישראלי" to the genre name just because hebrew is high.\n10. NAMING: Use ATMOSPHERIC, POETIC Hebrew names — NOT rigid genre labels. Instead of "פולק ישראלי" write "צלילים אקוסטיים חמים". Instead of "רוק" write "אנרגיה חשמלית". Instead of "ג׳אז" write "מקצבים חופשיים". The name should PAINT A PICTURE of the feeling, not define a genre. Think: how would a creative director describe this sound to a client? Examples: "מנגינות רחוב", "ערב לואנג׳", "קצב ותשוקה", "שקיעה ונשמה", "בוקר קפה שקט"\n\n🚨 CRITICAL: You MUST return EXACTLY 3 directions. Not 1, not 2. Always 3.\n\nReturn JSON:\n{"bizInsight":"פסקה קצרה בעברית (3-4 משפטים) שמסבירה ללקוח: מה הבנת על העסק שלו, מי הקהל, מה האווירה, ולמה בחרת את 3 הכיוונים האלה. תדבר ישירות ללקוח בגוף שני.","directions":[\n{"family":"one of the valid family names","hebrewName":"שם אווירתי ציורי בעברית (2-4 words, NOT a genre label — paint the feeling)","emoji":"single emoji","desc":"תיאור קצר בעברית — מה הסאונד הזה","reasoning":"נימוק קצר בעברית (1-2 משפטים) — למה הכיוון הזה מתאים לעסק. למשל: אני מציע את הסגנון הזה כי... / המוזיקה הזו מאפיינת... ומשרה אווירה של...","searchQueries":["spotify search query 1","spotify search query 2","spotify search query 3"]},\n... EXACTLY 3 directions total\n]}\n\nsearchQueries rules:\n- Use diverse search terms — include specific artist names, not just genre keywords\n- Mix Hebrew and English search terms for variety\n- Each query should target DIFFERENT artists to maximize diversity';
+var _famRaw=await callOpenAI([{role:'system',content:'You are SonicBrand AI music curator. You pick genre directions for businesses. Each direction must be anchored to a specific genre FAMILY — never vague moods. ALWAYS return EXACTLY 3 directions. JSON only.'},{role:'user',content:_familyPrompt}],{max_tokens:1200,stage:'2️⃣ כיוונים מוזיקליים — שלב 1',model:'gpt-4o-mini'});
 var _famParsed=safeJSON(_famRaw);
 var _directions=_famParsed.directions||[];
 wiz.bizInsight=_famParsed.bizInsight||'';
@@ -2818,16 +2818,25 @@ brainLog('🔍','Step 2','Spotify finding tracks per family...',true);
 wiz.vibes=[];wiz.samples=[];wiz.votes={};wiz.selectedVibe=null;
 /* Hebrew-aware genre seeds — completely different search terms for Israeli vs international */
 var _isHebrew=f.hebrew>50;
-var _spotifyGenreSeeds=_isHebrew?{mizrahi:'מזרחי ישראלי',rock:'רוק ישראלי israeli rock',jazz:'ג׳אז ישראלי israeli jazz',electronic:'אלקטרוני ישראלי israeli electronic',hiphop:'ראפ ישראלי israeli hip hop',rnb:'אר אנד בי ישראלי israeli r&b',pop:'פופ ישראלי israeli pop',classical:'קלאסי ישראלי israeli classical',soul:'סול ישראלי israeli soul',folk:'פולק ישראלי זמר יוצר',world:'מוזיקה ישראלית israeli music'}:{mizrahi:'mizrahi israeli middle eastern',rock:'rock alternative indie',jazz:'jazz bossa nova swing',electronic:'electronic house techno ambient',hiphop:'hip hop rap trap',rnb:'r&b neo soul',pop:'pop dance pop',classical:'classical piano orchestral',soul:'soul funk disco',folk:'folk acoustic singer-songwriter',world:'world latin reggae afrobeat'};
-var _hebSearchMod=_isHebrew?' ישראלי israeli':'';
+/* Genre seeds — universal, not forced Israeli. Hebrew slider affects language MIX, not genre identity */
+var _spotifyGenreSeeds={mizrahi:'mizrahi israeli middle eastern',rock:'rock alternative indie',jazz:'jazz bossa nova swing',electronic:'electronic house techno ambient',hiphop:'hip hop rap trap',rnb:'r&b neo soul',pop:'pop dance pop',classical:'classical piano orchestral',soul:'soul funk disco',folk:'folk acoustic singer-songwriter',world:'world latin reggae afrobeat'};
+/* When hebrew>50, ADD an Israeli search pass but don't REPLACE the genre search */
+var _hebSearchMod='';
 for(var _di=0;_di<_directions.length;_di++){
 var _dir=_directions[_di];
 var _family=_dir.family||'pop';
-var _vibeObj={name:_dir.hebrewName||_family,emoji:_dir.emoji||'🎵',desc:_dir.desc||'',family:_family,tracks:[]};
+var _vibeObj={name:_dir.hebrewName||_family,emoji:_dir.emoji||'🎵',desc:_dir.desc||'',reasoning:_dir.reasoning||'',family:_family,tracks:[]};
 wiz.vibes.push(_vibeObj);
 /* Search Spotify using multiple queries for this family */
 var _queries=(_dir.searchQueries||[]).slice(0,3);
-if(!_queries.length)_queries=[(_spotifyGenreSeeds[_family]||_family)+_hebSearchMod];
+if(!_queries.length)_queries=[(_spotifyGenreSeeds[_family]||_family)];
+/* When hebrew>50, add Israeli-specific search passes FIRST to boost Hebrew tracks */
+var _hebGenreMap={mizrahi:'מזרחי',rock:'רוק ישראלי',jazz:'ג׳אז ישראלי',electronic:'אלקטרוני ישראלי',hiphop:'ראפ ישראלי',rnb:'אר אנד בי ישראלי',pop:'פופ ישראלי',classical:'קלאסי ישראלי',soul:'סול ישראלי',folk:'זמר יוצר ישראלי',world:'מוזיקה ישראלית'};
+if(_isHebrew&&_hebGenreMap[_family]){
+/* Prepend Israeli search to ensure Hebrew tracks enter the pool first */
+_queries.unshift(_hebGenreMap[_family]);
+/* Add proportional Israeli searches based on hebrew fader */
+if(f.hebrew>70)_queries.unshift(_hebGenreMap[_family]+' להיטים')}
 var _candidateTracks=[];
 var _t=await getSpotifyToken();
 if(_t){
@@ -2877,10 +2886,10 @@ var _genreOk=true;
 if(_ct._genres&&_ct._genres.length){_genreOk=artistMatchesFamily(_ct._genres,_family)}
 else{_genreOk=true} /* No genre data — allow but mark */
 if(!_genreOk){brainLog('⚠️','Filter',_ct.artist+' ['+(_ct._genres||[]).slice(0,2).join(', ')+'] ≠ '+_family+' — skipped',true);continue}
-/* Israeli identity check — when hebrew slider > 50, require Israeli connection */
+/* Israeli preference — when hebrew>50, prefer Israeli tracks but don't hard-block international */
 if(_isHebrew){
 var _isIsraeli=hasHebrewChars(_ct.artist)||hasHebrewChars(_ct.title)||isIsraeliArtist(_ct._genres||[]);
-if(!_isIsraeli){brainLog('⚠️','Filter',_ct.artist+' — not Israeli (hebrew='+f.hebrew+'%) — skipped',true);continue}}
+if(!_isIsraeli){_ct._notIsraeli=true}}
 /* Same song different version check across vibes */
 var _dupSong=wiz.samples.some(function(s){return isSameSong(s.title,_ct.title)});
 if(_dupSong){continue}
@@ -2895,6 +2904,8 @@ if(_artistInOther)continue;
 var _artistInThisVibe=_verified.some(function(v){return v.artist===_ct.artist});
 if(_artistInThisVibe){brainLog('⚠️','Filter',_ct.artist+' — already in this vibe — skipped',true);continue}
 _verified.push(_ct)}
+/* Sort: Israeli tracks first (when hebrew>50), then by popularity */
+if(_isHebrew){_verified.sort(function(a,b){var aI=a._notIsraeli?1:0;var bI=b._notIsraeli?1:0;if(aI!==bI)return aI-bI;return(b._pop||0)-(a._pop||0)})}
 /* Take top 3 verified tracks */
 var _picked=_verified.slice(0,3);
 /* Fallback: if less than 3 tracks, try broader search with different queries */
@@ -2978,8 +2989,7 @@ var _rArtData=await getArtistsAnyway([_rArtId]);
 if(!_rArtData||!_rArtData.artists||!_rArtData.artists[0])continue;
 var _rGenres=_rArtData.artists[0].genres||[];
 if(!artistMatchesFamily(_rGenres,_failFamily))continue;
-/* Israeli identity check for replacements */
-if(_isHebrew){var _rIsIsraeli=hasHebrewChars(_rTrack.name)||hasHebrewChars(_rTrack.artists[0].name)||isIsraeliArtist(_rGenres);if(!_rIsIsraeli)continue}
+/* Israeli preference for replacements — prefer but don't block */
 /* Same song check */
 if(wiz.samples.some(function(s){return isSameSong(s.title,_rTrack.name)}))continue;
 /* Playlist context check for replacement */
@@ -3022,6 +3032,7 @@ html+='<div class="vibe-card" id="vibeCard'+vi+'" onclick="selectVibe('+vi+')" s
 html+='<div class="vibe-check">✓</div>';
 html+='<div class="vibe-header"><span class="vibe-emoji">'+(vb.emoji||'🎵')+'</span><span class="vibe-name">'+esc(vb.name||'כיוון '+(vi+1))+'</span></div>';
 html+='<div class="vibe-desc">'+esc(vb.desc||'')+'</div>';
+if(vb.reasoning){html+='<div style="font-size:12px;color:var(--accent-2);margin:8px 0 4px;padding:8px 12px;background:rgba(29,185,84,.06);border-radius:10px;line-height:1.6;direction:rtl;text-align:right">💡 '+esc(vb.reasoning)+'</div>'}
 html+='<div class="vibe-tracks">';
 vTracks.forEach(function(t){
 var embed=t.spotifyId?'<iframe src="https://open.spotify.com/embed/track/'+t.spotifyId+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>':'<div class="vibe-track">🎵 '+esc(t.artist)+' — '+esc(t.title)+'</div>';

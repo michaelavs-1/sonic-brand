@@ -2371,6 +2371,54 @@ shifted.hebrewRef=(demoData.hebrew_reference_artists||[]).concat(shifted.hebrewR
 if(demoData.vibe_summary)shifted.vibe=demoData.vibe_summary+' | '+shifted.vibe;}
 return shifted}
 
+/* ═══ GENRE FAMILY MAP — maps Spotify genre tags to music worlds ═══ */
+const GENRE_FAMILIES={
+mizrahi:['mizrahi','israeli','middle eastern','turkish','arabic','persian','greek','mediterranean','israeli pop','mizrahi pop','israeli rock','oud','oriental'],
+rock:['rock','alternative','indie','punk','grunge','metal','hard rock','classic rock','garage','post-punk','brit','psychedelic','stoner','shoegaze','emo','screamo','prog'],
+jazz:['jazz','bebop','swing','bossa','smooth jazz','contemporary jazz','vocal jazz','latin jazz','cool jazz','free jazz','avant-garde jazz'],
+electronic:['electronic','house','techno','edm','dance','trance','ambient','lo-fi','chillwave','synthwave','downtempo','electronica','drum and bass','dubstep','minimal','deep house'],
+hiphop:['hip hop','rap','trap','drill','grime','boom bap','conscious hip hop','israeli hip hop','gangsta rap'],
+rnb:['r&b','neo soul','contemporary r&b','urban','quiet storm'],
+pop:['pop','dance pop','electropop','synth pop','teen pop','k-pop','j-pop','bubblegum','art pop','chamber pop','dream pop','indie pop'],
+classical:['classical','orchestra','chamber','baroque','romantic','contemporary classical','neo-classical','minimalism','modern classical'],
+soul:['soul','funk','motown','disco','gospel','southern soul','northern soul','philly soul'],
+folk:['folk','acoustic','singer-songwriter','americana','country','bluegrass','celtic','traditional'],
+world:['world','latin','reggae','afrobeat','ska','cumbia','flamenco','samba','bossa nova','fado','celtic','balkan','klezmer','ethio-jazz']
+};
+
+/* Check if an artist's Spotify genres belong to a specific genre family */
+function artistMatchesFamily(artistGenres,familyName){
+if(!artistGenres||!artistGenres.length||!GENRE_FAMILIES[familyName])return false;
+var allowed=GENRE_FAMILIES[familyName];
+var ag=artistGenres.map(function(g){return g.toLowerCase()});
+return ag.some(function(g){return allowed.some(function(a){return g.indexOf(a)!==-1||a.indexOf(g)!==-1})})}
+
+/* Detect which genre family an artist belongs to based on Spotify genres */
+function detectArtistFamily(artistGenres){
+if(!artistGenres||!artistGenres.length)return null;
+var ag=artistGenres.map(function(g){return g.toLowerCase()});
+var families=Object.keys(GENRE_FAMILIES);
+for(var fi=0;fi<families.length;fi++){
+var fam=families[fi];var tags=GENRE_FAMILIES[fam];
+var match=ag.some(function(g){return tags.some(function(t){return g.indexOf(t)!==-1||t.indexOf(g)!==-1})});
+if(match)return fam}
+return null}
+
+/* Detect which genre family a vibe name/description claims to be */
+function detectVibeFamily(vibeName,vibeDesc){
+var text=((vibeName||'')+'  '+(vibeDesc||'')).toLowerCase();
+if(/מזרחי|mizrahi|oriental|middle.?east|ים.?תיכונ/.test(text))return'mizrahi';
+if(/רוק|rock|אלטרנטיב|alternative|אינדי|indie|פאנק|punk/.test(text))return'rock';
+if(/ג׳אז|ג\'אז|jazz|סווינג|swing/.test(text))return'jazz';
+if(/אלקטרוני|electronic|טכנו|techno|האוס|house|לו.?פיי|lo.?fi|אמביינט|ambient/.test(text))return'electronic';
+if(/היפ.?הופ|hip.?hop|ראפ|rap|טראפ|trap/.test(text))return'hiphop';
+if(/פופ|pop/.test(text))return'pop';
+if(/קלאסי|classical/.test(text))return'classical';
+if(/נשמה|soul|פאנק|funk|דיסקו|disco/.test(text))return'soul';
+if(/עולמי|world|לטיני|latin|רגאיי|reggae/.test(text))return'world';
+if(/פולק|folk|אקוסטי|acoustic|זמר.?יוצר/.test(text))return'folk';
+return null}
+
 const refTracks=[];
 
 function buildBaseRulesBlock(wiz){
@@ -2767,16 +2815,33 @@ if(_descParts.length)_s.reason=_descParts.join(' · ')+((_str&&_str.popularity)?
 if(_replaced)brainLog('✅','Verify','Replaced '+_replaced+'/'+wiz.samples.length+' tracks that violated fader constraints',true);
 else brainLog('✅','Verify','All '+wiz.samples.length+' samples passed verification',true)}
 await enrichTracksWithArtistData(wiz.samples);
-var _famIssues=[];wiz.samples.forEach(function(s,idx){if(f.familiarity<30&&s._followers&&s._followers>200000){_famIssues.push(idx);brainLog('⚠️','Niche',s.artist+' — '+s._followers+' followers, too big',true)}});if(_famIssues.length&&_recsBackupPool.length){var _fpIdx=0;_famIssues.forEach(function(badIdx){while(_fpIdx<_recsBackupPool.length){var rep=_recsBackupPool[_fpIdx];_fpIdx++;var alreadyIn=wiz.samples.some(function(s){return s.spotifyId===rep.spotifyId});if(!alreadyIn){wiz.samples[badIdx]=rep;break}}})}
+/* ═══ GENRE-VIBE VERIFICATION ENGINE ═══ */
+/* Check each track's Spotify artist genres against its claimed vibe using GENRE_FAMILIES */
+var _vibeGenreMismatches=[];
+if(wiz.vibes&&wiz.vibes.length){
+wiz.samples.forEach(function(s,idx){
+if(!s._genres||!s._genres.length)return;
+var vibe=wiz.vibes[s.vibeIdx];if(!vibe)return;
+var claimedFamily=detectVibeFamily(vibe.name,vibe.desc);
+if(!claimedFamily)return; /* Can't verify if we don't know what the vibe claims */
+var match=artistMatchesFamily(s._genres,claimedFamily);
+if(!match){
+_vibeGenreMismatches.push({idx:idx,artist:s.artist,artistGenres:s._genres,claimedFamily:claimedFamily,vibeName:vibe.name});
+brainLog('🚫','Genre Check',s.artist+' ['+s._genres.slice(0,3).join(', ')+'] ≠ '+vibe.name+' ('+claimedFamily+')',true)}});
+if(_vibeGenreMismatches.length){
+brainLog('🔄','Genre Fix','Removing '+_vibeGenreMismatches.length+' mismatched tracks from vibe cards',true);
+var _badIdxs={};_vibeGenreMismatches.forEach(function(m){_badIdxs[m.idx]=true});
+wiz.samples.forEach(function(s,i){if(_badIdxs[i])s._genreMismatch=true})}}
+var _famIssues=[];wiz.samples.forEach(function(s,idx){if(s._genreMismatch)return;if(f.familiarity<30&&s._followers&&s._followers>200000){_famIssues.push(idx);brainLog('⚠️','Niche',s.artist+' — '+s._followers+' followers, too big',true)}});if(_famIssues.length&&_recsBackupPool.length){var _fpIdx=0;_famIssues.forEach(function(badIdx){while(_fpIdx<_recsBackupPool.length){var rep=_recsBackupPool[_fpIdx];_fpIdx++;var alreadyIn=wiz.samples.some(function(s){return s.spotifyId===rep.spotifyId});if(!alreadyIn){wiz.samples[badIdx]=rep;break}}})}
 var _bbBtn=document.getElementById('sampleBackBtn');if(_bbBtn)_bbBtn.style.display='';
-/* Render 3 vibe cards */
+/* Render 3 vibe cards (skip genre-mismatched tracks) */
 var html='';for(var vi=0;vi<wiz.vibes.length;vi++){var vb=wiz.vibes[vi];
 html+='<div class="vibe-card" id="vibeCard'+vi+'" onclick="selectVibe('+vi+')" style="position:relative">';
 html+='<div class="vibe-check">✓</div>';
 html+='<div class="vibe-header"><span class="vibe-emoji">'+(vb.emoji||'🎵')+'</span><span class="vibe-name">'+esc(vb.name||'כיוון '+(vi+1))+'</span></div>';
 html+='<div class="vibe-desc">'+esc(vb.desc||'')+'</div>';
 html+='<div class="vibe-tracks">';
-var vTracks=wiz.samples.filter(function(s){return s.vibeIdx===vi});
+var vTracks=wiz.samples.filter(function(s){return s.vibeIdx===vi&&!s._genreMismatch});
 vTracks.forEach(function(t){
 var embed=t.spotifyId?'<iframe src="https://open.spotify.com/embed/track/'+t.spotifyId+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>':'<div class="vibe-track">🎵 '+esc(t.artist)+' — '+esc(t.title)+'</div>';
 html+=embed});
@@ -3310,6 +3375,23 @@ if(_artData&&_artData.artists){var _artMap={};_artData.artists.forEach(function(
 tracks.forEach(function(t){if(t._artistId&&_artMap[t._artistId]){t._genres=_artMap[t._artistId].genres;t._followers=_artMap[t._artistId].followers}})}}
 brainLog('🎨','Artists','Enriched tracks with genres & followers data',true);
 var _famFiltered=0;if(f.familiarity<30){tracks.forEach(function(t,i){if(t._followers&&t._followers>500000){brainLog('⚠️','Niche','Removing '+t.artist+' ('+t._followers+' followers) — too mainstream',true);t._toRemove=true;_famFiltered++}});if(_famFiltered)tracks=tracks.filter(function(t){return!t._toRemove})}
+/* Genre-Demographic Verification: flag tracks whose Spotify genres conflict with audience */
+if(wiz.demoData&&wiz.demoData.avoid_genres&&wiz.demoData.avoid_genres.length){
+var _demoAvoid=wiz.demoData.avoid_genres.map(function(g){return g.toLowerCase()});
+var _demoRec=(wiz.demoData.recommended_genres||[]).map(function(g){return g.toLowerCase()});
+var _genreFiltered=0;
+tracks.forEach(function(t){
+if(!t._genres||!t._genres.length)return;
+var ag=t._genres.map(function(g){return g.toLowerCase()});
+/* Check if track's genres are in the avoid list AND not in recommended */
+var inAvoid=ag.some(function(g){return _demoAvoid.some(function(a){return g.indexOf(a)!==-1||a.indexOf(g)!==-1})});
+var inRec=ag.some(function(g){return _demoRec.some(function(r){return g.indexOf(r)!==-1||r.indexOf(g)!==-1})});
+if(inAvoid&&!inRec){
+brainLog('🚫','Genre Audit',t.artist+' ['+ag.slice(0,3).join(', ')+'] conflicts with audience demographics — removing',true);
+t._toRemove=true;_genreFiltered++}});
+if(_genreFiltered){
+tracks=tracks.filter(function(t){return!t._toRemove});
+brainLog('✅','Genre Audit','Removed '+_genreFiltered+' tracks that conflict with audience demographics. '+tracks.length+' remain.',true)}}
 }}catch(e){brainLog('⚠️','Enrich',e.message)}
 
 /* Phase 8: Two-Pass Critic (#2) */

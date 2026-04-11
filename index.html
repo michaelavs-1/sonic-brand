@@ -2829,23 +2829,67 @@ if(!match){
 _vibeGenreMismatches.push({idx:idx,artist:s.artist,artistGenres:s._genres,claimedFamily:claimedFamily,vibeName:vibe.name});
 brainLog('🚫','Genre Check',s.artist+' ['+s._genres.slice(0,3).join(', ')+'] ≠ '+vibe.name+' ('+claimedFamily+')',true)}});
 if(_vibeGenreMismatches.length){
-brainLog('🔄','Genre Fix','Removing '+_vibeGenreMismatches.length+' mismatched tracks from vibe cards',true);
+brainLog('🔄','Genre Fix','Found '+_vibeGenreMismatches.length+' mismatched tracks — searching replacements via Spotify...',true);
 var _badIdxs={};_vibeGenreMismatches.forEach(function(m){_badIdxs[m.idx]=true});
-wiz.samples.forEach(function(s,i){if(_badIdxs[i])s._genreMismatch=true})}}
+wiz.samples.forEach(function(s,i){if(_badIdxs[i])s._genreMismatch=true});
+/* Replace mismatched tracks via Spotify search using vibe genre keywords */
+var _spotifyGenreSeeds={mizrahi:'mizrahi israeli',rock:'rock alternative',jazz:'jazz',electronic:'electronic house',hiphop:'hip hop rap',pop:'pop',classical:'classical',soul:'soul funk',folk:'folk acoustic',world:'world latin',rnb:'r&b neo soul'};
+var _hebKeyword=f.hebrew>50?' ישראלי':'';
+for(var _rvi=0;_rvi<wiz.vibes.length;_rvi++){
+var _rvTracks=wiz.samples.filter(function(s){return s.vibeIdx===_rvi&&!s._genreMismatch});
+var _rvMissing=3-_rvTracks.length;
+if(_rvMissing<=0)continue;
+var _rvFamily=detectVibeFamily(wiz.vibes[_rvi].name,wiz.vibes[_rvi].desc);
+if(!_rvFamily)continue;
+var _searchQ=(_spotifyGenreSeeds[_rvFamily]||_rvFamily)+_hebKeyword;
+brainLog('🔍','Replace','Searching Spotify for "'+_searchQ+'" ('+_rvMissing+' needed for '+wiz.vibes[_rvi].name+')',true);
+try{
+var _existingInVibe={};wiz.samples.forEach(function(s){if(s.vibeIdx===_rvi&&!s._genreMismatch&&s.spotifyId)_existingInVibe[s.spotifyId]=true});
+var _srRes=await searchTrack(_searchQ,'');
+/* Use broader search — search for genre keyword as tracks */
+var _t=await getSpotifyToken();if(_t){
+var _srUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent('genre:"'+(_spotifyGenreSeeds[_rvFamily]||_rvFamily)+'"'+(_hebKeyword?' '+_hebKeyword:''))+'&type=track&limit=20&market=IL';
+var _srResp=await fetch(_srUrl,{headers:{'Authorization':'Bearer '+_t}});
+var _srData=await _srResp.json();
+if(_srData.tracks&&_srData.tracks.items){
+var _replacements=[];
+for(var _ri=0;_ri<_srData.tracks.items.length&&_replacements.length<_rvMissing;_ri++){
+var _rt=_srData.tracks.items[_ri];
+if(_existingInVibe[_rt.id])continue;
+/* Verify this replacement artist actually matches the family */
+var _rtArtistId=_rt.artists&&_rt.artists[0]?_rt.artists[0].id:null;
+if(_rtArtistId){
+var _rtArtData=await getArtistsAnyway([_rtArtistId]);
+if(_rtArtData&&_rtArtData.artists&&_rtArtData.artists[0]){
+var _rtGenres=_rtArtData.artists[0].genres||[];
+if(artistMatchesFamily(_rtGenres,_rvFamily)){
+_replacements.push({artist:_rt.artists.map(function(a){return a.name}).join(', '),title:_rt.name,spotifyId:_rt.id,vibeIdx:_rvi,reason:'Spotify verified '+_rvFamily,_genres:_rtGenres,_artistId:_rtArtistId});
+_existingInVibe[_rt.id]=true;
+brainLog('✅','Replace','Added: '+_rt.artists[0].name+' - '+_rt.name+' ['+_rtGenres.slice(0,2).join(', ')+']',true)}
+else{brainLog('⚠️','Replace','Skipped: '+_rt.artists[0].name+' ['+_rtGenres.slice(0,2).join(', ')+'] — not '+_rvFamily,true)}}}
+}
+_replacements.forEach(function(rep){wiz.samples.push(rep)});
+if(_replacements.length)brainLog('✅','Replace','Added '+_replacements.length+' verified replacements for '+wiz.vibes[_rvi].name,true);
+else brainLog('⚠️','Replace','Could not find verified replacements for '+wiz.vibes[_rvi].name,true);
+}}}catch(e){brainLog('⚠️','Replace',e.message)}
+}}}
 var _famIssues=[];wiz.samples.forEach(function(s,idx){if(s._genreMismatch)return;if(f.familiarity<30&&s._followers&&s._followers>200000){_famIssues.push(idx);brainLog('⚠️','Niche',s.artist+' — '+s._followers+' followers, too big',true)}});if(_famIssues.length&&_recsBackupPool.length){var _fpIdx=0;_famIssues.forEach(function(badIdx){while(_fpIdx<_recsBackupPool.length){var rep=_recsBackupPool[_fpIdx];_fpIdx++;var alreadyIn=wiz.samples.some(function(s){return s.spotifyId===rep.spotifyId});if(!alreadyIn){wiz.samples[badIdx]=rep;break}}})}
 var _bbBtn=document.getElementById('sampleBackBtn');if(_bbBtn)_bbBtn.style.display='';
-/* Render 3 vibe cards (skip genre-mismatched tracks) */
-var html='';for(var vi=0;vi<wiz.vibes.length;vi++){var vb=wiz.vibes[vi];
+/* Render vibe cards (skip genre-mismatched tracks, hide empty vibes) */
+var html='';var _renderedVibes=0;for(var vi=0;vi<wiz.vibes.length;vi++){var vb=wiz.vibes[vi];
+var vTracks=wiz.samples.filter(function(s){return s.vibeIdx===vi&&!s._genreMismatch});
+if(!vTracks.length){brainLog('⚠️','Render','Hiding empty vibe card: '+vb.name,true);continue}
+_renderedVibes++;
 html+='<div class="vibe-card" id="vibeCard'+vi+'" onclick="selectVibe('+vi+')" style="position:relative">';
 html+='<div class="vibe-check">✓</div>';
 html+='<div class="vibe-header"><span class="vibe-emoji">'+(vb.emoji||'🎵')+'</span><span class="vibe-name">'+esc(vb.name||'כיוון '+(vi+1))+'</span></div>';
 html+='<div class="vibe-desc">'+esc(vb.desc||'')+'</div>';
 html+='<div class="vibe-tracks">';
-var vTracks=wiz.samples.filter(function(s){return s.vibeIdx===vi&&!s._genreMismatch});
 vTracks.forEach(function(t){
 var embed=t.spotifyId?'<iframe src="https://open.spotify.com/embed/track/'+t.spotifyId+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>':'<div class="vibe-track">🎵 '+esc(t.artist)+' — '+esc(t.title)+'</div>';
 html+=embed});
 html+='</div></div>'}
+if(!_renderedVibes){html='<div style="text-align:center;padding:24px;color:var(--muted)">לא נמצאו כיוונים מתאימים — לחצו על ״קחו אותי ישר לפלייליסט״</div>'}
 list.innerHTML=html;ld.style.display='none';list.style.display='flex';nb.style.display='none';
 var _st=document.getElementById('sampleTitle');if(_st)_st.style.display='';
 var _ss=document.getElementById('sampleSub');if(_ss)_ss.style.display='';

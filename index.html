@@ -1161,7 +1161,7 @@ async function czBuildFromSong() {
         activeTab: 'shuffle',
         seedSong: song
       };
-      statusEl.innerHTML = '<div style="color:var(--accent);font-weight:700;font-size:16px">🎉 פלייליסט חדש נוצר!</div><div style="font-size:13px;color:var(--muted);margin-top:6px">' + result.tracks.length + ' שירים על בסיס ' + esc(song.artist) + ' - ' + esc(song.title) + '</div><button onclick="nav(\'playlist\')" style="margin-top:12px;background:var(--gradient);border:none;color:#fff;padding:10px 24px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit">צפה בפלייליסט →</button>';
+      statusEl.innerHTML = '<div style="color:var(--accent);font-weight:700;font-size:16px">🎉 פלייליסט חדש נוצר!</div><div style="font-size:13px;color:var(--muted);margin-top:6px">' + result.tracks.length + ' שירים על בסיס ' + esc(song.artist) + ' - ' + esc(song.title) + '</div><button onclick="czShowShazamPlaylist()" style="margin-top:12px;background:var(--gradient);border:none;color:#fff;padding:10px 24px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit">צפה בפלייליסט →</button>';
       brainLog('🎵', 'Shazam Build', result.tracks.length + ' tracks from ' + song.artist + ' - ' + song.title);
       try {
         await sb.from('analyses').insert([{
@@ -1182,6 +1182,22 @@ async function czBuildFromSong() {
   } catch(e) {
     statusEl.innerHTML = '<div style="color:var(--accent-3)">שגיאה: ' + (e.message || 'unknown') + '</div>';
   }
+}
+
+function czShowShazamPlaylist() {
+  var cp = window.currentPlaylist;
+  if (!cp || !cp.tracks || !cp.tracks.length) { nav('onboarding'); return; }
+  document.getElementById('playlistEmpty').style.display = 'none';
+  document.getElementById('playlistLive').style.display = 'block';
+  var songLabel = cp.seedSong ? (cp.seedSong.artist + ' - ' + cp.seedSong.title) : 'Shazam Build';
+  document.getElementById('playlistTitle').textContent = 'Shazam Mix — ' + songLabel;
+  document.getElementById('playlistMeta').textContent = cp.tracks.length + ' שירים · בהשראת ' + songLabel;
+  var c = document.getElementById('tracksContainer');
+  c.innerHTML = '';
+  cp.tracks.forEach(function(t, i) {
+    renderTrack(i + 1, {artist: t.artist, title: t.title, id: t.id || t.spotifyId || '', reason: t.reason || '', slot: t.slot || '', url: t.id ? 'https://open.spotify.com/track/' + t.id : '', cover: t.cover || ''});
+  });
+  nav('playlist');
 }
 
 async function loadPersonalArea() {

@@ -2483,6 +2483,20 @@ if(artistMatch===false&&playlistMatch===null)return{verified:false,confidence:'m
 if(artistMatch===null&&playlistMatch===false)return{verified:false,confidence:'medium',reason:'playlists suggest '+((plContext&&plContext.primaryFamily)||'other')+' not '+claimedFamily};
 return{verified:false,reason:'insufficient data'}}
 
+/* ═══ ISRAELI IDENTITY DETECTION ═══ */
+/* Check if an artist/track has Hebrew characters or Israeli genre tags */
+function hasHebrewChars(text){return/[\u0590-\u05FF]/.test(text||'')}
+function isIsraeliArtist(artistGenres){
+if(!artistGenres||!artistGenres.length)return false;
+var israeliTags=['israeli','mizrahi','hebrew','israel','תל אביב','ישראלי'];
+return artistGenres.some(function(g){var gl=g.toLowerCase();return israeliTags.some(function(t){return gl.indexOf(t)!==-1})})}
+/* Detect if two tracks are the same song (different versions/remixes) */
+function isSameSong(titleA,titleB){
+if(!titleA||!titleB)return false;
+var cleanA=titleA.toLowerCase().replace(/\s*[-–—]\s*(remaster|remix|live|version|edit|radio|extended|deluxe|bonus|acoustic|demo|instrumental|12 inch|7 inch|single|mono|stereo|feat\.?|ft\.?).*/gi,'').replace(/\s*\(.*\)\s*/g,'').trim();
+var cleanB=titleB.toLowerCase().replace(/\s*[-–—]\s*(remaster|remix|live|version|edit|radio|extended|deluxe|bonus|acoustic|demo|instrumental|12 inch|7 inch|single|mono|stereo|feat\.?|ft\.?).*/gi,'').replace(/\s*\(.*\)\s*/g,'').trim();
+return cleanA===cleanB&&cleanA.length>0}
+
 const refTracks=[];
 
 function buildBaseRulesBlock(wiz){
@@ -2800,8 +2814,10 @@ brainLog('✅','Step 1',_directions.map(function(d){return d.emoji+' '+d.family+
 /* ═══ STEP 2: Spotify finds tracks for each genre family ═══ */
 brainLog('🔍','Step 2','Spotify finding tracks per family...',true);
 wiz.vibes=[];wiz.samples=[];wiz.votes={};wiz.selectedVibe=null;
-var _spotifyGenreSeeds={mizrahi:'mizrahi israeli middle eastern',rock:'rock alternative indie',jazz:'jazz bossa nova swing',electronic:'electronic house techno ambient',hiphop:'hip hop rap trap',rnb:'r&b neo soul',pop:'pop dance pop',classical:'classical piano orchestral',soul:'soul funk disco',folk:'folk acoustic singer-songwriter',world:'world latin reggae afrobeat'};
-var _hebSearchMod=f.hebrew>50?' ישראלי israeli':'';
+/* Hebrew-aware genre seeds — completely different search terms for Israeli vs international */
+var _isHebrew=f.hebrew>50;
+var _spotifyGenreSeeds=_isHebrew?{mizrahi:'מזרחי ישראלי',rock:'רוק ישראלי israeli rock',jazz:'ג׳אז ישראלי israeli jazz',electronic:'אלקטרוני ישראלי israeli electronic',hiphop:'ראפ ישראלי israeli hip hop',rnb:'אר אנד בי ישראלי israeli r&b',pop:'פופ ישראלי israeli pop',classical:'קלאסי ישראלי israeli classical',soul:'סול ישראלי israeli soul',folk:'פולק ישראלי זמר יוצר',world:'מוזיקה ישראלית israeli music'}:{mizrahi:'mizrahi israeli middle eastern',rock:'rock alternative indie',jazz:'jazz bossa nova swing',electronic:'electronic house techno ambient',hiphop:'hip hop rap trap',rnb:'r&b neo soul',pop:'pop dance pop',classical:'classical piano orchestral',soul:'soul funk disco',folk:'folk acoustic singer-songwriter',world:'world latin reggae afrobeat'};
+var _hebSearchMod=_isHebrew?' ישראלי israeli':'';
 for(var _di=0;_di<_directions.length;_di++){
 var _dir=_directions[_di];
 var _family=_dir.family||'pop';
@@ -2821,7 +2837,10 @@ var _srResp=await fetch(_srUrl,{headers:{'Authorization':'Bearer '+_t}});
 var _srData=await _srResp.json();
 if(_srData.tracks&&_srData.tracks.items){
 _srData.tracks.items.forEach(function(tr){
+/* Skip exact duplicates */
 if(_candidateTracks.some(function(c){return c.spotifyId===tr.id}))return;
+/* Skip same song different version */
+if(_candidateTracks.some(function(c){return isSameSong(c.title,tr.name)}))return;
 _candidateTracks.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,spotifyId:tr.id,_artistId:tr.artists[0]?tr.artists[0].id:null,_pop:tr.popularity,vibeIdx:_di})});
 }}catch(e){brainLog('⚠️','Search',e.message)}}
 /* Also try genre: search */
@@ -2834,6 +2853,7 @@ var _gData=await _gResp.json();
 if(_gData.tracks&&_gData.tracks.items){
 _gData.tracks.items.forEach(function(tr){
 if(_candidateTracks.some(function(c){return c.spotifyId===tr.id}))return;
+if(_candidateTracks.some(function(c){return isSameSong(c.title,tr.name)}))return;
 _candidateTracks.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,spotifyId:tr.id,_artistId:tr.artists[0]?tr.artists[0].id:null,_pop:tr.popularity,vibeIdx:_di})})}}catch(e){}}
 }
 brainLog('🔍','Step 2','Family '+_family+': '+_candidateTracks.length+' candidates found',true);
@@ -2855,6 +2875,13 @@ var _genreOk=true;
 if(_ct._genres&&_ct._genres.length){_genreOk=artistMatchesFamily(_ct._genres,_family)}
 else{_genreOk=true} /* No genre data — allow but mark */
 if(!_genreOk){brainLog('⚠️','Filter',_ct.artist+' ['+(_ct._genres||[]).slice(0,2).join(', ')+'] ≠ '+_family+' — skipped',true);continue}
+/* Israeli identity check — when hebrew slider > 50, require Israeli connection */
+if(_isHebrew){
+var _isIsraeli=hasHebrewChars(_ct.artist)||hasHebrewChars(_ct.title)||isIsraeliArtist(_ct._genres||[]);
+if(!_isIsraeli){brainLog('⚠️','Filter',_ct.artist+' — not Israeli (hebrew='+f.hebrew+'%) — skipped',true);continue}}
+/* Same song different version check across vibes */
+var _dupSong=wiz.samples.some(function(s){return isSameSong(s.title,_ct.title)});
+if(_dupSong){continue}
 /* Familiarity filter */
 if(f.familiarity<30&&_ct._pop>65){brainLog('⚠️','Filter',_ct.artist+' pop='+_ct._pop+' too mainstream — skipped',true);continue}
 if(f.familiarity>75&&_ct._pop<20){continue}
@@ -2893,7 +2920,7 @@ for(var _fi=0;_fi<_plFails.length;_fi++){
 var _fail=_plFails[_fi];
 var _failVibe=wiz.vibes[wiz.samples[_fail.idx].vibeIdx];
 var _failFamily=_failVibe?_failVibe.family:'pop';
-var _replQ=(_spotifyGenreSeeds[_failFamily]||_failFamily)+_hebSearchMod;
+var _replQ=(_spotifyGenreSeeds[_failFamily]||_failFamily)+(_isHebrew&&!(_spotifyGenreSeeds[_failFamily]||'').match(/ישראלי/)?' ישראלי':'');
 try{
 var _rt=await getSpotifyToken();if(!_rt)continue;
 var _rUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_replQ)+'&type=track&limit=20&market=IL';
@@ -2911,6 +2938,10 @@ var _rArtData=await getArtistsAnyway([_rArtId]);
 if(!_rArtData||!_rArtData.artists||!_rArtData.artists[0])continue;
 var _rGenres=_rArtData.artists[0].genres||[];
 if(!artistMatchesFamily(_rGenres,_failFamily))continue;
+/* Israeli identity check for replacements */
+if(_isHebrew){var _rIsIsraeli=hasHebrewChars(_rTrack.name)||hasHebrewChars(_rTrack.artists[0].name)||isIsraeliArtist(_rGenres);if(!_rIsIsraeli)continue}
+/* Same song check */
+if(wiz.samples.some(function(s){return isSameSong(s.title,_rTrack.name)}))continue;
 /* Playlist context check for replacement */
 var _rPl=await analyzePlaylistContext(_rTrack.artists[0].name);
 if(_rPl&&_rPl.primaryFamily!==_failFamily&&_rPl.secondaryFamily!==_failFamily)continue;

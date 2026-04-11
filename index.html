@@ -287,7 +287,7 @@
 <!-- authUserBar moved into nav -->
 <nav class="screen-nav">
   <div class="logo">◉ SonicBrand</div>
-  <span style="font-size:14px;font-weight:900;color:var(--accent);background:rgba(29,185,84,.15);padding:3px 8px;border-radius:6px" id="appVersion">v7.6</span>
+  <span style="font-size:14px;font-weight:900;color:var(--accent);background:rgba(29,185,84,.15);padding:3px 8px;border-radius:6px" id="appVersion">v7.7</span>
   <button class="nav-hamburger" onclick="toggleMobileNav()">☰</button>
   <div class="nav-mobile-overlay" id="navOverlay" onclick="toggleMobileNav()"></div>
   <div class="nav-links" id="navLinks">
@@ -1003,7 +1003,7 @@
 </div>
 </div>
 <script>
-const APP_VERSION='v2';const BRAIN_VERSION='v7.6-pipeline';
+const APP_VERSION='v2';const BRAIN_VERSION='v7.7-pipeline';
 function toggleMobileNav(){var nl=document.getElementById('navLinks');var ov=document.getElementById('navOverlay');nl.classList.toggle('open');ov.classList.toggle('open')}function closeMobileNav(){var nl=document.getElementById('navLinks');var ov=document.getElementById('navOverlay');nl.classList.remove('open');ov.classList.remove('open')}
 function hardRefresh(){if('caches' in window){caches.keys().then(function(names){names.forEach(function(n){caches.delete(n)})}).then(function(){location.href=location.pathname+'?t='+Date.now()}).catch(function(){location.href=location.pathname+'?t='+Date.now()})}else{location.href=location.pathname+'?t='+Date.now()}}
 const SUPABASE_URL='https://xhkqrxljncazvbgkmqex.supabase.co';

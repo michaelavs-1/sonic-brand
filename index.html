@@ -2904,7 +2904,7 @@ if(_isHebrew){_verified.sort(function(a,b){var aI=a._notIsraeli?1:0;var bI=b._no
 /* Take top 3 verified tracks */
 var _picked=_verified.slice(0,3);
 /* Fallback: if less than 3 tracks, try broader search with different queries */
-if(_picked.length<3&&_t){
+if(_picked.length<3){
 brainLog('🔄','Fallback','Family '+_family+': only '+_picked.length+' tracks, trying broader search...',true);
 var _fallbackQueries=[];
 /* Try DNA reference artists */

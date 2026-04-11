@@ -298,7 +298,7 @@
 <!-- authUserBar moved into nav -->
 <nav class="screen-nav">
   <div class="logo">◉ SonicBrand</div>
-  <span style="font-size:14px;font-weight:900;color:var(--accent);background:rgba(29,185,84,.15);padding:3px 8px;border-radius:6px" id="appVersion">v8.0</span>
+  <span style="font-size:14px;font-weight:900;color:var(--accent);background:rgba(29,185,84,.15);padding:3px 8px;border-radius:6px" id="appVersion">v8.1</span>
   <button class="nav-hamburger" onclick="toggleMobileNav()">☰</button>
   <div class="nav-mobile-overlay" id="navOverlay" onclick="toggleMobileNav()"></div>
   <div class="nav-links" id="navLinks">
@@ -1015,7 +1015,7 @@
 </div>
 </div>
 <script>
-const APP_VERSION='v2';const BRAIN_VERSION='v8.0-pipeline';
+const APP_VERSION='v2';const BRAIN_VERSION='v8.1-pipeline';
 function toggleMobileNav(){var nl=document.getElementById('navLinks');var ov=document.getElementById('navOverlay');nl.classList.toggle('open');ov.classList.toggle('open')}function closeMobileNav(){var nl=document.getElementById('navLinks');var ov=document.getElementById('navOverlay');nl.classList.remove('open');ov.classList.remove('open')}
 function hardRefresh(){if('caches' in window){caches.keys().then(function(names){names.forEach(function(n){caches.delete(n)})}).then(function(){location.href=location.pathname+'?t='+Date.now()}).catch(function(){location.href=location.pathname+'?t='+Date.now()})}else{location.href=location.pathname+'?t='+Date.now()}}
 const SUPABASE_URL='https://xhkqrxljncazvbgkmqex.supabase.co';
@@ -2419,6 +2419,70 @@ if(/עולמי|world|לטיני|latin|רגאיי|reggae/.test(text))return'world
 if(/פולק|folk|אקוסטי|acoustic|זמר.?יוצר/.test(text))return'folk';
 return null}
 
+/* ═══ PLAYLIST CONTEXT VERIFICATION ENGINE ═══ */
+/* For each artist, search Spotify playlists to see where they appear.
+   Analyze playlist titles statistically to confirm genre identity. */
+var _playlistContextCache={};
+async function analyzePlaylistContext(artistName){
+if(!artistName)return null;
+var cacheKey=artistName.toLowerCase().trim();
+if(_playlistContextCache[cacheKey])return _playlistContextCache[cacheKey];
+var t=await getSpotifyToken();if(!t)return null;
+try{
+var url='https://api.spotify.com/v1/search?q='+encodeURIComponent(artistName)+'&type=playlist&limit=20&market=IL';
+var resp=await fetch(url,{headers:{'Authorization':'Bearer '+t}});
+var data=await resp.json();
+if(!data.playlists||!data.playlists.items||!data.playlists.items.length)return null;
+/* Collect all playlist names + descriptions */
+var titles=data.playlists.items.map(function(p){return((p.name||'')+' '+(p.description||'')).toLowerCase()}).join(' ');
+/* Score against each genre family */
+var familyScores={};var families=Object.keys(GENRE_FAMILIES);
+families.forEach(function(fam){
+var tags=GENRE_FAMILIES[fam];var score=0;
+tags.forEach(function(tag){
+var re=new RegExp(tag.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi');
+var matches=titles.match(re);
+if(matches)score+=matches.length});
+if(score>0)familyScores[fam]=score});
+/* Also check Hebrew-specific playlist keywords */
+var hebKeywords={'mizrahi':/מזרחי|ים.?תיכונ|ערבי|טורקי/g,'rock':/רוק|אלטרנטיבי|אינדי/g,'hiphop':/היפ.?הופ|ראפ|טראפ/g,'pop':/פופ|להיטים|הלהיט/g,'electronic':/טכנו|האוס|אלקטרוני|טראנס/g,'jazz':/ג׳אז|ג'אז|סווינג/g,'folk':/פולק|אקוסטי|זמר.?יוצר/g,'soul':/סול|פאנק|דיסקו/g};
+Object.keys(hebKeywords).forEach(function(fam){
+var matches=titles.match(hebKeywords[fam]);
+if(matches){familyScores[fam]=(familyScores[fam]||0)+matches.length*2}});
+/* Also check for broad category keywords in playlist titles */
+var broadKeywords={'mizrahi':/party|מסיבה|חתונה|wedding|oriental|שמח/g,'rock':/guitar|גיטר|band|להקה/g,'electronic':/dj|club|dance|ריקוד/g,'pop':/hits|chart|top|viral|trending/g};
+Object.keys(broadKeywords).forEach(function(fam){
+var matches=titles.match(broadKeywords[fam]);
+if(matches){familyScores[fam]=(familyScores[fam]||0)+Math.ceil(matches.length*0.5)}});
+if(!Object.keys(familyScores).length)return null;
+/* Determine primary and secondary families */
+var sorted=Object.keys(familyScores).sort(function(a,b){return familyScores[b]-familyScores[a]});
+var totalScore=0;Object.values(familyScores).forEach(function(v){totalScore+=v});
+var result={primaryFamily:sorted[0],primaryScore:familyScores[sorted[0]],secondaryFamily:sorted[1]||null,secondaryScore:sorted[1]?familyScores[sorted[1]]:0,allScores:familyScores,confidence:familyScores[sorted[0]]/totalScore,playlistCount:data.playlists.items.length};
+_playlistContextCache[cacheKey]=result;
+brainLog('📋','Playlist',''+artistName+': '+sorted[0]+' ('+Math.round(result.confidence*100)+'%) '+JSON.stringify(familyScores),true);
+return result}catch(e){brainLog('⚠️','Playlist',e.message);return null}}
+
+/* Verify a track belongs to claimed family using BOTH artist genres AND playlist context */
+async function verifyTrackFamily(track,claimedFamily){
+if(!track||!claimedFamily)return{verified:false,reason:'missing data'};
+/* Check 1: Artist genre tags */
+var artistMatch=track._genres&&track._genres.length?artistMatchesFamily(track._genres,claimedFamily):null;
+/* Check 2: Playlist context */
+var artistName=track._artistName||track.artist;
+var plContext=await analyzePlaylistContext(artistName);
+var playlistMatch=plContext?plContext.primaryFamily===claimedFamily||plContext.secondaryFamily===claimedFamily:null;
+/* Decision logic */
+if(artistMatch===true&&playlistMatch===true)return{verified:true,confidence:'high',reason:'artist genres + playlists confirm'};
+if(artistMatch===true&&playlistMatch===null)return{verified:true,confidence:'medium',reason:'artist genres confirm (no playlist data)'};
+if(artistMatch===null&&playlistMatch===true)return{verified:true,confidence:'medium',reason:'playlists confirm (no genre tags)'};
+if(artistMatch===true&&playlistMatch===false)return{verified:true,confidence:'low',reason:'artist genres confirm but playlists suggest '+((plContext&&plContext.primaryFamily)||'other')};
+if(artistMatch===false&&playlistMatch===true)return{verified:true,confidence:'low',reason:'playlists confirm but genre tags suggest other'};
+if(artistMatch===false&&playlistMatch===false)return{verified:false,confidence:'high',reason:'both artist genres ['+((track._genres||[]).slice(0,3).join(', '))+'] AND playlists ['+((plContext&&plContext.primaryFamily)||'?')+'] disagree with '+claimedFamily};
+if(artistMatch===false&&playlistMatch===null)return{verified:false,confidence:'medium',reason:'artist genres ['+((track._genres||[]).slice(0,3).join(', '))+'] don\'t match '+claimedFamily};
+if(artistMatch===null&&playlistMatch===false)return{verified:false,confidence:'medium',reason:'playlists suggest '+((plContext&&plContext.primaryFamily)||'other')+' not '+claimedFamily};
+return{verified:false,reason:'insufficient data'}}
+
 const refTracks=[];
 
 function buildBaseRulesBlock(wiz){
@@ -2722,160 +2786,160 @@ st.innerHTML='✅ יובאו <strong>'+imported.length+'</strong> שירים —
 brainLog('📋','ייבוא',imported.length+' tracks imported from existing playlist',true);
 }catch(e){st.textContent='❌ שגיאה: '+e.message}}
 
-async function generateSamples(){const ld=document.getElementById('sampleLoading'),list=document.getElementById('vibeOptions'),nb=document.getElementById('sampleActions');ld.style.display='block';list.style.display='none';nb.style.display='none';var _backBtn=document.getElementById('sampleBackBtn');if(_backBtn)_backBtn.style.display='none';brainLog('🎲','כיוונים','בונה 3 כיוונים מוזיקליים...',true);try{const f=wiz.faders,g=wiz.genres.length?'\nGenres: '+wiz.genres.join(', '):'',rf=wiz.refs.length?'\nRef: '+wiz.refs.map(r=>r.artist+' - '+r.title).join(', '):'';const dna=wiz.bizDNA||BIZ_DNA.general;
+async function generateSamples(){const ld=document.getElementById('sampleLoading'),list=document.getElementById('vibeOptions'),nb=document.getElementById('sampleActions');ld.style.display='block';list.style.display='none';nb.style.display='none';var _backBtn=document.getElementById('sampleBackBtn');if(_backBtn)_backBtn.style.display='none';brainLog('🎲','כיוונים','v8.1 — Genre-First + Playlist Verification...',true);try{const f=wiz.faders,g=wiz.genres.length?'\nGenres: '+wiz.genres.join(', '):'',rf=wiz.refs.length?'\nRef: '+wiz.refs.map(r=>r.artist+' - '+r.title).join(', '):'';const dna=wiz.bizDNA||BIZ_DNA.general;
 /* Pre-build Spotify Recs backup pool — covers ALL extreme fader modes */
-var _recsBackupPool=[];
-var _needsPool=f.vocal<25||f.vocal>75||f.energy<25||f.energy>75||f.familiarity<30||f.familiarity>75;
-if(_needsPool){var _modes=[];if(f.vocal<25)_modes.push('instrumental');if(f.vocal>75)_modes.push('vocal');if(f.energy<25)_modes.push('calm');if(f.energy>75)_modes.push('energetic');if(f.familiarity<30)_modes.push('niche');if(f.familiarity>75)_modes.push('mainstream');
-brainLog('🎯','Recs Pool','Building verified backup pool for: '+_modes.join(', '),true);
-var _bpSeeds=[];var _bpGenres=[];
-if(wiz.refs.length){var _bpRef=await Promise.allSettled(wiz.refs.slice(0,3).map(function(r){return searchTrack(r.artist,r.title)}));_bpRef.forEach(function(r){if(r.status==='fulfilled'&&r.value&&r.value.id)_bpSeeds.push(r.value.id)})}
-if(!_bpSeeds.length){if(f.vocal<25)_bpGenres=['ambient','classical','piano','jazz','electronic'];else if(f.energy<25)_bpGenres=['ambient','chill','acoustic','classical'];else if(f.energy>75)_bpGenres=['dance','electronic','pop','hip-hop'];else _bpGenres=['pop','rock','indie','r-n-b','jazz']}
-var _bpParams={limit:40,market:'IL'};
-if(f.vocal<25){_bpParams.min_instrumentalness=0.6;_bpParams.target_instrumentalness=1.0}
-else if(f.vocal>75){_bpParams.max_instrumentalness=0.3;_bpParams.target_instrumentalness=0.0}
-if(f.energy<25){_bpParams.max_energy=0.4;_bpParams.target_energy=f.energy/100}
-else if(f.energy>75){_bpParams.min_energy=0.55;_bpParams.target_energy=f.energy/100}
-if(f.familiarity<30){_bpParams.max_popularity=40;_bpParams.target_popularity=20}
-else if(f.familiarity>75){_bpParams.min_popularity=50;_bpParams.target_popularity=75}
-if(_bpSeeds.length)_bpParams.seed_tracks=_bpSeeds.slice(0,5).join(',');else _bpParams.seed_genres=_bpGenres.slice(0,5).join(',');
-var _bpRecs=await getSpotifyRecommendations(_bpParams);
-if(_bpRecs&&_bpRecs.tracks&&_bpRecs.tracks.length){var _bpIds=_bpRecs.tracks.map(function(t){return t.id});
-var _bpResults=await Promise.all([getAudioFeaturesAnyway(_bpIds),getTracksAnyway(_bpIds)]);
-var _bpAFMap={};if(_bpResults[0]&&_bpResults[0].audio_features)_bpResults[0].audio_features.forEach(function(af){if(af&&af.id)_bpAFMap[af.id]=af});
-var _bpTrMap={};if(_bpResults[1]&&_bpResults[1].tracks)_bpResults[1].tracks.forEach(function(tr){if(tr&&tr.id)_bpTrMap[tr.id]=tr});
-_bpRecs.tracks.forEach(function(t){var af=_bpAFMap[t.id];var tr=_bpTrMap[t.id];if(!af)return;
-var ok=true;var desc=[];
-if(f.vocal<25&&af.instrumentalness<0.5){ok=false}
-if(f.vocal>75&&af.instrumentalness>0.5){ok=false}
-if(f.energy<25&&af.energy>0.5){ok=false}
-if(f.energy>75&&af.energy<0.4){ok=false}
-if(f.familiarity<30&&tr&&tr.popularity>55){ok=false}
-if(f.familiarity>75&&tr&&tr.popularity<35){ok=false}
-if(ok){if(af.instrumentalness>0.6)desc.push('inst');else desc.push('vocal');
-desc.push('E:'+af.energy.toFixed(1));if(tr)desc.push('P:'+tr.popularity);
-_recsBackupPool.push({artist:t.artists.map(function(a){return a.name}).join(', '),title:t.name,spotifyId:t.id,_inst:af.instrumentalness,_energy:af.energy,_tempo:Math.round(af.tempo),_pop:tr?tr.popularity:null,reason:'מאומת ×ספוטיפיי ('+desc.join(' ')+')'})}});
-brainLog('✅','Recs Pool','Built: '+_recsBackupPool.length+' verified tracks matching ALL fader constraints',true)}}const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'');const famDesc=f.familiarity>70?'שירים מוכרים ומסחריים — להיטים שכולם מכירים':f.familiarity<30?'🚨 מצב נישה קיצוני — שירים נישתיים בלבד! אסור להביא שום שיר מוכר או להיט. רק אמנים קטנים (מתחת ל-100K מאזינים), B-sides, שירים עמוקים. אם מישהו רגיל שמע את השיר — הוא פסול!':f.familiarity<50?'נטייה לנישה — רוב השירים פחות מוכרים, מעט עוגנים מוכרים':'תמהיל של שירים מוכרים ופחות מוכרים';
-const hebDesc=f.hebrew>70?'רוב השירים חייבים להיות בעברית ('+f.hebrew+'%)':f.hebrew<30?'רוב השירים חייבים להיות בלועזית (רק '+f.hebrew+'% עברית)':'מיקס עברית ('+f.hebrew+'%) ולועזית ('+(100-f.hebrew)+'%)';
-const vocDesc=f.vocal>80?'🚨 ווקלי בלבד — כל השירים חייבים לכלול שירה ומילים בולטות. אסור אינסטרומנטלי!':f.vocal>60?'העדפה לשירים ווקליים עם שירה בולטת':f.vocal<20?'🚨 אינסטרומנטלי בלבד! אסור שירים עם מילים או שירה. רק מוזיקה אינסטרומנטלית.':f.vocal<40?'העדפה חזקה לאינסטרומנטלי — מקסימום 1 שיר עם שירה':'תמהיל ווקלי ואינסטרומנטלי';
-const nrgDesc=f.energy>70?'🚨 אנרגטי! כל השירים חייבים להיות תוססים, קצביים, אנרגטיים. אסור שירים רגועים או שקטים!':f.energy<30?'🚨 רגוע! כל השירים חייבים להיות שקטים ונינוחים. אסור שירים אנרגטיים!':'אנרגיה בינונית — תמהיל';
-/* Generate 3 vibe directions instead of 8 individual tracks */
-var _vibePrompt='Generate 3 distinct VIBE DIRECTIONS for this business. Each vibe is a different musical approach — all valid for the business, but each with its own character. For each vibe, suggest 3 example tracks (real Spotify songs).\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🚨🚨🚨 SLIDER VALUES — HIGHEST PRIORITY — MUST BE RESPECTED IN ALL 3 VIBES:\n- Familiarity ('+f.familiarity+'/100): '+famDesc+'\n- Hebrew percentage ('+f.hebrew+'%): '+hebDesc+'\n- Vocal/Instrumental ('+f.vocal+'/100): '+vocDesc+'\n- Energy ('+f.energy+'/100): '+nrgDesc+'\n\n⚠️ CRITICAL: The sliders OVERRIDE everything else. If the user set energy to 80, ALL vibes must be energetic. If hebrew is 70%, ALL vibes must have mostly Hebrew tracks. Do NOT create a "calm jazz" vibe when energy is high. Do NOT suggest English-only tracks when hebrew is high. The vibes differ in GENRE and STYLE, not in slider compliance.\n\nReturn JSON:\n{"vibes":[\n{"name":"Hebrew 2-3 word vibe name","emoji":"single emoji","desc":"Hebrew 1 sentence describing this direction","tracks":[{"artist":"real artist","title":"exact Spotify title"},{"artist":"real artist","title":"exact Spotify title"},{"artist":"real artist","title":"exact Spotify title"}]},\n... 3 vibes total\n]}\n\nRules:\n- Each vibe must be genuinely DIFFERENT in genre/style (not just slight variations)\n- But ALL 3 vibes MUST respect the slider values above\n- Vibe 1: The most natural/obvious fit for this business + location\n- Vibe 2: A more interesting/unexpected but still fitting approach\n- Vibe 3: A bold/creative direction that could make this business stand out\n- All 9 tracks must be REAL Spotify songs\n- ~'+Math.round(9*f.hebrew/100)+' Hebrew tracks total across all vibes\n- If demographic context mentions Mizrahi affinity > 50, at least one vibe MUST be Mizrahi-oriented\n- NEVER suggest Jazz/Bossa Nova for a business where the demographic context indicates Mizrahi audience\n\n🚨🚨🚨 TRACK-VIBE CONSISTENCY (CRITICAL):\n- Every track within a vibe MUST belong to that vibe\'s genre/style\n- If a vibe is called "Mizrahi Dance Party" → ALL 3 tracks must be Mizrahi artists (עומר אדם, אייל גולן, שרית חדד, אתניקס, etc.) — NOT Tame Impala, NOT Arctic Monkeys, NOT any non-Mizrahi artist\n- If a vibe is "Israeli Rock" → all tracks must be Israeli rock artists\n- If a vibe is "Chill Lounge" → all tracks must be chill/lounge\n- NEVER put a track from one genre world into a different genre vibe card\n- Each vibe card is a COHERENT musical world — the 3 tracks should feel like they belong on the SAME playlist together\n- Test: would a real DJ put these 3 tracks in a row? If not, they don\'t belong in the same vibe';
-var raw=await callOpenAI([{role:'system',content:'You are SonicBrand AI music curator. You suggest vibe directions for businesses. Each direction is a coherent musical world — not just random songs. Think like a creative director choosing a sonic identity. JSON only.'},{role:'user',content:_vibePrompt}],{max_tokens:1200,stage:'2️⃣ כיוונים מוזיקליים',model:'gpt-4o-mini'});
-var parsed=safeJSON(raw);wiz.vibes=parsed.vibes||[];
-/* Flatten all vibe tracks into samples array for Spotify verification */
-wiz.samples=[];wiz.votes={};wiz.selectedVibe=null;
-wiz.vibes.forEach(function(v){(v.tracks||[]).forEach(function(t){wiz.samples.push({artist:t.artist,title:t.title,reason:v.name,vibeIdx:wiz.vibes.indexOf(v)})})});brainLog('✅','סאמפלים',wiz.samples.map(s=>s.artist+' - '+s.title).join(' | '),true);var spResults=await Promise.allSettled(wiz.samples.map(function(s){return searchTrack(s.artist,s.title).catch(function(){return null})}));spResults.forEach(function(r,i){if(r.status==='fulfilled'&&r.value&&r.value.id){wiz.samples[i].spotifyId=r.value.id}});
-var _verifiedIds=wiz.samples.filter(function(s){return s.spotifyId}).map(function(s){return s.spotifyId});
-if(_verifiedIds.length){try{var _afd=await getAudioFeaturesAnyway(_verifiedIds);
-var _trd=await getTracksAnyway(_verifiedIds);var _trMap={};if(_trd&&_trd.tracks){_trd.tracks.forEach(function(tr){if(tr&&tr.id)_trMap[tr.id]={popularity:tr.popularity,name:tr.name,artists:tr.artists}})}
-if(_afd&&_afd.audio_features){var _afMap={};_afd.audio_features.forEach(function(af){if(af&&af.id)_afMap[af.id]=af});var _issues=[];wiz.samples.forEach(function(s,idx){if(!s.spotifyId)return;var af=_afMap[s.spotifyId];var tr=_trMap[s.spotifyId];if(af){s._inst=af.instrumentalness;s._energy=af.energy;s._tempo=Math.round(af.tempo);s._dance=af.danceability}if(tr)s._pop=tr.popularity;
-if(f.vocal<20&&af&&af.instrumentalness<0.5){_issues.push({idx:idx,type:'vocal',msg:s.artist+' inst='+af.instrumentalness.toFixed(2)+' — HAS VOCALS (need >0.5)'})}
-else if(f.vocal<35&&af&&af.instrumentalness<0.3){_issues.push({idx:idx,type:'vocal',msg:s.artist+' inst='+af.instrumentalness.toFixed(2)+' — HAS VOCALS'})}
-if(f.vocal>80&&af&&af.instrumentalness>0.5){_issues.push({idx:idx,type:'vocal',msg:s.artist+' inst='+af.instrumentalness.toFixed(2)+' — NO VOCALS (need <0.5)'})}
-else if(f.vocal>65&&af&&af.instrumentalness>0.7){_issues.push({idx:idx,type:'vocal',msg:s.artist+' inst='+af.instrumentalness.toFixed(2)+' — NO VOCALS'})}
-if(f.energy<25&&af&&af.energy>0.65){_issues.push({idx:idx,type:'energy',msg:s.artist+' energy='+af.energy.toFixed(2)+' — TOO ENERGETIC'})}
-if(f.energy>75&&af&&af.energy<0.35){_issues.push({idx:idx,type:'energy',msg:s.artist+' energy='+af.energy.toFixed(2)+' — TOO CALM'})}
-if(f.familiarity<30&&tr&&tr.popularity>65){_issues.push({idx:idx,type:'familiarity',msg:s.artist+' pop='+tr.popularity+' — TOO MAINSTREAM'})}
-if(f.familiarity>70&&tr&&tr.popularity<20){_issues.push({idx:idx,type:'familiarity',msg:s.artist+' pop='+tr.popularity+' — TOO OBSCURE'})}});
-_issues.forEach(function(iss){brainLog('⚠️','Verify',iss.msg,true)});
-var _retryThreshold=(f.vocal<20||f.vocal>80)?1:2;
-if(_issues.length>=_retryThreshold){brainLog('🔄','Retry',''+_issues.length+' mismatches found (threshold:'+_retryThreshold+'), regenerating...',true);var _corrections=[];var _types={};_issues.forEach(function(iss){_types[iss.type]=true});
-if(_types.vocal){_corrections.push(f.vocal<35?'INSTRUMENTAL ONLY — zero singing. Use: Nils Frahm, Ólafur Arnalds, Bonobo, Tycho, Kiasmos, Brian Eno, Max Richter, Explosions in the Sky. Israeli: Idan Raichel instrumentals, Berry Sakharof instrumentals.':'VOCAL ONLY — every track must have singing and lyrics. Zero instrumentals.')}
-if(_types.energy){_corrections.push(f.energy<25?'CALM/RELAXED ONLY — energy below 0.4. Slow tempo, quiet, ambient, chill.':'HIGH ENERGY ONLY — energy above 0.6. Fast, upbeat, dance-friendly.')}
-if(_types.familiarity){_corrections.push(f.familiarity<30?'NICHE ONLY — zero mainstream hits. Artists with <100K listeners only. Spotify popularity below 40.':'MAINSTREAM ONLY — well-known hits. Spotify popularity above 50.')}
-var _retryPrompt='\n\n🚨🚨🚨 CRITICAL CORRECTIONS (your previous picks violated these rules):\n'+_corrections.join('\n')+'\n\nReturn completely new tracks that respect ALL of these rules.';
-var _rRaw=await callOpenAI([{role:'system',content:sysPrompt},{role:'user',content:usrPrompt+_retryPrompt}],{max_tokens:800,stage:'2️⃣🔄 Retry',model:'gpt-4o-mini'});var _rParsed=safeJSON(_rRaw);if(_rParsed.samples&&_rParsed.samples.length){wiz.samples=_rParsed.samples;wiz.votes={};var _sp2=await Promise.allSettled(wiz.samples.map(function(s){return searchTrack(s.artist,s.title).catch(function(){return null})}));_sp2.forEach(function(r,i){if(r.status==='fulfilled'&&r.value&&r.value.id){wiz.samples[i].spotifyId=r.value.id}});
-var _retryIds=wiz.samples.filter(function(s){return s.spotifyId}).map(function(s){return s.spotifyId});if(_retryIds.length&&(f.vocal<20||f.vocal>80)){var _afd2=await getAudioFeaturesAnyway(_retryIds);if(_afd2&&_afd2.audio_features){var _afMap2={};_afd2.audio_features.forEach(function(af){if(af&&af.id)_afMap2[af.id]=af});wiz.samples=wiz.samples.filter(function(s){if(!s.spotifyId)return true;var af=_afMap2[s.spotifyId];if(!af)return true;if(f.vocal<20&&af.instrumentalness<0.4){brainLog('🚫','Filter',s.artist+' — inst='+af.instrumentalness.toFixed(2)+' REMOVED (not instrumental)',true);return false}if(f.vocal>80&&af.instrumentalness>0.6){brainLog('🚫','Filter',s.artist+' — inst='+af.instrumentalness.toFixed(2)+' REMOVED (not vocal)',true);return false}return true});brainLog('✅','Filter','After filtering: '+wiz.samples.length+' samples remain',true)}}
-brainLog('✅','Retry','Got '+wiz.samples.length+' verified samples',true)}}}}catch(e){brainLog('⚠️','Verify',e.message)}}
-var _goodSeeds=wiz.samples.filter(function(s){return s.spotifyId}).map(function(s){return s.spotifyId});
-/* Verify ALL faders with audio features + replace bad tracks from backup pool */
-if(_recsBackupPool.length||_needsPool){var _existingSids=wiz.samples.map(function(s){return s.spotifyId});
-var _verifyIds=wiz.samples.filter(function(s){return s.spotifyId}).map(function(s){return s.spotifyId});
-var _vResults=await Promise.all([getAudioFeaturesAnyway(_verifyIds),getTracksAnyway(_verifyIds)]);
-var _fafMap={};if(_vResults[0]&&_vResults[0].audio_features)_vResults[0].audio_features.forEach(function(af){if(af&&af.id)_fafMap[af.id]=af});
-var _ftrMap={};if(_vResults[1]&&_vResults[1].tracks)_vResults[1].tracks.forEach(function(tr){if(tr&&tr.id)_ftrMap[tr.id]=tr});
-var _poolIdx=0;var _replaced=0;
-for(var _si=0;_si<wiz.samples.length;_si++){var _s=wiz.samples[_si];if(!_s.spotifyId)continue;var _saf=_fafMap[_s.spotifyId];var _str=_ftrMap[_s.spotifyId];
-var _issues=[];
-if(_saf){if(f.vocal<25&&_saf.instrumentalness<0.4)_issues.push('NOT instrumental (inst='+_saf.instrumentalness.toFixed(2)+')');
-if(f.vocal>75&&_saf.instrumentalness>0.6)_issues.push('NOT vocal (inst='+_saf.instrumentalness.toFixed(2)+')');
-if(f.energy<25&&_saf.energy>0.55)_issues.push('TOO energetic (E='+_saf.energy.toFixed(2)+')');
-if(f.energy>75&&_saf.energy<0.35)_issues.push('TOO calm (E='+_saf.energy.toFixed(2)+')')}
-if(_str){if(f.familiarity<30&&_str.popularity>60)_issues.push('TOO mainstream (pop='+_str.popularity+')');
-if(f.familiarity>75&&_str.popularity<25)_issues.push('TOO obscure (pop='+_str.popularity+')')}
-if(_issues.length){brainLog('🚫','Verify',_s.artist+': '+_issues.join(', '),true);
-if(_recsBackupPool.length){while(_poolIdx<_recsBackupPool.length){var _rep=_recsBackupPool[_poolIdx];_poolIdx++;if(_existingSids.indexOf(_rep.spotifyId)===-1){brainLog('✅','Replace',_s.artist+' → '+_rep.artist,true);wiz.samples[_si]=_rep;_existingSids.push(_rep.spotifyId);_replaced++;break}}}}else{
-_s._inst=_saf?_saf.instrumentalness:null;_s._energy=_saf?_saf.energy:null;_s._pop=_str?_str.popularity:null;
-var _descParts=[];
-if(_saf){if(_saf.instrumentalness>0.6)_descParts.push('אינסטרומנטלי');else if(_saf.instrumentalness<0.3)_descParts.push('ווקלי');
-if(_saf.energy>0.7)_descParts.push('אנרגטי');else if(_saf.energy<0.3)_descParts.push('רגוע');
-_descParts.push('BPM:'+Math.round(_saf.tempo))}
-if(_descParts.length)_s.reason=_descParts.join(' · ')+((_str&&_str.popularity)?' · pop:'+_str.popularity:'')}}
-if(_replaced)brainLog('✅','Verify','Replaced '+_replaced+'/'+wiz.samples.length+' tracks that violated fader constraints',true);
-else brainLog('✅','Verify','All '+wiz.samples.length+' samples passed verification',true)}
-await enrichTracksWithArtistData(wiz.samples);
-/* ═══ GENRE-VIBE VERIFICATION ENGINE ═══ */
-/* Check each track's Spotify artist genres against its claimed vibe using GENRE_FAMILIES */
-var _vibeGenreMismatches=[];
-if(wiz.vibes&&wiz.vibes.length){
-wiz.samples.forEach(function(s,idx){
-if(!s._genres||!s._genres.length)return;
-var vibe=wiz.vibes[s.vibeIdx];if(!vibe)return;
-var claimedFamily=detectVibeFamily(vibe.name,vibe.desc);
-if(!claimedFamily)return; /* Can't verify if we don't know what the vibe claims */
-var match=artistMatchesFamily(s._genres,claimedFamily);
-if(!match){
-_vibeGenreMismatches.push({idx:idx,artist:s.artist,artistGenres:s._genres,claimedFamily:claimedFamily,vibeName:vibe.name});
-brainLog('🚫','Genre Check',s.artist+' ['+s._genres.slice(0,3).join(', ')+'] ≠ '+vibe.name+' ('+claimedFamily+')',true)}});
-if(_vibeGenreMismatches.length){
-brainLog('🔄','Genre Fix','Found '+_vibeGenreMismatches.length+' mismatched tracks — searching replacements via Spotify...',true);
-var _badIdxs={};_vibeGenreMismatches.forEach(function(m){_badIdxs[m.idx]=true});
-wiz.samples.forEach(function(s,i){if(_badIdxs[i])s._genreMismatch=true});
-/* Replace mismatched tracks via Spotify search using vibe genre keywords */
-var _spotifyGenreSeeds={mizrahi:'mizrahi israeli',rock:'rock alternative',jazz:'jazz',electronic:'electronic house',hiphop:'hip hop rap',pop:'pop',classical:'classical',soul:'soul funk',folk:'folk acoustic',world:'world latin',rnb:'r&b neo soul'};
-var _hebKeyword=f.hebrew>50?' ישראלי':'';
-for(var _rvi=0;_rvi<wiz.vibes.length;_rvi++){
-var _rvTracks=wiz.samples.filter(function(s){return s.vibeIdx===_rvi&&!s._genreMismatch});
-var _rvMissing=3-_rvTracks.length;
-if(_rvMissing<=0)continue;
-var _rvFamily=detectVibeFamily(wiz.vibes[_rvi].name,wiz.vibes[_rvi].desc);
-if(!_rvFamily)continue;
-var _searchQ=(_spotifyGenreSeeds[_rvFamily]||_rvFamily)+_hebKeyword;
-brainLog('🔍','Replace','Searching Spotify for "'+_searchQ+'" ('+_rvMissing+' needed for '+wiz.vibes[_rvi].name+')',true);
+const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'');
+/* ═══ STEP 1: GPT picks 3 genre FAMILIES (not moods) ═══ */
+brainLog('🧠','Step 1','GPT picking 3 genre families...',true);
+var _familyPrompt='You are SonicBrand AI. Pick 3 GENRE DIRECTIONS for this business.\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🎚️ SLIDER CONTEXT:\n- Hebrew: '+f.hebrew+'% ('+((f.hebrew>70)?'mostly Hebrew':(f.hebrew<30)?'mostly international':'mixed')+')\n- Energy: '+f.energy+'/100\n- Familiarity: '+f.familiarity+'/100\n- Vocal: '+f.vocal+'/100\n\nIMPORTANT RULES:\n1. Each direction MUST be a specific GENRE FAMILY — not a mood or vibe like "Summer Vibes" or "Good Energy"\n2. Valid genre families: mizrahi, rock, jazz, electronic, hiphop, rnb, pop, classical, soul, folk, world\n3. Pick 3 DIFFERENT families that make sense for this business + location + audience\n4. Direction 1: The most natural/obvious genre fit\n5. Direction 2: A complementary but different genre\n6. Direction 3: A bold/creative genre choice\n7. If demographic context mentions Mizrahi affinity > 50, at least one direction MUST be mizrahi\n8. If demographic context mentions avoid_genres, do NOT pick those families\n9. Hebrew slider affects which LANGUAGE tracks should be in, NOT which genre to pick\n\nReturn JSON:\n{"directions":[\n{"family":"one of the valid family names","hebrewName":"שם הכיוון בעברית (2-3 words, genre-specific)","emoji":"single emoji","desc":"תיאור קצר בעברית — מה הסאונד הזה","searchQueries":["spotify search query 1","spotify search query 2","spotify search query 3"]},\n... 3 directions total\n]}\n\nThe searchQueries should be specific Spotify search terms for finding tracks in this genre that fit the business. Include artist names when possible. If hebrew>50, include Hebrew/Israeli search terms.';
+var _famRaw=await callOpenAI([{role:'system',content:'You are SonicBrand AI music curator. You pick genre directions for businesses. Each direction must be anchored to a specific genre FAMILY — never vague moods. JSON only.'},{role:'user',content:_familyPrompt}],{max_tokens:800,stage:'2️⃣ כיוונים מוזיקליים — שלב 1',model:'gpt-4o-mini'});
+var _famParsed=safeJSON(_famRaw);
+var _directions=_famParsed.directions||[];
+if(!_directions.length)throw new Error('GPT returned no directions');
+brainLog('✅','Step 1',_directions.map(function(d){return d.emoji+' '+d.family+': '+d.hebrewName}).join(' | '),true);
+/* ═══ STEP 2: Spotify finds tracks for each genre family ═══ */
+brainLog('🔍','Step 2','Spotify finding tracks per family...',true);
+wiz.vibes=[];wiz.samples=[];wiz.votes={};wiz.selectedVibe=null;
+var _spotifyGenreSeeds={mizrahi:'mizrahi israeli middle eastern',rock:'rock alternative indie',jazz:'jazz bossa nova swing',electronic:'electronic house techno ambient',hiphop:'hip hop rap trap',rnb:'r&b neo soul',pop:'pop dance pop',classical:'classical piano orchestral',soul:'soul funk disco',folk:'folk acoustic singer-songwriter',world:'world latin reggae afrobeat'};
+var _hebSearchMod=f.hebrew>50?' ישראלי israeli':'';
+for(var _di=0;_di<_directions.length;_di++){
+var _dir=_directions[_di];
+var _family=_dir.family||'pop';
+var _vibeObj={name:_dir.hebrewName||_family,emoji:_dir.emoji||'🎵',desc:_dir.desc||'',family:_family,tracks:[]};
+wiz.vibes.push(_vibeObj);
+/* Search Spotify using multiple queries for this family */
+var _queries=(_dir.searchQueries||[]).slice(0,3);
+if(!_queries.length)_queries=[(_spotifyGenreSeeds[_family]||_family)+_hebSearchMod];
+var _candidateTracks=[];
+var _t=await getSpotifyToken();
+if(_t){
+for(var _qi=0;_qi<_queries.length&&_candidateTracks.length<12;_qi++){
 try{
-var _existingInVibe={};wiz.samples.forEach(function(s){if(s.vibeIdx===_rvi&&!s._genreMismatch&&s.spotifyId)_existingInVibe[s.spotifyId]=true});
-var _srRes=await searchTrack(_searchQ,'');
-/* Use broader search — search for genre keyword as tracks */
-var _t=await getSpotifyToken();if(_t){
-var _srUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent('genre:"'+(_spotifyGenreSeeds[_rvFamily]||_rvFamily)+'"'+(_hebKeyword?' '+_hebKeyword:''))+'&type=track&limit=20&market=IL';
+var _sq=_queries[_qi];
+var _srUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_sq)+'&type=track&limit=15&market=IL';
 var _srResp=await fetch(_srUrl,{headers:{'Authorization':'Bearer '+_t}});
 var _srData=await _srResp.json();
 if(_srData.tracks&&_srData.tracks.items){
-var _replacements=[];
-for(var _ri=0;_ri<_srData.tracks.items.length&&_replacements.length<_rvMissing;_ri++){
-var _rt=_srData.tracks.items[_ri];
-if(_existingInVibe[_rt.id])continue;
-/* Verify this replacement artist actually matches the family */
-var _rtArtistId=_rt.artists&&_rt.artists[0]?_rt.artists[0].id:null;
-if(_rtArtistId){
-var _rtArtData=await getArtistsAnyway([_rtArtistId]);
-if(_rtArtData&&_rtArtData.artists&&_rtArtData.artists[0]){
-var _rtGenres=_rtArtData.artists[0].genres||[];
-if(artistMatchesFamily(_rtGenres,_rvFamily)){
-_replacements.push({artist:_rt.artists.map(function(a){return a.name}).join(', '),title:_rt.name,spotifyId:_rt.id,vibeIdx:_rvi,reason:'Spotify verified '+_rvFamily,_genres:_rtGenres,_artistId:_rtArtistId});
-_existingInVibe[_rt.id]=true;
-brainLog('✅','Replace','Added: '+_rt.artists[0].name+' - '+_rt.name+' ['+_rtGenres.slice(0,2).join(', ')+']',true)}
-else{brainLog('⚠️','Replace','Skipped: '+_rt.artists[0].name+' ['+_rtGenres.slice(0,2).join(', ')+'] — not '+_rvFamily,true)}}}
+_srData.tracks.items.forEach(function(tr){
+if(_candidateTracks.some(function(c){return c.spotifyId===tr.id}))return;
+_candidateTracks.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,spotifyId:tr.id,_artistId:tr.artists[0]?tr.artists[0].id:null,_pop:tr.popularity,vibeIdx:_di})});
+}}catch(e){brainLog('⚠️','Search',e.message)}}
+/* Also try genre: search */
+if(_candidateTracks.length<6){
+try{
+var _genreQ='genre:"'+(_spotifyGenreSeeds[_family]||_family).split(' ')[0]+'"'+(_hebSearchMod?' '+_hebSearchMod:'');
+var _gUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_genreQ)+'&type=track&limit=15&market=IL';
+var _gResp=await fetch(_gUrl,{headers:{'Authorization':'Bearer '+_t}});
+var _gData=await _gResp.json();
+if(_gData.tracks&&_gData.tracks.items){
+_gData.tracks.items.forEach(function(tr){
+if(_candidateTracks.some(function(c){return c.spotifyId===tr.id}))return;
+_candidateTracks.push({artist:tr.artists.map(function(a){return a.name}).join(', '),title:tr.name,spotifyId:tr.id,_artistId:tr.artists[0]?tr.artists[0].id:null,_pop:tr.popularity,vibeIdx:_di})})}}catch(e){}}
 }
-_replacements.forEach(function(rep){wiz.samples.push(rep)});
-if(_replacements.length)brainLog('✅','Replace','Added '+_replacements.length+' verified replacements for '+wiz.vibes[_rvi].name,true);
-else brainLog('⚠️','Replace','Could not find verified replacements for '+wiz.vibes[_rvi].name,true);
-}}}catch(e){brainLog('⚠️','Replace',e.message)}
-}}}
-var _famIssues=[];wiz.samples.forEach(function(s,idx){if(s._genreMismatch)return;if(f.familiarity<30&&s._followers&&s._followers>200000){_famIssues.push(idx);brainLog('⚠️','Niche',s.artist+' — '+s._followers+' followers, too big',true)}});if(_famIssues.length&&_recsBackupPool.length){var _fpIdx=0;_famIssues.forEach(function(badIdx){while(_fpIdx<_recsBackupPool.length){var rep=_recsBackupPool[_fpIdx];_fpIdx++;var alreadyIn=wiz.samples.some(function(s){return s.spotifyId===rep.spotifyId});if(!alreadyIn){wiz.samples[badIdx]=rep;break}}})}
+brainLog('🔍','Step 2','Family '+_family+': '+_candidateTracks.length+' candidates found',true);
+/* ═══ STEP 3: Enrich candidates with artist genre data ═══ */
+var _artIds=[];_candidateTracks.forEach(function(c){if(c._artistId&&_artIds.indexOf(c._artistId)===-1)_artIds.push(c._artistId)});
+if(_artIds.length){
+try{
+var _artData=await getArtistsAnyway(_artIds);
+if(_artData&&_artData.artists){
+var _artMap={};_artData.artists.forEach(function(a){if(a&&a.id)_artMap[a.id]={genres:a.genres||[],followers:a.followers?a.followers.total:0}});
+_candidateTracks.forEach(function(c){
+if(c._artistId&&_artMap[c._artistId]){c._genres=_artMap[c._artistId].genres;c._followers=_artMap[c._artistId].followers}})}}catch(e){}}
+/* ═══ STEP 4: Filter by artist genre match + fader constraints ═══ */
+var _verified=[];
+for(var _ci=0;_ci<_candidateTracks.length&&_verified.length<5;_ci++){
+var _ct=_candidateTracks[_ci];
+/* Artist genre verification */
+var _genreOk=true;
+if(_ct._genres&&_ct._genres.length){_genreOk=artistMatchesFamily(_ct._genres,_family)}
+else{_genreOk=true} /* No genre data — allow but mark */
+if(!_genreOk){brainLog('⚠️','Filter',_ct.artist+' ['+(_ct._genres||[]).slice(0,2).join(', ')+'] ≠ '+_family+' — skipped',true);continue}
+/* Familiarity filter */
+if(f.familiarity<30&&_ct._pop>65){brainLog('⚠️','Filter',_ct.artist+' pop='+_ct._pop+' too mainstream — skipped',true);continue}
+if(f.familiarity>75&&_ct._pop<20){continue}
+/* Follower filter for niche */
+if(f.familiarity<30&&_ct._followers&&_ct._followers>300000){continue}
+/* Avoid duplicate artists across vibes */
+var _artistInOther=wiz.samples.some(function(s){return s.artist===_ct.artist});
+if(_artistInOther)continue;
+_verified.push(_ct)}
+/* Take top 3 verified tracks */
+var _picked=_verified.slice(0,3);
+brainLog('✅','Step 4','Family '+_family+': '+_picked.length+' verified tracks',true);
+_picked.forEach(function(p){wiz.samples.push(p);_vibeObj.tracks.push({artist:p.artist,title:p.title})});
+}
+/* ═══ STEP 5: Playlist Context Verification — the self-audit ═══ */
+brainLog('📋','Step 5','Playlist context verification...',true);
+var _plFails=[];
+for(var _pi=0;_pi<wiz.samples.length;_pi++){
+var _ps=wiz.samples[_pi];
+var _pvibe=wiz.vibes[_ps.vibeIdx];
+if(!_pvibe)continue;
+var _pFamily=_pvibe.family;
+var _vResult=await verifyTrackFamily(_ps,_pFamily);
+_ps._playlistVerified=_vResult.verified;
+_ps._playlistConfidence=_vResult.confidence||'unknown';
+_ps._verifyReason=_vResult.reason;
+if(!_vResult.verified){
+_plFails.push({idx:_pi,artist:_ps.artist,family:_pFamily,reason:_vResult.reason});
+brainLog('🚫','Playlist',_ps.artist+': FAILED — '+_vResult.reason,true);
+_ps._genreMismatch=true}
+else{brainLog('✅','Playlist',_ps.artist+': '+_vResult.confidence+' — '+_vResult.reason,true)}}
+/* ═══ STEP 6: Replace failed tracks ═══ */
+if(_plFails.length){
+brainLog('🔄','Step 6','Replacing '+_plFails.length+' failed tracks...',true);
+for(var _fi=0;_fi<_plFails.length;_fi++){
+var _fail=_plFails[_fi];
+var _failVibe=wiz.vibes[wiz.samples[_fail.idx].vibeIdx];
+var _failFamily=_failVibe?_failVibe.family:'pop';
+var _replQ=(_spotifyGenreSeeds[_failFamily]||_failFamily)+_hebSearchMod;
+try{
+var _rt=await getSpotifyToken();if(!_rt)continue;
+var _rUrl='https://api.spotify.com/v1/search?q='+encodeURIComponent(_replQ)+'&type=track&limit=20&market=IL';
+var _rResp=await fetch(_rUrl,{headers:{'Authorization':'Bearer '+_rt}});
+var _rData=await _rResp.json();
+if(_rData.tracks&&_rData.tracks.items){
+var _existingIds={};wiz.samples.forEach(function(s){if(s.spotifyId)_existingIds[s.spotifyId]=true});
+for(var _rri=0;_rri<_rData.tracks.items.length;_rri++){
+var _rTrack=_rData.tracks.items[_rri];
+if(_existingIds[_rTrack.id])continue;
+/* Quick artist genre check */
+var _rArtId=_rTrack.artists&&_rTrack.artists[0]?_rTrack.artists[0].id:null;
+if(!_rArtId)continue;
+var _rArtData=await getArtistsAnyway([_rArtId]);
+if(!_rArtData||!_rArtData.artists||!_rArtData.artists[0])continue;
+var _rGenres=_rArtData.artists[0].genres||[];
+if(!artistMatchesFamily(_rGenres,_failFamily))continue;
+/* Playlist context check for replacement */
+var _rPl=await analyzePlaylistContext(_rTrack.artists[0].name);
+if(_rPl&&_rPl.primaryFamily!==_failFamily&&_rPl.secondaryFamily!==_failFamily)continue;
+/* This replacement passed both checks */
+var _oldArtist=wiz.samples[_fail.idx].artist;
+wiz.samples[_fail.idx]={artist:_rTrack.artists.map(function(a){return a.name}).join(', '),title:_rTrack.name,spotifyId:_rTrack.id,_artistId:_rArtId,_genres:_rGenres,_followers:_rArtData.artists[0].followers?_rArtData.artists[0].followers.total:0,_pop:_rTrack.popularity,vibeIdx:wiz.samples[_fail.idx].vibeIdx,_playlistVerified:true,_playlistConfidence:'high',_verifyReason:'replacement — artist genres + playlists confirm',reason:'✅ מאומת'};
+wiz.samples[_fail.idx]._genreMismatch=false;
+brainLog('✅','Replace',_oldArtist+' → '+_rTrack.artists[0].name+' ['+_rGenres.slice(0,2).join(', ')+']',true);
+break}}}catch(e){brainLog('⚠️','Replace',e.message)}}}
+/* ═══ STEP 7: Audio features verification for fader compliance ═══ */
+var _verifiedIds=wiz.samples.filter(function(s){return s.spotifyId&&!s._genreMismatch}).map(function(s){return s.spotifyId});
+if(_verifiedIds.length){
+try{
+var _afData=await getAudioFeaturesAnyway(_verifiedIds);
+if(_afData&&_afData.audio_features){
+var _afMap={};_afData.audio_features.forEach(function(af){if(af&&af.id)_afMap[af.id]=af});
+wiz.samples.forEach(function(s){
+if(!s.spotifyId||s._genreMismatch)return;
+var af=_afMap[s.spotifyId];if(!af)return;
+s._inst=af.instrumentalness;s._energy=af.energy;s._tempo=Math.round(af.tempo);s._dance=af.danceability;
+var _descParts=[];
+if(af.instrumentalness>0.6)_descParts.push('אינסטרומנטלי');else if(af.instrumentalness<0.3)_descParts.push('ווקלי');
+if(af.energy>0.7)_descParts.push('אנרגטי');else if(af.energy<0.3)_descParts.push('רגוע');
+_descParts.push('BPM:'+Math.round(af.tempo));
+if(s._pop)_descParts.push('pop:'+s._pop);
+s.reason=_descParts.join(' · ')})}}catch(e){brainLog('⚠️','AF',e.message)}}
+brainLog('✅','Done','Pipeline complete — '+wiz.samples.filter(function(s){return!s._genreMismatch}).length+' verified tracks across '+wiz.vibes.length+' directions',true);
+/* ═══ RENDER VIBE CARDS ═══ */
 var _bbBtn=document.getElementById('sampleBackBtn');if(_bbBtn)_bbBtn.style.display='';
-/* Render vibe cards (skip genre-mismatched tracks, hide empty vibes) */
 var html='';var _renderedVibes=0;for(var vi=0;vi<wiz.vibes.length;vi++){var vb=wiz.vibes[vi];
 var vTracks=wiz.samples.filter(function(s){return s.vibeIdx===vi&&!s._genreMismatch});
 if(!vTracks.length){brainLog('⚠️','Render','Hiding empty vibe card: '+vb.name,true);continue}

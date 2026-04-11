@@ -264,6 +264,13 @@
   .playlist-tab.active{background:var(--gradient);color:#fff}
   .playlist-tab .tab-icon{font-size:18px;margin-left:6px}
   .playlist-tab .tab-desc{font-size:11px;color:inherit;opacity:0.7;display:block;margin-top:2px}
+  .cz-tab{flex:1;padding:12px 8px;background:transparent;border:none;color:var(--muted);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;transition:.2s;text-align:center;min-width:0}
+  .cz-tab:hover{background:var(--card-2);color:var(--text)}
+  .cz-tab.active{background:var(--gradient);color:#fff}
+  .cz-panel{animation:fade .3s ease}
+  .cz-fb-btn{background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:8px 14px;border-radius:20px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s}
+  .cz-fb-btn:hover{border-color:var(--accent);background:rgba(29,185,84,.1)}
+  .cz-fb-btn.active{background:rgba(29,185,84,.2);border-color:var(--accent);color:var(--accent)}
 </style>
 </head>
 <body>
@@ -277,14 +284,14 @@
   <button onclick="nav('clients')">לקוחות</button>
   <button onclick="nav('analytics')">📊 ניתוחים</button>
   <button onclick="nav('activityLog')">📝 לוג</button>
-  <button onclick="nav('personalArea')">🎵 אזור אישי</button>
   <button onclick="nav('settings')" style="margin-right:auto;background:var(--card-2)">⚙ Settings</button>
   <button onclick="toggleBrain()" style="background:var(--gradient);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;padding:8px 16px;border-radius:10px;font-family:inherit">🧠 מוח</button>
-  <span style="font-size:18px;font-weight:900;color:var(--accent);margin-left:12px;background:rgba(29,185,84,.15);padding:4px 12px;border-radius:8px" id="appVersion">v7.1</span>
+  <span style="font-size:18px;font-weight:900;color:var(--accent);margin-left:12px;background:rgba(29,185,84,.15);padding:4px 12px;border-radius:8px" id="appVersion">v7.5</span>
   <button onclick="hardRefresh()" style="background:var(--card);border:1px solid var(--border);color:var(--text);font-size:22px;cursor:pointer;padding:6px 14px;border-radius:10px;font-weight:700;transition:.2s" title="רענן" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⟳</button>
   <div id="authUserBar" style="display:none;align-items:center;gap:8px;margin-left:8px;padding:5px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px">
     <span id="authUserAvatar" style="width:24px;height:24px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:900">?</span>
     <span id="authUserEmail" style="font-size:12px;color:var(--text);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button onclick="nav('personalArea')" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px;font-family:inherit;padding:2px 8px;border-radius:6px;transition:all .2s" onmouseover="this.style.background='rgba(29,185,84,.1)'" onmouseout="this.style.background='none'">🎵 אזור אישי</button>
     <button onclick="authLogout()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;font-family:inherit;padding:2px 6px;border-radius:6px;transition:all .2s" onmouseover="this.style.color='var(--accent-3)';this.style.background='rgba(255,71,133,.1)'" onmouseout="this.style.color='var(--muted)';this.style.background='none'">התנתק</button>
   </div>
 </nav>
@@ -572,12 +579,233 @@
   <div id="analyticsList" style="display:flex;flex-direction:column;gap:12px"></div>
 </section>
 <section id="personalArea" class="screen">
-  <h2 style="margin-bottom:8px">🎵 אזור אישי</h2>
-  <p style="color:var(--muted);font-size:13px;margin-bottom:24px">כל הפלייליסטים והניתוחים שנבנו עבורך</p>
-  <div id="personalAreaNotLoggedIn" style="display:none;text-align:center;padding:40px;color:var(--muted)"><p>יש להתחבר כדי לראות את האזור האישי.</p><button class="btn btn-primary" onclick="nav('landing')" style="margin-top:12px">התחבר</button></div>
-  <div id="myPlaylistsLoading" style="text-align:center;padding:40px;color:var(--muted)"><div class="spinner"></div><p>טוען פלייליסטים...</p></div>
-  <div id="myPlaylistsEmpty" style="display:none;text-align:center;padding:40px;color:var(--muted)"><p>אין פלייליסטים שמורים עדיין. צרו פלייליסט כדי שיופיע כאן.</p></div>
-  <div id="myPlaylistsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px"></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+      <h2 style="margin:0" id="czTitle">🎯 אזור אישי</h2>
+      <p style="color:var(--muted);font-size:13px;margin-top:4px" id="czSubtitle">הזהות המוזיקלית של העסק שלך</p>
+    </div>
+    <div id="czNotLoggedIn" style="display:none"><button class="btn btn-primary" onclick="nav('landing')">התחבר</button></div>
+  </div>
+  
+  <div id="czTabs" style="display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:12px;overflow:hidden;flex-wrap:wrap">
+    <button class="cz-tab active" data-cztab="czProfile" onclick="switchCZTab('czProfile',this)">🎭 פרופיל</button>
+    <button class="cz-tab" data-cztab="czPlaylists" onclick="switchCZTab('czPlaylists',this)">🎵 פלייליסטים</button>
+    <button class="cz-tab" data-cztab="czTaste" onclick="switchCZTab('czTaste',this)">🧠 טעם</button>
+    <button class="cz-tab" data-cztab="czControl" onclick="switchCZTab('czControl',this)">🎛️ בקרה</button>
+    <button class="cz-tab" data-cztab="czFeedback" onclick="switchCZTab('czFeedback',this)">📝 פידבק</button>
+    <button class="cz-tab" data-cztab="czRegen" onclick="switchCZTab('czRegen',this)">🔄 ייצור</button>
+  </div>
+
+  <div id="czProfile" class="cz-panel active">
+    <div class="card" id="czSoundSummaryCard">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-weight:700;font-size:13px;color:var(--accent-2)">🔊 Sound Summary</div>
+        <button onclick="generateSoundSummary()" style="background:var(--card-2);border:1px solid var(--border);color:var(--accent);padding:4px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-family:inherit">🔄 עדכן</button>
+      </div>
+      <div id="czSoundSummary" style="font-size:18px;font-weight:700;color:var(--text);margin-top:10px;line-height:1.5;font-style:italic">טרם נוצר — צרו פלייליסט ראשון</div>
+    </div>
+    
+    <div class="card">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">📋 פרטי עסק</div>
+      <div id="czBasicInfo" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">
+        <div><span style="color:var(--muted)">סוג עסק:</span> <span id="czBizType">—</span></div>
+        <div><span style="color:var(--muted)">קהל יעד:</span> <span id="czAudience">—</span></div>
+        <div><span style="color:var(--muted)">תיאור:</span> <span id="czDesc">—</span></div>
+        <div><span style="color:var(--muted)">פרסונה:</span> <span id="czPersona">—</span></div>
+      </div>
+    </div>
+    
+    <div class="card">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">🎚️ שכבות מוזיקליות</div>
+      <div id="czMusicalLayers" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+        <div style="text-align:center;background:var(--bg-2);border-radius:12px;padding:14px 8px">
+          <div style="font-size:22px;font-weight:900;color:var(--accent)" id="czSliderEnergy">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">אנרגיה</div>
+        </div>
+        <div style="text-align:center;background:var(--bg-2);border-radius:12px;padding:14px 8px">
+          <div style="font-size:22px;font-weight:900;color:var(--accent)" id="czSliderFam">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">מסחריות</div>
+        </div>
+        <div style="text-align:center;background:var(--bg-2);border-radius:12px;padding:14px 8px">
+          <div style="font-size:22px;font-weight:900;color:var(--accent)" id="czSliderVocal">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">ווקליות</div>
+        </div>
+        <div style="text-align:center;background:var(--bg-2);border-radius:12px;padding:14px 8px">
+          <div style="font-size:22px;font-weight:900;color:var(--accent)" id="czSliderHeb">—</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">עברית</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
+        <div><span style="color:var(--muted)">Brand Tone:</span> <span id="czBrandTone">—</span></div>
+        <div><span style="color:var(--muted)">Curatorial Distance:</span> <span id="czCuratorialDist">—</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">📊 דשבורד</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px" id="czDashboard">
+        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
+          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricEnergy">—</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">Avg Energy</div>
+        </div>
+        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
+          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricFam">—</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">Familiarity</div>
+        </div>
+        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
+          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricHeb">—</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">Hebrew %</div>
+        </div>
+        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
+          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricDiversity">—</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">Diversity</div>
+        </div>
+        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
+          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricUnique">—</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">Uniqueness</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="czPlaylists" class="cz-panel" style="display:none">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:700;color:var(--text)">📚 ספריית פלייליסטים</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="czToggleEvolution()" class="btn btn-ghost" style="padding:6px 14px;font-size:12px">📈 Evolution View</button>
+      </div>
+    </div>
+    <div id="czEvolutionView" style="display:none;margin-bottom:20px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">📈 התפתחות הסאונד לאורך זמן</div>
+      <div id="czEvolutionContent" style="font-size:13px;color:var(--muted)">טוען...</div>
+    </div>
+    <div id="czPlaylistsLoading" style="text-align:center;padding:30px;color:var(--muted)"><div class="spinner"></div></div>
+    <div id="czPlaylistsEmpty" style="display:none;text-align:center;padding:30px;color:var(--muted)">אין פלייליסטים עדיין</div>
+    <div id="czPlaylistsList" style="display:flex;flex-direction:column;gap:12px"></div>
+    <div id="myPlaylistsGrid" style="display:none"></div>
+  </div>
+
+  <div id="czTaste" class="cz-panel" style="display:none">
+    <div class="card">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">🧠 מודל טעם</div>
+      <div id="czTasteDigest" style="font-size:14px;color:var(--text);line-height:1.7;margin-bottom:16px;font-style:italic">טרם נבנה — נדרש פידבק ראשון</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div class="card">
+        <div style="font-weight:700;font-size:13px;color:var(--accent);margin-bottom:10px">✅ אוהב</div>
+        <div id="czTasteLikes" style="font-size:12px;color:var(--text);line-height:1.8">—</div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700;font-size:13px;color:var(--accent-3);margin-bottom:10px">❌ לא אוהב</div>
+        <div id="czTasteDislikes" style="font-size:12px;color:var(--text);line-height:1.8">—</div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">🔍 Patterns</div>
+      <div id="czTastePatterns" style="font-size:12px;color:var(--muted);line-height:1.8">—</div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">💡 תובנות (Insights)</div>
+      <div id="czInsights" style="font-size:13px;color:var(--text);line-height:1.8">—</div>
+    </div>
+  </div>
+
+  <div id="czControl" class="cz-panel" style="display:none">
+    <div class="card">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">⚡ התאמות מהירות</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">כל כפתור משנה את הפרמטרים הבסיסיים — לא רק את הפלט</p>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px" id="czQuickAdjust">
+        <button onclick="czQuickAdjust('calmer')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">😌<br>יותר רגוע</button>
+        <button onclick="czQuickAdjust('energetic')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⚡<br>יותר אנרגטי</button>
+        <button onclick="czQuickAdjust('moreFamiliar')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🎯<br>יותר מוכר</button>
+        <button onclick="czQuickAdjust('lessKnown')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">💎<br>פחות מוכר</button>
+        <button onclick="czQuickAdjust('moreHebrew')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🇮🇱<br>יותר עברית</button>
+        <button onclick="czQuickAdjust('lessHebrew')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌍<br>פחות עברית</button>
+        <button onclick="czQuickAdjust('moreNight')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌙<br>יותר לילה</button>
+        <button onclick="czQuickAdjust('moreDay')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">☀️<br>יותר יום</button>
+      </div>
+      <div id="czAdjustStatus" style="display:none;margin-top:10px;font-size:12px;text-align:center;color:var(--accent)"></div>
+    </div>
+    
+    <div class="card" style="margin-top:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">🎭 מצבים (Presets)</div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+        <button onclick="czApplyPreset('chill')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🧘<br>Chill</button>
+        <button onclick="czApplyPreset('busy')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🏃<br>Busy</button>
+        <button onclick="czApplyPreset('social')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🥂<br>Social</button>
+        <button onclick="czApplyPreset('night')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌃<br>Night</button>
+        <button onclick="czApplyPreset('premium')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">✨<br>Premium</button>
+      </div>
+    </div>
+    
+    <div class="card" style="margin-top:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">🛡️ Brand Risk Control</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px" id="czRiskBtns">
+        <button onclick="czSetRisk('safe')" class="cz-risk-btn cz-risk-active" data-risk="safe" style="background:rgba(29,185,84,.15);border:2px solid var(--accent);color:var(--accent);padding:16px 8px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">🔒<br>Safe<br><span style="font-size:10px;font-weight:400">Familiar &amp; expected</span></button>
+        <button onclick="czSetRisk('balanced')" class="cz-risk-btn" data-risk="balanced" style="background:var(--bg-2);border:2px solid var(--border);color:var(--text);padding:16px 8px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">⚖️<br>Balanced<br><span style="font-size:10px;font-weight:400">Mix of known &amp; new</span></button>
+        <button onclick="czSetRisk('bold')" class="cz-risk-btn" data-risk="bold" style="background:var(--bg-2);border:2px solid var(--border);color:var(--text);padding:16px 8px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">🔥<br>Bold<br><span style="font-size:10px;font-weight:400">Daring &amp; unexpected</span></button>
+      </div>
+    </div>
+    
+    <div class="card" style="margin-top:16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div style="font-weight:700;font-size:13px;color:var(--accent-3)">🚫 Do Not Play</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <input id="czDNPInput" placeholder="אמן, שיר, או ז'אנר..." style="flex:1;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:10px;font-size:13px;font-family:inherit;direction:rtl">
+        <select id="czDNPType" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:12px;font-family:inherit">
+          <option value="artist">אמן</option>
+          <option value="track">שיר</option>
+          <option value="genre">ז'אנר</option>
+        </select>
+        <button onclick="czAddDNP()" style="background:var(--accent-3);border:none;color:#fff;padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:700;font-family:inherit">+</button>
+      </div>
+      <div id="czDNPList" style="display:flex;flex-direction:column;gap:6px"></div>
+    </div>
+  </div>
+
+  <div id="czFeedback" class="cz-panel" style="display:none">
+    <div class="card">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">📝 פידבק מובנה על הפלייליסט הנוכחי</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">בחרו סוג פידבק לכל שיר או לכל הפלייליסט</p>
+      <div id="czFeedbackNoPlaylist" style="display:none;text-align:center;padding:20px;color:var(--muted)">אין פלייליסט פעיל — צרו אחד קודם</div>
+      <div id="czFeedbackActions" style="display:none">
+        <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">פידבק כללי על הפלייליסט:</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px" id="czPlaylistFeedbackBtns">
+          <button onclick="czPlaylistFeedback('works_with_crowd')" class="cz-fb-btn">✅ עובד עם הקהל</button>
+          <button onclick="czPlaylistFeedback('disrupts_conversation')" class="cz-fb-btn">🗣️ מפריע לשיחה</button>
+          <button onclick="czPlaylistFeedback('too_energetic')" class="cz-fb-btn">⚡ אנרגטי מדי</button>
+          <button onclick="czPlaylistFeedback('too_calm')" class="cz-fb-btn">😴 רגוע מדי</button>
+          <button onclick="czPlaylistFeedback('too_familiar')" class="cz-fb-btn">🎯 מוכר מדי</button>
+          <button onclick="czPlaylistFeedback('too_niche')" class="cz-fb-btn">💎 נישתי מדי</button>
+          <button onclick="czPlaylistFeedback('good_vibe')" class="cz-fb-btn">🎵 אהבתי vibe</button>
+          <button onclick="czPlaylistFeedback('doesnt_fit')" class="cz-fb-btn">❌ לא מתאים למקום</button>
+        </div>
+        <div id="czFeedbackSent" style="display:none;color:var(--accent);font-size:13px;font-weight:600;margin-bottom:16px"></div>
+        <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">פידבק לפי שיר:</div>
+        <div id="czTrackFeedbackList" style="max-height:400px;overflow-y:auto"></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">📊 היסטוריית פידבק</div>
+      <div id="czFeedbackHistory" style="font-size:12px;color:var(--muted)">—</div>
+    </div>
+  </div>
+
+  <div id="czRegen" class="cz-panel" style="display:none">
+    <div class="card">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">🔄 ייצור חכם</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:16px">לא רק "צור מחדש" — בחרו בדיוק מה לשנות</p>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button onclick="czSmartRegen('improve')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🎯</span><div><div style="font-weight:700;font-size:14px">שפר פלייליסט</div><div style="font-size:11px;color:var(--muted)">שמור על הכיוון, תקן בעיות</div></div></button>
+        <button onclick="czSmartRegen('refresh30')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🔀</span><div><div style="font-weight:700;font-size:14px">שמור vibe, שנה 30%</div><div style="font-size:11px;color:var(--muted)">החלף חלק מהשירים — שמור על האווירה</div></div></button>
+        <button onclick="czSmartRegen('calmer')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">😌</span><div><div style="font-weight:700;font-size:14px">אותה רשימה, יותר רגועה</div><div style="font-size:11px;color:var(--muted)">החלף שירים אנרגטיים בגרסאות שקטות</div></div></button>
+        <button onclick="czSmartRegen('energize')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">⚡</span><div><div style="font-weight:700;font-size:14px">אותה רשימה, יותר אנרגטית</div><div style="font-size:11px;color:var(--muted)">החלף שירים רגועים בגרסאות חזקות</div></div></button>
+        <button onclick="czSmartRegen('fullRebuild')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🏗️</span><div><div style="font-weight:700;font-size:14px">בנייה מחדש מלאה</div><div style="font-size:11px;color:var(--muted)">מאפס — עם כל המידע שנצבר</div></div></button>
+      </div>
+      <div id="czRegenStatus" style="display:none;margin-top:14px;text-align:center;padding:12px;background:var(--bg-2);border-radius:10px;color:var(--muted);font-size:13px"></div>
+    </div>
+  </div>
 </section>
 <section id="activityLog" class="screen">
   <h2 style="margin-bottom:20px">📝 לוג פעילות</h2>
@@ -669,6 +897,27 @@
       <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent);font-weight:700">Control Strategy:</span><br><code style="color:var(--text);font-size:10px">escalationPlan · recoveryPlan · peakDesign<br>fallbackLogic · energyCeilings · riskProfile<br>Music manages crowd, not entertains it</code></div>
       <div id="brainV7LiveData" style="margin-top:10px;display:none;padding:12px;background:rgba(29,185,84,.08);border-radius:10px;border:1px solid rgba(29,185,84,.2)"></div>
     </div>
+    <div id="brainV75Arch" style="display:none">
+      <div style="font-weight:900;margin-top:16px;font-size:14px;background:linear-gradient(135deg,var(--accent-2),var(--accent-3));-webkit-background-clip:text;background-clip:text;color:transparent">⚙️ V7.5 OMEGA ARCHITECTURE</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">Decision State Engine · Triple-Gate · Budget System</div>
+      <div style="background:var(--card);border-radius:8px;padding:10px;margin:8px 0"><span style="color:var(--accent-2);font-weight:700">12 Fundamental Principles:</span><br><code style="color:var(--text);font-size:10px">1. Decision State (7 vars per track)<br>2. Compare→Select (8 candidates, discard 50%+)<br>3. Triple-Gate Rejection<br>4. Flow as State (not post-hoc)<br>5. Budget System<br>6. Mandatory Track Role<br>7. Forced Tradeoff<br>8. Self-Compression (5-7 principles)<br>9. Mini-Critic<br>10. Operational Rules Only<br>11. Relative Judgment<br>12. Balance Only When Needed</code></div>
+      <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent-2);font-weight:700">3-Phase Pipeline:</span><br><code style="color:var(--text);font-size:10px">PHASE 1: Self-Compression<br>  → Compress all context to 5-7 core principles<br>  → Initialize budget system (risk, familiarity, surprise, vocal_density)<br>  → Set initial state (energy_baseline, target_mood, language_quotas)<br><br>PHASE 2: Generate + Compare + Select (per position)<br>  → 8 candidates per position<br>  → Triple-gate: brand/slider fit → flow/energy fit → better than alternatives<br>  → Forced tradeoff declaration<br>  → Mandatory role assignment<br>  → Mini-critic (too predictable? too intense? repeating?)<br>  → If 2+ flags → reject<br><br>PHASE 3: Validation Pass<br>  → Max energy delta 0.3 between adjacent<br>  → Max 3 vocal-heavy in a row<br>  → Max 2 same-language in a row<br>  → Saturation: max 2 same genre in 4-track window<br>  → Fix violations by swapping/repositioning</code></div>
+      <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent-2);font-weight:700">Decision State (7 Variables):</span><br><code style="color:var(--text);font-size:10px">target_energy · target_familiarity · target_role<br>language_state · risk_budget · brand_guard · avoid_now<br>→ Updated after EVERY track selection</code></div>
+      <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent-2);font-weight:700">Budget System:</span><br><code style="color:var(--text);font-size:10px">risk_budget (0-100): How much "surprise" left to spend<br>familiarity_budget (0-100): Mainstream allowance remaining<br>surprise_pressure (0-100): Need for unexpected picks<br>vocal_density_budget (0-100): Vocal track allowance<br>→ Budgets deplete as playlist builds<br>→ Forces diversity naturally</code></div>
+      <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent-2);font-weight:700">Triple-Gate Rejection:</span><br><code style="color:var(--text);font-size:10px">Gate 1: Brand/Language/Slider fit? → REJECT if fails<br>Gate 2: Flow/Energy/Repetition fit? → REJECT if fails<br>Gate 3: Better than alternatives? → REJECT if not best<br>→ Minimum 50% rejection rate ensures quality</code></div>
+      <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent-2);font-weight:700">Track Roles (Mandatory):</span><br><code style="color:var(--text);font-size:10px">opener · connector · lift · settle<br>deepener · peak-touch · recovery<br>→ Every track MUST have a declared role<br>→ Prevents "filler" tracks</code></div>
+      <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><span style="color:var(--accent-2);font-weight:700">Forced Tradeoff:</span><br><code style="color:var(--text);font-size:10px">For each track, declare what was SACRIFICED:<br>"interesting vs accessible"<br>"branded vs flowing"<br>"surprising vs stable"<br>→ Makes decisions explicit, prevents lazy choices</code></div>
+    </div>
+    <!-- Brain Version Selector -->
+    <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--text);margin-bottom:10px">🔍 צפייה בגרסאות מוח:</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="showBrainArch('v7')" class="brain-arch-btn" style="background:rgba(29,185,84,.15);border:1px solid var(--accent);color:var(--accent);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:.2s">🌊 v7 LIVE</button>
+        <button onclick="showBrainArch('v7.5')" class="brain-arch-btn" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:.2s">⚙️ v7.5 OMEGA</button>
+        <button onclick="showBrainArch('v6')" class="brain-arch-btn" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:.2s">🔮 v6 DEEP</button>
+        <button onclick="showBrainArch('v5')" class="brain-arch-btn" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:8px 16px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:.2s">⚡ v5 TURBO</button>
+      </div>
+    </div>
     <div style="font-weight:700;color:var(--accent-2);margin-top:16px;font-size:13px">📋 כללים קשיחים (בכל פרומפט)</div>
       <div style="background:var(--card);border-radius:8px;padding:10px;margin:4px 0"><code style="color:var(--accent-3);font-size:11px">"מקסימום 2 שירים לאמן"<br>"כל השירים חייבים להיות אמיתיים וקיימים ב-Spotify"<br>"חלק שווה morning/afternoon/evening/night (~12 שירים)"<br>"DNA = נקודת מוצא, סליידרים = override"</code></div>
     </div>
@@ -718,10 +967,602 @@ async function loadTasteMemory(bizKey){try{var res=await sb.from('taste_memory')
 
 function updateBrainV5Live(){const el=document.getElementById('brainV5LiveData');if(!el)return;if(wiz.brainVersion!=='v5turbo'){el.style.display='none';return}let html='';if(wiz.v5Persona){const p=V5_PERSONAS[wiz.v5Persona];html+='<div style="margin-bottom:6px"><b style="color:var(--accent-2)">🎭 Persona:</b> '+p.label+' — '+p.desc+'</div>'}if(wiz.v5Intent){const i=wiz.v5Intent;html+='<div style="margin-bottom:6px"><b style="color:var(--accent-2)">🎯 Intent:</b> dwell='+i.dwellTime+' | social='+i.socialEnergy+' | premium='+i.premiumFeel+'</div>';if(i.sonicIdentity)html+='<div style="margin-bottom:6px"><b style="color:var(--accent-2)">🔊 Identity:</b> '+i.sonicIdentity+'</div>'}if(wiz.faders){const block=buildV5SliderBlock(wiz.faders);html+='<div style="margin-bottom:6px"><b style="color:var(--accent-2)">🎚️ Tiers:</b><br><pre style="font-size:10px;white-space:pre-wrap;color:var(--text)">'+esc(block)+'</pre></div>'}if(html){el.innerHTML=html;el.style.display='block'}if(wiz.brainVersion==='v6'){const v6el=document.getElementById('brainV6LiveData');if(v6el){let v6html='';if(wiz.v6Reality){const r=wiz.v6Reality;v6html+='<div style="margin-bottom:6px"><b style="color:var(--accent-3)">🏢 Reality:</b> dwell='+r.avgDwellMinutes+'m | talk='+r.talkingLevel+' | music='+r.musicAttention+' | noise='+r.physicalNoise+'</div>'}if(wiz.v6IntentForce){const i=wiz.v6IntentForce;v6html+='<div style="margin-bottom:6px"><b style="color:var(--accent-3)">⚡ Intent:</b> goal='+i.emotionalGoal+' | social='+i.socialMode+' | risk='+i.riskTolerance+' | revenue='+i.revenueMode+'</div>'}if(wiz.v6SonicId){const s=wiz.v6SonicId;v6html+='<div style="margin-bottom:6px"><b style="color:var(--accent-3)">🔊 Sonic:</b> '+s.texture+' | '+s.density+' | '+s.rhythmFeel+' | '+s.vocalPresence+' | '+s.temporalFeel+'</div>'}if(wiz.v6Conflicts&&wiz.v6Conflicts.length){v6html+='<div style="margin-bottom:6px"><b style="color:var(--accent-3)">⚠️ Conflicts:</b> '+wiz.v6Conflicts.join(' | ')+'</div>'}if(wiz.v6Decisions){v6html+='<div style="margin-bottom:6px"><b style="color:var(--accent-3)">🧠 Philosophy:</b> '+(wiz.v6Decisions.selection_philosophy||'')+'</div>'}if(wiz.v6Confidence!==undefined){v6html+='<div><b style="color:var(--accent-3)">💯 Confidence:</b> '+wiz.v6Confidence+'/100</div>'}if(v6html){v6el.innerHTML=v6html;v6el.style.display='block'}}}}
 function toggleBrain(){document.getElementById('brainPanel').classList.toggle('open')}
-async function loadPersonalArea(){var notLoggedIn=document.getElementById('personalAreaNotLoggedIn');if(isGuest||!authUser){notLoggedIn.style.display='block';document.getElementById('myPlaylistsLoading').style.display='none';document.getElementById('myPlaylistsEmpty').style.display='none';document.getElementById('myPlaylistsGrid').innerHTML='';return}notLoggedIn.style.display='none';document.getElementById('myPlaylistsLoading').style.display='block';document.getElementById('myPlaylistsEmpty').style.display='none';document.getElementById('myPlaylistsGrid').innerHTML='';try{var userName=(authUser&&authUser.email)||(authUser&&authUser.user_metadata&&authUser.user_metadata.full_name)||localStorage.getItem('sp_user_name')||'';var res=await sb.from('analyses').select('*').order('created_at',{ascending:false}).limit(50);var data=(res.data||[]).filter(function(a){if(userName&&a.user_name&&a.user_name.toLowerCase()===userName.toLowerCase())return true;return false});document.getElementById('myPlaylistsLoading').style.display='none';if(!data.length){document.getElementById('myPlaylistsEmpty').style.display='block';return}var grid=document.getElementById('myPlaylistsGrid');var html='';data.forEach(function(a,idx){var d=new Date(a.created_at);var dateStr=d.toLocaleDateString('he-IL');var tracks=[];try{tracks=JSON.parse(a.tracks||'[]')}catch(e){}var coverUrl='';if(tracks.length&&tracks[0]&&tracks[0].cover)coverUrl=tracks[0].cover;html+='<div onclick="viewSavedPlaylist('+a.id+')" style="background:var(--card);border:1px solid var(--border);border-radius:16px;cursor:pointer;transition:.3s;overflow:hidden" onmouseover="this.style.transform=\'translateY(-4px)\';this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.transform=\'none\';this.style.borderColor=\'var(--border)\'">';html+='<div style="width:100%;aspect-ratio:1;background:'+(coverUrl?'url('+coverUrl+') center/cover':'var(--gradient)')+';display:flex;align-items:center;justify-content:center;font-size:48px">'+(coverUrl?'':'🎵')+'</div>';html+='<div style="padding:12px">';html+='<div style="font-weight:700;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(a.business_name||a.description||'פלייליסט')+'</div>';html+='<div style="font-size:11px;color:var(--muted);margin-top:4px">'+dateStr+' · '+a.track_count+' שירים</div>';html+='<div style="font-size:10px;color:var(--accent);margin-top:4px">'+a.brain_version+' · '+a.biz_category+'</div>';html+='</div></div>'});grid.innerHTML=html}catch(e){document.getElementById('myPlaylistsLoading').style.display='none';document.getElementById('myPlaylistsEmpty').style.display='block';document.getElementById('myPlaylistsEmpty').querySelector('p').textContent='שגיאה: '+e.message}}
+function showBrainArch(version){var ids=['brainV5Arch','brainV6Arch','brainV7Arch','brainV75Arch'];ids.forEach(function(id){var el=document.getElementById(id);if(el)el.style.display='none'});var map={'v5':'brainV5Arch','v6':'brainV6Arch','v7':'brainV7Arch','v7.5':'brainV75Arch'};var target=document.getElementById(map[version]);if(target)target.style.display='block';document.querySelectorAll('.brain-arch-btn').forEach(function(btn){btn.style.background='var(--bg-2)';btn.style.borderColor='var(--border)';btn.style.color='var(--text)'});if(event&&event.target){event.target.style.background='rgba(29,185,84,.15)';event.target.style.borderColor='var(--accent)';event.target.style.color='var(--accent)'}}
+/* ===== CLIENT ZONE CORE ===== */
+var czProfile = null;
+var czDNPList = [];
+var czRiskLevel = 'safe';
+var czFeedbackData = [];
+
+function switchCZTab(tabId, btn) {
+  document.querySelectorAll('.cz-panel').forEach(function(p) { p.style.display = 'none' });
+  document.querySelectorAll('.cz-tab').forEach(function(t) { t.classList.remove('active') });
+  var panel = document.getElementById(tabId);
+  if (panel) panel.style.display = 'block';
+  if (btn) btn.classList.add('active');
+  if (tabId === 'czPlaylists') czLoadPlaylists();
+  if (tabId === 'czTaste') czLoadTaste();
+  if (tabId === 'czFeedback') czLoadFeedbackTab();
+}
+
+async function loadPersonalArea() {
+  var notLoggedIn = document.getElementById('czNotLoggedIn');
+  if (isGuest || !authUser) {
+    if(notLoggedIn) notLoggedIn.style.display = 'block';
+    document.getElementById('czTabs').style.display = 'none';
+    document.querySelectorAll('.cz-panel').forEach(function(p) { p.style.display = 'none' });
+    return;
+  }
+  if(notLoggedIn) notLoggedIn.style.display = 'none';
+  document.getElementById('czTabs').style.display = 'flex';
+  await czLoadProfile();
+  switchCZTab('czProfile', document.querySelector('.cz-tab[data-cztab="czProfile"]'));
+}
+
+async function czLoadProfile() {
+  var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+  var latestAnalysis = null;
+  try {
+    var res = await sb.from('analyses').select('*').order('created_at', {ascending: false}).limit(1);
+    if (res.data && res.data.length) {
+      var filtered = res.data.filter(function(a) {
+        return a.user_name && a.user_name.toLowerCase() === userName.toLowerCase();
+      });
+      if (filtered.length) latestAnalysis = filtered[0];
+      else if (res.data.length) latestAnalysis = res.data[0];
+    }
+  } catch(e) {}
+  
+  if (!latestAnalysis && !window.currentPlaylist) {
+    document.getElementById('czSoundSummary').textContent = 'טרם נוצר — צרו פלייליסט ראשון';
+    return;
+  }
+  
+  var faders = {};
+  try { faders = JSON.parse((latestAnalysis && latestAnalysis.faders) || '{}') } catch(e) {}
+  
+  document.getElementById('czSliderEnergy').textContent = (faders.energy !== undefined ? faders.energy : (wiz.faders && wiz.faders.energy) || '—');
+  document.getElementById('czSliderFam').textContent = (faders.familiarity !== undefined ? faders.familiarity : (wiz.faders && wiz.faders.familiarity) || '—');
+  document.getElementById('czSliderVocal').textContent = (faders.vocal !== undefined ? faders.vocal : (wiz.faders && wiz.faders.vocal) || '—');
+  document.getElementById('czSliderHeb').textContent = (faders.hebrew !== undefined ? faders.hebrew + '%' : (wiz.faders && wiz.faders.hebrew ? wiz.faders.hebrew + '%' : '—'));
+  
+  document.getElementById('czBizType').textContent = (latestAnalysis && latestAnalysis.biz_category) || wiz.bizCategory || '—';
+  document.getElementById('czDesc').textContent = (latestAnalysis && latestAnalysis.description) || wiz.desc || '—';
+  document.getElementById('czAudience').textContent = (window.brandProfile && window.brandProfile.target_audience) || '—';
+  document.getElementById('czPersona').textContent = (wiz.v5Persona ? V5_PERSONAS[wiz.v5Persona].label : '—');
+  
+  var energy = faders.energy || (wiz.faders && wiz.faders.energy) || 50;
+  var fam = faders.familiarity || (wiz.faders && wiz.faders.familiarity) || 50;
+  var brandTone = energy > 70 ? 'Energetic' : energy < 30 ? 'Calm' : 'Balanced';
+  if (fam > 70) brandTone += ' / Mainstream';
+  else if (fam < 30) brandTone += ' / Niche';
+  document.getElementById('czBrandTone').textContent = brandTone;
+  document.getElementById('czCuratorialDist').textContent = fam < 30 ? 'Far (Niche)' : fam > 70 ? 'Close (Safe)' : 'Medium';
+  
+  var stats = window.playlistAudioStats;
+  if (stats) {
+    document.getElementById('czMetricEnergy').textContent = (stats.avgEnergy * 100).toFixed(0) + '%';
+    document.getElementById('czMetricDiversity').textContent = stats.avgDance ? (stats.avgDance * 100).toFixed(0) + '%' : '—';
+  }
+  document.getElementById('czMetricFam').textContent = (faders.familiarity || '—');
+  document.getElementById('czMetricHeb').textContent = (faders.hebrew ? faders.hebrew + '%' : '—');
+  
+  try {
+    var ssRes = await sb.from('client_profiles').select('sound_summary').eq('user_key', userName).limit(1);
+    if (ssRes.data && ssRes.data.length && ssRes.data[0].sound_summary) {
+      document.getElementById('czSoundSummary').textContent = ssRes.data[0].sound_summary;
+    }
+  } catch(e) {}
+  
+  czLoadDNP();
+}
+
+async function generateSoundSummary() {
+  var btn = document.querySelector('#czSoundSummaryCard button');
+  btn.textContent = '⏳ מייצר...';
+  btn.disabled = true;
+  
+  var faders = wiz.faders || {};
+  var desc = wiz.desc || '';
+  var profile = window.brandProfile || {};
+  var taste = '';
+  try {
+    var bizKey = (profile.business_name) || desc || 'default';
+    taste = await loadTasteMemory(bizKey) || '';
+  } catch(e) {}
+  
+  try {
+    var raw = await callOpenAI([
+      {role: 'system', content: 'Generate a ONE-SENTENCE Sound Summary for a business. This is how the business SOUNDS. Be specific, evocative, concise. Use format like: "Warm, social, premium café with low vocal pressure and elegant familiarity". English only. JSON: {"summary":"one sentence"}'},
+      {role: 'user', content: 'Business: "' + desc + '"\nCategory: ' + (wiz.bizCategory || 'general') + '\nSliders: energy=' + (faders.energy||50) + ', familiarity=' + (faders.familiarity||50) + ', vocal=' + (faders.vocal||50) + ', hebrew=' + (faders.hebrew||50) + '%\nProfile: ' + JSON.stringify(profile).substring(0, 300) + '\nTaste memory: ' + taste.substring(0, 200)}
+    ], {max_tokens: 200, model: 'gpt-4o-mini'});
+    var result = safeJSON(raw);
+    if (result.summary) {
+      document.getElementById('czSoundSummary').textContent = result.summary;
+      var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+      if (userName) {
+        try {
+          var existing = await sb.from('client_profiles').select('id').eq('user_key', userName).limit(1);
+          if (existing.data && existing.data.length) {
+            await sb.from('client_profiles').update({sound_summary: result.summary, updated_at: new Date().toISOString()}).eq('user_key', userName);
+          } else {
+            await sb.from('client_profiles').insert([{user_key: userName, sound_summary: result.summary, updated_at: new Date().toISOString()}]);
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {
+    console.error('Sound summary error:', e);
+  }
+  btn.textContent = '🔄 עדכן';
+  btn.disabled = false;
+}
+
+async function czLoadPlaylists() {
+  var loading = document.getElementById('czPlaylistsLoading');
+  var empty = document.getElementById('czPlaylistsEmpty');
+  var list = document.getElementById('czPlaylistsList');
+  loading.style.display = 'block';
+  empty.style.display = 'none';
+  list.innerHTML = '';
+  
+  try {
+    var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+    var res = await sb.from('analyses').select('*').order('created_at', {ascending: false}).limit(50);
+    var data = (res.data || []).filter(function(a) {
+      return userName && a.user_name && a.user_name.toLowerCase() === userName.toLowerCase();
+    });
+    loading.style.display = 'none';
+    if (!data.length) { empty.style.display = 'block'; return; }
+    
+    var html = '';
+    data.forEach(function(a, idx) {
+      var d = new Date(a.created_at);
+      var dateStr = d.toLocaleDateString('he-IL') + ' ' + d.toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'});
+      var faders = {}; try { faders = JSON.parse(a.faders || '{}') } catch(e) {}
+      var tracks = []; try { tracks = JSON.parse(a.tracks || '[]') } catch(e) {}
+      
+      html += '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;cursor:pointer;transition:.2s" onclick="viewSavedPlaylist(' + a.id + ')" onmouseover="this.style.borderColor=\'var(--accent)\'" onmouseout="this.style.borderColor=\'var(--border)\'">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<div style="display:flex;align-items:center;gap:12px">';
+      html += '<div style="font-size:24px">🎵</div>';
+      html += '<div>';
+      html += '<div style="font-weight:700;font-size:14px;color:var(--text)">' + (a.business_name || a.description || 'פלייליסט') + '</div>';
+      html += '<div style="font-size:11px;color:var(--muted);margin-top:2px">' + dateStr + ' · v' + (idx + 1) + ' · ' + a.track_count + ' שירים · ' + a.brain_version + '</div>';
+      html += '</div></div>';
+      html += '<div style="display:flex;gap:6px;font-size:10px">';
+      html += '<span style="padding:3px 8px;background:var(--bg-2);border-radius:6px;color:var(--muted)">E:' + (faders.energy || '?') + '</span>';
+      html += '<span style="padding:3px 8px;background:var(--bg-2);border-radius:6px;color:var(--muted)">F:' + (faders.familiarity || '?') + '</span>';
+      html += '<span style="padding:3px 8px;background:var(--bg-2);border-radius:6px;color:var(--muted)">H:' + (faders.hebrew || '?') + '%</span>';
+      html += '</div></div></div>';
+    });
+    list.innerHTML = html;
+  } catch(e) {
+    loading.style.display = 'none';
+    empty.style.display = 'block';
+  }
+}
+
+function czToggleEvolution() {
+  var ev = document.getElementById('czEvolutionView');
+  if (ev.style.display === 'none') {
+    ev.style.display = 'block';
+    czLoadEvolution();
+  } else {
+    ev.style.display = 'none';
+  }
+}
+
+async function czLoadEvolution() {
+  var content = document.getElementById('czEvolutionContent');
+  content.textContent = 'מנתח התפתחות...';
+  try {
+    var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+    var res = await sb.from('analyses').select('created_at,faders,brain_version,track_count,biz_category').order('created_at', {ascending: true}).limit(20);
+    var data = (res.data || []).filter(function(a) {
+      return userName && a.user_name && a.user_name.toLowerCase() === userName.toLowerCase();
+    });
+    if (data.length < 2) { content.textContent = 'נדרשים לפחות 2 פלייליסטים כדי לראות התפתחות'; return; }
+    
+    var html = '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px">';
+    data.forEach(function(a, i) {
+      var f = {}; try { f = JSON.parse(a.faders || '{}') } catch(e) {}
+      var d = new Date(a.created_at);
+      html += '<div style="min-width:100px;background:var(--bg-2);border-radius:10px;padding:10px;text-align:center;flex-shrink:0">';
+      html += '<div style="font-size:10px;color:var(--muted)">' + d.toLocaleDateString('he-IL') + '</div>';
+      html += '<div style="font-size:9px;margin-top:4px">E:<b>' + (f.energy||'?') + '</b> F:<b>' + (f.familiarity||'?') + '</b></div>';
+      html += '<div style="font-size:9px">H:<b>' + (f.hebrew||'?') + '%</b> V:<b>' + (f.vocal||'?') + '</b></div>';
+      html += '</div>';
+      if (i < data.length - 1) html += '<div style="display:flex;align-items:center;color:var(--muted);font-size:16px;flex-shrink:0">→</div>';
+    });
+    html += '</div>';
+    content.innerHTML = html;
+  } catch(e) {
+    content.textContent = 'שגיאה: ' + e.message;
+  }
+}
+
+async function czLoadTaste() {
+  try {
+    var bizKey = (window.brandProfile && window.brandProfile.business_name) || wiz.desc || 'default';
+    var res = await sb.from('taste_memory').select('*').eq('business_key', bizKey).limit(1);
+    if (res.data && res.data.length) {
+      var tm = res.data[0];
+      document.getElementById('czTasteDigest').textContent = tm.digest || '—';
+      try {
+        var rawJson = JSON.parse(tm.raw_json || '{}');
+        document.getElementById('czTasteLikes').textContent = rawJson.more_of || '—';
+        document.getElementById('czTasteDislikes').textContent = rawJson.less_of || '—';
+        document.getElementById('czTastePatterns').textContent = rawJson.slot_insights || '—';
+      } catch(e) {}
+    }
+    czGenerateInsights();
+  } catch(e) {}
+}
+
+async function czGenerateInsights() {
+  var insightsEl = document.getElementById('czInsights');
+  try {
+    var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+    var res = await sb.from('analyses').select('faders,tracks,brain_version').order('created_at', {ascending: false}).limit(5);
+    var data = (res.data || []).filter(function(a) {
+      return userName && a.user_name && a.user_name.toLowerCase() === userName.toLowerCase();
+    });
+    if (data.length < 2) { insightsEl.textContent = 'נדרשים לפחות 2 פלייליסטים להפקת תובנות'; return; }
+    
+    var raw = await callOpenAI([
+      {role: 'system', content: 'Analyze playlist generation history and produce 3-5 actionable insights in Hebrew. Be specific and data-driven. JSON: {"insights":["insight1","insight2",...]}'},
+      {role: 'user', content: 'History:\n' + JSON.stringify(data.map(function(a) { return {faders: a.faders, brain: a.brain_version} }))}
+    ], {max_tokens: 500, model: 'gpt-4o-mini'});
+    var result = safeJSON(raw);
+    if (result.insights && result.insights.length) {
+      insightsEl.innerHTML = result.insights.map(function(ins) {
+        return '<div style="padding:8px 0;border-bottom:1px solid var(--border)">💡 ' + ins + '</div>';
+      }).join('');
+    }
+  } catch(e) {
+    insightsEl.textContent = 'לא ניתן להפיק תובנות כרגע';
+  }
+}
+
+function czQuickAdjust(type) {
+  var f = wiz.faders || {energy: 50, familiarity: 50, vocal: 50, hebrew: 50};
+  var delta = 15;
+  switch(type) {
+    case 'calmer': f.energy = Math.max(0, f.energy - delta); break;
+    case 'energetic': f.energy = Math.min(100, f.energy + delta); break;
+    case 'moreFamiliar': f.familiarity = Math.min(100, f.familiarity + delta); break;
+    case 'lessKnown': f.familiarity = Math.max(0, f.familiarity - delta); break;
+    case 'moreHebrew': f.hebrew = Math.min(100, f.hebrew + delta); break;
+    case 'lessHebrew': f.hebrew = Math.max(0, f.hebrew - delta); break;
+    case 'moreNight': f.energy = Math.max(0, f.energy - 10); f.vocal = Math.max(0, f.vocal - 10); break;
+    case 'moreDay': f.energy = Math.min(100, f.energy + 10); f.vocal = Math.min(100, f.vocal + 10); break;
+  }
+  wiz.faders = f;
+  document.getElementById('czSliderEnergy').textContent = f.energy;
+  document.getElementById('czSliderFam').textContent = f.familiarity;
+  document.getElementById('czSliderVocal').textContent = f.vocal;
+  document.getElementById('czSliderHeb').textContent = f.hebrew + '%';
+  
+  var statusEl = document.getElementById('czAdjustStatus');
+  statusEl.style.display = 'block';
+  statusEl.textContent = '✅ פרמטרים עודכנו — ' + type;
+  setTimeout(function() { statusEl.style.display = 'none' }, 3000);
+}
+
+var CZ_PRESETS = {
+  chill: {energy: 25, familiarity: 60, vocal: 40, hebrew: 50},
+  busy: {energy: 70, familiarity: 65, vocal: 55, hebrew: 45},
+  social: {energy: 55, familiarity: 70, vocal: 60, hebrew: 50},
+  night: {energy: 35, familiarity: 45, vocal: 35, hebrew: 40},
+  premium: {energy: 40, familiarity: 35, vocal: 30, hebrew: 30}
+};
+
+function czApplyPreset(preset) {
+  var p = CZ_PRESETS[preset];
+  if (!p) return;
+  wiz.faders = Object.assign({}, wiz.faders || {}, p);
+  document.getElementById('czSliderEnergy').textContent = p.energy;
+  document.getElementById('czSliderFam').textContent = p.familiarity;
+  document.getElementById('czSliderVocal').textContent = p.vocal;
+  document.getElementById('czSliderHeb').textContent = p.hebrew + '%';
+  var statusEl = document.getElementById('czAdjustStatus');
+  statusEl.style.display = 'block';
+  statusEl.textContent = '🎭 מצב ' + preset + ' הופעל — פרמטרים עודכנו';
+  setTimeout(function() { statusEl.style.display = 'none' }, 3000);
+}
+
+function czSetRisk(level) {
+  czRiskLevel = level;
+  wiz.czRiskLevel = level;
+  document.querySelectorAll('.cz-risk-btn').forEach(function(btn) {
+    if (btn.getAttribute('data-risk') === level) {
+      btn.style.background = 'rgba(29,185,84,.15)';
+      btn.style.borderColor = 'var(--accent)';
+      btn.style.color = 'var(--accent)';
+    } else {
+      btn.style.background = 'var(--bg-2)';
+      btn.style.borderColor = 'var(--border)';
+      btn.style.color = 'var(--text)';
+    }
+  });
+  var f = wiz.faders || {};
+  if (level === 'safe') { f.familiarity = Math.max(f.familiarity, 65); }
+  else if (level === 'bold') { f.familiarity = Math.min(f.familiarity, 35); }
+  wiz.faders = f;
+}
+
+function czAddDNP() {
+  var input = document.getElementById('czDNPInput');
+  var type = document.getElementById('czDNPType').value;
+  var val = input.value.trim();
+  if (!val) return;
+  czDNPList.push({type: type, value: val, added: new Date().toISOString()});
+  input.value = '';
+  czRenderDNP();
+  czSaveDNP();
+  if (!wiz.blacklist) wiz.blacklist = [];
+  wiz.blacklist.push({type: type, value: val});
+}
+
+function czRemoveDNP(idx) {
+  czDNPList.splice(idx, 1);
+  czRenderDNP();
+  czSaveDNP();
+}
+
+function czRenderDNP() {
+  var el = document.getElementById('czDNPList');
+  if (!czDNPList.length) { el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px">אין פריטים ברשימה</div>'; return; }
+  var icons = {artist: '👤', track: '🎵', genre: '🏷️'};
+  el.innerHTML = czDNPList.map(function(item, i) {
+    return '<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-2);border-radius:8px;font-size:12px">' +
+      '<span>' + (icons[item.type] || '🚫') + '</span>' +
+      '<span style="color:var(--muted);font-size:10px">' + item.type + '</span>' +
+      '<span style="flex:1;color:var(--text);font-weight:600">' + item.value + '</span>' +
+      '<button onclick="czRemoveDNP(' + i + ')" style="background:none;border:none;color:var(--accent-3);cursor:pointer;font-size:14px">✕</button>' +
+      '</div>';
+  }).join('');
+}
+
+async function czSaveDNP() {
+  var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+  if (!userName) return;
+  try {
+    var existing = await sb.from('client_profiles').select('id').eq('user_key', userName).limit(1);
+    var data = {do_not_play: JSON.stringify(czDNPList), updated_at: new Date().toISOString()};
+    if (existing.data && existing.data.length) {
+      await sb.from('client_profiles').update(data).eq('user_key', userName);
+    } else {
+      data.user_key = userName;
+      await sb.from('client_profiles').insert([data]);
+    }
+  } catch(e) { console.log('DNP save error:', e.message) }
+}
+
+async function czLoadDNP() {
+  var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+  if (!userName) return;
+  try {
+    var res = await sb.from('client_profiles').select('do_not_play').eq('user_key', userName).limit(1);
+    if (res.data && res.data.length && res.data[0].do_not_play) {
+      czDNPList = JSON.parse(res.data[0].do_not_play);
+      czRenderDNP();
+    }
+  } catch(e) {}
+}
+
+function czLoadFeedbackTab() {
+  var cp = window.currentPlaylist;
+  var noPlaylist = document.getElementById('czFeedbackNoPlaylist');
+  var actions = document.getElementById('czFeedbackActions');
+  if (!cp || !cp.tracks || !cp.tracks.length) {
+    noPlaylist.style.display = 'block';
+    actions.style.display = 'none';
+    return;
+  }
+  noPlaylist.style.display = 'none';
+  actions.style.display = 'block';
+  
+  var list = document.getElementById('czTrackFeedbackList');
+  var feedbackOptions = [
+    {key: 'works_with_crowd', label: '✅ עובד'},
+    {key: 'disrupts', label: '🗣️ מפריע'},
+    {key: 'too_high', label: '⚡ חזק מדי'},
+    {key: 'too_low', label: '😴 חלש מדי'},
+    {key: 'love', label: '❤️ אהבתי'},
+    {key: 'remove', label: '🗑️ הורד'}
+  ];
+  
+  var html = '';
+  cp.tracks.forEach(function(t, i) {
+    html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">';
+    html += '<span style="min-width:24px;color:var(--muted);font-size:12px">' + (i+1) + '</span>';
+    html += '<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (t.artist||'') + ' — ' + (t.title||'') + '</div></div>';
+    html += '<div style="display:flex;gap:4px">';
+    feedbackOptions.forEach(function(opt) {
+      html += '<button onclick="czTrackFeedback(' + i + ',\'' + opt.key + '\',this)" style="background:var(--bg-2);border:1px solid var(--border);color:var(--muted);padding:3px 6px;border-radius:6px;cursor:pointer;font-size:10px;font-family:inherit;transition:.2s" title="' + opt.label + '">' + opt.label.split(' ')[0] + '</button>';
+    });
+    html += '</div></div>';
+  });
+  list.innerHTML = html;
+  
+  czLoadFeedbackHistory();
+}
+
+function czPlaylistFeedback(type) {
+  var labels = {
+    'works_with_crowd': '✅ עובד עם הקהל',
+    'disrupts_conversation': '🗣️ מפריע לשיחה',
+    'too_energetic': '⚡ אנרגטי מדי',
+    'too_calm': '😴 רגוע מדי',
+    'too_familiar': '🎯 מוכר מדי',
+    'too_niche': '💎 נישתי מדי',
+    'good_vibe': '🎵 אהבתי vibe',
+    'doesnt_fit': '❌ לא מתאים למקום'
+  };
+  var entry = {
+    type: 'playlist',
+    feedback: type,
+    label: labels[type] || type,
+    timestamp: new Date().toISOString(),
+    playlist_id: window.currentPlaylist ? (window.currentPlaylist.profile && window.currentPlaylist.profile.business_name) : ''
+  };
+  czFeedbackData.push(entry);
+  czSaveFeedback(entry);
+  
+  document.querySelectorAll('.cz-fb-btn').forEach(function(btn) { btn.classList.remove('active') });
+  event.target.classList.add('active');
+  var sent = document.getElementById('czFeedbackSent');
+  sent.style.display = 'block';
+  sent.textContent = '📤 פידבק נשלח: ' + (labels[type] || type);
+}
+
+function czTrackFeedback(trackIdx, type, btn) {
+  var cp = window.currentPlaylist;
+  if (!cp || !cp.tracks || !cp.tracks[trackIdx]) return;
+  var t = cp.tracks[trackIdx];
+  var entry = {
+    type: 'track',
+    feedback: type,
+    track_artist: t.artist,
+    track_title: t.title,
+    timestamp: new Date().toISOString()
+  };
+  czFeedbackData.push(entry);
+  czSaveFeedback(entry);
+  btn.style.background = 'rgba(29,185,84,.2)';
+  btn.style.borderColor = 'var(--accent)';
+  btn.style.color = 'var(--accent)';
+}
+
+async function czSaveFeedback(entry) {
+  var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+  try {
+    await sb.from('structured_feedback').insert([{
+      user_key: userName,
+      feedback_type: entry.type,
+      feedback_value: entry.feedback,
+      track_artist: entry.track_artist || '',
+      track_title: entry.track_title || '',
+      label: entry.label || entry.feedback,
+      created_at: entry.timestamp
+    }]);
+  } catch(e) { console.log('Feedback save error:', e.message) }
+}
+
+async function czLoadFeedbackHistory() {
+  var el = document.getElementById('czFeedbackHistory');
+  try {
+    var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+    var res = await sb.from('structured_feedback').select('*').eq('user_key', userName).order('created_at', {ascending: false}).limit(20);
+    if (!res.data || !res.data.length) { el.textContent = 'אין פידבק מתועד עדיין'; return; }
+    el.innerHTML = res.data.map(function(fb) {
+      var d = new Date(fb.created_at);
+      var icon = fb.feedback_type === 'playlist' ? '📋' : '🎵';
+      return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">' +
+        icon + ' ' + d.toLocaleDateString('he-IL') + ' — <b>' + (fb.label || fb.feedback_value) + '</b>' +
+        (fb.track_artist ? ' (' + fb.track_artist + ' - ' + fb.track_title + ')' : '') +
+        '</div>';
+    }).join('');
+  } catch(e) { el.textContent = 'שגיאה בטעינת פידבק' }
+}
+
+async function czSmartRegen(mode) {
+  var cp = window.currentPlaylist;
+  var statusEl = document.getElementById('czRegenStatus');
+  statusEl.style.display = 'block';
+  statusEl.textContent = '⏳ מייצר...';
+  
+  if (mode === 'fullRebuild') {
+    statusEl.textContent = 'מעביר לאשף...';
+    nav('onboarding');
+    return;
+  }
+  
+  if (!cp || !cp.tracks || !cp.tracks.length) {
+    statusEl.textContent = '❌ אין פלייליסט פעיל — צרו אחד קודם';
+    return;
+  }
+  
+  var instructions = '';
+  switch(mode) {
+    case 'improve': instructions = 'Improve this playlist. Keep the overall direction but fix issues: replace weak tracks, improve flow, maintain brand fit. Keep 70% of tracks, replace 30% with better alternatives.'; break;
+    case 'refresh30': instructions = 'Keep the VIBE identical but replace exactly 30% of tracks (15 out of 50) with fresh alternatives that maintain the same mood, energy, and style.'; break;
+    case 'calmer': instructions = 'Take this playlist and make it CALMER. Replace the most energetic tracks with calmer alternatives in the same style. Reduce overall energy by ~20%. Keep the vibe.'; break;
+    case 'energize': instructions = 'Take this playlist and make it MORE ENERGETIC. Replace the calmest tracks with more upbeat alternatives. Increase overall energy by ~20%. Keep the vibe.'; break;
+  }
+  
+  var dnpContext = czDNPList.length ? '\n\nDO NOT PLAY: ' + czDNPList.map(function(d) { return d.type + ':' + d.value }).join(', ') : '';
+  var feedbackContext = czFeedbackData.length ? '\n\nRecent feedback: ' + czFeedbackData.slice(-5).map(function(f) { return f.feedback + (f.track_artist ? ' (' + f.track_artist + ')' : '') }).join(', ') : '';
+  
+  try {
+    var currentTracks = cp.tracks.map(function(t) { return {artist: t.artist, title: t.title, energy: t.energy_level || 0.5, mood: t.mood || ''} });
+    var raw = await callOpenAI([
+      {role: 'system', content: 'You are SonicBrand\'s Smart Regeneration engine. ' + instructions + dnpContext + feedbackContext + '\n\nReturn the FULL playlist of exactly ' + cp.tracks.length + ' tracks. For kept tracks, use exact same artist+title. For new tracks, use real Spotify tracks only. JSON only.'},
+      {role: 'user', content: 'Current playlist (' + currentTracks.length + ' tracks):\n' + JSON.stringify(currentTracks) + '\n\nBusiness: ' + (wiz.desc || '') + '\nSliders: E=' + ((wiz.faders||{}).energy||50) + ' F=' + ((wiz.faders||{}).familiarity||50) + ' V=' + ((wiz.faders||{}).vocal||50) + ' H=' + ((wiz.faders||{}).hebrew||50) + '\n\nReturn: {"tracks":[{"artist":"","title":"","reason":"5 words Hebrew","is_new":false}],"changes_summary":"2 sentences Hebrew"}'}
+    ], {max_tokens: 6000, stage: '🔄 Smart Regen: ' + mode});
+    var result = safeJSON(raw);
+    if (result.tracks && result.tracks.length) {
+      statusEl.innerHTML = '✅ ' + (result.changes_summary || 'עודכן בהצלחה') + '<br><button class="btn btn-primary" onclick="czApplyRegen(' + "'" + btoa(JSON.stringify(result.tracks)) + "'" + ')" style="margin-top:8px;padding:8px 20px;font-size:13px">החל שינויים</button>';
+      window._czRegenResult = result.tracks;
+    } else {
+      statusEl.textContent = '❌ לא התקבלו תוצאות';
+    }
+  } catch(e) {
+    statusEl.textContent = '❌ ' + e.message;
+  }
+}
+
+async function czApplyRegen(b64data) {
+  var tracks = JSON.parse(atob(b64data));
+  if (!tracks || !tracks.length) return;
+  var statusEl = document.getElementById('czRegenStatus');
+  statusEl.textContent = '⏳ מאמת ב-Spotify...';
+  
+  var verified = [];
+  for (var bi = 0; bi < tracks.length; bi += 8) {
+    var batch = tracks.slice(bi, bi + 8);
+    var results = await Promise.allSettled(batch.map(function(t) {
+      return searchTrack(t.artist, t.title).catch(function() { return null });
+    }));
+    results.forEach(function(r, ri) {
+      var t = batch[ri];
+      if (r.status === 'fulfilled' && r.value && r.value.id) {
+        var sp = r.value;
+        verified.push({
+          artist: sp.artists ? sp.artists.map(function(a) { return a.name }).join(', ') : t.artist,
+          title: sp.name || t.title,
+          id: sp.id,
+          url: sp.external_urls ? sp.external_urls.spotify : '',
+          cover: sp.album && sp.album.images && sp.album.images.length ? sp.album.images[sp.album.images.length-1].url : '',
+          bigCover: sp.album && sp.album.images && sp.album.images.length ? sp.album.images[0].url : '',
+          reason: t.reason || '',
+          slot: 'general'
+        });
+      } else {
+        verified.push({artist: t.artist, title: t.title, reason: t.reason || '', slot: 'general'});
+      }
+    });
+  }
+  
+  window.currentPlaylist.tracks = verified;
+  window.currentPlaylist.shuffleTracks = verified;
+  window.currentPlaylist.sequentialTracks = verified;
+  
+  var c = document.getElementById('tracksContainer');
+  c.innerHTML = '';
+  verified.forEach(function(t, i) { renderTrack(i + 1, t) });
+  
+  statusEl.textContent = '✅ פלייליסט עודכן! ' + verified.length + ' שירים';
+  setTimeout(function() { nav('playlist') }, 1500);
+}
+
+
 async function viewSavedPlaylist(analysisId){try{var res=await sb.from('analyses').select('*').eq('id',analysisId).limit(1);if(!res.data||!res.data.length)return;var a=res.data[0];var tracks=[];try{tracks=JSON.parse(a.tracks||'[]')}catch(e){}var faders={};try{faders=JSON.parse(a.faders||'{}')}catch(e){};document.getElementById('playlistEmpty').style.display='none';document.getElementById('playlistLive').style.display='block';document.getElementById('playlistTitle').textContent=(a.business_name||'Business')+' — Signature Mix';document.getElementById('playlistMeta').textContent=tracks.length+' שירים · '+a.user_name+' · '+a.brain_version;var c=document.getElementById('tracksContainer');c.innerHTML='';tracks.forEach(function(t,i){renderTrack(i+1,{artist:t.artist,title:t.title,id:t.id||'',reason:t.reason||'',slot:t.slot||'',url:t.id?'https://open.spotify.com/track/'+t.id:'',rating:t.rating||null})});if(tracks.length&&tracks[0]&&tracks[0].cover){var cover=document.getElementById('playlistCover');cover.style.backgroundImage='url('+tracks[0].cover+')';cover.textContent=''}window.currentPlaylist={profile:{business_name:a.business_name},tracks:tracks,shuffleTracks:tracks,sequentialTracks:tracks,activeTab:'shuffle',user:a.user_name};var blogs=[];try{blogs=JSON.parse(a.brain_logs||'[]')}catch(e){}var expLog=blogs.find(function(l){return l.t==='הסבר'||l.t==='Explanation'});nav('playlist')}catch(e){console.error('viewSavedPlaylist error:',e)}}
-async function loadActivityLog(){var list=document.getElementById('activityLogList');var loading=document.getElementById('activityLogLoading');var empty=document.getElementById('activityLogEmpty');if(!list)return;list.innerHTML='';loading.style.display='block';empty.style.display='none';var allData=[];try{var res=await sb.from('analyses').select('*').order('created_at',{ascending:false}).limit(200);if(!res.error&&res.data&&res.data.length)allData=res.data}catch(e){console.log('Load activity log error:',e.message)}loading.style.display='none';if(!allData.length){empty.style.display='block';return}var html='';allData.forEach(function(a,idx){var d=new Date(a.created_at);var dateStr=d.toLocaleDateString('he-IL')+' '+d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});var faders={};try{faders=JSON.parse(a.faders||'{}')}catch(e){}var genres=[];try{genres=JSON.parse(a.genres||'[]')}catch(e){}var refs=[];try{refs=JSON.parse(a.refs||'[]')}catch(e){}var energy={};try{energy=JSON.parse(a.energy_curve||'{}')}catch(e){}var bizHours=[];try{bizHours=JSON.parse(a.biz_hours||'[]')}catch(e){}var tracks=[];try{tracks=JSON.parse(a.tracks||'[]')}catch(e){}var blogs=[];try{blogs=JSON.parse(a.brain_logs||'[]')}catch(e){}var isRegistered=a.user_name&&a.user_name!=='guest'&&a.user_name!=='auto';var userTypeLabel=isRegistered?'👤 משתמש רשום':'👻 אורח';var userTypeColor=isRegistered?'var(--accent)':'var(--muted)';html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden">';html+='<div style="padding:16px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="toggleActivityDetail(this)">';html+='<div style="display:flex;align-items:center;gap:12px">';html+='<div style="font-size:28px">'+(idx<3?'🔵':'⚪')+'</div>';html+='<div>';html+='<div style="font-weight:700;font-size:15px;color:var(--text)">'+(a.business_name||a.description||'ניתוח ללא שם')+'</div>';html+='<div style="font-size:12px;color:var(--muted);margin-top:2px">'+dateStr+'</div>';html+='</div></div>';html+='<div style="display:flex;align-items:center;gap:10px">';html+='<span style="font-size:11px;padding:4px 10px;background:rgba(29,185,84,.15);color:'+userTypeColor+';border-radius:6px;font-weight:600">'+userTypeLabel+'</span>';html+='<span style="font-size:11px;padding:4px 10px;background:var(--bg-2);color:var(--muted);border-radius:6px">'+a.brain_version+'</span>';html+='<span style="font-size:18px;color:var(--muted);transition:.3s">▼</span>';html+='</div></div>';html+='<div class="activity-detail" style="display:none;border-top:1px solid var(--border);padding:20px">';html+='<div style="margin-bottom:16px">';html+='<div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">👤 פרטי משתמש</div>';html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;font-size:13px;color:var(--text)">';html+='<div><b>סוג:</b> '+userTypeLabel+'</div>';html+='<div><b>שם/אימייל:</b> '+(a.user_name||'לא ידוע')+'</div>';html+='<div><b>קטגוריית עסק:</b> '+(a.biz_category||'כללי')+'</div>';html+='</div></div>';html+='<div style="margin-bottom:16px">';html+='<div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">📋 הנחיות שניתנו</div>';html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;font-size:13px;color:var(--text)">';html+='<div style="margin-bottom:8px"><b>תיאור העסק:</b> '+(a.description||'לא צוין')+'</div>';html+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">';html+='<span>🎚️ מסחריות: <b>'+(faders.familiarity!==undefined?faders.familiarity:'?')+'</b></span>';html+='<span>🇮🇱 עברית: <b>'+(faders.hebrew!==undefined?faders.hebrew+'%':'?')+'</b></span>';html+='<span>🎤 ווקלי: <b>'+(faders.vocal!==undefined?faders.vocal:'?')+'</b></span>';html+='<span>⚡ אנרגיה: <b>'+(faders.energy!==undefined?faders.energy:'?')+'</b></span>';html+='</div>';if(genres.length){html+='<div style="margin-bottom:4px"><b>ז\'אנרים:</b> '+genres.join(', ')+'</div>'}if(refs.length){html+='<div style="margin-bottom:4px"><b>רפרנסים:</b> '+refs.map(function(r){return(r.artist||'')+' - '+(r.title||'')}).join(', ')+'</div>'}if(bizHours.length){html+='<div style="margin-bottom:4px"><b>שעות פעילות:</b> '+bizHours.join(', ')+'</div>'}if(energy&&(energy.morning||energy.afternoon)){html+='<div><b>עקומת אנרגיה:</b> בוקר:'+(energy.morning||'?')+' צהריים:'+(energy.afternoon||'?')+' ערב:'+(energy.evening||'?')+' לילה:'+(energy.night||'?')+'</div>'}html+='</div></div>';html+='<div style="margin-bottom:16px">';html+='<div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">🧠 פירוש המוח ('+blogs.length+' שלבים)</div>';if(blogs.length){html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;max-height:400px;overflow-y:auto">';blogs.forEach(function(lg){var isAi=lg.ai;var bgColor=isAi?'rgba(155,92,255,.08)':'transparent';var borderLeft=isAi?'3px solid var(--accent-2)':'3px solid var(--border)';html+='<div style="display:flex;gap:8px;padding:8px;margin-bottom:4px;font-size:12px;background:'+bgColor+';border-radius:6px;border-right:'+borderLeft+';align-items:baseline">';html+='<span style="color:var(--muted);min-width:55px;font-family:monospace;font-size:10px">'+(lg.time||'')+'</span>';html+='<span style="min-width:20px">'+(lg.e||'')+'</span>';html+='<span style="font-weight:700;color:var(--accent);min-width:80px">'+(lg.t||'')+'</span>';html+='<span style="color:var(--text);flex:1">'+(lg.d||'')+'</span>';html+='</div>'});html+='</div>'}else{html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;font-size:12px;color:var(--muted)">אין לוגים מתועדים</div>'}html+='</div>';html+='<div>';html+='<div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">🎵 תוצאה ('+tracks.length+' שירים)</div>';if(tracks.length){html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;max-height:200px;overflow-y:auto">';tracks.forEach(function(t,i){html+='<div style="display:flex;gap:8px;padding:3px 0;font-size:11px;border-bottom:1px solid rgba(42,42,58,.5)">';html+='<span style="color:var(--muted);min-width:22px">'+(i+1)+'</span>';html+='<span style="font-weight:600;color:var(--text)">'+(t.artist||'')+'</span>';html+='<span style="color:var(--muted)">'+(t.title||'')+'</span>';html+='<span style="color:var(--accent);margin-right:auto;font-size:10px">'+(t.slot||'')+'</span>';html+='</div>'});html+='</div>'}html+='</div>';html+='</div>';html+='</div>'});list.innerHTML=html}
+async function loadActivityLog(){var list=document.getElementById('activityLogList');var loading=document.getElementById('activityLogLoading');var empty=document.getElementById('activityLogEmpty');if(!list)return;list.innerHTML='';loading.style.display='block';empty.style.display='none';var allData=[];try{var res=await sb.from('analyses').select('*').order('created_at',{ascending:false}).limit(200);if(!res.error&&res.data&&res.data.length)allData=res.data}catch(e){console.log('Load activity log error:',e.message)}loading.style.display='none';if(!allData.length){empty.style.display='block';return}var html='';allData.forEach(function(a,idx){var d=new Date(a.created_at);var dateStr=d.toLocaleDateString('he-IL')+' '+d.toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'});var faders={};try{faders=JSON.parse(a.faders||'{}')}catch(e){}var genres=[];try{genres=JSON.parse(a.genres||'[]')}catch(e){}var refs=[];try{refs=JSON.parse(a.refs||'[]')}catch(e){}var energy={};try{energy=JSON.parse(a.energy_curve||'{}')}catch(e){}var bizHours=[];try{bizHours=JSON.parse(a.biz_hours||'[]')}catch(e){}var tracks=[];try{tracks=JSON.parse(a.tracks||'[]')}catch(e){}var blogs=[];try{blogs=JSON.parse(a.brain_logs||'[]')}catch(e){}var isRegistered=a.user_name&&a.user_name!=='guest'&&a.user_name!=='auto';var userTypeLabel=isRegistered?'👤 משתמש רשום':'👻 אורח';var userTypeColor=isRegistered?'var(--accent)':'var(--muted)';html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:16px;overflow:hidden">';html+='<div style="padding:16px 20px;cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="toggleActivityDetail(this)">';html+='<div style="display:flex;align-items:center;gap:12px">';html+='<div style="font-size:28px">'+(idx<3?'🔵':'⚪')+'</div>';html+='<div>';html+='<div style="font-weight:700;font-size:15px;color:var(--text)">'+(a.business_name||a.description||'ניתוח ללא שם')+'</div>';html+='<div style="font-size:12px;color:var(--muted);margin-top:2px">'+dateStr+'</div>';html+='</div></div>';html+='<div style="display:flex;align-items:center;gap:10px">';html+='<span style="font-size:11px;padding:4px 10px;background:rgba(29,185,84,.15);color:'+userTypeColor+';border-radius:6px;font-weight:600">'+userTypeLabel+'</span>';html+='<span style="font-size:11px;padding:4px 10px;background:var(--bg-2);color:var(--muted);border-radius:6px">'+a.brain_version+'</span>';html+='<button onclick="event.stopPropagation();deleteAnalysis('+a.id+')" style="background:none;border:1px solid var(--border);color:var(--accent-3);cursor:pointer;font-size:10px;padding:3px 8px;border-radius:6px;font-family:inherit;transition:.2s" onmouseover="this.style.borderColor=\'var(--accent-3)\'" onmouseout="this.style.borderColor=\'var(--border)\'">🗑️ מחיקה</button>';html+='<span style="font-size:18px;color:var(--muted);transition:.3s">▼</span>';html+='</div></div>';html+='<div class="activity-detail" style="display:none;border-top:1px solid var(--border);padding:20px">';html+='<div style="margin-bottom:16px">';html+='<div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">👤 פרטי משתמש</div>';html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;font-size:13px;color:var(--text)">';html+='<div><b>סוג:</b> '+userTypeLabel+'</div>';html+='<div><b>שם/אימייל:</b> '+(a.user_name||'לא ידוע')+'</div>';html+='<div><b>קטגוריית עסק:</b> '+(a.biz_category||'כללי')+'</div>';html+='</div></div>';html+='<div style="margin-bottom:16px">';html+='<div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">📋 הנחיות שניתנו</div>';html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;font-size:13px;color:var(--text)">';html+='<div style="margin-bottom:8px"><b>תיאור העסק:</b> '+(a.description||'לא צוין')+'</div>';html+='<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">';html+='<span>🎚️ מסחריות: <b>'+(faders.familiarity!==undefined?faders.familiarity:'?')+'</b></span>';html+='<span>🇮🇱 עברית: <b>'+(faders.hebrew!==undefined?faders.hebrew+'%':'?')+'</b></span>';html+='<span>🎤 ווקלי: <b>'+(faders.vocal!==undefined?faders.vocal:'?')+'</b></span>';html+='<span>⚡ אנרגיה: <b>'+(faders.energy!==undefined?faders.energy:'?')+'</b></span>';html+='</div>';if(genres.length){html+='<div style="margin-bottom:4px"><b>ז\'אנרים:</b> '+genres.join(', ')+'</div>'}if(refs.length){html+='<div style="margin-bottom:4px"><b>רפרנסים:</b> '+refs.map(function(r){return(r.artist||'')+' - '+(r.title||'')}).join(', ')+'</div>'}if(bizHours.length){html+='<div style="margin-bottom:4px"><b>שעות פעילות:</b> '+bizHours.join(', ')+'</div>'}if(energy&&(energy.morning||energy.afternoon)){html+='<div><b>עקומת אנרגיה:</b> בוקר:'+(energy.morning||'?')+' צהריים:'+(energy.afternoon||'?')+' ערב:'+(energy.evening||'?')+' לילה:'+(energy.night||'?')+'</div>'}html+='</div></div>';html+='<div style="margin-bottom:16px">';html+='<div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">🧠 פירוש המוח ('+blogs.length+' שלבים)</div>';if(blogs.length){html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;max-height:400px;overflow-y:auto">';blogs.forEach(function(lg){var isAi=lg.ai;var bgColor=isAi?'rgba(155,92,255,.08)':'transparent';var borderLeft=isAi?'3px solid var(--accent-2)':'3px solid var(--border)';html+='<div style="display:flex;gap:8px;padding:8px;margin-bottom:4px;font-size:12px;background:'+bgColor+';border-radius:6px;border-right:'+borderLeft+';align-items:baseline">';html+='<span style="color:var(--muted);min-width:55px;font-family:monospace;font-size:10px">'+(lg.time||'')+'</span>';html+='<span style="min-width:20px">'+(lg.e||'')+'</span>';html+='<span style="font-weight:700;color:var(--accent);min-width:80px">'+(lg.t||'')+'</span>';html+='<span style="color:var(--text);flex:1">'+(lg.d||'')+'</span>';html+='</div>'});html+='</div>'}else{html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;font-size:12px;color:var(--muted)">אין לוגים מתועדים</div>'}html+='</div>';html+='<div>';html+='<div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">🎵 תוצאה ('+tracks.length+' שירים)</div>';if(tracks.length){html+='<div style="background:var(--bg-2);border-radius:10px;padding:12px;max-height:200px;overflow-y:auto">';tracks.forEach(function(t,i){html+='<div style="display:flex;gap:8px;padding:3px 0;font-size:11px;border-bottom:1px solid rgba(42,42,58,.5)">';html+='<span style="color:var(--muted);min-width:22px">'+(i+1)+'</span>';html+='<span style="font-weight:600;color:var(--text)">'+(t.artist||'')+'</span>';html+='<span style="color:var(--muted)">'+(t.title||'')+'</span>';html+='<span style="color:var(--accent);margin-right:auto;font-size:10px">'+(t.slot||'')+'</span>';html+='</div>'});html+='</div>'}html+='</div>';html+='</div>';html+='</div>'});list.innerHTML=html}
 function toggleActivityDetail(headerEl){var detail=headerEl.parentElement.querySelector('.activity-detail');if(!detail)return;var arrow=headerEl.querySelector('span:last-child');if(detail.style.display==='none'){detail.style.display='block';if(arrow)arrow.textContent='▲'}else{detail.style.display='none';if(arrow)arrow.textContent='▼'}}
+async function deleteAnalysis(id){var pw=prompt('הזן סיסמא למחיקה:');if(!pw)return;if(pw!=='7327239'){alert('סיסמא שגויה');return}try{var res=await sb.from('analyses').delete().eq('id',id);if(res.error){alert('שגיאה: '+(res.error.message||''));return}loadActivityLog()}catch(e){alert('שגיאה: '+e.message)}}
 function nav(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));var el=document.getElementById(id);if(el)el.classList.add('active');document.querySelectorAll('.screen-nav button').forEach(b=>b.classList.remove('active'));if(event&&event.target)event.target.classList.add('active');document.body.style.overflow='';window.scrollTo({top:0,behavior:'smooth'});if(id==='onboarding')document.getElementById('apiWarning').style.display='none';if(id==='analytics')loadAnalyses();if(id==='activityLog')loadActivityLog();if(id==='personalArea')loadPersonalArea();if(id==='clients')renderClients()}
 function safeJSON(str){try{return JSON.parse(str)}catch(e){let s=str.replace(/,\s*$/,'');let ob=0,cb=0,os=0,cs=0;for(let i=0;i<s.length;i++){if(s[i]==='{')ob++;if(s[i]==='}')cb++;if(s[i]==='[')os++;if(s[i]===']')cs++}while(cb<ob){s+='}';cb++}while(cs<os){s+=']';cs++}try{return JSON.parse(s)}catch(e2){throw new Error('JSON Parse error')}}}
 async function callOpenAI(messages,opts){opts=opts||{};var k=localStorage.getItem('openai_key')||HARDCODED_API_KEY||'';if(!k){throw new Error('לא הוגדר מפתח OpenAI — הכניסו מפתח בהגדרות ולחצו שמור')}var model=opts.model||localStorage.getItem('openai_model')||'gpt-4o';brainLog('🤖','OpenAI','מודל: '+model,true);try{var sys=messages.find(function(m){return m.role==='system'});var usr=messages.find(function(m){return m.role==='user'});brainPrompt(opts.stage||model,(sys&&sys.content)||'',(usr&&usr.content)||'')}catch(e){}var hasJ=messages.some(function(m){return(m.content||'').toLowerCase().includes('json')});if(!hasJ){messages=messages.map(function(m){return Object.assign({},m)});var sm=messages.find(function(m){return m.role==='system'});if(sm)sm.content+=' JSON only.';else messages.unshift({role:'system',content:'Return JSON only.'})}var lastErr=null;var proxyUrl='/api/openai';var directUrl='https://api.openai.com/v1/chat/completions';var proxyBody=JSON.stringify({apiKey:k,model:model,temperature:opts.temperature||0.7,messages:messages,max_tokens:opts.max_tokens||3000,response_format:opts.noJson?undefined:{type:'json_object'}});var directBody=JSON.stringify({model:model,temperature:opts.temperature||0.7,messages:messages,max_tokens:opts.max_tokens||3000,response_format:opts.noJson?undefined:{type:'json_object'}});var directHdrs={'Authorization':'Bearer '+k,'Content-Type':'application/json'};for(var a=0;a<3;a++){try{var r;try{var fp=fetch(proxyUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:proxyBody});var tp=new Promise(function(_r,rej){setTimeout(function(){rej(new Error('Timeout'))},60000)});r=await Promise.race([fp,tp]);if(r.status>=500)throw new Error('Proxy error '+r.status)}catch(proxyErr){brainLog('⚠️','Proxy fail','Direct: '+proxyErr.message,true);try{var fp2=fetch(directUrl,{method:'POST',headers:directHdrs,body:directBody});var tp2=new Promise(function(_r,rej){setTimeout(function(){rej(new Error('Timeout'))},60000)});r=await Promise.race([fp2,tp2])}catch(directErr){throw new Error(directErr.message||'Network error')}}if(r.status===429){var w=Math.max(parseFloat(r.headers.get('retry-after')||'20'),10)*1000+a*5000;updateWizStatus('⏳ ממתין '+Math.ceil(w/1000)+' שניות...');await new Promise(function(res){setTimeout(res,w)});continue}var j=await r.json();if(j.error&&j.error.message&&j.error.message.includes('Rate limit')){await new Promise(function(res){setTimeout(res,(a+1)*20000)});continue}if(j.error){var eMsg=j.error.message||JSON.stringify(j.error);if(eMsg.indexOf('API key')!==-1||eMsg.indexOf('auth')!==-1||r.status===401||r.status===403)throw new Error(eMsg);throw new Error(eMsg)}var c=j.choices[0].message.content;brainLog('✅','תשובה','אורך: '+c.length,true);return c}catch(fetchErr){lastErr=fetchErr;var isAuth=fetchErr.message&&(fetchErr.message.indexOf('API key')!==-1||fetchErr.message.indexOf('auth')!==-1);brainLog('⚠️','Retry','ניסיון '+(a+1)+'/3: '+fetchErr.message,true);if(isAuth)throw fetchErr;if(a<2){await new Promise(function(res){setTimeout(res,(a+1)*4000)})}}}throw lastErr||new Error('שגיאת רשת — נסו שוב')}
@@ -1637,6 +2478,9 @@ try{await showSeedCheckpoint(seeds,pool.length)}catch(e){}
 
 /* Phase 6: Compressed Context (#11) */
 const compressed=buildCompressedContext(wiz,dna,constraints,palette,targetAudio,seeds,pool,refAmplified,strategy,profile);
+/* Inject Client Zone data into compressed context */
+if(wiz.blacklist&&wiz.blacklist.length){compressed.do_not_play=wiz.blacklist}
+if(wiz.czRiskLevel){compressed.risk_level=wiz.czRiskLevel}
 
 /* Phase 7: Track Generation — brain-version-aware */
 let tracks=[];

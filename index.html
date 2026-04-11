@@ -591,104 +591,245 @@
   <div id="analyticsList" style="display:flex;flex-direction:column;gap:12px"></div>
 </section>
 <section id="personalArea" class="screen">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-    <div>
-      <h2 style="margin:0" id="czTitle">🎯 אזור אישי</h2>
-      <p style="color:var(--muted);font-size:13px;margin-top:4px" id="czSubtitle">הזהות המוזיקלית של העסק שלך</p>
-    </div>
-    <div id="czNotLoggedIn" style="display:none"><button class="btn btn-primary" onclick="nav('landing')">התחבר</button></div>
-  </div>
-  
-  <div id="czTabs" style="display:flex;gap:0;margin-bottom:20px;border:1px solid var(--border);border-radius:12px;overflow:hidden;flex-wrap:wrap">
-    <button class="cz-tab active" data-cztab="czProfile" onclick="switchCZTab('czProfile',this)">🎭 פרופיל</button>
-    <button class="cz-tab" data-cztab="czPlaylists" onclick="switchCZTab('czPlaylists',this)">🎵 פלייליסטים</button>
-    <button class="cz-tab" data-cztab="czTaste" onclick="switchCZTab('czTaste',this)">🧠 טעם</button>
-    <button class="cz-tab" data-cztab="czControl" onclick="switchCZTab('czControl',this)">🎛️ בקרה</button>
-    <button class="cz-tab" data-cztab="czFeedback" onclick="switchCZTab('czFeedback',this)">📝 פידבק</button>
-    <button class="cz-tab" data-cztab="czRegen" onclick="switchCZTab('czRegen',this)">🔄 ייצור</button>
+  <div id="czNotLoggedIn" style="display:none;text-align:center;padding:60px 20px">
+    <div style="font-size:48px;margin-bottom:16px">🔒</div>
+    <h2 style="margin:0 0 8px">התחבר כדי לגשת לאזור האישי</h2>
+    <p style="color:var(--muted);font-size:14px;margin-bottom:20px">כל הפלייליסטים, ההעדפות והנתונים שלך במקום אחד</p>
+    <button class="btn btn-primary" onclick="nav('landing')">התחבר עכשיו</button>
   </div>
 
-  <div id="czProfile" class="cz-panel active">
-    <div class="card" id="czSoundSummaryCard">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <div style="font-weight:700;font-size:13px;color:var(--accent-2)">🔊 Sound Summary</div>
-        <button onclick="generateSoundSummary()" style="background:var(--card-2);border:1px solid var(--border);color:var(--accent);padding:4px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-family:inherit">🔄 עדכן</button>
-      </div>
-      <div id="czSoundSummary" style="font-size:18px;font-weight:700;color:var(--text);margin-top:10px;line-height:1.5;font-style:italic">טרם נוצר — צרו פלייליסט ראשון</div>
-    </div>
-    
-    <div class="card">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">📋 פרטי עסק</div>
-      <div id="czBasicInfo" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px">
-        <div><span style="color:var(--muted)">סוג עסק:</span> <span id="czBizType">—</span></div>
-        <div><span style="color:var(--muted)">קהל יעד:</span> <span id="czAudience">—</span></div>
-        <div><span style="color:var(--muted)">תיאור:</span> <span id="czDesc">—</span></div>
-        <div><span style="color:var(--muted)">פרסונה:</span> <span id="czPersona">—</span></div>
-      </div>
-    </div>
-    
-    <div class="card">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">🎚️ שכבות מוזיקליות</div>
-      <div id="czMusicalLayers" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
-        <div style="text-align:center;background:var(--bg-2);border-radius:12px;padding:14px 8px">
-          <div style="font-size:22px;font-weight:900;color:var(--accent)" id="czSliderEnergy">—</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">אנרגיה</div>
-        </div>
-        <div style="text-align:center;background:var(--bg-2);border-radius:12px;padding:14px 8px">
-          <div style="font-size:22px;font-weight:900;color:var(--accent)" id="czSliderFam">—</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">מסחריות</div>
-        </div>
-        <div style="text-align:center;background:var(--bg-2);border-radius:12px;padding:14px 8px">
-          <div style="font-size:22px;font-weight:900;color:var(--accent)" id="czSliderVocal">—</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">ווקליות</div>
-        </div>
-        <div style="text-align:center;background:var(--bg-2);border-radius:12px;padding:14px 8px">
-          <div style="font-size:22px;font-weight:900;color:var(--accent)" id="czSliderHeb">—</div>
-          <div style="font-size:11px;color:var(--muted);margin-top:4px">עברית</div>
-        </div>
-      </div>
-      <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
-        <div><span style="color:var(--muted)">Brand Tone:</span> <span id="czBrandTone">—</span></div>
-        <div><span style="color:var(--muted)">Curatorial Distance:</span> <span id="czCuratorialDist">—</span></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">📊 דשבורד</div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px" id="czDashboard">
-        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
-          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricEnergy">—</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">Avg Energy</div>
-        </div>
-        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
-          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricFam">—</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">Familiarity</div>
-        </div>
-        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
-          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricHeb">—</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">Hebrew %</div>
-        </div>
-        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
-          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricDiversity">—</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">Diversity</div>
-        </div>
-        <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px">
-          <div style="font-size:20px;font-weight:900;color:var(--accent)" id="czMetricUnique">—</div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px">Uniqueness</div>
-        </div>
+  <!-- WELCOME HEADER -->
+  <div id="czWelcome" style="margin-bottom:24px">
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:8px">
+      <div id="czWelcomeAvatar" style="width:48px;height:48px;border-radius:50%;background:var(--gradient);display:flex;align-items:center;justify-content:center;font-size:20px;color:#fff;font-weight:900">?</div>
+      <div>
+        <h2 style="margin:0;font-size:22px" id="czWelcomeName">היי!</h2>
+        <div id="czSoundSummary" style="font-size:14px;color:var(--muted);margin-top:2px;font-style:italic;max-width:500px" id="czSoundSummaryText">הסאונד שלך מתגבש...</div>
       </div>
     </div>
   </div>
 
-  <div id="czPlaylists" class="cz-panel" style="display:none">
+  <!-- 3 HERO ACTION CARDS -->
+  <div id="czHeroActions" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:28px">
+    <!-- SHAZAM - THE STAR -->
+    <div onclick="czShowSection('czShazamSection')" style="background:linear-gradient(135deg,rgba(255,71,133,.12),rgba(155,92,255,.12));border:1px solid rgba(255,71,133,.3);border-radius:16px;padding:24px 16px;cursor:pointer;transition:.3s;text-align:center" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 8px 30px rgba(255,71,133,.2)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+      <div style="font-size:36px;margin-bottom:8px">🎤</div>
+      <div style="font-weight:800;font-size:15px;color:var(--accent-3)">שאזאם</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">זהה שיר ובנה פלייליסט<br>על בסיס הצליל שאהבת</div>
+    </div>
+    <!-- MY PLAYLISTS -->
+    <div onclick="czShowSection('czPlaylistsSection')" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px 16px;cursor:pointer;transition:.3s;text-align:center" onmouseover="this.style.transform='translateY(-3px)';this.style.borderColor='var(--accent)'" onmouseout="this.style.transform='';this.style.borderColor='var(--border)'">
+      <div style="font-size:36px;margin-bottom:8px">🎵</div>
+      <div style="font-weight:800;font-size:15px;color:var(--accent)">הפלייליסטים שלי</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">כל הפלייליסטים שיצרת<br>ואבולוציית הסאונד שלך</div>
+    </div>
+    <!-- SMART GENERATE -->
+    <div onclick="czShowSection('czRegenSection')" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px 16px;cursor:pointer;transition:.3s;text-align:center" onmouseover="this.style.transform='translateY(-3px)';this.style.borderColor='var(--accent-2)'" onmouseout="this.style.transform='';this.style.borderColor='var(--border)'">
+      <div style="font-size:36px;margin-bottom:8px">🔄</div>
+      <div style="font-weight:800;font-size:15px;color:var(--accent-2)">ייצור חכם</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.4">שפר, רענן, או בנה מחדש<br>פלייליסט בדיוק כמו שאתה רוצה</div>
+    </div>
+  </div>
+
+  <!-- MUSICAL IDENTITY QUICK GLANCE (compact) -->
+  <div id="czQuickGlance" style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px">
+    <div style="text-align:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 8px">
+      <div style="font-size:24px;font-weight:900;color:var(--accent)" id="czSliderEnergy">—</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">אנרגיה</div>
+    </div>
+    <div style="text-align:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 8px">
+      <div style="font-size:24px;font-weight:900;color:var(--accent)" id="czSliderFam">—</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">מסחריות</div>
+    </div>
+    <div style="text-align:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 8px">
+      <div style="font-size:24px;font-weight:900;color:var(--accent)" id="czSliderVocal">—</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">ווקליות</div>
+    </div>
+    <div style="text-align:center;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 8px">
+      <div style="font-size:24px;font-weight:900;color:var(--accent)" id="czSliderHeb">—</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px">עברית</div>
+    </div>
+  </div>
+
+  <!-- EXPANDABLE SECTIONS (progressive disclosure) -->
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px" id="czAccordions">
+    <!-- PROFILE -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div onclick="czToggleAccordion('czAccProfile')" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;cursor:pointer" onmouseover="this.style.background='var(--card-2)'" onmouseout="this.style.background=''">
+        <div style="display:flex;align-items:center;gap:10px"><span>🎭</span><span style="font-weight:700;font-size:14px">פרופיל ופרטי עסק</span></div>
+        <span class="cz-acc-arrow" style="font-size:14px;color:var(--muted);transition:.3s">▼</span>
+      </div>
+      <div id="czAccProfile" style="display:none;padding:0 18px 18px;border-top:1px solid var(--border)">
+        <div id="czBasicInfo" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;padding-top:14px">
+          <div><span style="color:var(--muted)">סוג עסק:</span> <span id="czBizType">—</span></div>
+          <div><span style="color:var(--muted)">קהל יעד:</span> <span id="czAudience">—</span></div>
+          <div><span style="color:var(--muted)">תיאור:</span> <span id="czDesc">—</span></div>
+          <div><span style="color:var(--muted)">פרסונה:</span> <span id="czPersona">—</span></div>
+        </div>
+        <div style="margin-top:12px;display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px">
+          <div><span style="color:var(--muted)">Brand Tone:</span> <span id="czBrandTone">—</span></div>
+          <div><span style="color:var(--muted)">Curatorial Distance:</span> <span id="czCuratorialDist">—</span></div>
+        </div>
+        <div style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:600;font-size:12px;color:var(--accent-2)">🔊 Sound Summary</div>
+          <button onclick="generateSoundSummary()" id="czSoundSummaryCard" style="background:var(--card-2);border:1px solid var(--border);color:var(--accent);padding:4px 12px;border-radius:8px;cursor:pointer;font-size:11px;font-family:inherit">🔄 עדכן</button>
+        </div>
+      </div>
+    </div>
+    <!-- TASTE -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div onclick="czToggleAccordion('czAccTaste')" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;cursor:pointer" onmouseover="this.style.background='var(--card-2)'" onmouseout="this.style.background=''">
+        <div style="display:flex;align-items:center;gap:10px"><span>🧠</span><span style="font-weight:700;font-size:14px">מודל הטעם שלי</span></div>
+        <span class="cz-acc-arrow" style="font-size:14px;color:var(--muted);transition:.3s">▼</span>
+      </div>
+      <div id="czAccTaste" style="display:none;padding:0 18px 18px;border-top:1px solid var(--border)">
+        <div id="czTasteDigest" style="font-size:14px;color:var(--text);line-height:1.7;padding-top:14px;font-style:italic">טרם נבנה — נדרש פידבק ראשון</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+          <div style="background:var(--bg-2);border-radius:10px;padding:12px"><div style="font-weight:700;font-size:12px;color:var(--accent);margin-bottom:6px">✅ אוהב</div><div id="czTasteLikes" style="font-size:12px;color:var(--text);line-height:1.8">—</div></div>
+          <div style="background:var(--bg-2);border-radius:10px;padding:12px"><div style="font-weight:700;font-size:12px;color:var(--accent-3);margin-bottom:6px">❌ לא אוהב</div><div id="czTasteDislikes" style="font-size:12px;color:var(--text);line-height:1.8">—</div></div>
+        </div>
+        <div style="background:var(--bg-2);border-radius:10px;padding:12px;margin-top:10px"><div style="font-weight:700;font-size:12px;color:var(--accent-2);margin-bottom:6px">🔍 Patterns</div><div id="czTastePatterns" style="font-size:12px;color:var(--muted);line-height:1.8">—</div></div>
+        <div style="background:var(--bg-2);border-radius:10px;padding:12px;margin-top:10px"><div style="font-weight:700;font-size:12px;color:var(--accent-2);margin-bottom:6px">💡 תובנות</div><div id="czInsights" style="font-size:13px;color:var(--text);line-height:1.8">—</div></div>
+      </div>
+    </div>
+    <!-- CONTROL -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div onclick="czToggleAccordion('czAccControl')" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;cursor:pointer" onmouseover="this.style.background='var(--card-2)'" onmouseout="this.style.background=''">
+        <div style="display:flex;align-items:center;gap:10px"><span>🎛️</span><span style="font-weight:700;font-size:14px">בקרה והתאמות</span></div>
+        <span class="cz-acc-arrow" style="font-size:14px;color:var(--muted);transition:.3s">▼</span>
+      </div>
+      <div id="czAccControl" style="display:none;padding:0 18px 18px;border-top:1px solid var(--border)">
+        <div style="padding-top:14px">
+          <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">⚡ התאמות מהירות</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px" id="czQuickAdjust">
+            <button onclick="czQuickAdjust('calmer')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">😌<br>רגוע</button>
+            <button onclick="czQuickAdjust('energetic')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⚡<br>אנרגטי</button>
+            <button onclick="czQuickAdjust('moreFamiliar')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🎯<br>מוכר</button>
+            <button onclick="czQuickAdjust('lessKnown')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">💎<br>נישה</button>
+            <button onclick="czQuickAdjust('moreHebrew')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🇮🇱<br>עברית+</button>
+            <button onclick="czQuickAdjust('lessHebrew')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌍<br>עברית-</button>
+            <button onclick="czQuickAdjust('moreNight')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌙<br>לילה</button>
+            <button onclick="czQuickAdjust('moreDay')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">☀️<br>יום</button>
+          </div>
+          <div id="czAdjustStatus" style="display:none;margin-top:10px;font-size:12px;text-align:center;color:var(--accent)"></div>
+        </div>
+        <div style="margin-top:16px">
+          <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">🎭 מצבים</div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+            <button onclick="czApplyPreset('chill')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:11px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🧘 Chill</button>
+            <button onclick="czApplyPreset('busy')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:11px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🏃 Busy</button>
+            <button onclick="czApplyPreset('social')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:11px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🥂 Social</button>
+            <button onclick="czApplyPreset('night')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:11px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌃 Night</button>
+            <button onclick="czApplyPreset('premium')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:11px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">✨ Premium</button>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">🛡️ Brand Risk</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px" id="czRiskBtns">
+            <button onclick="czSetRisk('safe')" class="cz-risk-btn cz-risk-active" data-risk="safe" style="background:rgba(29,185,84,.15);border:2px solid var(--accent);color:var(--accent);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">🔒 Safe</button>
+            <button onclick="czSetRisk('balanced')" class="cz-risk-btn" data-risk="balanced" style="background:var(--bg-2);border:2px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">⚖️ Balanced</button>
+            <button onclick="czSetRisk('bold')" class="cz-risk-btn" data-risk="bold" style="background:var(--bg-2);border:2px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">🔥 Bold</button>
+          </div>
+        </div>
+        <div style="margin-top:16px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-weight:600;font-size:12px;color:var(--accent-3)">🚫 Do Not Play</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input id="czDNPInput" placeholder="אמן, שיר, או ז'אנר..." style="flex:1;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:10px;font-size:13px;font-family:inherit;direction:rtl">
+            <select id="czDNPType" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:12px;font-family:inherit">
+              <option value="artist">אמן</option><option value="track">שיר</option><option value="genre">ז'אנר</option>
+            </select>
+            <button onclick="czAddDNP()" style="background:var(--accent-3);border:none;color:#fff;padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:700;font-family:inherit">+</button>
+          </div>
+          <div id="czDNPList" style="display:flex;flex-direction:column;gap:6px"></div>
+        </div>
+      </div>
+    </div>
+    <!-- FEEDBACK -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div onclick="czToggleAccordion('czAccFeedback')" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;cursor:pointer" onmouseover="this.style.background='var(--card-2)'" onmouseout="this.style.background=''">
+        <div style="display:flex;align-items:center;gap:10px"><span>📝</span><span style="font-weight:700;font-size:14px">פידבק</span></div>
+        <span class="cz-acc-arrow" style="font-size:14px;color:var(--muted);transition:.3s">▼</span>
+      </div>
+      <div id="czAccFeedback" style="display:none;padding:0 18px 18px;border-top:1px solid var(--border)">
+        <div style="padding-top:14px">
+          <div id="czFeedbackNoPlaylist" style="display:none;text-align:center;padding:20px;color:var(--muted)">אין פלייליסט פעיל — צרו אחד קודם</div>
+          <div id="czFeedbackActions" style="display:none">
+            <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">פידבק כללי:</div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px" id="czPlaylistFeedbackBtns">
+              <button onclick="czPlaylistFeedback('works_with_crowd')" class="cz-fb-btn">✅ עובד</button>
+              <button onclick="czPlaylistFeedback('disrupts_conversation')" class="cz-fb-btn">🗣️ מפריע</button>
+              <button onclick="czPlaylistFeedback('too_energetic')" class="cz-fb-btn">⚡ אנרגטי מדי</button>
+              <button onclick="czPlaylistFeedback('too_calm')" class="cz-fb-btn">😴 רגוע מדי</button>
+              <button onclick="czPlaylistFeedback('too_familiar')" class="cz-fb-btn">🎯 מוכר מדי</button>
+              <button onclick="czPlaylistFeedback('too_niche')" class="cz-fb-btn">💎 נישתי</button>
+              <button onclick="czPlaylistFeedback('good_vibe')" class="cz-fb-btn">🎵 vibe טוב</button>
+              <button onclick="czPlaylistFeedback('doesnt_fit')" class="cz-fb-btn">❌ לא מתאים</button>
+            </div>
+            <div id="czFeedbackSent" style="display:none;color:var(--accent);font-size:13px;font-weight:600;margin-bottom:16px"></div>
+            <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">לפי שיר:</div>
+            <div id="czTrackFeedbackList" style="max-height:300px;overflow-y:auto"></div>
+          </div>
+          <div style="margin-top:14px"><div style="font-weight:600;font-size:12px;color:var(--accent-2);margin-bottom:6px">📊 היסטוריה</div><div id="czFeedbackHistory" style="font-size:12px;color:var(--muted)">—</div></div>
+        </div>
+      </div>
+    </div>
+    <!-- DASHBOARD -->
+    <div class="card" style="padding:0;overflow:hidden">
+      <div onclick="czToggleAccordion('czAccDashboard')" style="display:flex;justify-content:space-between;align-items:center;padding:14px 18px;cursor:pointer" onmouseover="this.style.background='var(--card-2)'" onmouseout="this.style.background=''">
+        <div style="display:flex;align-items:center;gap:10px"><span>📊</span><span style="font-weight:700;font-size:14px">דשבורד ונתונים</span></div>
+        <span class="cz-acc-arrow" style="font-size:14px;color:var(--muted);transition:.3s">▼</span>
+      </div>
+      <div id="czAccDashboard" style="display:none;padding:0 18px 18px;border-top:1px solid var(--border)">
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding-top:14px" id="czDashboard">
+          <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px"><div style="font-size:18px;font-weight:900;color:var(--accent)" id="czMetricEnergy">—</div><div style="font-size:9px;color:var(--muted);margin-top:2px">Avg Energy</div></div>
+          <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px"><div style="font-size:18px;font-weight:900;color:var(--accent)" id="czMetricFam">—</div><div style="font-size:9px;color:var(--muted);margin-top:2px">Familiarity</div></div>
+          <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px"><div style="font-size:18px;font-weight:900;color:var(--accent)" id="czMetricHeb">—</div><div style="font-size:9px;color:var(--muted);margin-top:2px">Hebrew %</div></div>
+          <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px"><div style="font-size:18px;font-weight:900;color:var(--accent)" id="czMetricDiversity">—</div><div style="font-size:9px;color:var(--muted);margin-top:2px">Diversity</div></div>
+          <div style="text-align:center;background:var(--bg-2);border-radius:10px;padding:12px 6px"><div style="font-size:18px;font-weight:900;color:var(--accent)" id="czMetricUnique">—</div><div style="font-size:9px;color:var(--muted);margin-top:2px">Uniqueness</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== EXPANDABLE SECTIONS (opened by hero cards) ===== -->
+
+  <!-- SHAZAM SECTION -->
+  <div id="czShazamSection" class="cz-section" style="display:none;animation:fade .4s ease">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="font-weight:700;color:var(--text)">📚 ספריית פלייליסטים</div>
+      <h3 style="margin:0;font-size:18px;color:var(--accent-3)">🎤 שאזאם — זהה ובנה</h3>
+      <button onclick="czCloseSection('czShazamSection')" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit">✕ סגור</button>
+    </div>
+    <div class="card" style="text-align:center;padding:30px">
+      <p style="color:var(--muted);font-size:14px;margin-bottom:20px">לחצו על הכפתור — המערכת תקשיב ותזהה את השיר</p>
+      <div id="czShazamCircle" onclick="czStartShazam()" style="width:100px;height:100px;border-radius:50%;background:linear-gradient(135deg,rgba(255,71,133,.15),rgba(155,92,255,.15));border:3px solid var(--accent-3);display:flex;align-items:center;justify-content:center;font-size:42px;margin:0 auto 16px;transition:.3s;cursor:pointer" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform=''">🎤</div>
+      <div id="czShazamStatus" style="color:var(--muted);font-size:13px;margin-bottom:12px"></div>
+      <div id="czShazamResult" style="display:none;background:var(--bg-2);border:1px solid var(--border);border-radius:14px;padding:20px;margin-top:16px;text-align:center">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:6px">זוהה:</div>
+        <div id="czShazamTitle" style="font-size:20px;font-weight:800;color:var(--text)"></div>
+        <div id="czShazamArtist" style="font-size:15px;color:var(--muted);margin-top:4px"></div>
+        <div id="czShazamSpotifyLink" style="margin-top:12px"></div>
+        <div style="margin-top:20px;border-top:1px solid var(--border);padding-top:20px;display:flex;flex-direction:column;gap:10px">
+          <button onclick="czShazamAddToPlaylist()" style="display:flex;align-items:center;gap:12px;background:rgba(29,185,84,.1);border:2px solid var(--accent);color:var(--accent);padding:14px 20px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.3s;width:100%" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(29,185,84,.2)'" onmouseout="this.style.transform='';this.style.boxShadow=''"><span style="font-size:24px">➕</span><div style="flex:1"><div style="font-weight:800;font-size:14px">הוסף לפלייליסט הנוכחי</div><div style="font-size:11px;opacity:.7;margin-top:2px">ועדכן שאהבתי את השיר הזה</div></div></button>
+          <button onclick="czBuildFromSong()" style="display:flex;align-items:center;gap:12px;background:linear-gradient(135deg,rgba(255,71,133,.12),rgba(155,92,255,.12));border:2px solid var(--accent-3);color:var(--accent-3);padding:14px 20px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.3s;width:100%" onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(255,71,133,.2)'" onmouseout="this.style.transform='';this.style.boxShadow=''"><span style="font-size:24px">🎵</span><div style="flex:1"><div style="font-weight:800;font-size:14px">בנה פלייליסט חדש על בסיס השיר</div><div style="font-size:11px;opacity:.7;margin-top:2px">50% מה שאנחנו יודעים עליך + 50% ה-DNA של השיר</div></div></button>
+        </div>
+      </div>
+      <div id="czShazamBuildStatus" style="display:none;margin-top:16px;padding:16px;background:var(--bg-2);border-radius:12px;text-align:center;color:var(--muted);font-size:13px"></div>
+    </div>
+  </div>
+
+  <!-- PLAYLISTS SECTION -->
+  <div id="czPlaylistsSection" class="cz-section" style="display:none;animation:fade .4s ease">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0;font-size:18px;color:var(--accent)">🎵 הפלייליסטים שלי</h3>
       <div style="display:flex;gap:8px">
-        <button onclick="czToggleEvolution()" class="btn btn-ghost" style="padding:6px 14px;font-size:12px">📈 Evolution View</button>
+        <button onclick="czToggleEvolution()" style="background:var(--card);border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit">📈 Evolution</button>
+        <button onclick="czCloseSection('czPlaylistsSection')" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit">✕ סגור</button>
       </div>
     </div>
-    <div id="czEvolutionView" style="display:none;margin-bottom:20px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">📈 התפתחות הסאונד לאורך זמן</div>
+    <div id="czEvolutionView" style="display:none;margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px">
+      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">📈 התפתחות הסאונד</div>
       <div id="czEvolutionContent" style="font-size:13px;color:var(--muted)">טוען...</div>
     </div>
     <div id="czPlaylistsLoading" style="text-align:center;padding:30px;color:var(--muted)"><div class="spinner"></div></div>
@@ -697,126 +838,20 @@
     <div id="myPlaylistsGrid" style="display:none"></div>
   </div>
 
-  <div id="czTaste" class="cz-panel" style="display:none">
-    <div class="card">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">🧠 מודל טעם</div>
-      <div id="czTasteDigest" style="font-size:14px;color:var(--text);line-height:1.7;margin-bottom:16px;font-style:italic">טרם נבנה — נדרש פידבק ראשון</div>
+  <!-- REGEN SECTION -->
+  <div id="czRegenSection" class="cz-section" style="display:none;animation:fade .4s ease">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h3 style="margin:0;font-size:18px;color:var(--accent-2)">🔄 ייצור חכם</h3>
+      <button onclick="czCloseSection('czRegenSection')" style="background:none;border:1px solid var(--border);color:var(--muted);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px;font-family:inherit">✕ סגור</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card">
-        <div style="font-weight:700;font-size:13px;color:var(--accent);margin-bottom:10px">✅ אוהב</div>
-        <div id="czTasteLikes" style="font-size:12px;color:var(--text);line-height:1.8">—</div>
-      </div>
-      <div class="card">
-        <div style="font-weight:700;font-size:13px;color:var(--accent-3);margin-bottom:10px">❌ לא אוהב</div>
-        <div id="czTasteDislikes" style="font-size:12px;color:var(--text);line-height:1.8">—</div>
-      </div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button onclick="czSmartRegen('improve')" style="display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🎯</span><div><div style="font-weight:700;font-size:14px">שפר פלייליסט</div><div style="font-size:11px;color:var(--muted)">שמור על הכיוון, תקן בעיות</div></div></button>
+      <button onclick="czSmartRegen('refresh30')" style="display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🔀</span><div><div style="font-weight:700;font-size:14px">שמור vibe, שנה 30%</div><div style="font-size:11px;color:var(--muted)">החלף חלק מהשירים — שמור אווירה</div></div></button>
+      <button onclick="czSmartRegen('calmer')" style="display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">😌</span><div><div style="font-weight:700;font-size:14px">יותר רגוע</div><div style="font-size:11px;color:var(--muted)">החלף אנרגטיים בשקטים</div></div></button>
+      <button onclick="czSmartRegen('energize')" style="display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">⚡</span><div><div style="font-weight:700;font-size:14px">יותר אנרגטי</div><div style="font-size:11px;color:var(--muted)">החלף רגועים בחזקים</div></div></button>
+      <button onclick="czSmartRegen('fullRebuild')" style="display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🏗️</span><div><div style="font-weight:700;font-size:14px">בנייה מחדש מלאה</div><div style="font-size:11px;color:var(--muted)">מאפס — עם כל המידע שנצבר</div></div></button>
     </div>
-    <div class="card" style="margin-top:16px">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">🔍 Patterns</div>
-      <div id="czTastePatterns" style="font-size:12px;color:var(--muted);line-height:1.8">—</div>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">💡 תובנות (Insights)</div>
-      <div id="czInsights" style="font-size:13px;color:var(--text);line-height:1.8">—</div>
-    </div>
-  </div>
-
-  <div id="czControl" class="cz-panel" style="display:none">
-    <div class="card">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">⚡ התאמות מהירות</div>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">כל כפתור משנה את הפרמטרים הבסיסיים — לא רק את הפלט</p>
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px" id="czQuickAdjust">
-        <button onclick="czQuickAdjust('calmer')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">😌<br>יותר רגוע</button>
-        <button onclick="czQuickAdjust('energetic')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">⚡<br>יותר אנרגטי</button>
-        <button onclick="czQuickAdjust('moreFamiliar')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🎯<br>יותר מוכר</button>
-        <button onclick="czQuickAdjust('lessKnown')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">💎<br>פחות מוכר</button>
-        <button onclick="czQuickAdjust('moreHebrew')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🇮🇱<br>יותר עברית</button>
-        <button onclick="czQuickAdjust('lessHebrew')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌍<br>פחות עברית</button>
-        <button onclick="czQuickAdjust('moreNight')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌙<br>יותר לילה</button>
-        <button onclick="czQuickAdjust('moreDay')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:12px 8px;border-radius:10px;cursor:pointer;font-size:12px;font-family:inherit;transition:.2s;text-align:center" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">☀️<br>יותר יום</button>
-      </div>
-      <div id="czAdjustStatus" style="display:none;margin-top:10px;font-size:12px;text-align:center;color:var(--accent)"></div>
-    </div>
-    
-    <div class="card" style="margin-top:16px">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">🎭 מצבים (Presets)</div>
-      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
-        <button onclick="czApplyPreset('chill')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🧘<br>Chill</button>
-        <button onclick="czApplyPreset('busy')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🏃<br>Busy</button>
-        <button onclick="czApplyPreset('social')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🥂<br>Social</button>
-        <button onclick="czApplyPreset('night')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">🌃<br>Night</button>
-        <button onclick="czApplyPreset('premium')" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:14px 8px;border-radius:12px;cursor:pointer;font-size:12px;font-family:inherit;text-align:center;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">✨<br>Premium</button>
-      </div>
-    </div>
-    
-    <div class="card" style="margin-top:16px">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:12px">🛡️ Brand Risk Control</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px" id="czRiskBtns">
-        <button onclick="czSetRisk('safe')" class="cz-risk-btn cz-risk-active" data-risk="safe" style="background:rgba(29,185,84,.15);border:2px solid var(--accent);color:var(--accent);padding:16px 8px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">🔒<br>Safe<br><span style="font-size:10px;font-weight:400">Familiar &amp; expected</span></button>
-        <button onclick="czSetRisk('balanced')" class="cz-risk-btn" data-risk="balanced" style="background:var(--bg-2);border:2px solid var(--border);color:var(--text);padding:16px 8px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">⚖️<br>Balanced<br><span style="font-size:10px;font-weight:400">Mix of known &amp; new</span></button>
-        <button onclick="czSetRisk('bold')" class="cz-risk-btn" data-risk="bold" style="background:var(--bg-2);border:2px solid var(--border);color:var(--text);padding:16px 8px;border-radius:12px;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;text-align:center;transition:.2s">🔥<br>Bold<br><span style="font-size:10px;font-weight:400">Daring &amp; unexpected</span></button>
-      </div>
-    </div>
-    
-    <div class="card" style="margin-top:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <div style="font-weight:700;font-size:13px;color:var(--accent-3)">🚫 Do Not Play</div>
-      </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px">
-        <input id="czDNPInput" placeholder="אמן, שיר, או ז'אנר..." style="flex:1;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:10px 14px;border-radius:10px;font-size:13px;font-family:inherit;direction:rtl">
-        <select id="czDNPType" style="background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:10px;border-radius:10px;font-size:12px;font-family:inherit">
-          <option value="artist">אמן</option>
-          <option value="track">שיר</option>
-          <option value="genre">ז'אנר</option>
-        </select>
-        <button onclick="czAddDNP()" style="background:var(--accent-3);border:none;color:#fff;padding:10px 16px;border-radius:10px;cursor:pointer;font-weight:700;font-family:inherit">+</button>
-      </div>
-      <div id="czDNPList" style="display:flex;flex-direction:column;gap:6px"></div>
-    </div>
-  </div>
-
-  <div id="czFeedback" class="cz-panel" style="display:none">
-    <div class="card">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">📝 פידבק מובנה על הפלייליסט הנוכחי</div>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:14px">בחרו סוג פידבק לכל שיר או לכל הפלייליסט</p>
-      <div id="czFeedbackNoPlaylist" style="display:none;text-align:center;padding:20px;color:var(--muted)">אין פלייליסט פעיל — צרו אחד קודם</div>
-      <div id="czFeedbackActions" style="display:none">
-        <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">פידבק כללי על הפלייליסט:</div>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px" id="czPlaylistFeedbackBtns">
-          <button onclick="czPlaylistFeedback('works_with_crowd')" class="cz-fb-btn">✅ עובד עם הקהל</button>
-          <button onclick="czPlaylistFeedback('disrupts_conversation')" class="cz-fb-btn">🗣️ מפריע לשיחה</button>
-          <button onclick="czPlaylistFeedback('too_energetic')" class="cz-fb-btn">⚡ אנרגטי מדי</button>
-          <button onclick="czPlaylistFeedback('too_calm')" class="cz-fb-btn">😴 רגוע מדי</button>
-          <button onclick="czPlaylistFeedback('too_familiar')" class="cz-fb-btn">🎯 מוכר מדי</button>
-          <button onclick="czPlaylistFeedback('too_niche')" class="cz-fb-btn">💎 נישתי מדי</button>
-          <button onclick="czPlaylistFeedback('good_vibe')" class="cz-fb-btn">🎵 אהבתי vibe</button>
-          <button onclick="czPlaylistFeedback('doesnt_fit')" class="cz-fb-btn">❌ לא מתאים למקום</button>
-        </div>
-        <div id="czFeedbackSent" style="display:none;color:var(--accent);font-size:13px;font-weight:600;margin-bottom:16px"></div>
-        <div style="font-weight:600;font-size:12px;color:var(--text);margin-bottom:10px">פידבק לפי שיר:</div>
-        <div id="czTrackFeedbackList" style="max-height:400px;overflow-y:auto"></div>
-      </div>
-    </div>
-    <div class="card" style="margin-top:16px">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:10px">📊 היסטוריית פידבק</div>
-      <div id="czFeedbackHistory" style="font-size:12px;color:var(--muted)">—</div>
-    </div>
-  </div>
-
-  <div id="czRegen" class="cz-panel" style="display:none">
-    <div class="card">
-      <div style="font-weight:700;font-size:13px;color:var(--accent-2);margin-bottom:8px">🔄 ייצור חכם</div>
-      <p style="font-size:12px;color:var(--muted);margin-bottom:16px">לא רק "צור מחדש" — בחרו בדיוק מה לשנות</p>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        <button onclick="czSmartRegen('improve')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🎯</span><div><div style="font-weight:700;font-size:14px">שפר פלייליסט</div><div style="font-size:11px;color:var(--muted)">שמור על הכיוון, תקן בעיות</div></div></button>
-        <button onclick="czSmartRegen('refresh30')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🔀</span><div><div style="font-weight:700;font-size:14px">שמור vibe, שנה 30%</div><div style="font-size:11px;color:var(--muted)">החלף חלק מהשירים — שמור על האווירה</div></div></button>
-        <button onclick="czSmartRegen('calmer')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">😌</span><div><div style="font-weight:700;font-size:14px">אותה רשימה, יותר רגועה</div><div style="font-size:11px;color:var(--muted)">החלף שירים אנרגטיים בגרסאות שקטות</div></div></button>
-        <button onclick="czSmartRegen('energize')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">⚡</span><div><div style="font-weight:700;font-size:14px">אותה רשימה, יותר אנרגטית</div><div style="font-size:11px;color:var(--muted)">החלף שירים רגועים בגרסאות חזקות</div></div></button>
-        <button onclick="czSmartRegen('fullRebuild')" style="display:flex;align-items:center;gap:12px;background:var(--bg-2);border:1px solid var(--border);color:var(--text);padding:16px;border-radius:12px;cursor:pointer;font-family:inherit;text-align:right;transition:.2s" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'"><span style="font-size:24px">🏗️</span><div><div style="font-weight:700;font-size:14px">בנייה מחדש מלאה</div><div style="font-size:11px;color:var(--muted)">מאפס — עם כל המידע שנצבר</div></div></button>
-      </div>
-      <div id="czRegenStatus" style="display:none;margin-top:14px;text-align:center;padding:12px;background:var(--bg-2);border-radius:10px;color:var(--muted);font-size:13px"></div>
-    </div>
+    <div id="czRegenStatus" style="display:none;margin-top:14px;text-align:center;padding:12px;background:var(--bg-2);border-radius:10px;color:var(--muted);font-size:13px"></div>
   </div>
 </section>
 <section id="activityLog" class="screen">
@@ -1000,19 +1035,182 @@ function switchCZTab(tabId, btn) {
   if (tabId === 'czFeedback') czLoadFeedbackTab();
 }
 
+function czShowSection(id) {
+  document.querySelectorAll('.cz-section').forEach(function(s) { s.style.display = 'none' });
+  var el = document.getElementById(id);
+  if (el) { el.style.display = 'block'; el.scrollIntoView({behavior:'smooth',block:'start'}) }
+  if (id === 'czPlaylistsSection') czLoadPlaylists();
+}
+function czCloseSection(id) {
+  var el = document.getElementById(id);
+  if (el) el.style.display = 'none';
+}
+function czToggleAccordion(id) {
+  var el = document.getElementById(id);
+  if (!el) return;
+  var isOpen = el.style.display !== 'none';
+  el.style.display = isOpen ? 'none' : 'block';
+  var header = el.previousElementSibling;
+  if (header) { var arrow = header.querySelector('.cz-acc-arrow'); if (arrow) arrow.textContent = isOpen ? '▼' : '▲' }
+  if (!isOpen && id === 'czAccTaste') czLoadTaste();
+  if (!isOpen && id === 'czAccFeedback') czLoadFeedbackTab();
+}
+
+var czShazamIdentified = null;
+var czShazamStream = null;
+var czShazamRecorder = null;
+
+async function czStartShazam() {
+  var circle = document.getElementById('czShazamCircle');
+  var status = document.getElementById('czShazamStatus');
+  var result = document.getElementById('czShazamResult');
+  if (circle.style.borderColor === 'rgb(255, 71, 133)' && czShazamRecorder && czShazamRecorder.state === 'recording') {
+    czShazamRecorder.stop(); return;
+  }
+  result.style.display = 'none';
+  czShazamIdentified = null;
+  status.textContent = 'מאזין...';
+  circle.style.borderColor = '#ff4785';
+  circle.style.animation = 'pulse 1.5s infinite';
+  try {
+    czShazamStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    czShazamRecorder = new MediaRecorder(czShazamStream);
+    var chunks = [];
+    czShazamRecorder.ondataavailable = function(e) { chunks.push(e.data) };
+    czShazamRecorder.onstop = async function() {
+      circle.style.animation = '';
+      circle.style.borderColor = 'var(--accent-3)';
+      status.textContent = 'מזהה...';
+      czShazamStream.getTracks().forEach(function(t) { t.stop() });
+      var blob = new Blob(chunks, {type: 'audio/webm'});
+      var fd = new FormData();
+      fd.append('file', blob, 'rec.webm');
+      fd.append('api_token', 'test');
+      fd.append('return', 'spotify');
+      try {
+        var r = await fetch('https://api.audd.io/', {method: 'POST', body: fd});
+        var j = await r.json();
+        if (j.result) {
+          czShazamIdentified = {artist: j.result.artist, title: j.result.title, spotify: j.result.spotify || null};
+          document.getElementById('czShazamTitle').textContent = j.result.title;
+          document.getElementById('czShazamArtist').textContent = j.result.artist;
+          var linkEl = document.getElementById('czShazamSpotifyLink');
+          linkEl.innerHTML = j.result.spotify && j.result.spotify.external_urls ? '<a href="' + j.result.spotify.external_urls.spotify + '" target="_blank" style="display:inline-block;margin-top:4px;padding:6px 16px;background:var(--accent);color:#fff;border-radius:8px;text-decoration:none;font-size:12px;font-weight:700">Spotify ↗</a>' : '';
+          result.style.display = 'block';
+          status.textContent = 'נמצא!';
+          brainLog('✅', 'Shazam', j.result.artist + ' - ' + j.result.title);
+          logClientEvent('shazam_identify', {artist: j.result.artist, title: j.result.title});
+        } else {
+          status.textContent = 'לא זוהה — נסו שוב';
+          brainLog('❌', 'Shazam', 'לא זוהה');
+        }
+      } catch(e) {
+        status.textContent = 'שגיאה בזיהוי';
+      }
+    };
+    czShazamRecorder.start();
+    setTimeout(function() { if (czShazamRecorder && czShazamRecorder.state === 'recording') czShazamRecorder.stop() }, 8000);
+  } catch(e) {
+    circle.style.animation = '';
+    circle.style.borderColor = 'var(--accent-3)';
+    status.textContent = 'נא לאשר גישה למיקרופון';
+  }
+}
+
+function czShazamAddToPlaylist() {
+  if (!czShazamIdentified) return;
+  var song = czShazamIdentified;
+  logClientEvent('shazam_like', {artist: song.artist, title: song.title, action: 'add_to_playlist'});
+  if (window.currentPlaylist && window.currentPlaylist.tracks) {
+    var newTrack = {artist: song.artist, title: song.title, slot: 'shazam_add', spotify_id: (song.spotify && song.spotify.id) || ''};
+    window.currentPlaylist.tracks.push(newTrack);
+    if (window.currentPlaylist.sequentialTracks) window.currentPlaylist.sequentialTracks.push(newTrack);
+    if (window.currentPlaylist.shuffleTracks) window.currentPlaylist.shuffleTracks.push(newTrack);
+  }
+  var statusEl = document.getElementById('czShazamBuildStatus');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '<div style="color:var(--accent);font-weight:700">✅ ' + esc(song.artist) + ' - ' + esc(song.title) + ' נוסף לפלייליסט!</div><div style="font-size:12px;color:var(--muted);margin-top:4px">ההעדפות שלך עודכנו</div>';
+  setTimeout(function() { statusEl.style.display = 'none' }, 4000);
+}
+
+async function czBuildFromSong() {
+  if (!czShazamIdentified) return;
+  var song = czShazamIdentified;
+  var statusEl = document.getElementById('czShazamBuildStatus');
+  statusEl.style.display = 'block';
+  statusEl.innerHTML = '<div class="spinner" style="margin:0 auto 8px"></div><div>בונה פלייליסט על בסיס ' + esc(song.artist) + ' - ' + esc(song.title) + '...</div><div style="font-size:11px;margin-top:4px">50% הפרופיל שלך + 50% DNA השיר</div>';
+  logClientEvent('shazam_build_playlist', {artist: song.artist, title: song.title});
+  try {
+    var faders = wiz.faders || {};
+    var desc = wiz.desc || '';
+    var profile = window.brandProfile || {};
+    var taste = clientLearnedTaste || '';
+    var songSeed = 'SEED SONG: "' + song.title + '" by ' + song.artist + '. Analyze its genre, energy, mood, tempo, instrumentation, and vocal style.';
+    var systemPrompt = 'You are SonicBrand AI, a music curator for businesses. The user identified a song they love via Shazam. Build a 50-track playlist where:\n- 50% of the selection weight comes from the CLIENT PROFILE (business type, sliders, taste memory, brand profile)\n- 50% of the selection weight comes from the SEED SONG DNA (match its genre, energy, mood, tempo, and feel)\nThe result should feel like "music for this business, inspired by this song".\nReturn JSON: {"tracks":[{"artist":"","title":"","slot":"seed_inspired"}]}\nReturn EXACTLY 50 tracks. Include the seed song itself as track #1. Ensure variety — don\'t just pick the same artist.';
+    var userMsg = songSeed + '\n\nCLIENT PROFILE:\nBusiness: "' + desc + '"\nCategory: ' + (wiz.bizCategory || 'general') + '\nSliders: energy=' + (faders.energy || 50) + ', familiarity=' + (faders.familiarity || 50) + ', vocal=' + (faders.vocal || 50) + ', hebrew=' + (faders.hebrew || 50) + '%\nBrand profile: ' + JSON.stringify(profile).substring(0, 400) + '\nLearned taste: ' + taste.substring(0, 300) + '\nRisk level: ' + czRiskLevel;
+    if (czDNPList.length) userMsg += '\nDo NOT include: ' + czDNPList.map(function(d) { return d.value + ' (' + d.type + ')' }).join(', ');
+    var raw = await callOpenAI([{role: 'system', content: systemPrompt}, {role: 'user', content: userMsg}], {max_tokens: 4000, model: 'gpt-4o'});
+    var result = safeJSON(raw);
+    if (result.tracks && result.tracks.length) {
+      window.currentPlaylist = {
+        profile: window.brandProfile || profile,
+        shuffleTracks: result.tracks,
+        sequentialTracks: result.tracks.slice(),
+        tracks: result.tracks,
+        user: (authUser && authUser.email) || localStorage.getItem('sp_user_name') || 'guest',
+        activeTab: 'shuffle',
+        seedSong: song
+      };
+      statusEl.innerHTML = '<div style="color:var(--accent);font-weight:700;font-size:16px">🎉 פלייליסט חדש נוצר!</div><div style="font-size:13px;color:var(--muted);margin-top:6px">' + result.tracks.length + ' שירים על בסיס ' + esc(song.artist) + ' - ' + esc(song.title) + '</div><button onclick="nav(\'playlist\')" style="margin-top:12px;background:var(--gradient);border:none;color:#fff;padding:10px 24px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:700;font-family:inherit">צפה בפלייליסט →</button>';
+      brainLog('🎵', 'Shazam Build', result.tracks.length + ' tracks from ' + song.artist + ' - ' + song.title);
+      try {
+        await sb.from('analyses').insert([{
+          user_name: (authUser && authUser.email) || localStorage.getItem('sp_user_name') || 'guest',
+          description: 'Shazam: ' + song.artist + ' - ' + song.title,
+          business_name: 'Shazam Build',
+          biz_category: wiz.bizCategory || 'general',
+          faders: JSON.stringify(faders),
+          tracks: JSON.stringify(result.tracks),
+          track_count: result.tracks.length,
+          brain_version: BRAIN_VERSION,
+          brain_logs: JSON.stringify([{time: new Date().toLocaleTimeString('he-IL'), e: '🎤', t: 'Shazam', d: song.artist + ' - ' + song.title}])
+        }]);
+      } catch(e) {}
+    } else {
+      statusEl.innerHTML = '<div style="color:var(--accent-3)">שגיאה — לא הצלחתי לבנות פלייליסט. נסה שוב.</div>';
+    }
+  } catch(e) {
+    statusEl.innerHTML = '<div style="color:var(--accent-3)">שגיאה: ' + (e.message || 'unknown') + '</div>';
+  }
+}
+
 async function loadPersonalArea() {
   var notLoggedIn = document.getElementById('czNotLoggedIn');
+  var welcome = document.getElementById('czWelcome');
+  var heroActions = document.getElementById('czHeroActions');
+  var quickGlance = document.getElementById('czQuickGlance');
+  var accordions = document.getElementById('czAccordions');
   var isAuthenticated = (authUser && !isGuest) || isSpotifySSO || (localStorage.getItem('sp_access') && localStorage.getItem('sp_user_name'));
   if (!isAuthenticated) {
     if(notLoggedIn) notLoggedIn.style.display = 'block';
-    document.getElementById('czTabs').style.display = 'none';
-    document.querySelectorAll('.cz-panel').forEach(function(p) { p.style.display = 'none' });
+    if(welcome) welcome.style.display = 'none';
+    if(heroActions) heroActions.style.display = 'none';
+    if(quickGlance) quickGlance.style.display = 'none';
+    if(accordions) accordions.style.display = 'none';
+    document.querySelectorAll('.cz-section').forEach(function(s) { s.style.display = 'none' });
     return;
   }
   if(notLoggedIn) notLoggedIn.style.display = 'none';
-  document.getElementById('czTabs').style.display = 'flex';
+  if(welcome) welcome.style.display = 'block';
+  if(heroActions) heroActions.style.display = 'grid';
+  if(quickGlance) quickGlance.style.display = 'grid';
+  if(accordions) accordions.style.display = 'flex';
+  var userName = (authUser && authUser.email) || localStorage.getItem('sp_user_name') || '';
+  var nameDisplay = userName.split('@')[0] || userName;
+  document.getElementById('czWelcomeName').textContent = 'היי ' + nameDisplay + '!';
+  var avatar = document.getElementById('czWelcomeAvatar');
+  if (avatar && nameDisplay) avatar.textContent = nameDisplay.charAt(0).toUpperCase();
   await czLoadProfile();
-  switchCZTab('czProfile', document.querySelector('.cz-tab[data-cztab="czProfile"]'));
 }
 
 async function czLoadProfile() {
@@ -1074,7 +1272,7 @@ async function czLoadProfile() {
 }
 
 async function generateSoundSummary() {
-  var btn = document.querySelector('#czSoundSummaryCard button');
+  var btn = document.getElementById('czSoundSummaryCard');
   btn.textContent = '⏳ מייצר...';
   btn.disabled = true;
   

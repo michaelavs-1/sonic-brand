@@ -2031,6 +2031,74 @@ function calcMomentum(prevTracks){if(!prevTracks||prevTracks.length<3)return'sta
 function detectFailures(tracks){const failures=[];if(tracks.length<4)return failures;const last5=tracks.slice(-5);const energies=last5.map(t=>(t.audioFeatures&&t.audioFeatures.energy)||t.energy_level||0.5);if(last5.length>=2&&Math.abs(energies[energies.length-1]-energies[energies.length-2])>0.4)failures.push('energy_spike');if(last5.length>=5&&Math.max(...energies)-Math.min(...energies)<0.1)failures.push('energy_flat');const moods=last5.map(t=>t.mood||'');if(moods.length>=4&&new Set(moods.slice(-4)).size===1)failures.push('vibe_loop');const langs=tracks.slice(-4).map(t=>t.lang||'');const heCount=langs.filter(l=>l==='he').length;if(heCount>=3)failures.push('hebrew_cluster');return failures}
 
 
+/* ═══════════════════════════════════════════════════════
+   FADER RULES TABLE — Single source of truth for ALL fader logic
+   Every threshold, filter, sort, search behavior defined HERE.
+   NO scattered magic numbers anywhere else in the code.
+   ═══════════════════════════════════════════════════════ */
+const FADER_RULES={
+  hebrew:{
+    bands:[
+      {min:0,  max:15, label:'full_international',    hebLabel:'לועזי מלא',     searchMode:'international_only', filterMode:'block_hebrew',    sortPref:'none',        hebSearchPasses:0, intSearchPasses:3},
+      {min:16, max:35, label:'mostly_international',  hebLabel:'לועזי בעיקר',   searchMode:'international_first',filterMode:'deprioritize_hebrew',sortPref:'international',hebSearchPasses:0, intSearchPasses:2},
+      {min:36, max:65, label:'mixed',                 hebLabel:'מיקס',           searchMode:'both',              filterMode:'none',            sortPref:'none',        hebSearchPasses:1, intSearchPasses:1},
+      {min:66, max:85, label:'mostly_hebrew',         hebLabel:'עברי בעיקר',    searchMode:'hebrew_first',      filterMode:'deprioritize_intl',sortPref:'hebrew',     hebSearchPasses:2, intSearchPasses:0},
+      {min:86, max:100,label:'full_hebrew',            hebLabel:'עברי מלא',      searchMode:'hebrew_only',       filterMode:'block_intl',      sortPref:'none',        hebSearchPasses:3, intSearchPasses:0}
+    ]
+  },
+  energy:{
+    bands:[
+      {min:0,  max:20, label:'very_low',  hebLabel:'רגועה מאוד',   target:0.15, range:[0.0,0.3],  valence:[0.1,0.4],  bpmMod:[-30,-15], recParams:{max_energy:0.35,target_energy:0.15}},
+      {min:21, max:40, label:'low',       hebLabel:'רגועה',         target:0.3,  range:[0.1,0.45], valence:[0.2,0.55], bpmMod:[-20,-5],  recParams:{max_energy:0.5,target_energy:0.3}},
+      {min:41, max:60, label:'medium',    hebLabel:'בינונית',       target:0.5,  range:[0.3,0.7],  valence:[0.3,0.7],  bpmMod:[-5,5],    recParams:{}},
+      {min:61, max:80, label:'high',      hebLabel:'גבוהה',         target:0.7,  range:[0.5,0.85], valence:[0.45,0.8], bpmMod:[5,20],    recParams:{min_energy:0.5,target_energy:0.7}},
+      {min:81, max:100,label:'very_high', hebLabel:'גבוהה מאוד',   target:0.85, range:[0.65,1.0], valence:[0.55,0.95],bpmMod:[15,30],   recParams:{min_energy:0.65,target_energy:0.85}}
+    ]
+  },
+  familiarity:{
+    bands:[
+      {min:0,  max:15, label:'ultra_niche', hebLabel:'נישתי מאוד',    maxPop:25,  minPop:0,  maxFollowers:100000,  recParams:{max_popularity:15}},
+      {min:16, max:35, label:'niche',       hebLabel:'נישתי',          maxPop:50,  minPop:0,  maxFollowers:300000,  recParams:{max_popularity:40}},
+      {min:36, max:65, label:'mixed',       hebLabel:'מיקס',           maxPop:85,  minPop:10, maxFollowers:null,    recParams:{}},
+      {min:66, max:85, label:'commercial',  hebLabel:'מוכר',           maxPop:100, minPop:35, maxFollowers:null,    recParams:{min_popularity:45}},
+      {min:86, max:100,label:'hits_only',   hebLabel:'להיטים בלבד',   maxPop:100, minPop:50, maxFollowers:null,    recParams:{min_popularity:60}}
+    ]
+  },
+  vocal:{
+    bands:[
+      {min:0,  max:15, label:'instrumental',         hebLabel:'אינסטרומנטלי',          instTarget:0.8,  instRange:[0.6,1.0],  acousticTarget:0.7, recParams:{min_instrumentalness:0.6,target_instrumentalness:1.0}},
+      {min:16, max:35, label:'mostly_instrumental',  hebLabel:'אינסטרומנטלי בעיקר',   instTarget:0.6,  instRange:[0.35,0.9], acousticTarget:0.6, recParams:{min_instrumentalness:0.4,target_instrumentalness:0.8}},
+      {min:36, max:65, label:'mixed',                hebLabel:'מיקס',                   instTarget:0.2,  instRange:[0.0,0.5],  acousticTarget:0.4, recParams:{}},
+      {min:66, max:85, label:'mostly_vocal',         hebLabel:'ווקאלי בעיקר',          instTarget:0.05, instRange:[0.0,0.3],  acousticTarget:0.3, recParams:{max_instrumentalness:0.3,target_instrumentalness:0.0}},
+      {min:86, max:100,label:'full_vocal',            hebLabel:'ווקאלי מלא',            instTarget:0.0,  instRange:[0.0,0.15], acousticTarget:0.2, recParams:{max_instrumentalness:0.15,target_instrumentalness:0.0}}
+    ]
+  }
+};
+
+/* Resolve fader values to their matching band rules */
+function resolveFaders(f){
+  f=f||{familiarity:50,hebrew:50,vocal:50,energy:50};
+  var result={};
+  ['hebrew','energy','familiarity','vocal'].forEach(function(key){
+    var val=f[key]||50;
+    var bands=FADER_RULES[key].bands;
+    var band=bands[2]; /* default to middle */
+    for(var i=0;i<bands.length;i++){
+      if(val>=bands[i].min&&val<=bands[i].max){band=bands[i];break}
+    }
+    result[key]=Object.assign({value:val},band);
+  });
+  /* Computed helpers */
+  result.isHebrew=f.hebrew>50;
+  result.isInternational=f.hebrew<50;
+  result.isMixedLang=f.hebrew>=36&&f.hebrew<=65;
+  result.hebTrackRatio=f.hebrew/100;
+  result.intTrackRatio=1-(f.hebrew/100);
+  /* GPT-friendly summary in Hebrew */
+  result.gptSummary='שפה: '+result.hebrew.hebLabel+' ('+f.hebrew+'%), אנרגיה: '+result.energy.hebLabel+' ('+f.energy+'/100), מוכרות: '+result.familiarity.hebLabel+' ('+f.familiarity+'/100), ווקאל: '+result.vocal.hebLabel+' ('+f.vocal+'/100)';
+  return result;
+}
+
 const BASE_RULES_V75={
 version:'7.5',
 principle:'A playlist is a 40-track EXPERIENCE, not a collection of songs. Every track is a decision.',
@@ -2804,9 +2872,12 @@ brainLog('📋','ייבוא',imported.length+' tracks imported from existing pla
 async function generateSamples(){const ld=document.getElementById('sampleLoading'),list=document.getElementById('vibeOptions'),nb=document.getElementById('sampleActions');ld.style.display='block';list.style.display='none';nb.style.display='none';var _backBtn=document.getElementById('sampleBackBtn');if(_backBtn)_backBtn.style.display='none';brainLog('🎲','כיוונים','v8.1 — Genre-First + Playlist Verification...',true);try{const f=wiz.faders,g=wiz.genres.length?'\nGenres: '+wiz.genres.join(', '):'',rf=wiz.refs.length?'\nRef: '+wiz.refs.map(r=>r.artist+' - '+r.title).join(', '):'';const dna=wiz.bizDNA||BIZ_DNA.general;
 /* Pre-build Spotify Recs backup pool — covers ALL extreme fader modes */
 const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'');
+/* ═══ Resolve faders to rules (BEFORE any use of _FR) ═══ */
+var _FR=resolveFaders(f);
+brainLog('🎚️','Faders',_FR.gptSummary,true);
 /* ═══ STEP 1: GPT picks 3 genre FAMILIES (not moods) ═══ */
 brainLog('🧠','Step 1','GPT picking 3 genre families...',true);
-var _familyPrompt='You are SonicBrand AI. Pick EXACTLY 3 GENRE DIRECTIONS for this business.\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🏗️ HIERARCHY — THIS IS THE MOST IMPORTANT RULE:\n\n1️⃣ CONTEXT IS KING — The business type, location, audience, and demographic data define the FRAME. Everything else operates WITHIN this frame. A steakhouse in שכונת התקווה is a Mizrahi/Israeli world — period. A boutique hotel in Neve Tzedek is cosmopolitan/international — period. The context sets the boundaries.\n\n2️⃣ FADERS WORK WITHIN THE CONTEXT — The sliders fine-tune INSIDE the frame, they never break it:\n- Hebrew '+f.hebrew+'% → Within the context world, what % should be Hebrew vs the CONTEXT-APPROPRIATE international equivalent (e.g., for Mizrahi context: Turkish/Greek/Arabic, NOT Coldplay)\n- Energy '+f.energy+'/100 → How energetic within the context range\n- Familiarity '+f.familiarity+'/100 → How well-known within the context genre world\n- Vocal '+f.vocal+'/100 → Vocal vs instrumental within the context\n\nExample: סטקייה בשכונת התקווה, hebrew=30%:\n- WRONG: 70% Coldplay, Adele, Ed Sheeran (generic international pop)\n- RIGHT: 70% Turkish, Greek, Arabic, Mediterranean instrumental + 30% עומר אדם, אייל גולן\nThe "international" tracks must STILL belong to the context world!\n\nExample: בית קפה בנווה צדק, hebrew=70%:\n- WRONG: 70% מזרחי (wrong context)\n- RIGHT: 70% Israeli indie/folk/singer-songwriter + 30% international indie/acoustic\n\n🎯 GENRE DIRECTION RULES:\n1. Valid families: mizrahi, rock, jazz, electronic, hiphop, rnb, pop, classical, soul, folk, world\n2. Pick EXACTLY 3 DIFFERENT families that make sense FOR THIS SPECIFIC CONTEXT\n3. Direction 1: Most natural fit for the context\n4. Direction 2: Complementary but different\n5. Direction 3: Bold/creative choice (still within context boundaries)\n6. If demographic context mentions Mizrahi affinity > 50, at least one MUST be mizrahi\n7. NAMING: Use ATMOSPHERIC, POETIC Hebrew names — NOT genre labels. Paint a picture:\n   Instead of "פולק ישראלי" → "צלילים אקוסטיים חמים"\n   Instead of "רוק" → "אנרגיה חשמלית"\n   Instead of "מזרחי" → "קצב ים-תיכוני"\n   Think like a creative director describing the sound to a client\n\n🚨 CRITICAL: EXACTLY 3 directions. Not 1, not 2. Always 3.\n\n🎚️ FADER SUMMARY (the client chose these settings):\n- שפה: '+(f.hebrew>70?'עברית בעיקר ('+f.hebrew+'%)':f.hebrew>40?'מיקס עברית-לועזית ('+f.hebrew+'% עברית)':'לועזית בעיקר ('+(100-f.hebrew)+'%)')+'\n- אנרגיה: '+(f.energy>70?'גבוהה ('+f.energy+'/100)':f.energy>40?'בינונית ('+f.energy+'/100)':'נמוכה ('+f.energy+'/100)')+'\n- מוכרות: '+(f.familiarity>70?'שירים מוכרים ('+f.familiarity+'/100)':f.familiarity>40?'מיקס מוכר-מפתיע ('+f.familiarity+'/100)':'שירים נישתיים ('+f.familiarity+'/100)')+'\n- ווקאל: '+(f.vocal>70?'ווקאלי בעיקר ('+f.vocal+'/100)':f.vocal>40?'מיקס ווקאל-אינסטרומנטלי ('+f.vocal+'/100)':'אינסטרומנטלי בעיקר ('+f.vocal+'/100)')+'\n\nReturn JSON:\n{"bizInsight":"פסקה קצרה בעברית (3-4 משפטים) שמסבירה ללקוח: 1) מה הבנת על העסק שלו ומי הקהל, 2) איך בחירות הפיידרים שלו (שפה, אנרגיה, מוכרות, ווקאל) משפיעות על הבחירה המוזיקלית, 3) למה בחרת את 3 הכיוונים האלה. תתחיל במשפט כמו: ביקשת מוזיקה [ווקאלית/אינסטרומנטלית] ב[עברית/לועזית] באנרגיה [גבוהה/נמוכה]... דבר בגוף שלישי על העסק (לא ״שלך/ביקשת״ אלא ״העסק הזה / בחנות כזו / בהתאם לבחירה של...״). לא פרסונלי אלא מקצועי.","directions":[\n{"family":"one of the valid family names","hebrewName":"שם אווירתי ציורי בעברית (2-4 words — paint the feeling)","emoji":"single emoji","desc":"תיאור קצר בעברית — מה הסאונד הזה","reasoning":"נימוק קצר בעברית (1-2 משפטים) — למה הכיוון הזה מתאים לעסק הזה ספציפית, תוך התייחסות לבחירות הפיידרים של הלקוח (שפה, אנרגיה, מוכרות). למשל: הכיוון הזה משלב את האנרגיה הגבוהה שנבחרה עם... / בהתאם לבחירה במוזיקה לועזית בעיקר...","searchQueries":["query with specific artist names from the CONTEXT world","another query targeting different artists in context","third query for variety within context"]},\n... EXACTLY 3 directions\n]}\n\nsearchQueries CRITICAL RULES:\n- Queries must target artists that belong to the CONTEXT WORLD\n- Include specific artist NAMES, not just genre keywords\n- Each query should target DIFFERENT artists for maximum diversity\n- When hebrew>50: mix Hebrew artist names with context-appropriate international artists\n- When hebrew<50: more international artists but still from the CONTEXT WORLD (not generic pop)';
+var _familyPrompt='You are SonicBrand AI. Pick EXACTLY 3 GENRE DIRECTIONS for this business.\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n🏗️ HIERARCHY — THIS IS THE MOST IMPORTANT RULE:\n\n1️⃣ CONTEXT IS KING — The business type, location, audience, and demographic data define the FRAME. Everything else operates WITHIN this frame. A steakhouse in שכונת התקווה is a Mizrahi/Israeli world — period. A boutique hotel in Neve Tzedek is cosmopolitan/international — period. The context sets the boundaries.\n\n2️⃣ FADERS WORK WITHIN THE CONTEXT — The sliders fine-tune INSIDE the frame, they never break it:\n- Hebrew '+f.hebrew+'% → Within the context world, what % should be Hebrew vs the CONTEXT-APPROPRIATE international equivalent (e.g., for Mizrahi context: Turkish/Greek/Arabic, NOT Coldplay)\n- Energy '+f.energy+'/100 → How energetic within the context range\n- Familiarity '+f.familiarity+'/100 → How well-known within the context genre world\n- Vocal '+f.vocal+'/100 → Vocal vs instrumental within the context\n\nExample: סטקייה בשכונת התקווה, hebrew=30%:\n- WRONG: 70% Coldplay, Adele, Ed Sheeran (generic international pop)\n- RIGHT: 70% Turkish, Greek, Arabic, Mediterranean instrumental + 30% עומר אדם, אייל גולן\nThe "international" tracks must STILL belong to the context world!\n\nExample: בית קפה בנווה צדק, hebrew=70%:\n- WRONG: 70% מזרחי (wrong context)\n- RIGHT: 70% Israeli indie/folk/singer-songwriter + 30% international indie/acoustic\n\n🎯 GENRE DIRECTION RULES:\n1. Valid families: mizrahi, rock, jazz, electronic, hiphop, rnb, pop, classical, soul, folk, world\n2. Pick EXACTLY 3 DIFFERENT families that make sense FOR THIS SPECIFIC CONTEXT\n3. Direction 1: Most natural fit for the context\n4. Direction 2: Complementary but different\n5. Direction 3: Bold/creative choice (still within context boundaries)\n6. If demographic context mentions Mizrahi affinity > 50, at least one MUST be mizrahi\n7. NAMING: Use ATMOSPHERIC, POETIC Hebrew names — NOT genre labels. Paint a picture:\n   Instead of "פולק ישראלי" → "צלילים אקוסטיים חמים"\n   Instead of "רוק" → "אנרגיה חשמלית"\n   Instead of "מזרחי" → "קצב ים-תיכוני"\n   Think like a creative director describing the sound to a client\n\n🚨 CRITICAL: EXACTLY 3 directions. Not 1, not 2. Always 3.\n\n🎚️ FADER SETTINGS (exact rules — MUST respect):\n- שפה: '+_FR.hebrew.hebLabel+' ('+f.hebrew+'%) — '+_FR.hebrew.searchMode+'\n- אנרגיה: '+_FR.energy.hebLabel+' ('+f.energy+'/100) — target: '+_FR.energy.target+'\n- מוכרות: '+_FR.familiarity.hebLabel+' ('+f.familiarity+'/100) — maxPop: '+(_FR.familiarity.maxPop||'none')+', minPop: '+(_FR.familiarity.minPop||'none')+'\n- ווקאל: '+_FR.vocal.hebLabel+' ('+f.vocal+'/100) — instrumentalness target: '+_FR.vocal.instTarget+'\n\nReturn JSON:\n{"bizInsight":"פסקה קצרה בעברית (3-4 משפטים) שמסבירה ללקוח: 1) מה הבנת על העסק שלו ומי הקהל, 2) איך בחירות הפיידרים שלו (שפה, אנרגיה, מוכרות, ווקאל) משפיעות על הבחירה המוזיקלית, 3) למה בחרת את 3 הכיוונים האלה. תתחיל במשפט כמו: ביקשת מוזיקה [ווקאלית/אינסטרומנטלית] ב[עברית/לועזית] באנרגיה [גבוהה/נמוכה]... דבר בגוף שלישי על העסק (לא ״שלך/ביקשת״ אלא ״העסק הזה / בחנות כזו / בהתאם לבחירה של...״). לא פרסונלי אלא מקצועי.","directions":[\n{"family":"one of the valid family names","hebrewName":"שם אווירתי ציורי בעברית (2-4 words — paint the feeling)","emoji":"single emoji","desc":"תיאור קצר בעברית — מה הסאונד הזה","reasoning":"נימוק קצר בעברית (1-2 משפטים) — למה הכיוון הזה מתאים לעסק הזה ספציפית, תוך התייחסות לבחירות הפיידרים של הלקוח (שפה, אנרגיה, מוכרות). למשל: הכיוון הזה משלב את האנרגיה הגבוהה שנבחרה עם... / בהתאם לבחירה במוזיקה לועזית בעיקר...","searchQueries":["query with specific artist names from the CONTEXT world","another query targeting different artists in context","third query for variety within context"]},\n... EXACTLY 3 directions\n]}\n\nsearchQueries CRITICAL RULES:\n- Queries must target artists that belong to the CONTEXT WORLD\n- Include specific artist NAMES, not just genre keywords\n- Each query should target DIFFERENT artists for maximum diversity\n- When hebrew>50: mix Hebrew artist names with context-appropriate international artists\n- When hebrew<50: more international artists but still from the CONTEXT WORLD (not generic pop)';
 var _famRaw=await callOpenAI([{role:'system',content:'You are SonicBrand AI — an expert music curator for businesses. Your #1 rule: CONTEXT IS KING. The business type, location, and audience define the musical world. Faders (hebrew %, energy, familiarity) only fine-tune WITHIN that world. Never let faders override context. ALWAYS return EXACTLY 3 directions. JSON only.'},{role:'user',content:_familyPrompt}],{max_tokens:1200,stage:'2️⃣ כיוונים מוזיקליים — שלב 1',model:'gpt-4o-mini'});
 var _famParsed=safeJSON(_famRaw);
 var _directions=_famParsed.directions||[];
@@ -2817,11 +2888,9 @@ if(wiz.bizInsight)brainLog('💡','Insight',wiz.bizInsight.substring(0,80)+'...'
 /* ═══ STEP 2: Spotify finds tracks for each genre family ═══ */
 brainLog('🔍','Step 2','Spotify finding tracks per family...',true);
 wiz.vibes=[];wiz.samples=[];wiz.votes={};wiz.selectedVibe=null;
-/* Hebrew-aware genre seeds — completely different search terms for Israeli vs international */
-var _isHebrew=f.hebrew>50;
+var _isHebrew=_FR.isHebrew;
 /* Genre seeds — universal, not forced Israeli. Hebrew slider affects language MIX, not genre identity */
 var _spotifyGenreSeeds={mizrahi:'mizrahi israeli middle eastern',rock:'rock alternative indie',jazz:'jazz bossa nova swing',electronic:'electronic house techno ambient',hiphop:'hip hop rap trap',rnb:'r&b neo soul',pop:'pop dance pop',classical:'classical piano orchestral',soul:'soul funk disco',folk:'folk acoustic singer-songwriter',world:'world latin reggae afrobeat'};
-/* When hebrew>50, ADD an Israeli search pass but don't REPLACE the genre search */
 var _hebSearchMod='';
 for(var _di=0;_di<_directions.length;_di++){
 var _dir=_directions[_di];
@@ -2831,13 +2900,15 @@ wiz.vibes.push(_vibeObj);
 /* Search Spotify using multiple queries for this family */
 var _queries=(_dir.searchQueries||[]).slice(0,3);
 if(!_queries.length)_queries=[(_spotifyGenreSeeds[_family]||_family)];
-/* When hebrew>50, add Israeli-specific search passes FIRST to boost Hebrew tracks */
+/* Add Hebrew/International search passes based on FADER_RULES */
 var _hebGenreMap={mizrahi:'מזרחי',rock:'רוק ישראלי',jazz:'ג׳אז ישראלי',electronic:'אלקטרוני ישראלי',hiphop:'ראפ ישראלי',rnb:'אר אנד בי ישראלי',pop:'פופ ישראלי',classical:'קלאסי ישראלי',soul:'סול ישראלי',folk:'זמר יוצר ישראלי',world:'מוזיקה ישראלית'};
-if(_isHebrew&&_hebGenreMap[_family]){
-/* Prepend Israeli search to ensure Hebrew tracks enter the pool first */
-_queries.unshift(_hebGenreMap[_family]);
-/* Add proportional Israeli searches based on hebrew fader */
-if(f.hebrew>70)_queries.unshift(_hebGenreMap[_family]+' להיטים')}
+var _intGenreMap={mizrahi:'turkish pop greek music arabic',rock:'indie rock alternative rock',jazz:'jazz vocal smooth jazz',electronic:'deep house ambient electronic',hiphop:'hip hop rap',rnb:'r&b neo soul',pop:'indie pop synth pop',classical:'classical piano orchestral',soul:'neo soul funk motown',folk:'folk americana singer songwriter',world:'world latin afrobeat'};
+/* Hebrew search passes (0-3 based on band) */
+for(var _hp=0;_hp<_FR.hebrew.hebSearchPasses;_hp++){
+  if(_hebGenreMap[_family])_queries.unshift(_hp===0?_hebGenreMap[_family]:_hebGenreMap[_family]+' להיטים')}
+/* International search passes (0-3 based on band) */
+for(var _ip=0;_ip<_FR.hebrew.intSearchPasses;_ip++){
+  if(_intGenreMap[_family])_queries.push(_ip===0?_intGenreMap[_family]:(_spotifyGenreSeeds[_family]||_family))}
 var _candidateTracks=[];
 /* Use NEUTRAL proxy (Client Credentials) — no personalization bias */
 for(var _qi=0;_qi<_queries.length&&_candidateTracks.length<12;_qi++){
@@ -2881,24 +2952,21 @@ var _genreOk=true;
 if(_ct._genres&&_ct._genres.length){_genreOk=artistMatchesFamily(_ct._genres,_family)}
 else{_genreOk=true} /* No genre data — allow but mark */
 if(!_genreOk){brainLog('⚠️','Filter',_ct.artist+' ['+(_ct._genres||[]).slice(0,2).join(', ')+'] ≠ '+_family+' — skipped',true);continue}
-/* Language preference based on hebrew fader */
+/* Language filter — driven by FADER_RULES */
 var _isIsraeli=hasHebrewChars(_ct.artist)||hasHebrewChars(_ct.title)||isIsraeliArtist(_ct._genres||[]);
-if(_isHebrew){
-/* hebrew>50: prefer Israeli, mark international for lower sort priority */
-if(!_isIsraeli){_ct._langPenalty=true}}
-else{
-/* hebrew<=50: prefer international, mark Israeli for lower sort priority */
-if(_isIsraeli){_ct._langPenalty=true}
-/* hebrew<20: hard-skip Israeli tracks to ensure international output */
-if(f.hebrew<20&&_isIsraeli){brainLog('⚠️','Filter',_ct.artist+' — Israeli track skipped (hebrew='+f.hebrew+'%)',true);continue}}
+var _langFilter=_FR.hebrew.filterMode;
+if(_langFilter==='block_hebrew'&&_isIsraeli){brainLog('⚠️','Filter',_ct.artist+' — Israeli track blocked ('+_FR.hebrew.label+')',true);continue}
+if(_langFilter==='block_intl'&&!_isIsraeli){brainLog('⚠️','Filter',_ct.artist+' — international track blocked ('+_FR.hebrew.label+')',true);continue}
+if(_langFilter==='deprioritize_hebrew'&&_isIsraeli){_ct._langPenalty=true}
+if(_langFilter==='deprioritize_intl'&&!_isIsraeli){_ct._langPenalty=true}
 /* Same song different version check across vibes */
 var _dupSong=wiz.samples.some(function(s){return isSameSong(s.title,_ct.title)});
 if(_dupSong){continue}
-/* Familiarity filter */
-if(f.familiarity<30&&_ct._pop>65){brainLog('⚠️','Filter',_ct.artist+' pop='+_ct._pop+' too mainstream — skipped',true);continue}
-if(f.familiarity>75&&_ct._pop<20){continue}
-/* Follower filter for niche */
-if(f.familiarity<30&&_ct._followers&&_ct._followers>300000){continue}
+/* Familiarity filter — driven by FADER_RULES */
+var _famBand=_FR.familiarity;
+if(_famBand.maxPop&&_ct._pop>_famBand.maxPop){brainLog('⚠️','Filter',_ct.artist+' pop='+_ct._pop+' > max '+_famBand.maxPop+' ('+_famBand.label+') — skipped',true);continue}
+if(_famBand.minPop&&_ct._pop<_famBand.minPop){continue}
+if(_famBand.maxFollowers&&_ct._followers&&_ct._followers>_famBand.maxFollowers){brainLog('⚠️','Filter',_ct.artist+' followers='+_ct._followers+' > max '+_famBand.maxFollowers+' ('+_famBand.label+') — skipped',true);continue}
 /* Avoid duplicate artists — max 1 per PRIMARY artist WITHIN this vibe AND across all vibes */
 var _primaryArtist=(_ct.artist||'').split(',')[0].trim().toLowerCase();
 var _primaryArtistId=_ct._artistId||null;
@@ -2911,8 +2979,10 @@ var vPrimary=(v.artist||'').split(',')[0].trim().toLowerCase();
 return vPrimary===_primaryArtist||(v._artistId&&_primaryArtistId&&v._artistId===_primaryArtistId)});
 if(_artistInThisVibe){brainLog('⚠️','Filter',_ct.artist+' — already in this vibe — skipped',true);continue}
 _verified.push(_ct)}
-/* Sort: preferred language first, then by popularity */
-_verified.sort(function(a,b){var aP=a._langPenalty?1:0;var bP=b._langPenalty?1:0;if(aP!==bP)return aP-bP;return(b._pop||0)-(a._pop||0)})
+/* Sort: preferred language first (if sortPref active), then by popularity */
+if(_FR.hebrew.sortPref!=='none'){
+_verified.sort(function(a,b){var aP=a._langPenalty?1:0;var bP=b._langPenalty?1:0;if(aP!==bP)return aP-bP;return(b._pop||0)-(a._pop||0)})}
+else{_verified.sort(function(a,b){return(b._pop||0)-(a._pop||0)})}
 /* Take top 3 verified tracks */
 var _picked=_verified.slice(0,3);
 /* Fallback: if less than 3 tracks, try broader search with different queries */
@@ -2922,10 +2992,11 @@ var _fallbackQueries=[];
 /* Try DNA reference artists */
 if(_isHebrew&&dna.hebrewRef&&dna.hebrewRef.length){dna.hebrewRef.forEach(function(a){_fallbackQueries.push(a)})}
 if(dna.refArtists&&dna.refArtists.length){dna.refArtists.forEach(function(a){_fallbackQueries.push(a)})}
-/* Try generic family searches — different seeds for Hebrew vs International */
-var _altSeedsHeb={mizrahi:['מזרחי','ים תיכוני','israeli oriental'],rock:['רוק ישראלי','israeli alternative'],jazz:['ג׳אז ישראלי','jazz israel'],electronic:['אלקטרוני ישראלי','israeli electronic'],hiphop:['ראפ ישראלי','israeli rap'],pop:['פופ ישראלי','להיטים ישראליים'],folk:['זמר יוצר','שירי ארץ ישראל'],soul:['סול ישראלי','soul israel'],world:['מוזיקה ישראלית'],rnb:['r&b ישראלי'],classical:['קלאסי ישראלי']};
-var _altSeedsInt={mizrahi:['turkish pop','greek music','arabic pop','mediterranean'],rock:['indie rock','alternative rock','classic rock'],jazz:['jazz vocal','smooth jazz','bossa nova'],electronic:['deep house','minimal techno','ambient electronic','chillwave'],hiphop:['hip hop','rap','trap beats'],pop:['indie pop','dream pop','synth pop','dance pop'],folk:['folk acoustic','singer songwriter','americana'],soul:['neo soul','funk','motown','disco'],world:['world music','latin','afrobeat','reggae'],rnb:['r&b','neo soul','contemporary rnb'],classical:['classical piano','orchestral','chamber music']};
-var _altSeeds=_isHebrew?_altSeedsHeb:_altSeedsInt;
+/* Fallback alt seeds — driven by FADER_RULES hebrew band */
+var _altSeedsHeb={mizrahi:['מזרחי','ים תיכוני','israeli oriental'],rock:['רוק ישראלי','israeli alternative'],jazz:['ג׳אז ישראלי','jazz israel'],electronic:['אלקטרוני ישראלי','israeli electronic'],hiphop:['ראפ ישראלי','israeli rap'],pop:['פופ ישראלי','להיטים ישראליים'],folk:['זמר יוצר','שירי ארץ ישראל'],soul:['סול ישראלי'],world:['מוזיקה ישראלית'],rnb:['r&b ישראלי'],classical:['קלאסי ישראלי']};
+var _altSeedsInt={mizrahi:['turkish pop','greek music','arabic pop','mediterranean'],rock:['indie rock','alternative rock','classic rock'],jazz:['jazz vocal','smooth jazz','bossa nova'],electronic:['deep house','minimal techno','ambient electronic'],hiphop:['hip hop','rap','trap beats'],pop:['indie pop','dream pop','synth pop'],folk:['folk acoustic','singer songwriter','americana'],soul:['neo soul','funk','motown'],world:['world music','latin','afrobeat'],rnb:['r&b','neo soul','contemporary rnb'],classical:['classical piano','orchestral','chamber music']};
+var _altSeedsMix={mizrahi:['mizrahi','מזרחי','mediterranean music'],rock:['rock','רוק ישראלי','indie rock'],jazz:['jazz','ג׳אז','bossa nova'],electronic:['electronic','אלקטרוני','deep house'],hiphop:['hip hop','ראפ ישראלי','rap'],pop:['pop','פופ ישראלי','indie pop'],folk:['folk','זמר יוצר','singer songwriter'],soul:['soul','סול','neo soul'],world:['world music','מוזיקה אתנית'],rnb:['r&b','neo soul'],classical:['classical','קלאסי']};
+var _altSeeds=_FR.hebrew.searchMode==='hebrew_only'||_FR.hebrew.searchMode==='hebrew_first'?_altSeedsHeb:_FR.hebrew.searchMode==='international_only'||_FR.hebrew.searchMode==='international_first'?_altSeedsInt:_altSeedsMix;
 if(_altSeeds[_family])_fallbackQueries=_fallbackQueries.concat(_altSeeds[_family]);
 var _usedPrimaryArtists={};_picked.forEach(function(p){_usedPrimaryArtists[(p.artist||'').split(',')[0].trim().toLowerCase()]=true;if(p._artistId)_usedPrimaryArtists[p._artistId]=true});
 wiz.samples.forEach(function(s){_usedPrimaryArtists[(s.artist||'').split(',')[0].trim().toLowerCase()]=true;if(s._artistId)_usedPrimaryArtists[s._artistId]=true});
@@ -2947,10 +3018,11 @@ var _fbArtData=await getArtistsAnyway([_fbArtId]);
 if(_fbArtData&&_fbArtData.artists&&_fbArtData.artists[0]){
 var _fbGenres=_fbArtData.artists[0].genres||[];
 if(!artistMatchesFamily(_fbGenres,_family))continue;
-/* Language filter in fallback — respect hebrew fader */
+/* Language filter in fallback — driven by FADER_RULES */
 var _fbIsIsraeli=hasHebrewChars(_fbArtist)||hasHebrewChars(_fbTrack.name)||isIsraeliArtist(_fbGenres);
-if(_isHebrew&&!_fbIsIsraeli)continue;
-if(!_isHebrew&&f.hebrew<20&&_fbIsIsraeli)continue;
+/* In fallback: only block modes actually block. Deprioritize modes allow through. */
+if(_FR.hebrew.filterMode==='block_hebrew'&&_fbIsIsraeli)continue;
+if(_FR.hebrew.filterMode==='block_intl'&&!_fbIsIsraeli)continue;
 _picked.push({artist:_fbArtist,title:_fbTrack.name,spotifyId:_fbTrack.id,_artistId:_fbArtId,_genres:_fbGenres,_pop:_fbTrack.popularity,vibeIdx:_di});
 _usedPrimaryArtists[_fbPrimaryArtist]=true;if(_fbArtId)_usedPrimaryArtists[_fbArtId]=true;
 brainLog('✅','Fallback','Added: '+_fbArtist+' — '+_fbTrack.name,true)}}}}}catch(e){}}
@@ -2958,6 +3030,44 @@ brainLog('✅','Fallback','Added: '+_fbArtist+' — '+_fbTrack.name,true)}}}}}ca
 brainLog('✅','Step 4','Family '+_family+': '+_picked.length+' verified tracks',true);
 _picked.forEach(function(p){wiz.samples.push(p);_vibeObj.tracks.push({artist:p.artist,title:p.title})});
 }
+/* ═══ IRON RULE ENFORCEMENT: EXACTLY 3 vibes must have tracks ═══ */
+var _vibesWithTracks=wiz.vibes.filter(function(v,i){return wiz.samples.some(function(s){return s.vibeIdx===i})}).length;
+if(_vibesWithTracks<3){
+brainLog('🚨','ENFORCEMENT','Only '+_vibesWithTracks+'/3 vibes have tracks — EMERGENCY RESCUE...',true);
+for(var _evi=0;_evi<wiz.vibes.length;_evi++){
+var _evTracks=wiz.samples.filter(function(s){return s.vibeIdx===_evi});
+if(_evTracks.length>0)continue; /* This vibe is OK */
+/* Emergency: fill this empty vibe with a broad genre search, NO strict filters */
+var _evFamily=wiz.vibes[_evi].family||'pop';
+var _evQueries=[_spotifyGenreSeeds[_evFamily]||_evFamily,_evFamily+' music',_evFamily+' hits'];
+/* Add language-appropriate queries */
+if(_FR.isHebrew&&_hebGenreMap[_evFamily])_evQueries.unshift(_hebGenreMap[_evFamily]);
+if(_FR.isInternational&&_intGenreMap[_evFamily])_evQueries.unshift(_intGenreMap[_evFamily]);
+var _evUsed={};wiz.samples.forEach(function(s){_evUsed[(s.artist||'').split(',')[0].trim().toLowerCase()]=true});
+var _evPicked=[];
+for(var _eqi=0;_eqi<_evQueries.length&&_evPicked.length<3;_eqi++){
+try{
+var _evData=await neutralSpotifySearch(_evQueries[_eqi],'track',20,'IL');
+if(_evData&&_evData.tracks&&_evData.tracks.items){
+for(var _eti=0;_eti<_evData.tracks.items.length&&_evPicked.length<3;_eti++){
+var _et=_evData.tracks.items[_eti];
+var _etPrimary=_et.artists[0]?_et.artists[0].name.toLowerCase():'';
+if(_evUsed[_etPrimary])continue;
+if(wiz.samples.some(function(s){return s.spotifyId===_et.id}))continue;
+/* Language check — block mode only, skip deprioritize for emergency */
+var _etIsraeli=hasHebrewChars(_et.artists[0]?_et.artists[0].name:'')||hasHebrewChars(_et.name);
+if(_FR.hebrew.filterMode==='block_hebrew'&&_etIsraeli)continue;
+if(_FR.hebrew.filterMode==='block_intl'&&!_etIsraeli)continue;
+_evPicked.push({artist:_et.artists.map(function(a){return a.name}).join(', '),title:_et.name,spotifyId:_et.id,_artistId:_et.artists[0]?_et.artists[0].id:null,_pop:_et.popularity,vibeIdx:_evi});
+_evUsed[_etPrimary]=true;
+brainLog('🆘','Rescue','Vibe '+_evi+' rescued: '+_et.artists[0].name+' — '+_et.name,true);
+}}}catch(e){}}
+_evPicked.forEach(function(p){wiz.samples.push(p);wiz.vibes[_evi].tracks.push({artist:p.artist,title:p.title})});
+if(!_evPicked.length)brainLog('❌','Rescue','Failed to rescue vibe '+_evi+' — no tracks found',true);
+}}
+var _finalVibeCount=wiz.vibes.filter(function(v,i){return wiz.samples.some(function(s){return s.vibeIdx===i})}).length;
+brainLog(_finalVibeCount===3?'✅':'⚠️','ENFORCEMENT',_finalVibeCount+'/3 vibes have tracks'+((_finalVibeCount<3)?' — some empty':''),true);
+
 /* ═══ STEP 5: Playlist Context Verification — ADVISORY ONLY (logs insights, never blocks) ═══ */
 brainLog('📋','Step 5','Playlist context verification (advisory)...',true);
 var _plWarnings=0;
@@ -3045,15 +3155,16 @@ function checkAllVotedThenFineTune(){startFineTuneFromVibe()}
 /* #9 — CONSTRAINT SOLVER: Pre-compute all numeric targets */
 function solveConstraints(wiz,dna){
 const f=wiz.faders||{familiarity:50,hebrew:50,vocal:50,energy:50};
+const _FR=resolveFaders(f);
 const total=40;
-const hebrewCount=Math.round(total*f.hebrew/100);
+const hebrewCount=Math.round(total*_FR.hebTrackRatio);
 const useHours=wiz.useHours!==false;
 const slotsTarget=useHours?{morning:10,afternoon:10,evening:10,night:10}:{general:40};
 const e=useHours?(wiz.energy||{morning:3,afternoon:3,evening:3,night:3}):{};
 const energyTargets=useHours?{morning:e.morning/5,afternoon:e.afternoon/5,evening:e.evening/5,night:e.night/5}:{general:f.energy/100};
 const bpmRange=dna.bpmRange||[80,130];
 const energyBase=dna.energy==='low'?0.3:dna.energy==='low-mid'?0.4:dna.energy==='mid'?0.5:dna.energy==='mid-high'?0.65:dna.energy==='high'?0.8:0.5;
-const famLevel=f.familiarity<20?'ultra_niche':f.familiarity<30?'niche':f.familiarity>70?'commercial':'mixed';
+const famLevel=_FR.familiarity.label;
 const maxPerArtist=2;
 const minGenres=4;
 const surpriseCount=Math.max(2,Math.round(total*0.12));
@@ -3076,14 +3187,16 @@ return palette}
 /* #3 — TARGET AUDIO PROFILE: Numeric targets from DNA+sliders */
 function buildTargetAudioProfile(dna,faders,energy){
 const f=faders||{familiarity:50,hebrew:50,vocal:50,energy:50};
+const _FR=resolveFaders(f);
 const e=energy||{morning:3,afternoon:3,evening:3,night:3};
 const baseEnergy=dna.energy==='low'?0.3:dna.energy==='low-mid'?0.4:dna.energy==='mid'?0.5:dna.energy==='mid-high'?0.65:dna.energy==='high'?0.8:0.5;
 const energyMod=(f.energy-50)/100;
 const targetEnergy=Math.max(0.1,Math.min(0.95,baseEnergy+energyMod));
 const targetValence=targetEnergy*0.7+0.15;
 const targetDanceability=dna.energy==='high'?0.7:dna.energy==='low'?0.3:0.5;
-const targetAcousticness=f.vocal<30?0.6:f.vocal>70?0.3:0.4;
-const targetInstrumentalness=f.vocal<30?0.6:f.vocal>70?0.05:0.2;
+/* Vocal/Acoustic targets from FADER_RULES */
+const targetAcousticness=_FR.vocal.acousticTarget;
+const targetInstrumentalness=_FR.vocal.instTarget;
 const bpm=dna.bpmRange||[80,130];
 const profile={energy:{min:Math.max(0,targetEnergy-0.2),max:Math.min(1,targetEnergy+0.2),target:targetEnergy},valence:{min:Math.max(0,targetValence-0.25),max:Math.min(1,targetValence+0.25),target:targetValence},danceability:{min:Math.max(0,targetDanceability-0.2),max:Math.min(1,targetDanceability+0.2),target:targetDanceability},acousticness:{target:targetAcousticness},instrumentalness:{target:targetInstrumentalness},tempo:{min:bpm[0],max:bpm[1],target:Math.round((bpm[0]+bpm[1])/2)},slotTargets:{morning:{energy:e.morning/5,tempo:bpm[0]+Math.round((bpm[1]-bpm[0])*e.morning/10)},afternoon:{energy:e.afternoon/5,tempo:bpm[0]+Math.round((bpm[1]-bpm[0])*e.afternoon/10)},evening:{energy:e.evening/5,tempo:bpm[0]+Math.round((bpm[1]-bpm[0])*e.evening/10)},night:{energy:e.night/5,tempo:bpm[0]+Math.round((bpm[1]-bpm[0])*e.night/10)}}};
 brainLog('🎯','Audio Target','energy='+targetEnergy.toFixed(2)+' valence='+targetValence.toFixed(2)+' bpm='+bpm[0]+'-'+bpm[1],true);
@@ -3340,14 +3453,11 @@ try{pool=await prefetchFromSpotify(seeds,dna,targetAudio,constraints)}catch(e){b
 st.textContent='Spotify Recommendations...';
 try{var _seedTrackIds=seeds.filter(function(s){return s.spotifyId}).map(function(s){return s.spotifyId}).slice(0,5);
 if(_seedTrackIds.length){var _recParams={seed_tracks:_seedTrackIds.join(','),limit:20,market:'IL'};
-if(f.vocal<20){_recParams.min_instrumentalness=0.6;_recParams.target_instrumentalness=1.0}
-else if(f.vocal<35){_recParams.min_instrumentalness=0.4;_recParams.target_instrumentalness=0.8}
-else if(f.vocal>80){_recParams.max_instrumentalness=0.3;_recParams.target_instrumentalness=0.0}
-else if(f.vocal>65){_recParams.max_instrumentalness=0.5;_recParams.target_instrumentalness=0.1}
-if(f.energy<30){_recParams.max_energy=0.45;_recParams.target_energy=f.energy/100}
-else if(f.energy>70){_recParams.min_energy=0.5;_recParams.target_energy=f.energy/100}
-if(f.familiarity<30){_recParams.max_popularity=40}
-else if(f.familiarity>70){_recParams.min_popularity=45}
+/* Apply FADER_RULES rec params */
+var _pFR=resolveFaders(f);
+Object.assign(_recParams,_pFR.vocal.recParams||{});
+Object.assign(_recParams,_pFR.energy.recParams||{});
+Object.assign(_recParams,_pFR.familiarity.recParams||{});
 var _recData=await getSpotifyRecommendations(_recParams);
 if(_recData&&_recData.tracks&&_recData.tracks.length){var _existingInPool={};pool.forEach(function(p){_existingInPool[p.id||'']=true});
 var _recsAdded=0;_recData.tracks.forEach(function(rt){if(!_existingInPool[rt.id]){pool.push({artist:rt.artists.map(function(a){return a.name}).join(', '),title:rt.name,id:rt.id,url:rt.external_urls?rt.external_urls.spotify:'',cover:rt.album&&rt.album.images&&rt.album.images.length?rt.album.images[rt.album.images.length-1].url:'',preview:rt.preview_url||'',duration:rt.duration_ms||0,_fromRecs:true});_existingInPool[rt.id]=true;_recsAdded++}});

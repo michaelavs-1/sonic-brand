@@ -3125,10 +3125,9 @@ html+='<div class="sample-track-card" style="background:var(--card);border:1px s
 /* Spotify embed */
 if(_t.spotifyId){html+='<iframe src="https://open.spotify.com/embed/track/'+_t.spotifyId+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>'}
 else{html+='<div style="padding:10px;font-size:14px;color:var(--text)">🎵 '+esc(_t.artist)+' — '+esc(_t.title)+'</div>'}
-/* Reason + vote buttons */
+/* Vote buttons */
 html+='<div style="display:flex;align-items:center;gap:10px;direction:rtl">';
-if(_t._reason){html+='<div style="flex:1;font-size:12px;color:var(--muted);line-height:1.5">'+esc(_t._reason)+'</div>'}
-else{html+='<div style="flex:1"></div>'}
+html+='<div style="flex:1"></div>';
 html+='<div style="display:flex;gap:6px">';
 html+='<button id="vote'+_ti+'up" onclick="voteSample('+_ti+',true)" style="width:36px;height:36px;border-radius:50%;border:2px solid var(--border);background:var(--card-2);font-size:16px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center" title="אהבתי">👍</button>';
 html+='<button id="vote'+_ti+'dn" onclick="voteSample('+_ti+',false)" style="width:36px;height:36px;border-radius:50%;border:2px solid var(--border);background:var(--card-2);font-size:16px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center" title="לא אהבתי">👎</button>';

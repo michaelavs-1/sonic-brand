@@ -518,8 +518,8 @@
     </div>
     <div id="wizStep5" class="wiz-panel">
       <div id="spotifySampleBanner" style="background:linear-gradient(135deg,rgba(29,185,84,.15),rgba(29,185,84,.05));border:1px solid rgba(29,185,84,.3);border-radius:14px;padding:14px 18px;margin-bottom:16px;display:none;align-items:center;gap:12px;cursor:pointer" onclick="spotifyLogin()"><div style="font-size:28px">🎧</div><div style="flex:1"><div style="font-weight:700;font-size:14px;color:var(--accent)">חברו Spotify לחוויה מלאה</div><div style="font-size:12px;color:var(--muted)">נגן מובנה, אימות שירים, ושמירה ישירה לפלייליסט</div></div><div style="background:var(--accent);color:#000;padding:8px 16px;border-radius:8px;font-weight:700;font-size:13px">התחבר</div></div>
-      <h2 id="sampleTitle" style="display:none">שני כיוונים מוסיקליים 🎧</h2>
-      <p class="wiz-sub" id="sampleSub" style="display:none">הכנו שני כיוונים שמתאימים לעסק שלכם. הצביעו 👍/👎 על שירים שאתם אוהבים</p>
+      <h2 id="sampleTitle" style="display:none">הנה הטעימה שלכם 🎧</h2>
+      <p class="wiz-sub" id="sampleSub" style="display:none">בחרנו 5 שירים שמייצגים את הסאונד. הצביעו 👍/👎 כדי לדייק</p>
       <div id="sampleChoicesSummary" style="display:none;max-width:600px;margin:0 auto 16px;padding:14px 18px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:14px;direction:rtl;text-align:right">
         <div id="sampleMoodChips" style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:10px"></div>
         <div id="sampleFaderSummary" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;font-size:11px;color:var(--muted)"></div>
@@ -3023,27 +3023,20 @@ if(_hasMoods){
 }else{
   _moodContext='\n\n🎵 NO MOODS SELECTED — Context is the framework.\nThe business type defines the musical world. Faders fine-tune within that world.\nUse fader values strictly — they are the primary tuning mechanism.';
 }
-var _gptPrompt='You are SonicBrand AI v9. Propose TWO distinct musical directions for this business. Each direction is a valid interpretation of the context, but they should differ in energy, genre focus, or mood. For each direction, suggest EXACTLY 5 tracks (we need 3, asking for extras in case some fail Spotify verification).\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n'+(_hasMoods?'🏗️ LAYERED TUNING: MOODS (framework) → FADERS (precision)\n1️⃣ MOODS define the BOUNDARIES — every track must fit within the selected mood world.\n2️⃣ FADERS narrow down WITHIN the mood world — language, familiarity, vocal, energy.\n3️⃣ CONTEXT provides additional frame (business type, audience).\n\nIMPORTANT: Moods OVERRIDE business DNA genre suggestions.':'🏗️ TUNING: CONTEXT → FADERS\n1️⃣ CONTEXT — Business type, location, audience define the musical world.\n2️⃣ FADERS — Sliders fine-tune language, energy, familiarity within context.\nNo moods were selected — do NOT invent mood preferences.')+_moodContext+_briefContext+'\n\n🎚️ FADER SETTINGS:\n- שפה: '+_FR.hebrew.hebLabel+' ('+f.hebrew+'%) — '+_FR.hebrew.searchMode+'\n- מוכרות: '+_FR.familiarity.hebLabel+' ('+f.familiarity+'/100) — maxPop: '+(_FR.familiarity.maxPop||'none')+', minPop: '+(_FR.familiarity.minPop||'none')+'\n- ווקאל: '+_FR.vocal.hebLabel+' ('+f.vocal+'/100) — instrumentalness target: '+_FR.vocal.instTarget+'\n- אנרגיה: '+_FR.energy.hebLabel+' ('+f.energy+'/100)\n- 📅 תקופה: '+(_FR.era?_FR.era.hebLabel:'מיקס')+' ('+((f.era!=null)?f.era:50)+'/100) — '+(_FR.era?_FR.era.gptDirective:'Mix of eras, no restriction.')+'\n\nRULES:\n1. TWO directions — both must respect faders and moods, but differ in character/energy/genre approach\n2. Each direction has a short Hebrew name (2-4 words), an emoji, and a 1-sentence Hebrew explanation of WHY this direction fits the business\n3. EXACTLY 5 tracks per direction, each by a DIFFERENT artist (no artist appears twice across both directions)\n4. '+(_hasBrief?'CLIENT BRIEF IS HIGHEST PRIORITY — both directions must align with the brief.':_hasMoods?'MOOD IS PRIMARY — both directions must embody the selected mood(s).':'Both directions must fit the business context.')+'\n5. Hebrew '+f.hebrew+'% means roughly that ratio of Hebrew vs international tracks\n6. 📅 ERA IS STRICT: '+(_FR.era?_FR.era.gptDirective:'Mix freely.')+(_FR.era&&_FR.era.minYear?' Min year: '+_FR.era.minYear+'.':'')+(_FR.era&&_FR.era.maxYear?' Max year: '+_FR.era.maxYear+'.':'')+'\n7. All tracks must be REAL songs that exist on Spotify\n'+((wiz._previousSamples&&wiz._previousSamples.length)?'\n🚫 ALREADY SHOWN (DO NOT REPEAT):\n'+wiz._previousSamples.join('\n')+'\nPick COMPLETELY DIFFERENT tracks.\n':'')+'\nReturn JSON:\n{"directions":[\n{"name":"שם קצר בעברית","emoji":"🎵","description":"משפט אחד בעברית — למה הכיוון הזה מתאים לעסק","tracks":[{"artist":"exact artist","title":"exact title"},... EXACTLY 5]},\n{"name":"שם קצר בעברית","emoji":"🎶","description":"משפט אחד בעברית — למה הכיוון הזה מתאים לעסק","tracks":[{"artist":"exact artist","title":"exact title"},... EXACTLY 5]}\n]}';
-var _gptRaw=await callOpenAI([{role:'system',content:'You are SonicBrand AI v9 — an expert music curator for businesses. PRIORITY ORDER: 1) Client music brief (highest), 2) Moods (framework), 3) Faders (precision), 4) Business context. Propose TWO distinct musical directions, each with 5 tracks. JSON only.'},{role:'user',content:_gptPrompt}],{max_tokens:1500,stage:'2️⃣ סאמפלים — שלב 1',model:'gpt-4o-mini'});
+var _gptPrompt='You are SonicBrand AI v9. Suggest EXACTLY 8 tracks for this business.\n\nBusiness: "'+wiz.desc+'"'+dnaBlock+g+rf+'\n\n'+(_hasMoods?'🏗️ LAYERED TUNING: MOODS (framework) → FADERS (precision)\n1️⃣ MOODS define the BOUNDARIES — every track must fit within the selected mood world.\n2️⃣ FADERS narrow down WITHIN the mood world — language, familiarity, vocal, energy.\n3️⃣ CONTEXT provides additional frame (business type, audience).\n\nIMPORTANT: Moods OVERRIDE business DNA genre suggestions.\nExample: Wine bar (DNA=jazz) + mood=חאפלה → FESTIVE Mediterranean, NOT jazz.\nExample: Gym (DNA=high energy) + mood=אינטימי → INTIMATE acoustic, NOT workout.\nBUT: Wine bar + mood=חאפלה + Hebrew=0% → festive Mediterranean in ENGLISH/TURKISH/GREEK only. Zero Hebrew. The fader is absolute within the mood world.':'🏗️ TUNING: CONTEXT → FADERS\n1️⃣ CONTEXT — Business type, location, audience define the musical world.\n2️⃣ FADERS — Sliders fine-tune language, energy, familiarity within context.\nNo moods were selected — do NOT invent mood preferences.')+_moodContext+_briefContext+'\n\n🎚️ FADER SETTINGS:\n- שפה: '+_FR.hebrew.hebLabel+' ('+f.hebrew+'%) — '+_FR.hebrew.searchMode+'\n- מוכרות: '+_FR.familiarity.hebLabel+' ('+f.familiarity+'/100) — maxPop: '+(_FR.familiarity.maxPop||'none')+', minPop: '+(_FR.familiarity.minPop||'none')+'\n- ווקאל: '+_FR.vocal.hebLabel+' ('+f.vocal+'/100) — instrumentalness target: '+_FR.vocal.instTarget+'\n- אנרגיה: '+_FR.energy.hebLabel+' ('+f.energy+'/100)\n- 📅 תקופה: '+(_FR.era?_FR.era.hebLabel:'מיקס')+' ('+((f.era!=null)?f.era:50)+'/100) — '+(_FR.era?_FR.era.gptDirective:'Mix of eras, no restriction.')+'\n\nRULES:\n1. Suggest 8 REAL tracks that exist on Spotify\n2. Each track by a DIFFERENT artist (no repeats)\n3. '+(_hasBrief?'CLIENT BRIEF IS HIGHEST PRIORITY — every track must match the client\'s written description. Moods and context serve as additional guidance.':_hasMoods?'MOOD IS PRIMARY — every track must embody the selected mood(s). Context refines the choice.':'Match tracks to the business context, audience, and fader settings.')+'\n4. Hebrew '+f.hebrew+'% means roughly that ratio of Hebrew vs international tracks\n5. When hebrew<50: international tracks must match the CONTEXT WORLD (not generic pop)\n6. Tracks should be diverse — different sub-genres, tempos, feelings within the mood\n7. Include both well-known and discovery tracks based on familiarity setting\n8. 📅 ERA IS STRICT: '+(_FR.era?_FR.era.gptDirective:'Mix freely.')+(_FR.era&&_FR.era.minYear?' Minimum release year: '+_FR.era.minYear+'.':'')+(_FR.era&&_FR.era.maxYear?' Maximum release year: '+_FR.era.maxYear+'.':'')+' Tracks outside this era range = REJECTED.\n'+((wiz._previousSamples&&wiz._previousSamples.length)?'\n🚫 ALREADY SHOWN (DO NOT REPEAT — the client asked for NEW tracks):\n'+wiz._previousSamples.join('\n')+'\nPick COMPLETELY DIFFERENT tracks. Different artists, different songs. Zero overlap.\n':'')+'\nReturn JSON:\n{"tracks":[\n{"artist":"exact artist name","title":"exact track name"},\n... EXACTLY 8 tracks\n]}';
+var _gptRaw=await callOpenAI([{role:'system',content:'You are SonicBrand AI v9 — an expert music curator for businesses. PRIORITY ORDER: 1) Client music brief (if provided) — highest weight, 2) Moods — framework/boundaries, 3) Faders — precision within the world, 4) Business context. A track violating the brief OR moods OR faders = rejected. Return EXACTLY 8 track suggestions. JSON only.'},{role:'user',content:_gptPrompt}],{max_tokens:1200,stage:'2️⃣ סאמפלים — שלב 1',model:'gpt-4o-mini'});
 var _gptParsed=safeJSON(_gptRaw);
-var _directions=_gptParsed.directions||[];
-if(!_directions.length||_directions.length<2)throw new Error('GPT did not return 2 directions');
-wiz.styleDirections=_directions.map(function(d){return{name:d.name,emoji:d.emoji||'🎵',description:d.description}});
-brainLog('🎯','כיוון A',_directions[0].emoji+' '+_directions[0].name+' — '+_directions[0].description,true);
-brainLog('🎯','כיוון B',_directions[1].emoji+' '+_directions[1].name+' — '+_directions[1].description,true);
-var _suggestions=[];
-_directions.forEach(function(d,di){(d.tracks||[]).forEach(function(t){_suggestions.push({artist:t.artist,title:t.title,reason:'',_dirIdx:di})})});
+var _suggestions=_gptParsed.tracks||[];
+if(!_suggestions.length)throw new Error('GPT returned no tracks');
+brainLog('✅','Step 1',_suggestions.length+' suggestions: '+_suggestions.map(function(t){return t.artist}).join(', '),true);
 /* ═══ STEP 2: Search & verify each track on Spotify ═══ */
 brainLog('🔍','Step 2','Verifying tracks on Spotify...',true);
 wiz.vibes=[];wiz.samples=[];wiz.votes={};wiz.selectedVibe=null;
 var _usedArtists={};
-var _dirCounts=[0,0]; /* Track how many verified per direction */
 var _langFilter=_FR.hebrew.filterMode;
 var _famBand=_FR.familiarity;
-for(var _si=0;_si<_suggestions.length;_si++){
+for(var _si=0;_si<_suggestions.length&&wiz.samples.length<5;_si++){
 var _sug=_suggestions[_si];
-var _di=_sug._dirIdx;
-if(_dirCounts[_di]>=3)continue; /* Already have 3 for this direction */
 try{
 var _srData=await neutralSpotifySearch(_sug.artist+' '+_sug.title,'track',5,'IL');
 if(!_srData||!_srData.tracks||!_srData.tracks.items||!_srData.tracks.items.length){
@@ -3057,61 +3050,72 @@ for(var _fi=0;_fi<_srData.tracks.items.length;_fi++){
   if(wiz.samples.some(function(s){return isSameSong(s.title,_tr.name)}))continue;
   _found={track:_tr,primaryArtist:_primaryArtist,primaryArtistId:_primaryArtistId,reason:_sug.reason};break;
 }
-if(!_found){brainLog('⚠️','Dedup',_sug.artist+' — skipped',true);continue}
+if(!_found){brainLog('⚠️','Dedup',_sug.artist+' — skipped (duplicate artist)',true);continue}
 var _tr=_found.track;
 var _artistGenres=[];
 if(_found.primaryArtistId){
   try{var _artData=await getArtistsAnyway([_found.primaryArtistId]);
   if(_artData&&_artData.artists&&_artData.artists[0]){_artistGenres=_artData.artists[0].genres||[]}}catch(e){}}
 if(_selectedMoods.length&&_artistGenres.length){
-  if(!artistMatchesSelectedMoods(_artistGenres,_selectedMoods)){brainLog('⚠️','Mood',_found.primaryArtist+' — not matching moods',true);continue}}
+  if(!artistMatchesSelectedMoods(_artistGenres,_selectedMoods)){brainLog('⚠️','Mood',_found.primaryArtist+' ['+_artistGenres.slice(0,3).join(', ')+'] — not matching moods — skipped',true);continue}}
 var _isIsraeli=hasHebrewChars(_tr.artists.map(function(a){return a.name}).join(', '))||hasHebrewChars(_tr.name)||isIsraeliArtist(_artistGenres);
-if(_langFilter==='block_hebrew'&&_isIsraeli)continue;
-if(_langFilter==='block_intl'&&!_isIsraeli)continue;
-if(_famBand.maxPop&&_tr.popularity>_famBand.maxPop)continue;
+if(_langFilter==='block_hebrew'&&_isIsraeli){brainLog('⚠️','Lang',_found.primaryArtist+' — Hebrew blocked',true);continue}
+if(_langFilter==='block_intl'&&!_isIsraeli){brainLog('⚠️','Lang',_found.primaryArtist+' — International blocked',true);continue}
+if(_famBand.maxPop&&_tr.popularity>_famBand.maxPop){brainLog('⚠️','Fam',_found.primaryArtist+' pop='+_tr.popularity+' > max '+_famBand.maxPop,true);continue}
 if(_famBand.minPop&&_tr.popularity<_famBand.minPop)continue;
 if(_FR.era&&(_FR.era.minYear||_FR.era.maxYear)){
   var _releaseDate=_tr.album&&_tr.album.release_date?_tr.album.release_date:'';
   var _releaseYear=parseInt(_releaseDate.substring(0,4),10);
-  if(_releaseYear&&_FR.era.minYear&&_releaseYear<_FR.era.minYear)continue;
-  if(_releaseYear&&_FR.era.maxYear&&_releaseYear>_FR.era.maxYear)continue;
+  if(_releaseYear&&_FR.era.minYear&&_releaseYear<_FR.era.minYear){brainLog('⚠️','Era',_found.primaryArtist+' ('+_releaseYear+') too old, min='+_FR.era.minYear,true);continue}
+  if(_releaseYear&&_FR.era.maxYear&&_releaseYear>_FR.era.maxYear){brainLog('⚠️','Era',_found.primaryArtist+' ('+_releaseYear+') too new, max='+_FR.era.maxYear,true);continue}
 }
-wiz.samples.push({artist:_tr.artists.map(function(a){return a.name}).join(', '),title:_tr.name,spotifyId:_tr.id,_artistId:_found.primaryArtistId,_genres:_artistGenres,_pop:_tr.popularity,_reason:'',_dirIdx:_di,vibeIdx:0});
+wiz.samples.push({artist:_tr.artists.map(function(a){return a.name}).join(', '),title:_tr.name,spotifyId:_tr.id,_artistId:_found.primaryArtistId,_genres:_artistGenres,_pop:_tr.popularity,_reason:_found.reason,vibeIdx:0});
 _usedArtists[_found.primaryArtist]=true;
 if(_found.primaryArtistId)_usedArtists[_found.primaryArtistId]=true;
-_dirCounts[_di]++;
-brainLog('✅','Dir'+(_di+1),_found.primaryArtist+' — '+_tr.name+' (pop:'+_tr.popularity+')',true);
+brainLog('✅','Track',_found.primaryArtist+' — '+_tr.name+' (pop:'+_tr.popularity+')',true);
 }catch(e){brainLog('⚠️','Error',e.message)}}
-brainLog('✅','Done','Dir A: '+_dirCounts[0]+', Dir B: '+_dirCounts[1]+' tracks',true);
-/* ═══ RENDER 2 DIRECTION CARDS ═══ */
+/* ═══ STEP 3: If less than 5, do direct Spotify search rescue ═══ */
+if(wiz.samples.length<5){
+brainLog('🔄','Rescue','Only '+wiz.samples.length+' tracks, searching more...',true);
+var _rescueQueries=[];
+if(_selectedMoods.length){_selectedMoods.forEach(function(mid){var b=MOOD_BUBBLES.find(function(bb){return bb.id===mid});if(b&&b.searchTerms)_rescueQueries=_rescueQueries.concat(b.searchTerms)})}
+if(_FR.isHebrew&&dna.hebrewRef)_rescueQueries=_rescueQueries.concat(dna.hebrewRef);
+if(dna.refArtists)_rescueQueries=_rescueQueries.concat(dna.refArtists);
+var _hebRescue=['פופ ישראלי','רוק ישראלי','מזרחי','זמר יוצר','להיטים ישראליים'];
+var _intRescue=['indie pop','chill vibes','feel good','acoustic','lo-fi beats'];
+if(_FR.hebrew.searchMode==='hebrew_only'||_FR.hebrew.searchMode==='hebrew_first')_rescueQueries=_rescueQueries.concat(_hebRescue);
+else if(_FR.hebrew.searchMode==='international_only'||_FR.hebrew.searchMode==='international_first')_rescueQueries=_rescueQueries.concat(_intRescue);
+else _rescueQueries=_rescueQueries.concat(_hebRescue.slice(0,2)).concat(_intRescue.slice(0,2));
+for(var _ri=0;_ri<_rescueQueries.length&&wiz.samples.length<5;_ri++){
+try{var _rData=await neutralSpotifySearch(_rescueQueries[_ri],'track',10,'IL');
+if(_rData&&_rData.tracks&&_rData.tracks.items){
+for(var _rj=0;_rj<_rData.tracks.items.length&&wiz.samples.length<5;_rj++){
+var _rt=_rData.tracks.items[_rj];
+var _rPrimary=_rt.artists[0]?_rt.artists[0].name.toLowerCase():'';
+var _rPrimaryId=_rt.artists[0]?_rt.artists[0].id:null;
+if(_usedArtists[_rPrimary]||_usedArtists[_rPrimaryId])continue;
+if(wiz.samples.some(function(s){return isSameSong(s.title,_rt.name)}))continue;
+var _rIsIsraeli=hasHebrewChars(_rt.artists.map(function(a){return a.name}).join(', '))||hasHebrewChars(_rt.name);
+if(_langFilter==='block_hebrew'&&_rIsIsraeli)continue;
+if(_langFilter==='block_intl'&&!_rIsIsraeli)continue;
+if(_famBand.maxPop&&_rt.popularity>_famBand.maxPop)continue;
+wiz.samples.push({artist:_rt.artists.map(function(a){return a.name}).join(', '),title:_rt.name,spotifyId:_rt.id,_artistId:_rPrimaryId,_pop:_rt.popularity,_reason:'',vibeIdx:0});
+_usedArtists[_rPrimary]=true;if(_rPrimaryId)_usedArtists[_rPrimaryId]=true;
+brainLog('✅','Rescue',_rPrimary+' — '+_rt.name,true)}}}catch(e){}}}
+brainLog('✅','Done','Found '+wiz.samples.length+' sample tracks',true);
+/* ═══ RENDER 5 SAMPLE TRACKS ═══ */
 var html='';
-var _dirs=wiz.styleDirections||[];
-if(_dirs.length>=2){
-  for(var _dIdx=0;_dIdx<2;_dIdx++){
-    var _dir=_dirs[_dIdx];
-    var _dirTracks=wiz.samples.filter(function(s){return s._dirIdx===_dIdx});
-    var _borderColor=_dIdx===0?'rgba(29,185,84,.4)':'rgba(168,85,247,.4)';
-    var _bgColor=_dIdx===0?'rgba(29,185,84,.06)':'rgba(168,85,247,.06)';
-    var _accentColor=_dIdx===0?'#1db954':'#a855f7';
-    html+='<div class="direction-card" style="background:'+_bgColor+';border:2px solid '+_borderColor+';border-radius:18px;padding:20px;margin-bottom:20px;direction:rtl;text-align:right">';
-    html+='<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span style="font-size:24px">'+esc(_dir.emoji)+'</span><h3 style="margin:0;font-size:18px;font-weight:800;color:'+_accentColor+'">'+esc(_dir.name)+'</h3></div>';
-    html+='<p style="font-size:13px;color:var(--muted);margin:0 0 16px;line-height:1.6">'+esc(_dir.description)+'</p>';
-    html+='<div style="display:flex;flex-direction:column;gap:10px">';
-    for(var _dti=0;_dti<_dirTracks.length;_dti++){
-      var _t=_dirTracks[_dti];
-      var _globalIdx=wiz.samples.indexOf(_t);
-      html+='<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px">';
-      if(_t.spotifyId){html+='<iframe src="https://open.spotify.com/embed/track/'+_t.spotifyId+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>'}
-      else{html+='<div style="padding:8px;font-size:14px;color:var(--text)">🎵 '+esc(_t.artist)+' — '+esc(_t.title)+'</div>'}
-      html+='<div style="display:flex;align-items:center;justify-content:flex-end;gap:6px">';
-      html+='<button id="vote'+_globalIdx+'up" onclick="voteSample('+_globalIdx+',true)" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:var(--card-2);font-size:14px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center" title="אהבתי">👍</button>';
-      html+='<button id="vote'+_globalIdx+'dn" onclick="voteSample('+_globalIdx+',false)" style="width:32px;height:32px;border-radius:50%;border:2px solid var(--border);background:var(--card-2);font-size:14px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center" title="לא אהבתי">👎</button>';
-      html+='</div></div>';
-    }
-    if(!_dirTracks.length){html+='<div style="text-align:center;padding:12px;color:var(--muted);font-size:13px">לא נמצאו שירים לכיוון זה</div>'}
-    html+='</div></div>';
-  }
-}
+for(var _ti=0;_ti<wiz.samples.length;_ti++){
+var _t=wiz.samples[_ti];
+html+='<div class="sample-track-card" style="background:var(--card);border:1px solid var(--border);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px">';
+if(_t.spotifyId){html+='<iframe src="https://open.spotify.com/embed/track/'+_t.spotifyId+'?utm_source=generator&theme=0" width="100%" height="80" frameBorder="0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" style="border-radius:12px"></iframe>'}
+else{html+='<div style="padding:10px;font-size:14px;color:var(--text)">🎵 '+esc(_t.artist)+' — '+esc(_t.title)+'</div>'}
+html+='<div style="display:flex;align-items:center;gap:10px;direction:rtl">';
+html+='<div style="flex:1"></div>';
+html+='<div style="display:flex;gap:6px">';
+html+='<button id="vote'+_ti+'up" onclick="voteSample('+_ti+',true)" style="width:36px;height:36px;border-radius:50%;border:2px solid var(--border);background:var(--card-2);font-size:16px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center" title="אהבתי">👍</button>';
+html+='<button id="vote'+_ti+'dn" onclick="voteSample('+_ti+',false)" style="width:36px;height:36px;border-radius:50%;border:2px solid var(--border);background:var(--card-2);font-size:16px;cursor:pointer;transition:.2s;display:flex;align-items:center;justify-content:center" title="לא אהבתי">👎</button>';
+html+='</div></div></div>'}
 if(!wiz.samples.length){html='<div style="text-align:center;padding:24px;color:var(--muted)">לא נמצאו שירים מתאימים — נסו לשנות הגדרות</div>'}
 list.innerHTML=html;ld.style.display='none';list.style.display='flex';
 var _st=document.getElementById('sampleTitle');if(_st)_st.style.display='';
@@ -3168,7 +3172,7 @@ function regenerateSamples(){
   /* Store previous samples so GPT won't repeat them */
   if(!wiz._previousSamples)wiz._previousSamples=[];
   wiz.samples.forEach(function(s){if(s&&s.artist)wiz._previousSamples.push(s.artist+' - '+s.title)});
-  wiz.samples=[];wiz.votes={};wiz.styleDirections=[];_wizBusy=true;
+  wiz.samples=[];wiz.votes={};_wizBusy=true;
   generateSamples().then(function(){_wizBusy=false}).catch(function(){_wizBusy=false});
 }
 function skipSamples(){wiz.votes={};wiz.selectedVibe=0;for(var si=0;si<wiz.samples.length;si++){wiz.votes[si]=true}brainLog('⏭️','סאמפלים','לקוח דילג');_wizBusy=false;wizGo(7)}

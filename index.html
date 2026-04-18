@@ -312,6 +312,7 @@
   <button onclick="nav('activityLog');closeMobileNav()">📝 לוג</button>
   <button onclick="nav('settings');closeMobileNav()" style="margin-right:auto;background:var(--card-2)">⚙ Settings</button>
   <button onclick="toggleBrain();closeMobileNav()" style="background:var(--gradient);border:none;color:#fff;font-size:14px;font-weight:700;cursor:pointer;padding:8px 16px;border-radius:10px;font-family:inherit">🧠 מוח</button>
+<button onclick="nav('brainTable');closeMobileNav()" style="background:var(--card-2)">📋 טבלת מוח</button>
   <button onclick="hardRefresh()" style="background:var(--card);border:1px solid var(--border);color:var(--text);font-size:22px;cursor:pointer;padding:6px 14px;border-radius:10px;font-weight:700;transition:.2s" title="רענן">⟳</button>
   </div><!-- end nav-links -->
   <div id="authUserBar" style="display:none;align-items:center;gap:8px;margin-left:8px;padding:5px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px">
@@ -899,6 +900,25 @@
     <div class="card"><h3 style="margin-bottom:16px">OpenAI</h3><label style="font-size:13px;color:var(--muted)">API Key</label><input id="apiKey" class="input" type="password" placeholder="sk-..." style="margin:8px 0"><label style="font-size:13px;color:var(--muted)">מודל</label><select id="apiModel" class="input" style="margin:8px 0;padding:12px"><option value="gpt-4o">GPT-4o</option><option value="gpt-4o-mini">GPT-4o-mini</option></select><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-primary" onclick="saveKey()">שמור</button><button class="btn btn-ghost" onclick="testKey()">בדוק חיבור</button><button class="btn btn-ghost" onclick="generateShareLink()" style="background:rgba(29,185,84,.1);border-color:var(--accent)">🔗 לינק שיתוף</button></div><div id="shareLink" style="display:none;margin-top:10px;padding:12px;background:var(--bg-2);border-radius:10px;font-size:12px;word-break:break-all"><div style="color:var(--accent);margin-bottom:6px;font-weight:700">לינק עם מפתח:</div><code id="shareLinkUrl" style="color:var(--text);cursor:pointer" onclick="navigator.clipboard.writeText(this.textContent);this.style.color='var(--accent)'"></code></div><div id="openaiStatus" class="status-msg"></div></div>
     <div class="card"><h3 style="margin-bottom:16px">Spotify — חיבור חשבון</h3><div id="spotifyNotConnected"><p style="font-size:14px;margin-bottom:16px">חברו את חשבון הספוטיפיי שלכם כדי לשמוע שירים ישירות ולשמור פלייליסטים.</p><input id="spotifyId" type="hidden" value="b6404b5ae1684143b79d9a86bb4b6cba"><button class="spotify-connect-btn" onclick="spotifyLogin()"><svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg> התחבר עם Spotify</button></div><div id="spotifyConnected" style="display:none"><div class="spotify-user"><img id="spotifyAvatar" src="" alt=""><div class="info"><div class="name" id="spotifyName">—</div><div class="plan" id="spotifyPlan">—</div></div><button class="btn btn-ghost" onclick="spotifyLogout()" style="padding:8px 14px;font-size:12px">נתק</button></div><div id="adminSpotifyNote" style="display:none;margin-top:12px;padding:12px;background:linear-gradient(135deg,rgba(29,185,84,.1),rgba(155,92,255,.1));border:1px solid rgba(29,185,84,.3);border-radius:10px;text-align:center"><div style="font-size:12px;color:var(--accent)">✅ ה-Spotify שלך משמש אות אורחים אוטומטית</div></div></div><div id="spotifyStatus" class="status-msg"></div></div>
   </div>
+<div id="brainTable" class="screen" style="padding:20px;overflow-y:auto;max-height:100vh">
+<h2 style="text-align:center;margin-bottom:20px;color:var(--accent)">📋 טבלת מוח — מפת סגנונות מוזיקליים</h2>
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;font-size:13px;direction:rtl">
+<thead>
+<tr style="background:var(--gradient);color:#fff">
+<th style="padding:10px;border:1px solid rgba(255,255,255,0.2);min-width:140px">סוג עסק</th>
+<th style="padding:10px;border:1px solid rgba(255,255,255,0.2);min-width:200px">סגנון / ז׳אנרים</th>
+<th style="padding:10px;border:1px solid rgba(255,255,255,0.2)">דוגמה 1</th>
+<th style="padding:10px;border:1px solid rgba(255,255,255,0.2)">דוגמה 2</th>
+<th style="padding:10px;border:1px solid rgba(255,255,255,0.2)">דוגמה 3</th>
+<th style="padding:10px;border:1px solid rgba(255,255,255,0.2);min-width:250px">מטרה</th>
+</tr>
+</thead>
+<tbody id="brainTableBody">
+</tbody>
+</table>
+</div>
+</div>
 </section>
 </div>
 <div id="brainPanel">
@@ -4066,6 +4086,66 @@ let shazamRecorder=null,shazamStream=null;function openShazam(){document.getElem
 async function startShazam(){const circle=document.getElementById('shazamCircle'),status=document.getElementById('shazamStatus'),result=document.getElementById('shazamResult');if(circle.classList.contains('listening')){if(shazamRecorder&&shazamRecorder.state==='recording')shazamRecorder.stop();return}result.style.display='none';status.textContent='מאזין...';circle.classList.add('listening');brainLog('🎤','Shazam','מקליט...');try{shazamStream=await navigator.mediaDevices.getUserMedia({audio:true});shazamRecorder=new MediaRecorder(shazamStream);const chunks=[];shazamRecorder.ondataavailable=e=>chunks.push(e.data);shazamRecorder.onstop=async()=>{circle.classList.remove('listening');status.textContent='מזהה...';shazamStream.getTracks().forEach(t=>t.stop());const blob=new Blob(chunks,{type:'audio/webm'}),fd=new FormData();fd.append('file',blob,'rec.webm');fd.append('api_token','test');fd.append('return','spotify');try{const r=await fetch('https://api.audd.io/',{method:'POST',body:fd});const j=await r.json();if(j.result){result.style.display='block';result.innerHTML='<div style="font-size:18px;font-weight:700">'+esc(j.result.title)+'</div><div style="color:var(--muted)">'+esc(j.result.artist)+'</div>'+(j.result.spotify?'<a href="'+j.result.spotify.external_urls.spotify+'" target="_blank" class="btn btn-primary" style="margin-top:12px;padding:8px 16px;font-size:13px">Spotify ↗</a>':'');status.textContent='נמצא!';brainLog('✅','זוהה',j.result.artist+' - '+j.result.title);refTracks.push({artist:j.result.artist,title:j.result.title});renderRefTracks()}else{status.textContent='לא זוהה';brainLog('❌','Shazam','לא זוהה')}}catch(e){status.textContent='שגיאה'}};shazamRecorder.start();setTimeout(()=>{if(shazamRecorder.state==='recording')shazamRecorder.stop()},8000)}catch(e){circle.classList.remove('listening');status.textContent='נא לאשר מיקרופון'}}
 
 document.addEventListener('DOMContentLoaded',function(){var c=document.querySelector('.brain-card.selected');if(c){var ck=document.createElement('div');ck.className='bc-check';ck.style.cssText='position:absolute;top:-6px;right:-6px;width:22px;height:22px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-weight:900;box-shadow:0 2px 8px rgba(29,185,84,.5)';ck.textContent='\u2713';c.style.position='relative';c.appendChild(ck)}/* Auto-skip step 0 — go straight to business description */wiz.user='client';wiz.brainVersion='v7.6';selectedUser='client';selectedBrainVersion='v7.6';document.getElementById('brainVersion').textContent='v7.6 OMEGA';wizGo(1)});
+
+/* ── Brain Table Data ── */
+var BRAIN_TABLE_DATA=[
+{cat:"ברים, פאבים וחיי לילה",rows:[
+{biz:"בר שכונתי/פאב",style:"lo fi / indie / rock",ex1:"4wwqBmPvztunSovwUcuEbY",ex2:"1AQI4Itc8ufEZOTuhVm1ih",ex3:"61jNo7WKLOIQkahju8i0hw",purpose:"a nostalgic, casual atmosphere"},
+{biz:"בר יין",style:"RnB / Beats / Fusion / Smooth Jazz / Bossa Nova",ex1:"6bX6RfpkoRwqH3at702xja",ex2:"3iSzAEetVNA1fUoMPXyXma",ex3:"37i9dQZF1DWWgccrbg3zbJ",purpose:"sophisticated, cozy atmosphere"},
+{biz:"דאנס בר",style:"Indie Dance / Vocal House / Hip Hop / EDM / Pop remixes",ex1:"2S2R3fAMQ0APh45cU1TAth",ex2:"37i9dQZF1DXcZDD7cfEKhW",ex3:"37i9dQZF1E4qQ00I1Jm1ay",purpose:"high energy, forcing 1-on-1 conversations, pushing alcohol sales"},
+{biz:"בר קוקטיילים",style:"Lofi / Bossa Nova / Vocal Jazz",ex1:"5R3X2RiiFhNaiNsZbteZfs",ex2:"37i9dQZF1DWWgccrbg3zbJ",ex3:"37i9dQZF1DX0khTY3HFA4M",purpose:"curated to sit underneath conversation"},
+{biz:"בר קולינרי",style:"soul / neo-soul / lo-fi beats / 90s hip hop / RnB",ex1:"6N7E8beWM4r4tXNmo5NbJX",ex2:"0bhpV9zKrJiCjdv6xX9wdc",ex3:"",purpose:"distinction between restaurant and bar, modern groove"},
+{biz:"בר מלון",style:"Instrumental / Chill / Soft Jazz",ex1:"6k9bh7kZWzm6fsZxrVm92U",ex2:"5R3X2RiiFhNaiNsZbteZfs",ex3:"37i9dQZF1DWVqfgj8NZEp1",purpose:"welcoming, calming environment"}
+]},
+{cat:"מסעדות ומזללות",rows:[
+{biz:"מסעדת פועלים",style:"מזרחית ישנה / שירים טורקים / נעימות צפון אפריקאיות",ex1:"2z4tm86ivNjyO3oKDpVOnV",ex2:"1w26vYQCXCnritR3Zjl8Ho",ex3:"1YAsFTPgF2keIHbcpYnHDU",purpose:"familiar atmosphere to north african/iraqi descendants"},
+{biz:"מסעדת שף / ביסטרו",style:"World Jazz / Instrumental Funk / French Jazz",ex1:"37i9dQZF1EIgOj03IPzJ1N",ex2:"1wVXfJA0uiOCX0ohySHxan",ex3:"0iOaBhPMPkO6d2DdgfkYbc",purpose:"chic, upscale feeling — relax and feel vibrant"},
+{biz:"מסעדת נושא מדיני",style:"National music in respective language",ex1:"140K2T3EltwgrGZeOQHEKg",ex2:"0l02pjIfzPKwsiWcc7lB7a",ex3:"4S8yzCFWjOhCypyCl32BMy",purpose:"immersive authentic cultural experience"},
+{biz:"חומוסיה / שיפודיה / שווארמה",style:"Israeli Pop hits / Mizrachi",ex1:"0JB65ghOmV4L8HpvqA1ePA",ex2:"1oZgvIgDGkYIIO8tGdJsub",ex3:"37i9dQZF1DWT9L7hoCDtjB",purpose:"familiar pop, upbeat, matching midday energies"}
+]},
+{cat:"בתי קפה",rows:[
+{biz:"בית קפה שכונתי - 1",style:"Indie pop / RnB / Indie Rock",ex1:"5toKV2v9Hmvt3mDQgeTwVD",ex2:"3NlvO5jgbBoK9sRCj8VFod",ex3:"1lKKcdJYSmeInBFpWg0Q95",purpose:"relaxed, inviting, head-bob worthy, enable conversations"},
+{biz:"בית קפה שכונתי - 2",style:"Soft Israeli Rock / Oldies Israeli Songs",ex1:"1b881WhUkUGB0KjjvxKxzq",ex2:"20Jp6qr45rQQlAUcNkPjXd",ex3:"1m8tlUqBDidL9gA8cMD4ho",purpose:""},
+{biz:"רשת בתי קפה",style:"Blend of Pop, Rock and Indie hits",ex1:"5dRQCcekOYFR8K8Z5PA8KK",ex2:"6eSP50WlHILqGuRBrgMhww",ex3:"530uNcFyRtIB3r8b2O17mp",purpose:""},
+{biz:"קונדיטוריה / מאפייה",style:"happy trendy beats in english and hebrew",ex1:"0FxhdYIyQQ1MZvyekmPvdo",ex2:"20Jp6qr45rQQlAUcNkPjXd",ex3:"",purpose:""}
+]},
+{cat:"קליניקות, ביוטי וטיפוח",rows:[
+{biz:"מספרת נשים - מרכז",style:"upbeat pop / RnB / soft rock / Female power",ex1:"3D0h60khFXmfYWlCKNRZ17",ex2:"2grgwRdgTA7QSCUQQhhgv8",ex3:"1NrJZTctsmYy6vJ305oIhd",purpose:"uplift energy for women, positive atmosphere"},
+{biz:"מספרת נשים - פריפריה",style:"Israeli Pop hits / Mizrachi",ex1:"33Gh7eRE6PsCBOVvw27oGN",ex2:"3IADOkaYr1pprCcpPXfBfv",ex3:"1q01v8Q8LFWQR0epGsHDzv",purpose:"uplift energy, juicy positive atmosphere"},
+{biz:"מספרת גברים / ברבריה",style:"Blues / Rock / hip hop / RnB",ex1:"2AguYoBHvhW8IEjbzUaJRh",ex2:"18Ad0Qk6HFuH0RmoJYI6sh",ex3:"5gGb3w6lOEzmfZ7d4AFBkt",purpose:"manly testosterone driven environment"},
+{biz:"ספא / מסאז׳",style:"Ambient / soft classical",ex1:"37i9dQZF1DXebxttQCq0zA",ex2:"37i9dQZF1DWYaxoJ3YwOh3",ex3:"37i9dQZF1DX65caF1CvtIN",purpose:"reduce heart rates and induce relaxation"},
+{biz:"מכון לק",style:"trendy soft RnB pop / radio pop hits",ex1:"6xLTji3pUH0RnAltYLgk9K",ex2:"6wm6uONfugp5Y2XOQPDorX",ex3:"3UE4447S8KhMb9Xw5csrbg",purpose:"familiar, energetic atmosphere"},
+{biz:"קליניקת בוטוקס",style:"Lo Fi / Chill / Ambient",ex1:"38urkSaLUJrsZnsL5YblQO",ex2:"5VW3BIGp3psfD7aOpGWiOM",ex3:"1EdmfpZXrxZeGT7TnqITi4",purpose:"calm, clinical, trust-worthy sensation"}
+]},
+{cat:"ביגוד והלבשה",rows:[
+{biz:"חנות בגדי ים / גלישה",style:"Reggae / Tropical House",ex1:"24gphesROpSxAy1Icv4iJ6",ex2:"6buyfbddoaTUTXGZok6zno",ex3:"1XNRitMRNotCvoQUmpp6D0",purpose:"immersive vacation atmosphere, boost dwell time"},
+{biz:"חנות הלבשה תחתונה",style:"Lo fi Beats / sensual lounge / Deep House",ex1:"37i9dQZF1DX0khTY3HFA4M",ex2:"37i9dQZF1DX2TRYkJECvfC",ex3:"6UbZqL2lg2j1ZIzGrbr7V3",purpose:"sensual, sexy, empowering confidant atmosphere"},
+{biz:"חנות בגדי יוקרה",style:"Nu Disco / Electro / Indie Dance / Deep House",ex1:"3GFgGQVFvdA5q6W3MOgCI4",ex2:"0mDWNRMmvA9YKcjDDG5v8J",ex3:"0HOLXwNqjo6DruEPkRY1iT",purpose:"prestigious, upbeat, elevating atmosphere"},
+{biz:"חנות בגדי סטריט / אורבן",style:"Rap Hip Hop / Punk / Indie Rock / Post Punk",ex1:"38C9DNtEBFdjWgX5beA5Kf",ex2:"1tkE5kEyABOqi6culrKNlB",ex3:"4plCeDzeVnk15wp1tJfTFA",purpose:"create trust with customer culture, prolong dwell time"}
+]}
+];
+function renderBrainTable(){
+var tb=document.getElementById('brainTableBody');if(!tb)return;
+var html='';
+BRAIN_TABLE_DATA.forEach(function(cat){
+html+='<tr style="background:var(--card-2)"><td colspan="6" style="padding:12px;font-weight:700;font-size:15px;color:var(--accent);border:1px solid var(--border)">'+cat.cat+'</td></tr>';
+cat.rows.forEach(function(r){
+var mkLink=function(id){return id?'<a href="https://open.spotify.com/playlist/'+id+'" target="_blank" style="color:var(--accent);font-size:11px">▶ פתח</a>':'';};
+html+='<tr style="border-bottom:1px solid var(--border)">';
+html+='<td style="padding:8px;border:1px solid var(--border);font-weight:600">'+r.biz+'</td>';
+html+='<td style="padding:8px;border:1px solid var(--border);font-size:12px">'+r.style+'</td>';
+html+='<td style="padding:8px;border:1px solid var(--border);text-align:center">'+mkLink(r.ex1)+'</td>';
+html+='<td style="padding:8px;border:1px solid var(--border);text-align:center">'+mkLink(r.ex2)+'</td>';
+html+='<td style="padding:8px;border:1px solid var(--border);text-align:center">'+mkLink(r.ex3)+'</td>';
+html+='<td style="padding:8px;border:1px solid var(--border);font-size:12px;color:var(--text-secondary)">'+r.purpose+'</td>';
+html+='</tr>';
+});
+});
+tb.innerHTML=html;
+}
+document.addEventListener('DOMContentLoaded',renderBrainTable);
+setTimeout(renderBrainTable,1000);
+
 </script>
 <div id="checkpointModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.8);z-index:1000;align-items:center;justify-content:center;padding:20px"><div id="checkpointContent" style="background:var(--bg-2);border:1px solid var(--border);border-radius:20px;padding:24px;max-width:560px;width:100%;max-height:80vh;overflow-y:auto"></div></div>
 </body>

@@ -1192,7 +1192,7 @@ async function czBuildFromSong() {
     var taste = clientLearnedTaste || '';
     var songSeed = 'SEED SONG: "' + song.title + '" by ' + song.artist + '. Analyze its genre, energy, mood, tempo, instrumentation, and vocal style.';
     var systemPrompt = 'You are SonicBrand AI, a music curator for businesses. The user identified a song they love via Shazam. Build a 50-track playlist where:\n- 50% of the selection weight comes from the CLIENT PROFILE (business type, sliders, taste memory, brand profile)\n- 50% of the selection weight comes from the SEED SONG DNA (match its genre, energy, mood, tempo, and feel)\nThe result should feel like "music for this business, inspired by this song".\nReturn JSON: {"tracks":[{"artist":"","title":"","slot":"seed_inspired"}]}\nReturn EXACTLY 50 tracks. Include the seed song itself as track #1. Ensure variety — don\'t just pick the same artist.';
-    var userMsg = songSeed + '\n\nCLIENT PROFILE:\nBusiness: "' + desc + '"\nCategory: ' + (wiz.bizCategory || 'general') + '\nSliders: energy=' + (faders.energy || 50) + ', familiarity=' + (faders.familiarity || 50) + ', vocal=' + (faders.vocal || 50) + ', hebrew=' + (faders.hebrew || 50) + '%\nBrand profile: ' + JSON.stringify(profile).substring(0, 400) + '\nLearned taste: ' + taste.substring(0, 300) + '\nRisk level: ' + czRiskLevel;
+    var userMsg = songSeed + '\n\nCLIENT PROFILE:\nBusiness: "' + desc + '"\nCategory: ' + (wiz.bizCategory || 'general') + '\nSliders: energy=' + (faders.energy || 50) + ', familiarity=' + (faders.familiarity || 50) + ', vocal=' + (faders.vocal || 50) + ', hebrew=' + (faders.hebrew || 50) + '%\nBrand profile: ' + JSON.stringify(profile).substring(0, 400) + '\nLearned taste: ' + taste.substring(0, 300) + '\nRisk level: ' + czRiskLevel + (wiz.brainSheetContext || '');
     if (czDNPList.length) userMsg += '\nDo NOT include: ' + czDNPList.map(function(d) { return d.value + ' (' + d.type + ')' }).join(', ');
     var raw = await callOpenAI([{role: 'system', content: systemPrompt}, {role: 'user', content: userMsg}], {max_tokens: 4000, model: 'gpt-4o'});
     var result = safeJSON(raw);
@@ -2316,6 +2316,63 @@ successMetrics:{
 }
 };
 
+/* ═══════════════════════════════════════════════════════
+   BRAIN SHEET — Live Google Sheet integration v1.0
+   Fetches "מוח" sheet (business-type → genres → 3 playlist
+   examples → purpose) on page load, caches 1h in localStorage.
+   Used by analyzeDescription() to match a real curator row
+   and inject reference playlists into GPT prompts.
+   ═══════════════════════════════════════════════════════ */
+const BRAIN_SHEET_CSV_URL='https://docs.google.com/spreadsheets/d/1b-0rsKBvTSqE0ju7EfGRnpOQiVESZR8hsJBsuITns_E/export?format=csv&gid=0';
+const BRAIN_SHEET_CACHE_KEY='sb_brain_sheet_v1';
+const BRAIN_SHEET_CACHE_TTL=60*60*1000;
+window.BRAIN_SHEET_DATA=[];
+window.BRAIN_SHEET_LOADING=null;
+function _parseCSV(text){const rows=[];let cur=[],cell='',inQ=false;for(let i=0;i<text.length;i++){const c=text[i],n=text[i+1];if(inQ){if(c==='"'&&n==='"'){cell+='"';i++;}else if(c==='"'){inQ=false;}else{cell+=c;}}else{if(c==='"'){inQ=true;}else if(c===','){cur.push(cell);cell='';}else if(c==='\n'){cur.push(cell);rows.push(cur);cur=[];cell='';}else if(c==='\r'){}else{cell+=c;}}}if(cell||cur.length){cur.push(cell);rows.push(cur);}return rows;}
+function _extractSpotifyPlaylistId(url){if(!url)return null;const m=String(url).match(/open\.spotify\.com\/playlist\/([a-zA-Z0-9]+)/);return m?m[1]:null;}
+async function loadBrainSheet(){
+  if(window.BRAIN_SHEET_LOADING)return window.BRAIN_SHEET_LOADING;
+  window.BRAIN_SHEET_LOADING=(async function(){
+    try{
+      const cached=localStorage.getItem(BRAIN_SHEET_CACHE_KEY);
+      if(cached){try{const obj=JSON.parse(cached);if(Date.now()-obj.ts<BRAIN_SHEET_CACHE_TTL&&Array.isArray(obj.data)&&obj.data.length){window.BRAIN_SHEET_DATA=obj.data;console.log('[BrainSheet] cache hit:',obj.data.length,'rows');return obj.data;}}catch(e){}}
+      const r=await fetch(BRAIN_SHEET_CSV_URL,{cache:'no-store'});
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const text=await r.text();
+      const rows=_parseCSV(text);
+      if(rows.length<2)throw new Error('empty sheet');
+      /* Header row is row 0: "Type Of business,Style / Genres,Example 1,Example 2,Example 3,Purpose" */
+      const data=[];let currentCategory='';
+      for(let i=1;i<rows.length;i++){
+        const row=rows[i];if(!row)continue;
+        const bizType=(row[0]||'').trim();
+        const styles=(row[1]||'').trim();
+        const ex1=(row[2]||'').trim();
+        const ex2=(row[3]||'').trim();
+        const ex3=(row[4]||'').trim();
+        const purpose=(row[5]||'').trim();
+        if(!bizType&&!styles&&!ex1)continue;
+        /* Category divider: only bizType populated, others empty */
+        if(bizType&&!styles&&!ex1&&!ex2&&!ex3&&!purpose){currentCategory=bizType;continue;}
+        const playlistIds=[ex1,ex2,ex3].map(_extractSpotifyPlaylistId).filter(Boolean);
+        data.push({category:currentCategory,bizType,styles,example1:ex1,example2:ex2,example3:ex3,purpose,playlistIds});
+      }
+      window.BRAIN_SHEET_DATA=data;
+      try{localStorage.setItem(BRAIN_SHEET_CACHE_KEY,JSON.stringify({ts:Date.now(),data}));}catch(e){}
+      console.log('[BrainSheet] fresh load:',data.length,'rows across categories');
+      return data;
+    }catch(e){
+      console.warn('[BrainSheet] load failed:',e.message);
+      const cached=localStorage.getItem(BRAIN_SHEET_CACHE_KEY);
+      if(cached){try{window.BRAIN_SHEET_DATA=JSON.parse(cached).data||[];}catch(err){}}
+      return window.BRAIN_SHEET_DATA;
+    }
+  })();
+  return window.BRAIN_SHEET_LOADING;
+}
+/* Kick off load immediately on script parse */
+loadBrainSheet();
+
 const BIZ_DNA={
 cafe:{label:'בית קפה',baseGenres:['Indie','Acoustic','Jazz','Bossa Nova','Lo-Fi','Folk'],avoid:['Metal','Trap','Hard Rock','EDM'],avoidMoods:['aggressive','dark','anxious','manic'],avoidTextures:['harsh','distorted','heavy bass','industrial'],avoidCliches:['generic coffee shop jazz','elevator music','muzak','obvious bossa nova covers'],bpmRange:[70,115],energy:'low-mid',vibe:'אינטימי, חם, שיחתי. מוזיקה שלא מפריעה לשיחה אבל יוצרת אווירה.',anchorArtists:['Norah Jones','Jack Johnson','Iron & Wine','José González','Bon Iver'],adjacentWorlds:['Khruangbin','Mildlife','Skinshape','Mild High Club','Connan Mockasin'],hebrewRef:['שלומי שבן','דניאל סלומון','מירי מסיקה','עברי לידר'],curatorialDistance:4,refArtists:['Norah Jones','Jack Johnson','Iron & Wine','José González','Bon Iver']},
 restaurant:{label:'מסעדה',baseGenres:['Jazz','Soul','Bossa Nova','World','R&B','Classical'],avoid:['Punk','Metal','Screamo','Hardcore'],avoidMoods:['chaotic','aggressive','nihilistic','frantic'],avoidTextures:['distorted','noisy','lo-fi','raw'],avoidCliches:['obvious dinner jazz standards','generic Italian restaurant music','Michael Bublé Christmas songs'],bpmRange:[75,120],energy:'mid',vibe:'אלגנטי, מלווה ארוחה. מוזיקת רקע איכותית שמרוממת את החוויה הקולינרית.',anchorArtists:['Sade','Diana Krall','Corinne Bailey Rae','Gregory Porter'],adjacentWorlds:['Hiatus Kaiyote','Jordan Rakei','Tom Misch','Alfa Mist','Kamasi Washington'],hebrewRef:['ריטה','שלמה ארצי','בנימין','יהודית רביץ'],curatorialDistance:4,refArtists:['Michael Bublé','Diana Krall','Sade','Corinne Bailey Rae']},
@@ -3078,7 +3135,42 @@ if(_demoData.audience_profile)brainLog('👥','קהל',_demoData.audience_profil
 if(_demoData.vibe_summary)brainLog('🎯','וייב',_demoData.vibe_summary,true);
 if(_demoData.recommended_genres)brainLog('🎵','ז׳אנרים',_demoData.recommended_genres.join(', '),true);
 if(_demoData.mizrahi_affinity&&_demoData.mizrahi_affinity!=='none')brainLog('📊','מזרחי',_demoData.mizrahi_affinity,true)}
-if(_subI&&_subI.length)_subI.forEach(function(s){brainLog('🍽️','תת-סוג',s.type+' — '+s.data.shift.vibe,true)});brainLog('🏷️','סיווג',BIZ_DNA[cat].label+' ('+cat+')',true);brainLog('🎵','DNA','ז׳אנרים: '+BIZ_DNA[cat].baseGenres.slice(0,4).join(', ')+' | אנרגיה: '+BIZ_DNA[cat].energy,true);var di=document.getElementById('brainDnaInfo');if(di){di.style.display='block';di.innerHTML='<b>🏷️ '+BIZ_DNA[cat].label+'</b><br>'+BIZ_DNA[cat].vibe+'<br>ז׳אנרים: '+BIZ_DNA[cat].baseGenres.join(', ')+'<br>BPM: '+BIZ_DNA[cat].bpmRange[0]+'-'+BIZ_DNA[cat].bpmRange[1]+' | אנרגיה: '+BIZ_DNA[cat].energy}brainLog('✅','ניתוח',r.business_type+' | '+r.atmosphere,true);document.getElementById('descLoading').style.display='none';_wizBusy=false;wizGo(4);wiz._deepAnalysisPromise=_runDeepAnalysis(d,r)}catch(e){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false;document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='שגיאה: '+e.message;_wizBusy=false}}
+if(_subI&&_subI.length)_subI.forEach(function(s){brainLog('🍽️','תת-סוג',s.type+' — '+s.data.shift.vibe,true)});brainLog('🏷️','סיווג',BIZ_DNA[cat].label+' ('+cat+')',true);brainLog('🎵','DNA','ז׳אנרים: '+BIZ_DNA[cat].baseGenres.slice(0,4).join(', ')+' | אנרגיה: '+BIZ_DNA[cat].energy,true);var di=document.getElementById('brainDnaInfo');if(di){di.style.display='block';di.innerHTML='<b>🏷️ '+BIZ_DNA[cat].label+'</b><br>'+BIZ_DNA[cat].vibe+'<br>ז׳אנרים: '+BIZ_DNA[cat].baseGenres.join(', ')+'<br>BPM: '+BIZ_DNA[cat].bpmRange[0]+'-'+BIZ_DNA[cat].bpmRange[1]+' | אנרגיה: '+BIZ_DNA[cat].energy}/* ═══ BRAIN SHEET MATCH — GPT picks best row from live "מוח" sheet ═══ */
+try{
+  if(!window.BRAIN_SHEET_DATA||!window.BRAIN_SHEET_DATA.length){await loadBrainSheet();}
+  if(window.BRAIN_SHEET_DATA&&window.BRAIN_SHEET_DATA.length){
+    brainLog('📋','טבלת מוח','מחפש שורה תואמת מתוך '+window.BRAIN_SHEET_DATA.length+' שורות...',true);
+    var _sheetList=window.BRAIN_SHEET_DATA.map(function(row,idx){return idx+'. ['+row.category+'] '+row.bizType+' — '+row.styles+(row.purpose?' | '+row.purpose.substring(0,120):'');}).join('\n');
+    var _matchRaw=await callOpenAI([
+      {role:'system',content:'You are a business-to-music-row matcher for a curator\'s playlist sheet. Given a Hebrew business description and a list of curated rows (category, business type, styles, purpose), pick the SINGLE best-matching row by index. Be decisive. JSON only.'},
+      {role:'user',content:'Business description: "'+d+'"\nBusiness category: '+cat+'\nBusiness type detected: '+(r.business_type||'')+'\nAtmosphere: '+(r.atmosphere||'')+'\n\nAvailable curator rows (pick the BEST match by index):\n'+_sheetList+'\n\nReturn JSON:\n{"row_index": <number 0-based, or -1 if truly no match>, "confidence": 0.0-1.0, "reason": "<short Hebrew reason>"}'}
+    ],{max_tokens:200,stage:'1️⃣e התאמה לטבלת מוח',model:'gpt-4o-mini'});
+    var _match=safeJSON(_matchRaw);
+    if(_match&&typeof _match.row_index==='number'&&_match.row_index>=0&&_match.row_index<window.BRAIN_SHEET_DATA.length&&(_match.confidence||0)>=0.35){
+      var _row=window.BRAIN_SHEET_DATA[_match.row_index];
+      wiz.brainSheetMatch=_row;
+      wiz.brainSheetMatchMeta={index:_match.row_index,confidence:_match.confidence,reason:_match.reason};
+      /* Build reusable context block for downstream prompts */
+      var _plLines=(_row.playlistIds||[]).map(function(id){return '  • https://open.spotify.com/playlist/'+id;}).join('\n');
+      wiz.brainSheetContext='\n\n📋 CURATOR BRAIN SHEET MATCH (real curator-crafted reference for this business type):'
+        +'\n   Row: '+_row.bizType+(_row.category?' ['+_row.category+']':'')
+        +'\n   Styles/Genres: '+(_row.styles||'—')
+        +(_row.purpose?'\n   Purpose: '+_row.purpose:'')
+        +(_plLines?'\n   Reference Spotify playlists (match their vibe, pacing, curation):\n'+_plLines:'')
+        +'\n🎯 Treat these reference playlists as a curation compass. Track picks should feel at home alongside tracks in these playlists — same mood, craft level, and taste. Do NOT copy tracks from them verbatim; use them as a sonic north star.';
+      brainLog('🎯','שורה תואמת',_row.bizType+' · '+Math.round((_match.confidence||0)*100)+'% · '+(_match.reason||''),true);
+      if(_row.styles)brainLog('🎨','סגנונות מהגיליון',_row.styles,true);
+      if(_row.playlistIds&&_row.playlistIds.length)brainLog('🎵','פלייליסטים להשראה',_row.playlistIds.length+' לינקים יוזרקו לפרומפט',true);
+      if(_row.purpose)brainLog('💡','מטרה',_row.purpose.substring(0,140),true);
+    }else{
+      wiz.brainSheetMatch=null;wiz.brainSheetContext='';
+      brainLog('⚠️','טבלת מוח','לא נמצאה שורה תואמת — ממשיכים ללא',true);
+    }
+  }else{
+    brainLog('⚠️','טבלת מוח','נתונים לא זמינים — ממשיכים ללא',true);
+  }
+}catch(_eBS){console.warn('[BrainSheet] match step failed:',_eBS);brainLog('⚠️','טבלת מוח','שגיאה: '+_eBS.message,true);}
+brainLog('✅','ניתוח',r.business_type+' | '+r.atmosphere,true);document.getElementById('descLoading').style.display='none';_wizBusy=false;wizGo(4);wiz._deepAnalysisPromise=_runDeepAnalysis(d,r)}catch(e){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false;document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='שגיאה: '+e.message;_wizBusy=false}}
 var bizHourOpen='12-15',bizHourClose='21-00';
 function toggle247(cb){var dd=document.getElementById('bizHoursDropdowns');dd.style.opacity=cb.checked?'0.3':'1';dd.style.pointerEvents=cb.checked?'none':'auto'}
 function submitBizHours(){var is247=document.getElementById('biz247').checked;if(is247){wiz.bizHours=['00:00','24:00'];brainLog('🕐','שעות פתיחה','24/7')}else{var openH=document.getElementById('bizOpenHour').value;var closeH=document.getElementById('bizCloseHour').value;wiz.bizHours=[openH,closeH];brainLog('🕐','שעות פתיחה',openH+' עד '+closeH)}document.getElementById('bizHoursSection').style.display='none';document.getElementById('hoursQuestion').style.display='block'}
@@ -3162,7 +3254,7 @@ brainLog('📋','ייבוא',imported.length+' tracks imported from existing pla
 }catch(e){st.textContent='❌ שגיאה: '+e.message}}
 
 async function generateSamples(){const ld=document.getElementById('sampleLoading'),list=document.getElementById('vibeOptions'),nb=document.getElementById('sampleActions');ld.style.display='block';list.style.display='none';nb.style.display='none';brainLog('🎲','סאמפלים','v9.0 — Mood-First + 5 Flat Samples...',true);try{const f=wiz.faders,g=wiz.genres.length?'\nGenres: '+wiz.genres.join(', '):'',rf=wiz.refs.length?'\nRef: '+wiz.refs.map(r=>r.artist+' - '+r.title).join(', '):'';const dna=wiz.bizDNA||BIZ_DNA.general;
-const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'')+(wiz.curatorContext||'');
+const dnaBlock='\n\n🏷️ סיווג עסק: '+dna.label+'\nDNA מוזיקלי: '+dna.vibe+'\nז׳אנרים מומלצים: '+dna.baseGenres.join(', ')+'\nלהימנע מ: '+(dna.avoid.length?dna.avoid.join(', '):'אין')+'\nטווח BPM: '+dna.bpmRange[0]+'-'+dna.bpmRange[1]+'\nרמת אנרגיה בסיסית: '+dna.energy+'\nאמנים מייצגים: '+(dna.refArtists.length?dna.refArtists.join(', '):'כללי')+'\nאמנים עבריים מייצגים: '+(dna.hebrewRef.length?dna.hebrewRef.join(', '):'כללי')+(wiz.demoContext||'')+(wiz.curatorContext||'')+(wiz.brainSheetContext||'');
 var _FR=resolveFaders(f);
 var _selectedMoods=wiz.selectedMoods||[];
 brainLog('🎚️','Faders',_FR.gptSummary,true);

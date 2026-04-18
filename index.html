@@ -2516,51 +2516,70 @@ function _learnBatch(rows){if(!LEARNING_SHEET_WEBHOOK||!rows.length)return;var b
 var PROCESS_DOC_WEBHOOK='https://script.google.com/macros/s/AKfycbxN3w0TbWIvmSIptYPgn-J3dkK4B3lO7uFvIWEFhaouzlhL08J8b_SWLAXvfDc0pkIk/exec';
 function _writeProcessDoc(){
 if(!PROCESS_DOC_WEBHOOK||!brainLogs.length)return;
-var dna=wiz.bizDNA||{};var f=wiz.faders||{};
+var dna=wiz.bizDNA||{};var fd=wiz.faders||{};
 var lines=[];
-lines.push('═══ '+new Date().toLocaleString('he-IL')+' ═══');
+var ts=new Date().toLocaleString('he-IL');
+lines.push('───────────────────────────');
+lines.push(ts);
 lines.push('');
-lines.push('עסק: '+(wiz.desc||'לא צוין'));
-lines.push('סיווג: '+(dna.label||wiz.bizCategory||'כללי'));
-if(wiz.curatorRef)lines.push('רפרנס קיוריישן: '+wiz.curatorRef.data.styles+' — '+wiz.curatorRef.data.purpose);
-if(wiz.demoData&&wiz.demoData.location_name)lines.push('מיקום: '+wiz.demoData.location_name);
-if(wiz.demoData&&wiz.demoData.audience_profile)lines.push('קהל: '+wiz.demoData.audience_profile);
-if(wiz.demoData&&wiz.demoData.vibe_summary)lines.push('וייב: '+wiz.demoData.vibe_summary);
-lines.push('');
+
+/* 1. What the client entered */
+lines.push('🔹 מה הלקוח הזין:');
+lines.push('   עסק: '+(wiz.desc||'לא צוין'));
 if(wiz.selectedMoods&&wiz.selectedMoods.length){
-  var mNames=wiz.selectedMoods.map(function(mid){var b=MOOD_BUBBLES.find(function(bb){return bb.id===mid});return b?b.name:mid});
-  lines.push('אווירות: '+mNames.join(', '));
-}else{lines.push('אווירות: לא נבחרו')}
-if(wiz.musicBrief)lines.push('בריף מוסיקלי: "'+wiz.musicBrief+'"');
-lines.push('סליידרים: מוכרות '+f.familiarity+' | עברית '+f.hebrew+'% | ווקאל '+f.vocal+' | אנרגיה '+f.energy+(f.era!=null?' | תקופה '+f.era:''));
+var mNames=wiz.selectedMoods.map(function(mid){var b=MOOD_BUBBLES.find(function(bb){return bb.id===mid});return b?b.name:mid});
+lines.push('   אווירות שנבחרו: '+mNames.join(', '));
+}
+if(wiz.musicBrief)lines.push('   בריף מוסיקלי: "'+wiz.musicBrief+'"');
+lines.push('   סליידרים: מוכרות '+fd.familiarity+' | עברית '+fd.hebrew+'% | ווקאל '+fd.vocal+' | אנרגיה '+fd.energy+(fd.era!=null?' | תקופה '+fd.era:''));
 lines.push('');
-lines.push('— תהליך המוח —');
-brainLogs.forEach(function(l){
-  lines.push('['+l.time+'] '+l.t+': '+l.d);
-});
+
+/* 2. What the brain decided */
+lines.push('🧠 מה המוח החליט:');
+lines.push('   סיווג: '+(dna.label||wiz.bizCategory||'כללי'));
+if(wiz.demoData&&wiz.demoData.audience_profile)lines.push('   קהל יעד: '+wiz.demoData.audience_profile);
+if(wiz.demoData&&wiz.demoData.vibe_summary)lines.push('   אווירה: '+wiz.demoData.vibe_summary);
+var genres=brainLogs.filter(function(l){return l.d&&l.d.indexOf('אנר')>=0||l.t==='DNA'}).map(function(l){return l.d}).join('; ');
+if(genres)lines.push('   כיוון מוזיקלי: '+genres.substring(0,200));
+var persona=brainLogs.find(function(l){return l.t==='Persona'});
+if(persona)lines.push('   פרסונה: '+persona.d);
+var intent=brainLogs.find(function(l){return l.t==='Intent'});
+if(intent)lines.push('   אינטנט: '+intent.d);
+var reality=brainLogs.find(function(l){return l.t==='Reality'});
+if(reality)lines.push('   מציאות עסקית: '+reality.d);
+var sonicId=brainLogs.find(function(l){return l.t&&l.t.indexOf('Sonic')>=0});
+if(sonicId)lines.push('   זהות סאונד: '+sonicId.d);
 lines.push('');
+
+/* 3. Samples / votes */
 var liked=[];var disliked=[];
 if(wiz.samples&&wiz.votes){
-  Object.keys(wiz.votes).forEach(function(k){
-    var s=wiz.samples[k];if(!s)return;
-    if(wiz.votes[k])liked.push(s.artist+' — '+s.title);
-    else disliked.push(s.artist+' — '+s.title);
-  });
+Object.keys(wiz.votes).forEach(function(k){
+var s=wiz.samples[k];if(!s)return;
+if(wiz.votes[k])liked.push(s.artist+' — '+s.title);
+else disliked.push(s.artist+' — '+s.title);
+});
 }
-if(liked.length)lines.push('שירים שאהב: '+liked.join(' | '));
-if(disliked.length)lines.push('שירים שלא אהב: '+disliked.join(' | '));
+if(liked.length||disliked.length){
+lines.push('👍 שירים שהלקוח אהב: '+(liked.length?liked.join(', '):'אין'));
+lines.push('👎 שירים שהלקוח לא אהב: '+(disliked.length?disliked.join(', '):'אין'));
+lines.push('');
+}
+
+/* 4. Final playlist */
 if(window.currentPlaylist&&window.currentPlaylist.tracks){
-  lines.push('');
-  lines.push('פלייליסט סופי ('+window.currentPlaylist.tracks.length+' שירים):');
-  window.currentPlaylist.tracks.slice(0,15).forEach(function(t,i){
-    lines.push((i+1)+'. '+t.artist+' — '+t.title+(t.slot?' ['+t.slot+']':''));
-  });
-  if(window.currentPlaylist.tracks.length>15)lines.push('... ועוד '+(window.currentPlaylist.tracks.length-15)+' שירים');
+var tr=window.currentPlaylist.tracks;
+lines.push('🎵 פלייליסט סופי ('+tr.length+' שירים):');
+tr.slice(0,15).forEach(function(t,i){
+lines.push('   '+(i+1)+'. '+t.artist+' — '+t.title);
+});
+if(tr.length>15)lines.push('   ... ועוד '+(tr.length-15)+' שירים');
+lines.push('');
 }
-if(window._energyAudit)lines.push('Energy Audit: target '+window._energyAudit.target.toFixed(2)+' actual '+window._energyAudit.actual.toFixed(2)+(window._energyAudit.pass?' PASS':' FAIL'));
+
+lines.push('───────────────────────────');
 lines.push('');
-lines.push('═══════════════════════════════════════');
-lines.push('');
+
 try{fetch(PROCESS_DOC_WEBHOOK,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'appendDoc',text:lines.join('\n')})})}catch(e){}}
 
 /* Extract business subtype from description — local keyword matching for genre rules */

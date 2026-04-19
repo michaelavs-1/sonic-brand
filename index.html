@@ -394,8 +394,7 @@
       <div class="wstep active" data-step="0">1</div><div class="wline"></div>
       <div class="wstep" data-step="1">2</div><div class="wline"></div>
       <div class="wstep" data-step="2">3</div><div class="wline"></div>
-      <div class="wstep" data-step="3">4</div><div class="wline"></div>
-      <div class="wstep" data-step="4">5</div>
+      <div class="wstep" data-step="3">4</div>
     </div>
     <div id="wizStep0" class="wiz-panel" style="display:none">
       <!-- Step 0 removed — auto-skip to step 1 -->
@@ -480,7 +479,7 @@
         <div class="fader-item"><div class="fader-labels"><span class="fl">אינסטרומנטלי</span><span class="fl">ווקלי</span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px;padding:0 2px"><span>לובי מלון בוטיק</span><span>קריוקי ביפן</span></div><input type="range" min="0" max="100" value="50" id="fVocal" oninput="updateFader(this)"><div class="fader-val">50% | 50%</div><div class="fader-vibe" id="faderVibeVocal" style="text-align:center;font-size:11px;color:var(--accent-2);margin-top:4px;min-height:16px"></div></div>
         <div class="fader-item"><div class="fader-labels"><span class="fl">קלאסיקות</span><span class="fl">חדש חם</span></div><div style="display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-bottom:6px;padding:0 2px"><span>הלהיטים של פעם</span><span>יצא אתמול</span></div><input type="range" min="0" max="100" value="50" id="fEra" oninput="updateFader(this)"><div class="fader-val">50% | 50%</div><div class="fader-vibe" id="faderVibeEra" style="text-align:center;font-size:11px;color:var(--accent-2);margin-top:4px;min-height:16px"></div></div>
       </div>
-      <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(4)">→ חזרה</button><button class="btn btn-primary" onclick="saveFadersAndGoSamples()">המשך ←</button></div>
+      <div class="wiz-nav"><button class="btn btn-ghost" onclick="wizGo(1)">→ חזרה</button><button class="btn btn-primary" onclick="saveFadersAndGoSamples()">המשך ←</button></div>
     </div>
     <div id="wizStep7" class="wiz-panel">
       <div id="bizHoursSection">
@@ -561,6 +560,20 @@
   <div id="playlistEmpty" class="card" style="text-align:center"><h3>עדיין אין פלייליסט</h3><p>עברו את תהליך האונבורדינג כדי לייצר פלייליסט מותאם.</p><button class="btn btn-primary" onclick="nav('onboarding')">התחל אונבורדינג ←</button></div>
   <div id="playlistLive" style="display:none">
     <div class="card"><div class="playlist-header"><div id="playlistCover" class="playlist-cover">🎵</div><div><div style="color:var(--muted);font-size:12px;text-transform:uppercase">פלייליסט חי</div><h2 id="playlistTitle" style="margin-bottom:4px">—</h2><div id="playlistMeta" class="playlist-meta">—</div><div class="chip-row"><button class="btn btn-primary" onclick="regenerate()">🔄 ייצר מחדש</button><button id="saveToSpotifyBtn" class="spotify-connect-btn" onclick="savePlaylistToSpotify()" style="display:none;padding:10px 20px;font-size:13px;border-radius:12px"><svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/></svg> שמור ב-Spotify</button><button class="btn btn-ghost" onclick="exportM3U()">📥 M3U</button><button class="btn btn-ghost" onclick="copyJSON()">📋 JSON</button><button id="saveAnalysisBtn" class="btn btn-ghost" onclick="manualSaveAnalysis()" style="background:rgba(29,185,84,.12);color:var(--accent);border:1px solid rgba(29,185,84,.3)">📊 שמור לניתוח</button></div></div></div></div>
+    <!-- ═══ Post-Playlist Mood Refinement ═══ (moved from wizard step 3) -->
+    <div id="moodRefinementCard" style="background:var(--card);border:1px solid var(--accent);border-radius:14px;padding:20px;margin-top:16px;direction:rtl">
+      <div style="font-weight:800;font-size:16px;color:var(--text);margin-bottom:6px">🎨 רוצים לדייק את האווירה?</div>
+      <p style="color:var(--muted);font-size:13px;line-height:1.7;margin:0 0 14px">בנינו פלייליסט בדיוק מתאים לעסק מהסוג שלך, אבל אתה יודע הכי טוב מה נכון. אם יש אווירה מסוימת שמתאימה יותר — סמן אותה כאן ונייצר מחדש בהתאם.</p>
+      <div id="refineMoodBubbles" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:14px"></div>
+      <div style="max-width:520px;margin:0 auto 14px">
+        <textarea id="refineMoodBriefInput" rows="2" class="input" placeholder="או תארו במילים שלכם (לא חובה) — למשל: ״קצת יותר אינטימי ורגוע״" style="width:100%;resize:vertical;font-size:13px;line-height:1.6;text-align:right;direction:rtl;border-radius:12px;padding:10px 14px"></textarea>
+        <p style="font-size:10px;color:var(--accent-2);margin:4px 2px 0;text-align:right">הבריף יקבל את המשקל הגבוה ביותר בבחירת השירים</p>
+      </div>
+      <div style="text-align:center">
+        <button class="btn btn-primary" id="refineMoodBtn" onclick="regenerateWithMoodRefinement()" style="padding:12px 32px;font-size:14px">🎯 ייצר מחדש עם הדיוק</button>
+      </div>
+      <div id="refineMoodStatus" style="margin-top:10px;text-align:center;font-size:12px;color:var(--muted);display:none"></div>
+    </div>
     <div id="feedbackPanel" style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-top:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
         <div>
@@ -1979,11 +1992,11 @@ async function getSpotifyRecommendations(params){var qs=Object.keys(params).map(
 async function enrichTracksWithArtistData(tracks){try{var artistIds=[];tracks.forEach(function(t){if(t.spotifyId||t.id){var aid=t._artistId;if(aid&&artistIds.indexOf(aid)===-1)artistIds.push(aid)}});if(!artistIds.length){var trackIds=tracks.filter(function(t){return t.spotifyId||t.id}).map(function(t){return t.spotifyId||t.id});if(trackIds.length){var trd=await getTracksAnyway(trackIds);if(trd&&trd.tracks){trd.tracks.forEach(function(tr,i){if(tr&&tr.artists&&tr.artists[0]){tracks[i]._artistId=tr.artists[0].id;if(artistIds.indexOf(tr.artists[0].id)===-1)artistIds.push(tr.artists[0].id)}})}}}if(!artistIds.length)return tracks;var artData=await getArtistsAnyway(artistIds);if(!artData||!artData.artists)return tracks;var artMap={};artData.artists.forEach(function(a){if(a&&a.id)artMap[a.id]={genres:a.genres||[],followers:a.followers?a.followers.total:0,name:a.name}});tracks.forEach(function(t){var aid=t._artistId;if(aid&&artMap[aid]){t._genres=artMap[aid].genres;t._followers=artMap[aid].followers;t._artistName=artMap[aid].name}});brainLog('🎨','Artists','Enriched '+Object.keys(artMap).length+' artists with genres & followers',true);return tracks}catch(e){brainLog('⚠️','Artists',e.message);return tracks}}
 async function searchTrack(artist,title){try{var j=await neutralSpotifySearch('track:"'+title+'" artist:"'+artist+'"','track',1);if(j&&j.tracks&&j.tracks.items&&j.tracks.items.length)return j.tracks.items[0];j=await neutralSpotifySearch(artist+' '+title,'track',5);if(j&&j.tracks&&j.tracks.items&&j.tracks.items.length){var aL=artist.toLowerCase();var found=j.tracks.items.find(function(it){return it.artists.some(function(a){return a.name.toLowerCase().indexOf(aL)!==-1||aL.indexOf(a.name.toLowerCase())!==-1})});if(found)return found;return j.tracks.items[0]}j=await neutralSpotifySearch(artist,'track',3);if(j&&j.tracks&&j.tracks.items&&j.tracks.items.length)return j.tracks.items[0];return null}catch(e){return searchTrackViaProxy(artist,title)}}
 async function savePlaylistToSpotify(){if(!window.currentPlaylist||!window.currentPlaylist.tracks||!window.currentPlaylist.tracks.length){alert('אין פלייליסט');return}var btn=document.getElementById('saveToSpotifyBtn'),orig=btn.innerHTML;btn.innerHTML='⏳ מחפש שירים...';btn.disabled=true;var tracksToSave=window.currentPlaylist.tracks||[];brainLog('💾','Spotify',tracksToSave.length+' שירים ('+(window.currentPlaylist.activeTab||'shuffle')+')');var nm=((window.currentPlaylist.profile&&window.currentPlaylist.profile.business_name)||'SonicBrand')+' — Signature Mix'+' ('+((window.currentPlaylist.activeTab==='sequential')?'▶️ רציף':'🔀 שאפל')+')';var uris=tracksToSave.filter(function(t){return t.id}).map(function(t){return'spotify:track:'+t.id});if(!uris.length){brainLog('🔄','Spotify','שירים בלי ID — מחפש מחדש...');var trx=tracksToSave;for(var si=0;si<trx.length;si++){if(trx[si].id)continue;try{var sp=await searchTrackViaProxy(trx[si].artist,trx[si].title);if(sp&&sp.id){trx[si].id=sp.id;trx[si].spotifyId=sp.id;if(sp.external_urls)trx[si].url=sp.external_urls.spotify;if(sp.album&&sp.album.images&&sp.album.images.length){trx[si].cover=sp.album.images[sp.album.images.length-1].url;trx[si].bigCover=sp.album.images[0].url}}}catch(e){}btn.innerHTML='⏳ מחפש... ('+(si+1)+'/'+trx.length+')'}uris=trx.filter(function(t){return t.id}).map(function(t){return'spotify:track:'+t.id});brainLog('🔍','Spotify','נמצאו '+uris.length+'/'+trx.length+' שירים')}if(!uris.length){brainLog('❌','Spotify','לא נמצאו שירים ב-Spotify');btn.innerHTML='❌ לא נמצאו שירים';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false},3000);return}btn.innerHTML='⏳ שומר... ('+uris.length+' שירים)';try{var localToken=await getSpotifyToken();if(!localToken){var refreshed=await refreshSpotifyToken();if(refreshed)localToken=refreshed}if(localToken){var uid=null;if(spotifyUser&&spotifyUser.id){uid=spotifyUser.id}else{var meRes=await spotifyFetch('https://api.spotify.com/v1/me');if(meRes){var meData=await meRes.json();uid=meData&&meData.id?meData.id:null}}if(!uid)throw new Error('no user id');var cr=await spotifyFetch('https://api.spotify.com/v1/users/'+uid+'/playlists',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nm,description:'Generated by SonicBrand AI',public:false})});if(!cr)throw new Error('create playlist request failed');var pl=await cr.json();if(!pl.id)throw new Error('local fail: '+(pl.error&&pl.error.message||JSON.stringify(pl)));for(var i=0;i<uris.length;i+=100){var addRes=await spotifyFetch('https://api.spotify.com/v1/playlists/'+pl.id+'/tracks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uris:uris.slice(i,i+100)})});if(!addRes)brainLog('⚠️','Spotify','batch add failed at '+i)}btn.innerHTML='✓ נשמר! ('+uris.length+' שירים)';btn.style.background='rgba(29,185,84,.3)';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false;btn.style.background=''},4000);if(pl.external_urls&&pl.external_urls.spotify)window.open(pl.external_urls.spotify,'_blank');brainLog('✅','Spotify','פלייליסט נשמר: '+nm);return}throw new Error('no local token')}catch(e){brainLog('🔄','Spotify','local failed: '+e.message+' — fallback to proxy...');try{await saveUserSpotifyTokens();await new Promise(function(r){setTimeout(r,500)});var cpRes=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'create_playlist',name:nm,description:'Generated by SonicBrand AI'})});var plRes=await cpRes.json();if(!plRes.id){if(plRes.error&&plRes.error.indexOf('token')!==-1){btn.innerHTML='❌ נא להתחבר מחדש ל-Spotify';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false},4000);return}throw new Error('proxy create fail: '+(plRes.error||'unknown'))}var atRes=await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'add_tracks',playlist_id:plRes.id,uris:uris})});var atData=await atRes.json();if(atRes.status!==200||atData.error)throw new Error('add_tracks fail: '+(atData.error||'status '+atRes.status));btn.innerHTML='✓ נשמר! ('+uris.length+' שירים)';btn.style.background='rgba(29,185,84,.3)';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false;btn.style.background=''},4000);if(plRes.external_urls&&plRes.external_urls.spotify)window.open(plRes.external_urls.spotify,'_blank');brainLog('✅','Spotify','פלייליסט נשמר via proxy: '+nm)}catch(e2){brainLog('❌','Spotify','שגיאה: '+e2.message);btn.innerHTML='❌ שגיאה — נסה להתחבר מחדש';setTimeout(function(){btn.innerHTML=orig;btn.disabled=false},4000)}}}
-function saveKey(){const k=document.getElementById('apiKey').value.trim();if(!k.startsWith('sk-')){showMsg('openaiStatus','מפתח לא תקין','err');return}localStorage.setItem('openai_key',k);localStorage.setItem('openai_model',document.getElementById('apiModel').value);showMsg('openaiStatus','✓ נשמר','ok');brainLog('🔑','מפתח נשמר','')}
+async function saveKey(){const k=document.getElementById('apiKey').value.trim();if(!k.startsWith('sk-')){showMsg('openaiStatus','מפתח לא תקין','err');return}const m=document.getElementById('apiModel').value;localStorage.setItem('openai_key',k);localStorage.setItem('openai_model',m);showMsg('openaiStatus','✓ נשמר (מסנכרן...)','ok');brainLog('🔑','מפתח נשמר','localStorage');try{const{data:{session}}=await sb.auth.getSession();if(!session){showMsg('openaiStatus','✓ נשמר מקומית (לא מחובר — אין סנכרון)','ok');return}const email=(session.user&&session.user.email)||'';const res1=await sb.from('app_config').upsert({key:'openai_key',value:k,updated_at:new Date().toISOString(),updated_by:email},{onConflict:'key'});const res2=await sb.from('app_config').upsert({key:'openai_model',value:m,updated_at:new Date().toISOString(),updated_by:email},{onConflict:'key'});if(res1.error||res2.error){var em=(res1.error||res2.error).message||'';showMsg('openaiStatus','✓ נשמר מקומית (סנכרון נכשל: '+em+')','ok');brainLog('⚠️','סנכרון','נכשל: '+em)}else{showMsg('openaiStatus','✓ נשמר וסונכרן לכל המכשירים','ok');brainLog('☁️','סנכרון','מפתח נשמר לכל המכשירים',true)}}catch(e){showMsg('openaiStatus','✓ נשמר מקומית (שגיאת סנכרון)','ok');brainLog('⚠️','סנכרון','שגיאה: '+e.message)}}
 async function testKey(){try{var inputKey=document.getElementById('apiKey').value.trim();if(inputKey&&inputKey.startsWith('sk-')){localStorage.setItem('openai_key',inputKey);localStorage.setItem('openai_model',document.getElementById('apiModel').value)}showMsg('openaiStatus','בודק...','ok');await callOpenAI([{role:'user',content:'Say OK'}],{max_tokens:10,noJson:true});showMsg('openaiStatus','✓ תקין','ok')}catch(e){showMsg('openaiStatus','שגיאה: '+e.message,'err')}}
 function showMsg(id,msg,type){const el=document.getElementById(id);el.style.display='block';el.textContent=msg;el.style.background=type==='ok'?'rgba(29,185,84,.15)':'rgba(255,71,133,.15)';el.style.color=type==='ok'?'var(--accent)':'var(--accent-3)'}
 function generateShareLink(){const k=document.getElementById('apiKey').value.trim();if(!k){showMsg('openaiStatus','הזן מפתח','err');return}saveKey();const p=new URLSearchParams();p.set('k',btoa(k));const m=document.getElementById('apiModel').value;if(m!=='gpt-4o')p.set('m',m);const s=localStorage.getItem('spotify_id');if(s)p.set('sid',s);document.getElementById('shareLinkUrl').textContent=location.origin+location.pathname+'#'+p;document.getElementById('shareLink').style.display='block'}
-(async function(){if(location.hash.length>1){try{const h=new URLSearchParams(location.hash.slice(1));if(h.has('k')){const d=atob(h.get('k'));if(d.startsWith('sk-')){localStorage.setItem('openai_key',d);if(h.has('m'))localStorage.setItem('openai_model',h.get('m'));if(h.has('sid'))localStorage.setItem('spotify_id',h.get('sid'));history.replaceState(null,'',location.pathname)}}}catch(e){}}const k=localStorage.getItem('openai_key');if(k)document.getElementById('apiKey').value=k;document.getElementById('apiModel').value=localStorage.getItem('openai_model')||'gpt-4o';const s=localStorage.getItem('spotify_id');if(s)document.getElementById('spotifyId').value=s;if(window.location.search.includes('code='))await handleSpotifyCallback();else if(localStorage.getItem('sp_access'))await loadSpotifyUser();brainLog('🚀','אתחול','API: '+(k?'מוגדר':'ברירת מחדל'));if(!isSpotifyConnected())document.getElementById('wizSpotifyHint').style.display='block';const{data:{session}}=await sb.auth.getSession();if(session){authUser=session.user;isGuest=false;enterApp()}else if(localStorage.getItem('sp_access')&&localStorage.getItem('sp_refresh')){isSpotifySSO=true;isGuest=false;enterApp()}})();
+(async function(){if(location.hash.length>1){try{const h=new URLSearchParams(location.hash.slice(1));if(h.has('k')){const d=atob(h.get('k'));if(d.startsWith('sk-')){localStorage.setItem('openai_key',d);if(h.has('m'))localStorage.setItem('openai_model',h.get('m'));if(h.has('sid'))localStorage.setItem('spotify_id',h.get('sid'));history.replaceState(null,'',location.pathname)}}}catch(e){}}const k=localStorage.getItem('openai_key');if(k)document.getElementById('apiKey').value=k;document.getElementById('apiModel').value=localStorage.getItem('openai_model')||'gpt-4o';const s=localStorage.getItem('spotify_id');if(s)document.getElementById('spotifyId').value=s;if(window.location.search.includes('code='))await handleSpotifyCallback();else if(localStorage.getItem('sp_access'))await loadSpotifyUser();brainLog('🚀','אתחול','API: '+(k?'מוגדר':'ברירת מחדל'));if(!isSpotifyConnected())document.getElementById('wizSpotifyHint').style.display='block';const{data:{session}}=await sb.auth.getSession();if(session){authUser=session.user;isGuest=false;try{const cfgRes=await sb.from('app_config').select('key,value').in('key',['openai_key','openai_model']);if(!cfgRes.error&&cfgRes.data&&cfgRes.data.length){cfgRes.data.forEach(function(row){if(row.key==='openai_key'&&row.value&&row.value.startsWith('sk-')){localStorage.setItem('openai_key',row.value);var el=document.getElementById('apiKey');if(el)el.value=row.value;brainLog('☁️','סנכרון','מפתח OpenAI נטען משרת',true)}if(row.key==='openai_model'&&row.value){localStorage.setItem('openai_model',row.value);var el2=document.getElementById('apiModel');if(el2)el2.value=row.value}})}}catch(e){}enterApp()}else if(localStorage.getItem('sp_access')&&localStorage.getItem('sp_refresh')){isSpotifySSO=true;isGuest=false;enterApp()}})();
 let selectedBrainVersion='v7.6';
 function selectBrainVersion(v,el){selectedBrainVersion=v;document.querySelectorAll('#brainV1Card,#brainV5Card,#brainV6Card,#brainV7Card,#brainV75Card').forEach(function(c){c.classList.remove('selected');c.style.borderColor='var(--border)';c.style.background='var(--card)';var ck=c.querySelector('.bc-check');if(ck)ck.remove()});el.style.borderColor='var(--accent)';el.style.background='rgba(29,185,84,.1)';el.classList.add('selected');var check=document.createElement('div');check.className='bc-check';check.style.cssText='position:absolute;top:-6px;right:-6px;width:22px;height:22px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff;font-weight:900;box-shadow:0 2px 8px rgba(29,185,84,.5)';check.textContent='✓';el.style.position='relative';el.appendChild(check);wiz.brainVersion=v;const label=v==='v7.6'?'v7.6 OMEGA':v==='v7'?'v7 LIVE':v==='v6'?'v6 DEEP':v==='v5turbo'?'v5 TURBO':'BRAIN v1';document.getElementById('brainVersion').textContent=label;const v5a=document.getElementById('brainV5Arch');if(v5a)v5a.style.display=(v==='v5turbo'||v==='v6'||v==='v7'||v==='v7.6')?'block':'none';const v6a=document.getElementById('brainV6Arch');if(v6a)v6a.style.display=(v==='v6'||v==='v7'||v==='v7.6')?'block':'none';const v7a=document.getElementById('brainV7Arch');if(v7a)v7a.style.display=(v==='v7'||v==='v7.6')?'block':'none';brainLog('🧠','גרסת מוח',v)}
 let selectedUser='client';function selectUser(n,el){selectedUser=n||'client'}
@@ -3613,8 +3626,9 @@ function initTFGame(){_tfOrder=shuffleArray(_tfFacts.map(function(_,i){return i}
 function showTFFact(){var el=document.getElementById('tfFactText');var res=document.getElementById('tfResult');var btns=document.getElementById('tfButtons');if(!el)return;_tfLocked=false;btns.style.opacity='1';btns.style.pointerEvents='auto';res.style.opacity='0';el.style.opacity='0';setTimeout(function(){el.textContent=_tfFacts[_tfOrder[_tfIdx%_tfFacts.length]].q;el.style.opacity='1'},250)}
 function tfAnswer(userSaidTrue){if(_tfLocked)return;_tfLocked=true;var fact=_tfFacts[_tfOrder[_tfIdx%_tfFacts.length]];var correct=userSaidTrue===fact.t;_tfTotal++;if(correct)_tfCorrect++;document.getElementById('tfScore').textContent=_tfCorrect+'/'+_tfTotal;var res=document.getElementById('tfResult');var btns=document.getElementById('tfButtons');btns.style.opacity='0.4';btns.style.pointerEvents='none';res.innerHTML=(correct?'<span style="color:var(--accent);font-weight:700">נכון!</span>':'<span style="color:var(--accent-3);font-weight:700">'+(fact.t?'לא נכון — זה דווקא נכון!':'לא נכון — זה בדיוני!')+'</span>')+'<div style="margin-top:6px;font-size:13px;color:var(--muted)">'+fact.e+'</div>';res.style.opacity='1';setTimeout(function(){_tfIdx++;showTFFact()},3500)}
 /* ====== END TRUE/FALSE GAME ====== */
-var vizMap={0:0,1:1,4:2,'4b':3,7:4};
-function wizGo(step){_wizBusy=false;document.querySelectorAll('.wiz-panel').forEach(p=>p.classList.remove('active'));document.getElementById('wizStep'+step).classList.add('active');if(step===1||step==='1'){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false}var vizStep=(step==='4b')?2:((typeof step==='number'||!isNaN(step))?(step in vizMap?vizMap[step]:-1):-1);document.querySelectorAll('.wstep').forEach(s=>{const n=+s.dataset.step;s.classList.toggle('active',n===vizStep);s.classList.toggle('done',n<vizStep)});document.querySelectorAll('.wline').forEach((l,i)=>l.classList.toggle('done',i<vizStep));document.getElementById('wizProgress').style.display=(step===2||step===3||step===6||step==='2'||step==='3'||step==='6')?'none':'flex';if(step===4||step==='4'){renderMoodBubbles()}if(step===7||step==='7'){document.getElementById('bizHoursSection').style.display='block';document.getElementById('hoursQuestion').style.display='none'}window.scrollTo({top:0,behavior:'smooth'})}
+/* Mood step (4) removed from wizard — moved to post-playlist refinement. vizMap now: desc=0, faders=1, hours=2, energy=3 */
+var vizMap={0:0,1:0,'4b':1,7:2,6:3};
+function wizGo(step){_wizBusy=false;document.querySelectorAll('.wiz-panel').forEach(p=>p.classList.remove('active'));document.getElementById('wizStep'+step).classList.add('active');if(step===1||step==='1'){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false}var vizStep=(step==='4b')?1:((typeof step==='number'||!isNaN(step))?(step in vizMap?vizMap[step]:-1):-1);document.querySelectorAll('.wstep').forEach(s=>{const n=+s.dataset.step;s.classList.toggle('active',n===vizStep);s.classList.toggle('done',n<vizStep)});document.querySelectorAll('.wline').forEach((l,i)=>l.classList.toggle('done',i<vizStep));document.getElementById('wizProgress').style.display=(step===2||step===3||step===6||step==='2'||step==='3'||step==='6')?'none':'flex';if(step===4||step==='4'){renderMoodBubbles()}if(step===7||step==='7'){document.getElementById('bizHoursSection').style.display='block';document.getElementById('hoursQuestion').style.display='none'}window.scrollTo({top:0,behavior:'smooth'})}
 function wizNext(cur){if(_wizBusy)return;if(cur===0){if(!selectedUser){const c=document.getElementById('customUserInput').value.trim();if(!c){alert('נא לבחור משתמש');return}selectedUser=c}wiz.user=selectedUser;brainLog('👤','משתמש',selectedUser);wizGo(1)}else if(cur===2){wiz.genres=Array.from(selectedGenres);brainLog('🎶','ז׳אנרים',wiz.genres.join(', ')||'ללא');wizGo(3)}else if(cur===4){/* Handled by saveMoodsAndGoFaders / saveFadersAndGoSamples now */}}
 var _wizBusy=false;
 async function _runDeepAnalysis(d,r){try{
@@ -3685,7 +3699,7 @@ try{
       _ctxLines.push('\n🎯 TARGET AUDIO VECTOR (derived from curator intent):');
       _ctxLines.push('   energy='+_tv.energy.toFixed(2)+' · valence='+_tv.valence.toFixed(2)+' · danceability='+_tv.danceability.toFixed(2)+' · tempo='+_tv.tempo+'BPM · instrumentalness='+_tv.instrumentalness.toFixed(2));
       _ctxLines.push('   Tolerance band: energy ['+_tv._band.energy[0].toFixed(2)+'-'+_tv._band.energy[1].toFixed(2)+'], BPM ['+_tv._band.tempo[0]+'-'+_tv._band.tempo[1]+']');
-      _ctxLines.push('\n🧭 Blend the top matches by weight. Reference playlists are your curation compass — tracks should feel at home alongside them. Do NOT copy tracks verbatim; use them as a sonic north star.');
+      _ctxLines.push('\n🧭 GUIDELINE ONLY: Blend the top matches by weight. The reference playlists are your CURATION COMPASS — they teach you the SOUND, STYLE, and ENERGY the client likes. Do NOT copy or pick tracks from these playlists. Instead, find SIMILAR tracks that feel at home alongside them — same sonic territory, same vibe, same category. The system has already pulled tracks directly similar to these playlists into the candidate pool — prefer those.');
       wiz.brainSheetContext=_ctxLines.join('\n');
       brainLog('🎯','שורות תואמות',_validMatches.map(function(m){return m.row.bizType+' ('+Math.round(m.weight*100)+'%)';}).join(' + '),true);
       brainLog('🎚️','Target Vector','E:'+_tv.energy.toFixed(2)+' V:'+_tv.valence.toFixed(2)+' D:'+_tv.danceability.toFixed(2)+' BPM:'+_tv.tempo+(_tv._curatorBlended?' (curator-blended)':''),true);
@@ -3701,7 +3715,7 @@ try{
     wiz.targetVector=computeTargetVector({faders:wiz.faders||{energy:50,vocal:50,familiarity:50,hebrew:50},dna:wiz.bizDNA||BIZ_DNA[cat],bizKey:(wiz.desc||'').substring(0,40)});
   }
 }catch(_eBS){console.warn('[BrainSheet] match step failed:',_eBS);brainLog('⚠️','טבלת מוח','שגיאה: '+_eBS.message,true);}
-brainLog('✅','ניתוח',r.business_type+' | '+r.atmosphere,true);document.getElementById('descLoading').style.display='none';_wizBusy=false;wizGo(4);wiz._deepAnalysisPromise=_runDeepAnalysis(d,r)}catch(e){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false;document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='שגיאה: '+e.message;_wizBusy=false}}
+brainLog('✅','ניתוח',r.business_type+' | '+r.atmosphere,true);document.getElementById('descLoading').style.display='none';_wizBusy=false;/* Skip mood step — moved to post-playlist refinement */ wizGo('4b');wiz._deepAnalysisPromise=_runDeepAnalysis(d,r)}catch(e){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false;document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='שגיאה: '+e.message;_wizBusy=false}}
 var bizHourOpen='12-15',bizHourClose='21-00';
 function toggle247(cb){var dd=document.getElementById('bizHoursDropdowns');dd.style.opacity=cb.checked?'0.3':'1';dd.style.pointerEvents=cb.checked?'none':'auto'}
 function submitBizHours(){var is247=document.getElementById('biz247').checked;if(is247){wiz.bizHours=['00:00','24:00'];brainLog('🕐','שעות פתיחה','24/7')}else{var openH=document.getElementById('bizOpenHour').value;var closeH=document.getElementById('bizCloseHour').value;wiz.bizHours=[openH,closeH];brainLog('🕐','שעות פתיחה',openH+' עד '+closeH)}document.getElementById('bizHoursSection').style.display='none';document.getElementById('hoursQuestion').style.display='block'}
@@ -3766,6 +3780,56 @@ function toggleMoodBubble(id){
 }
 /* Init bubbles when faders screen loads */
 setTimeout(renderMoodBubbles,500);
+
+/* ═══ POST-PLAYLIST MOOD REFINEMENT ═══ (moved from wizard step 3) */
+var _refineMoods=new Set();
+function renderRefineMoodBubbles(){
+  var container=document.getElementById('refineMoodBubbles');if(!container)return;
+  container.innerHTML='';
+  MOOD_BUBBLES.forEach(function(b){
+    var el=document.createElement('button');
+    el.className='genre-bubble'+(_refineMoods.has(b.id)?' genre-bubble-active':'');
+    el.setAttribute('data-id',b.id);
+    el.setAttribute('title',b.desc);
+    el.innerHTML=b.name;
+    el.onclick=function(){toggleRefineMood(b.id)};
+    container.appendChild(el);
+  });
+}
+function toggleRefineMood(id){
+  if(_refineMoods.has(id))_refineMoods.delete(id);
+  else _refineMoods.add(id);
+  renderRefineMoodBubbles();
+}
+async function regenerateWithMoodRefinement(){
+  var selected=Array.from(_refineMoods);
+  var briefEl=document.getElementById('refineMoodBriefInput');
+  var brief=briefEl?briefEl.value.trim():'';
+  if(!selected.length&&!brief){
+    var st=document.getElementById('refineMoodStatus');
+    if(st){st.style.display='block';st.style.color='var(--accent-3)';st.textContent='בחרו אווירה או כתבו בריף קצר לפני ייצור מחדש'}
+    return;
+  }
+  wiz.selectedMoods=selected;
+  if(brief){wiz.musicBrief=brief}
+  wiz._refinementPass=true;
+  var moodNames=selected.map(function(mid){var b=MOOD_BUBBLES.find(function(bb){return bb.id===mid});return b?b.emoji+' '+b.name:mid});
+  brainLog('🎯','דיוק','ייצור מחדש — אווירות: '+(moodNames.join(', ')||'(אין)')+(brief?' | בריף: '+brief.substring(0,60):''),true);
+  var btn=document.getElementById('refineMoodBtn');
+  var st=document.getElementById('refineMoodStatus');
+  if(btn){btn.disabled=true;btn.textContent='⏳ מייצר מחדש...';btn.style.opacity='0.6'}
+  if(st){st.style.display='block';st.style.color='var(--accent-2)';st.textContent='מייצר פלייליסט מדויק יותר...'}
+  try{
+    await finishWizard();
+    if(btn){btn.disabled=false;btn.textContent='🎯 ייצר מחדש עם הדיוק';btn.style.opacity='1'}
+    if(st){st.style.color='var(--accent)';st.textContent='✅ הפלייליסט עודכן לפי הדיוק שבחרת';setTimeout(function(){st.style.display='none'},4000)}
+  }catch(e){
+    if(btn){btn.disabled=false;btn.textContent='🎯 ייצר מחדש עם הדיוק';btn.style.opacity='1'}
+    if(st){st.style.color='var(--accent-3)';st.textContent='❌ שגיאה: '+e.message}
+  }
+}
+/* Render refinement bubbles after page load so they're ready when first playlist completes */
+setTimeout(renderRefineMoodBubbles,800);
 
 const eLbls={1:'שקט מאוד',2:'רגוע',3:'בינוני',4:'אנרגטי',5:'שיא'};function updateEnergy(el){const v=+el.value;var valEl=document.getElementById(el.id+'Val');if(valEl){valEl.textContent=v+' — '+eLbls[v]}else{var b=el.closest('.energy-block');if(b){b.querySelector('.eb-val').textContent=v;b.querySelector('.energy-desc').textContent=eLbls[v]}}}
 let sr=null,isRec=false,voiceTranscript='',voiceRecordings=[];function startVoice(){const SR=window.SpeechRecognition||window.webkitSpeechRecognition;if(!SR){alert('הדפדפן לא תומך בהקלטה');return}sr=new SR();sr.lang='he-IL';sr.continuous=true;sr.interimResults=true;voiceTranscript='';document.getElementById('voiceLiveText').textContent='';document.getElementById('voiceIdle').style.display='none';document.getElementById('voiceRecording').style.display='block';document.getElementById('voiceReview').style.display='none';sr.onresult=e=>{let final='',interim='';for(let i=0;i<e.results.length;i++){if(e.results[i].isFinal)final+=e.results[i][0].transcript+' ';else interim+=e.results[i][0].transcript}voiceTranscript=final.trim();document.getElementById('voiceLiveText').textContent=voiceTranscript+(interim?' '+interim:'')};sr.onerror=()=>{pauseVoice()};sr.onend=()=>{if(isRec)try{sr.start()}catch(e){}};sr.start();isRec=true}function pauseVoice(){isRec=false;if(sr)try{sr.stop()}catch(e){}document.getElementById('voiceRecording').style.display='none';const txt=voiceTranscript.trim()||document.getElementById('voiceLiveText').textContent.trim();if(txt){document.getElementById('voiceReviewText').textContent='🎤 '+txt;document.getElementById('voiceReview').style.display='block'}else{document.getElementById('voiceIdle').style.display='block'}}function useVoice(){const txt=voiceTranscript.trim()||document.getElementById('voiceReviewText').textContent.replace(/^🎤\s*/,'').trim();document.getElementById('voiceReview').style.display='none';if(txt){voiceRecordings.push(txt);renderVoiceChips();brainLog('🎤','הקלטה',txt.substring(0,50)+'...')}document.getElementById('voiceIdle').style.display='block';document.getElementById('voiceBtn').textContent='🎤 הוסף הקלטה נוספת'}function retryVoice(){document.getElementById('voiceReview').style.display='none';startVoice()}function renderVoiceChips(){const c=document.getElementById('voiceRecordings');c.innerHTML='';voiceRecordings.forEach((t,i)=>{c.innerHTML+='<div class="voice-chip"><span class="vc-text">🎤 '+esc(t)+'</span><button class="vc-remove" onclick="removeVoiceChip('+i+')" title="הסר">✕</button></div>'})}function removeVoiceChip(i){voiceRecordings.splice(i,1);renderVoiceChips();if(!voiceRecordings.length)document.getElementById('voiceBtn').textContent='🎤 הקלט במקום להקליד'}
@@ -4338,7 +4402,7 @@ st.textContent='Pre-fetching from Spotify...';
 let pool=[];
 try{pool=await prefetchFromSpotify(seeds,dna,targetAudio,constraints)}catch(e){brainLog('⚠️','Pool','Pre-fetch failed: '+e.message)}
 
-/* Phase 5a (v9): Anchor-and-Extend — fetch real tracks from curator reference playlists */
+/* Phase 5a (v10): Curator-as-Reference — fetch curator tracks, extract audio profile, use as similarity SEEDS only (do NOT add curator tracks themselves to pool; they are GUIDELINES not output) */
 var _curatorPlaylistIds=[];
 try{
   var _bsMatches=wiz.brainSheetMatches||[];
@@ -4347,19 +4411,71 @@ try{
     if(row.playlistIds&&row.playlistIds.length)row.playlistIds.forEach(function(id){if(id&&_curatorPlaylistIds.indexOf(id)===-1)_curatorPlaylistIds.push(id);});
   });
   if(_curatorPlaylistIds.length){
-    st.textContent='Anchor-and-extend from curators...';
-    var _curatorTracks=await fetchCuratorPlaylistTracks(_curatorPlaylistIds.slice(0,4),12);
+    st.textContent='Learning curator style...';
+    var _curatorTracks=await fetchCuratorPlaylistTracks(_curatorPlaylistIds.slice(0,4),15);
     if(_curatorTracks.length){
-      var _existAnchor={};pool.forEach(function(p){if(p.id)_existAnchor[p.id]=true;});
-      var _anchorsAdded=0;
-      _curatorTracks.forEach(function(ct){
-        if(!_existAnchor[ct.id]){ct._isAnchor=true;pool.push(ct);_existAnchor[ct.id]=true;_anchorsAdded++;}
-      });
+      /* Store reference IDs — will be excluded from output via dedup */
       wiz._curatorReferenceIds=_curatorTracks.map(function(t){return t.id}).filter(Boolean);
-      brainLog('⚓','Anchors','Added '+_anchorsAdded+' curator-reference tracks from '+_curatorPlaylistIds.length+' playlists (pool: '+pool.length+')',true);
+      /* 1) Pull audio features for curator tracks */
+      var _curIds=_curatorTracks.map(function(t){return t.id}).filter(Boolean).slice(0,50);
+      var _curFeat=null;
+      try{var _cfResp=await getAudioFeaturesAnyway(_curIds);_curFeat=(_cfResp&&_cfResp.audio_features)||null;}catch(_eCF){}
+      if(_curFeat&&_curFeat.length){
+        var _validFeat=_curFeat.filter(function(f){return f&&f.tempo});
+        if(_validFeat.length){
+          var _avg={energy:0,valence:0,danceability:0,acousticness:0,instrumentalness:0,tempo:0,cnt:0};
+          _validFeat.forEach(function(f){_avg.energy+=f.energy;_avg.valence+=f.valence;_avg.danceability+=f.danceability;_avg.acousticness+=f.acousticness;_avg.instrumentalness+=f.instrumentalness;_avg.tempo+=f.tempo;_avg.cnt++;});
+          _avg.energy/=_avg.cnt;_avg.valence/=_avg.cnt;_avg.danceability/=_avg.cnt;_avg.acousticness/=_avg.cnt;_avg.instrumentalness/=_avg.cnt;_avg.tempo=Math.round(_avg.tempo/_avg.cnt);
+          wiz._curatorAudioAvg=_avg;
+          brainLog('🧬','Curator DNA','E:'+_avg.energy.toFixed(2)+' V:'+_avg.valence.toFixed(2)+' D:'+_avg.danceability.toFixed(2)+' BPM:'+_avg.tempo+' Inst:'+_avg.instrumentalness.toFixed(2)+' ('+_validFeat.length+' reference tracks analyzed)',true);
+        }
+      }
+      /* 2) Use curator tracks as SEEDS for Spotify recommendations → fetch SIMILAR (not identical) tracks */
+      var _seedCuratorIds=_curIds.slice(0,5);
+      if(_seedCuratorIds.length){
+        try{
+          var _curRecParams={seed_tracks:_seedCuratorIds.join(','),limit:40,market:'IL'};
+          if(wiz._curatorAudioAvg){
+            _curRecParams.target_energy=wiz._curatorAudioAvg.energy;
+            _curRecParams.target_valence=wiz._curatorAudioAvg.valence;
+            _curRecParams.target_danceability=wiz._curatorAudioAvg.danceability;
+            _curRecParams.target_tempo=wiz._curatorAudioAvg.tempo;
+            var _eBand=0.18;
+            _curRecParams.min_energy=Math.max(0,wiz._curatorAudioAvg.energy-_eBand);
+            _curRecParams.max_energy=Math.min(1,wiz._curatorAudioAvg.energy+_eBand);
+          }
+          if(f.vocal<25){_curRecParams.min_instrumentalness=0.6}
+          else if(f.vocal>75){_curRecParams.max_instrumentalness=0.3}
+          if(f.familiarity<30){_curRecParams.max_popularity=40}
+          var _curRecsData=await getSpotifyRecommendations(_curRecParams);
+          if(_curRecsData&&_curRecsData.tracks&&_curRecsData.tracks.length){
+            var _existIds={};pool.forEach(function(p){if(p.id)_existIds[p.id]=true;});
+            /* Also exclude the curator tracks themselves from the similarity pool */
+            wiz._curatorReferenceIds.forEach(function(cid){_existIds[cid]=true;});
+            var _simAdded=0;
+            _curRecsData.tracks.forEach(function(rt){
+              if(_existIds[rt.id])return;
+              pool.push({
+                artist:(rt.artists||[]).map(function(a){return a.name}).join(', '),
+                title:rt.name,
+                id:rt.id,
+                url:rt.external_urls?rt.external_urls.spotify:'',
+                cover:rt.album&&rt.album.images&&rt.album.images.length?rt.album.images[rt.album.images.length-1].url:'',
+                preview:rt.preview_url||'',
+                duration:rt.duration_ms||0,
+                popularity:rt.popularity||0,
+                _fromCuratorSim:true
+              });
+              _existIds[rt.id]=true;_simAdded++;
+            });
+            brainLog('🧭','Curator Similar','Added '+_simAdded+' tracks SIMILAR to curator style (guideline-based, not copies). Pool: '+pool.length,true);
+          }
+        }catch(_eRec){brainLog('⚠️','Curator Rec',_eRec.message);}
+      }
+      brainLog('📋','Reference Only',_curatorTracks.length+' curator tracks used as GUIDELINE only (excluded from output)',true);
     }
   }
-}catch(e){brainLog('⚠️','Anchors',e.message);}
+}catch(e){brainLog('⚠️','Curator',e.message);}
 
 /* Phase 5.5: Vote-Based Recommendations — use liked samples as seeds */
 if(voteSignal.likedIds.length){

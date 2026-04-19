@@ -1031,7 +1031,7 @@ async function loadGuestSpotifyTokens(){await loadUserSpotifyTokens()}
 function updateGuestSpotifyUI(){if(!isGuest)return;if(isSpotifyConnected()){var nc=document.getElementById('spotifyNotConnected');if(nc){nc.innerHTML='<div style="padding:16px;background:linear-gradient(135deg,rgba(29,185,84,.15),rgba(29,185,84,.05));border-radius:12px;text-align:center"><div style="font-size:28px;margin-bottom:8px">&#x1f3b5;</div><div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:4px">Spotify \u05de\u05e9\u05d5\u05ea\u05e3 \u05de\u05d7\u05d5\u05d1\u05e8</div><div style="font-size:13px;color:var(--muted)">\u05d0\u05d5\u05e8\u05d7\u05d9\u05dd \u05de\u05e9\u05ea\u05de\u05e9\u05d9\u05dd \u05d1-Spotify \u05d4\u05de\u05e9\u05d5\u05ea\u05e3 \u05e9\u05dc \u05d4\u05de\u05e2\u05e8\u05db\u05ea</div></div>';nc.style.display='block'}var co=document.getElementById('spotifyConnected');if(co)co.style.display='none'}else{var nc=document.getElementById('spotifyNotConnected');if(nc){nc.innerHTML='<div style="padding:16px;background:var(--card);border-radius:12px;text-align:center"><div style="font-size:15px;font-weight:700;color:var(--accent);margin-bottom:8px">Spotify \u05de\u05e9\u05d5\u05ea\u05e3</div><div style="font-size:13px;color:var(--muted);margin-bottom:12px">\u05d4-Spotify \u05d4\u05de\u05e9\u05d5\u05ea\u05e3 \u05dc\u05d0 \u05de\u05d7\u05d5\u05d1\u05e8 \u05e2\u05d3\u05d9\u05d9\u05df. \u05d4\u05de\u05e0\u05d4\u05dc \u05e6\u05e8\u05d9\u05da \u05dc\u05d7\u05d1\u05e8 Spotify \u05e7\u05d5\u05d3\u05dd.</div></div>';nc.style.display='block'}}}
 const HARDCODED_API_KEY=['sk-proj-Y-3tc_l5y5g1gBa-cvT3WpH3cqfA6WuR3mzTKTK8mPmhlDeBECYVg5l6x5','J5tZjw0rO6t5m_HRT3BlbkFJyTXGjWy7pcaopIgbgKQGGuiAqEG9VeBdjEsDHsr7hZVEB9FIjg-TQXihdMzTuDpD3ARONemX0A'].join('');
 const brainLogs=[];window._pdocDone=false;
-function brainLog(e,t,d,ai){const time=new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});brainLogs.push({e,t,d,ai,time});const el=document.getElementById('brainLog'),div=document.createElement('div');div.className='brain-entry'+(ai?' ai':'');div.innerHTML='<div class="brain-time">'+time+'</div><div class="brain-title">'+e+' '+esc(t)+'</div><div class="brain-detail">'+esc(d)+'</div>';el.prepend(div);try{localStorage.setItem('sb_brain_logs',JSON.stringify(brainLogs))}catch(x){}if(window._docAutoTimer)clearTimeout(window._docAutoTimer);window._docAutoTimer=setTimeout(function(){if(brainLogs.length>0&&brainLogs.length!==(window._lastDocLogCount||0)){window._lastDocLogCount=brainLogs.length;try{_writeProcessDoc()}catch(ex){}}},10000);}
+function brainLog(e,t,d,ai){const time=new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});brainLogs.push({e,t,d,ai,time});const el=document.getElementById('brainLog'),div=document.createElement('div');div.className='brain-entry'+(ai?' ai':'');div.innerHTML='<div class="brain-time">'+time+'</div><div class="brain-title">'+e+' '+esc(t)+'</div><div class="brain-detail">'+esc(d)+'</div>';el.prepend(div);try{localStorage.setItem('sb_brain_logs',JSON.stringify(brainLogs))}catch(x){}/* ⛔ Mirror-to-Google-Doc auto-trigger disabled by user request */}
 let promptCounter=0;
 function brainPrompt(stage,systemMsg,userMsg){promptCounter++;const el=document.getElementById('brainPrompts');const time=new Date().toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit',second:'2-digit'});const div=document.createElement('div');div.style.cssText='background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px';div.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700;color:var(--accent-2);font-size:13px">#'+promptCounter+' '+esc(stage)+'</span><span style="font-size:10px;color:var(--muted)">'+time+'</span></div>'+'<div style="margin-bottom:8px"><div style="font-size:10px;color:var(--accent);font-weight:700;margin-bottom:4px">SYSTEM:</div><pre style="white-space:pre-wrap;word-break:break-word;font-size:10px;color:var(--text);background:var(--bg-2);padding:8px;border-radius:6px;max-height:150px;overflow-y:auto;font-family:monospace;direction:ltr;text-align:left">'+esc(systemMsg)+'</pre></div>'+'<div><div style="font-size:10px;color:var(--accent-3);font-weight:700;margin-bottom:4px">USER:</div><pre style="white-space:pre-wrap;word-break:break-word;font-size:10px;color:var(--text);background:var(--bg-2);padding:8px;border-radius:6px;max-height:200px;overflow-y:auto;font-family:monospace;direction:ltr;text-align:left">'+esc(userMsg)+'</pre></div>';el.prepend(div)}
 
@@ -2426,6 +2426,20 @@ function computeTargetVector(ctx){
   /* Vocal override takes priority (user explicit intent) */
   if(f.vocal<25)v.instrumentalness=Math.max(v.instrumentalness,0.75);
   if(f.vocal>80)v.instrumentalness=Math.min(v.instrumentalness,0.15);
+  /* ═══ Per-biz learned calibration bias from feedback log ═══ */
+  try{
+    var bizKey=ctx&&ctx.bizKey;
+    if(bizKey&&typeof biasFromFeedbackLog==='function'){
+      var bias=biasFromFeedbackLog(bizKey);
+      if(bias&&bias._samples>=5){
+        v.energy+=bias.energy;
+        v.valence+=bias.valence;
+        v.danceability+=bias.danceability;
+        v.tempo+=bias.tempo;
+        v._learnedBias=bias;
+      }
+    }
+  }catch(e){}
   /* Clamp */
   ['energy','valence','danceability','acousticness','instrumentalness'].forEach(function(k){v[k]=Math.max(0,Math.min(1,v[k]));});
   v.tempo=Math.max(60,Math.min(180,Math.round(v.tempo)));
@@ -2495,6 +2509,371 @@ function getFeedbackLogStats(){
   }catch(e){return{total:0,byEvent:{},byBiz:{}};}
 }
 window.getFeedbackLogStats=getFeedbackLogStats;
+
+/* ═══════════════════════════════════════════════════════
+   v9 SELECTION CORE — precision primitives
+   clusterTrack, camelotKey, keyCompatible, mmrSelect, greedySequence
+   Pure functions, no external deps beyond target-vector helpers above
+   ═══════════════════════════════════════════════════════ */
+
+/* Cluster bucket: artist|genre-bucket|decade|bpm-bucket — used for dedup/diversity */
+function clusterTrack(t){
+  try{
+    var art=(t.artist||'').toLowerCase().split(',')[0].trim();
+    var genres=(t._genres||[]).map(function(g){return (g||'').toLowerCase()});
+    var g='other';
+    if(genres.some(function(x){return /hip.?hop|rap|trap/.test(x)}))g='hiphop';
+    else if(genres.some(function(x){return /house|techno|edm|electro|dance|trance/.test(x)}))g='electronic';
+    else if(genres.some(function(x){return /rock|punk|grunge|metal|alt/.test(x)}))g='rock';
+    else if(genres.some(function(x){return /jazz|soul|r&b|funk|bossa/.test(x)}))g='jazzsoul';
+    else if(genres.some(function(x){return /folk|acoustic|country|americana/.test(x)}))g='folk';
+    else if(genres.some(function(x){return /pop|indie/.test(x)}))g='pop';
+    else if(genres.some(function(x){return /ambient|chill|lo.?fi|new.?age/.test(x)}))g='ambient';
+    else if(genres.some(function(x){return /classical|orchestral|score/.test(x)}))g='classical';
+    else if(genres.some(function(x){return /world|latin|reggae|afro/.test(x)}))g='world';
+    else if(genres.some(function(x){return /hebrew|mizrah|mediterranean/.test(x)}))g='hebrew';
+    var yr=t.releaseYear||t._year||0;
+    var dec=yr?Math.floor(yr/10)*10:0;
+    var bpm=(t.audioFeatures&&t.audioFeatures.bpm)||t.bpm_est||0;
+    var bpmB=bpm?(bpm<90?'slow':bpm<115?'mid':bpm<135?'up':'fast'):'unk';
+    return{artist:art,genre:g,decade:dec,bpmBucket:bpmB,composite:art+'|'+g+'|'+dec+'|'+bpmB};
+  }catch(e){return{artist:(t.artist||'').toLowerCase(),genre:'other',decade:0,bpmBucket:'unk',composite:'other'};}
+}
+
+/* Camelot wheel — Spotify key(0-11)+mode(0/1 minor/major) → Camelot code */
+function camelotKey(key,mode){
+  if(key==null||mode==null)return null;
+  var majorMap={0:'8B',1:'3B',2:'10B',3:'5B',4:'12B',5:'7B',6:'2B',7:'9B',8:'4B',9:'11B',10:'6B',11:'1B'};
+  var minorMap={0:'5A',1:'12A',2:'7A',3:'2A',4:'9A',5:'4A',6:'11A',7:'6A',8:'1A',9:'8A',10:'3A',11:'10A'};
+  return mode===1?majorMap[key]:minorMap[key];
+}
+
+/* Harmonic compatibility: same code, ±1 on wheel, same number different letter, or relative major/minor */
+function keyCompatible(a,b){
+  if(!a||!b)return true; /* unknown keys never block */
+  if(a===b)return true;
+  var na=parseInt(a),nb=parseInt(b);
+  var la=a.slice(-1),lb=b.slice(-1);
+  if(la===lb){
+    var diff=Math.abs(na-nb);
+    if(diff===1||diff===11)return true; /* adjacent on wheel (12-wrap) */
+  }
+  if(na===nb&&la!==lb)return true; /* relative major/minor */
+  return false;
+}
+
+/* Score a track against target vector — higher is better (0..1) */
+function scoreTrackFit(t,target){
+  if(!t.audioFeatures||!target)return 0.5;
+  var d=trackDistanceFromTarget(t.audioFeatures,target);
+  return Math.max(0,1-d);
+}
+
+/* Cosine similarity of audio-feature vectors (for diversity penalty) */
+function trackCosineSim(a,b){
+  if(!a||!b)return 0;
+  var va=[a.energy||0,a.valence||0,a.danceability||0,(a.bpm||120)/200,a.instrumentalness||0,a.acousticness||0];
+  var vb=[b.energy||0,b.valence||0,b.danceability||0,(b.bpm||120)/200,b.instrumentalness||0,b.acousticness||0];
+  var dot=0,na=0,nb=0;
+  for(var i=0;i<va.length;i++){dot+=va[i]*vb[i];na+=va[i]*va[i];nb+=vb[i]*vb[i];}
+  return dot/(Math.sqrt(na)*Math.sqrt(nb)+1e-9);
+}
+
+/* MMR (Maximal Marginal Relevance): pick K best tracks balancing relevance + diversity.
+   lambda: 0.7 = favor relevance, 0.3 = favor diversity. Default 0.72.
+   clusterCap: max tracks per cluster.composite key. */
+function mmrSelect(candidates,target,K,opts){
+  opts=opts||{};
+  var lambda=opts.lambda!=null?opts.lambda:0.72;
+  var clusterCap=opts.clusterCap!=null?opts.clusterCap:5;
+  var artistCap=opts.artistCap!=null?opts.artistCap:2;
+  if(!candidates||!candidates.length)return[];
+  /* Pre-score relevance */
+  var pool=candidates.slice().map(function(t){
+    return{t:t,rel:scoreTrackFit(t,target),cl:clusterTrack(t)};
+  });
+  /* Sort descending by relevance */
+  pool.sort(function(a,b){return b.rel-a.rel});
+  var selected=[];
+  var clusterCounts={};
+  var artistCounts={};
+  var genreCounts={};
+  while(selected.length<K&&pool.length){
+    var bestIdx=-1,bestScore=-Infinity;
+    for(var i=0;i<pool.length;i++){
+      var cand=pool[i];
+      /* Cluster caps */
+      if((clusterCounts[cand.cl.composite]||0)>=clusterCap)continue;
+      if((artistCounts[cand.cl.artist]||0)>=artistCap)continue;
+      /* Diversity penalty: max cosine sim to already-selected */
+      var maxSim=0;
+      for(var s=0;s<selected.length;s++){
+        var sim=trackCosineSim(cand.t.audioFeatures,selected[s].audioFeatures);
+        if(sim>maxSim)maxSim=sim;
+      }
+      var mmr=lambda*cand.rel-(1-lambda)*maxSim;
+      if(mmr>bestScore){bestScore=mmr;bestIdx=i;}
+    }
+    if(bestIdx<0)break;
+    var picked=pool.splice(bestIdx,1)[0];
+    selected.push(picked.t);
+    clusterCounts[picked.cl.composite]=(clusterCounts[picked.cl.composite]||0)+1;
+    artistCounts[picked.cl.artist]=(artistCounts[picked.cl.artist]||0)+1;
+    genreCounts[picked.cl.genre]=(genreCounts[picked.cl.genre]||0)+1;
+  }
+  return selected;
+}
+
+/* Greedy nearest-neighbor sequencing with Camelot key compatibility + energy-arc bias.
+   Starts with track closest to targetStartEnergy, then chains tracks minimizing transition cost. */
+function greedySequence(tracks,target,opts){
+  opts=opts||{};
+  var arcMode=opts.arc||'gentle-build'; /* gentle-build | stable | wave */
+  if(!tracks||tracks.length<2)return tracks||[];
+  var remaining=tracks.slice();
+  var startTargetE=arcMode==='gentle-build'?(target&&target.energy?Math.max(0.15,target.energy-0.15):0.35):(target&&target.energy||0.5);
+  /* Pick opener: lowest transition to startTargetE */
+  var openerIdx=0,openerCost=Infinity;
+  remaining.forEach(function(t,i){
+    var e=(t.audioFeatures&&t.audioFeatures.energy)||0.5;
+    var cost=Math.abs(e-startTargetE);
+    if(cost<openerCost){openerCost=cost;openerIdx=i;}
+  });
+  var out=[remaining.splice(openerIdx,1)[0]];
+  var prev=out[0];
+  while(remaining.length){
+    var bestI=0,bestCost=Infinity;
+    for(var i=0;i<remaining.length;i++){
+      var t=remaining[i];
+      var pf=prev.audioFeatures||{},tf=t.audioFeatures||{};
+      var dE=Math.abs((pf.energy||0.5)-(tf.energy||0.5));
+      var dB=Math.abs(((pf.bpm||120)-(tf.bpm||120))/200);
+      var dV=Math.abs((pf.valence||0.5)-(tf.valence||0.5));
+      var dD=Math.abs((pf.danceability||0.5)-(tf.danceability||0.5));
+      /* Hard-ish limits: big jumps discouraged */
+      var transitionCost=dE*2.0+dB*1.5+dV*0.8+dD*0.6;
+      /* Key compatibility bonus */
+      var pk=pf.key!=null?camelotKey(pf.key,pf.mode):null;
+      var tk=tf.key!=null?camelotKey(tf.key,tf.mode):null;
+      if(pk&&tk&&!keyCompatible(pk,tk))transitionCost+=0.35;
+      /* Same-artist repetition penalty if adjacent */
+      if(prev.artist&&t.artist&&prev.artist.toLowerCase().split(',')[0].trim()===t.artist.toLowerCase().split(',')[0].trim())transitionCost+=1.5;
+      /* Arc bias: gentle-build = favor slightly higher-energy next track in middle third */
+      if(arcMode==='gentle-build'){
+        var pos=out.length/tracks.length;
+        var desiredE=pos<0.33?0.35+pos*0.5:pos<0.7?0.55+pos*0.25:0.7-(pos-0.7)*0.8;
+        transitionCost+=Math.abs((tf.energy||0.5)-desiredE)*0.6;
+      }
+      if(transitionCost<bestCost){bestCost=transitionCost;bestI=i;}
+    }
+    prev=remaining.splice(bestI,1)[0];
+    out.push(prev);
+  }
+  return out;
+}
+
+/* ═══ Anchor-and-extend: fetch real tracks from curator reference playlists ═══ */
+async function fetchCuratorPlaylistTracks(playlistIds,maxPerPlaylist){
+  maxPerPlaylist=maxPerPlaylist||15;
+  if(!playlistIds||!playlistIds.length)return[];
+  if(!window.spotifyToken&&typeof getSpotifyTokenAnyway!=='function')return[];
+  var out=[];
+  for(var i=0;i<playlistIds.length;i++){
+    var pid=playlistIds[i];
+    try{
+      var tok=window.spotifyToken||(typeof getSpotifyTokenAnyway==='function'?await getSpotifyTokenAnyway():null);
+      if(!tok)break;
+      var r=await fetch('https://api.spotify.com/v1/playlists/'+encodeURIComponent(pid)+'/tracks?limit='+maxPerPlaylist+'&market=IL',{headers:{Authorization:'Bearer '+tok}});
+      if(!r.ok)continue;
+      var j=await r.json();
+      if(j&&j.items){
+        j.items.forEach(function(it){
+          if(!it||!it.track||!it.track.id)return;
+          var tr=it.track;
+          out.push({
+            artist:(tr.artists||[]).map(function(a){return a.name}).join(', '),
+            title:tr.name,
+            id:tr.id,
+            url:tr.external_urls?tr.external_urls.spotify:'',
+            cover:tr.album&&tr.album.images&&tr.album.images.length?tr.album.images[tr.album.images.length-1].url:'',
+            preview:tr.preview_url||'',
+            duration:tr.duration_ms||0,
+            _fromCurator:pid
+          });
+        });
+      }
+    }catch(e){console.warn('[curatorFetch] '+pid+': '+e.message);}
+  }
+  return out;
+}
+window.fetchCuratorPlaylistTracks=fetchCuratorPlaylistTracks;
+
+/* ═══ Brief embedding scorer (text-embedding-3-small) — cosine similarity ═══ */
+async function embedText(text){
+  try{
+    var key=typeof getOpenAIKey==='function'?getOpenAIKey():(window.OPENAI_API_KEY||'');
+    if(!key)return null;
+    var r=await fetch('https://api.openai.com/v1/embeddings',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+      body:JSON.stringify({model:'text-embedding-3-small',input:(text||'').substring(0,4000)})
+    });
+    if(!r.ok)return null;
+    var j=await r.json();
+    return(j&&j.data&&j.data[0]&&j.data[0].embedding)||null;
+  }catch(e){return null;}
+}
+function cosineEmbed(a,b){
+  if(!a||!b||!a.length||!b.length||a.length!==b.length)return 0;
+  var dot=0,na=0,nb=0;
+  for(var i=0;i<a.length;i++){dot+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i];}
+  return dot/(Math.sqrt(na)*Math.sqrt(nb)+1e-9);
+}
+async function scoreTrackByBrief(tracks,briefText){
+  if(!briefText||!tracks||!tracks.length)return tracks;
+  var briefVec=await embedText(briefText);
+  if(!briefVec)return tracks;
+  /* Batch track descriptors into one embedding call per 100 tracks */
+  var batchSize=100;
+  for(var off=0;off<tracks.length;off+=batchSize){
+    var batch=tracks.slice(off,off+batchSize);
+    var descriptors=batch.map(function(t){
+      var g=(t._genres||[]).slice(0,3).join(', ');
+      var af=t.audioFeatures;
+      var bpm=af?('BPM '+af.bpm):'';
+      var e=af?('energy '+af.energy.toFixed(2)):'';
+      return t.artist+' — '+t.title+(g?' ['+g+']':'')+(bpm?' '+bpm:'')+(e?' '+e:'');
+    });
+    try{
+      var key=typeof getOpenAIKey==='function'?getOpenAIKey():(window.OPENAI_API_KEY||'');
+      if(!key)break;
+      var r=await fetch('https://api.openai.com/v1/embeddings',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},
+        body:JSON.stringify({model:'text-embedding-3-small',input:descriptors})
+      });
+      if(!r.ok)break;
+      var j=await r.json();
+      if(j&&j.data){
+        j.data.forEach(function(d,i){
+          if(batch[i]&&d.embedding)batch[i]._briefScore=cosineEmbed(briefVec,d.embedding);
+        });
+      }
+    }catch(e){break;}
+  }
+  return tracks;
+}
+window.scoreTrackByBrief=scoreTrackByBrief;
+
+/* ═══ Per-biz calibration: learn bias from feedback log ═══
+   Returns additive delta to apply to target vector for a given biz key. */
+function biasFromFeedbackLog(bizKey){
+  try{
+    var arr=JSON.parse(localStorage.getItem('sb_feedback_log_v1')||'[]');
+    if(!arr.length)return null;
+    var relevant=bizKey?arr.filter(function(e){return e.biz===bizKey}):arr;
+    if(relevant.length<5)return null;
+    var ups=relevant.filter(function(e){return e.event==='vote_up'||e.event==='rate_high'});
+    var downs=relevant.filter(function(e){return e.event==='vote_down'||e.event==='replace_removed'||e.event==='rate_low'});
+    function avg(list,key){
+      var vals=list.map(function(e){return e.audioFeatures&&e.audioFeatures[key]}).filter(function(v){return v!=null&&!isNaN(v)});
+      if(!vals.length)return null;
+      return vals.reduce(function(a,b){return a+b},0)/vals.length;
+    }
+    var avgUpE=avg(ups,'energy'),avgDownE=avg(downs,'energy');
+    var avgUpV=avg(ups,'valence'),avgDownV=avg(downs,'valence');
+    var avgUpD=avg(ups,'danceability'),avgDownD=avg(downs,'danceability');
+    var avgUpB=avg(ups,'bpm'),avgDownB=avg(downs,'bpm');
+    /* Bias = direction FROM disliked TOWARD liked, scaled small to avoid overfitting */
+    var scale=0.25;
+    var bias={energy:0,valence:0,danceability:0,tempo:0};
+    if(avgUpE!=null&&avgDownE!=null)bias.energy=(avgUpE-avgDownE)*scale;
+    if(avgUpV!=null&&avgDownV!=null)bias.valence=(avgUpV-avgDownV)*scale;
+    if(avgUpD!=null&&avgDownD!=null)bias.danceability=(avgUpD-avgDownD)*scale;
+    if(avgUpB!=null&&avgDownB!=null)bias.tempo=(avgUpB-avgDownB)*scale;
+    /* Clamp */
+    bias.energy=Math.max(-0.15,Math.min(0.15,bias.energy||0));
+    bias.valence=Math.max(-0.15,Math.min(0.15,bias.valence||0));
+    bias.danceability=Math.max(-0.15,Math.min(0.15,bias.danceability||0));
+    bias.tempo=Math.max(-8,Math.min(8,bias.tempo||0));
+    bias._samples=relevant.length;
+    return bias;
+  }catch(e){return null;}
+}
+window.biasFromFeedbackLog=biasFromFeedbackLog;
+
+/* ═══ Critic pass — second-opinion LLM review of the selected 50 ═══
+   Takes tracks after MMR+sequencing, asks GPT to flag up to 6 weakest picks.
+   Flagged tracks get marked for replacement by caller. */
+async function criticPass(tracks,ctx){
+  if(!tracks||tracks.length<10)return tracks;
+  try{
+    var brief=(ctx&&ctx.brief)||'';
+    var dnaLabel=(ctx&&ctx.dnaLabel)||'';
+    var moods=(ctx&&ctx.moods)||[];
+    var target=(ctx&&ctx.target)||null;
+    var trackSummary=tracks.map(function(t,i){
+      var af=t.audioFeatures||{};
+      return(i+1)+'. '+t.artist+' — '+t.title+' | E:'+(af.energy!=null?af.energy.toFixed(2):'?')+' V:'+(af.valence!=null?af.valence.toFixed(2):'?')+' D:'+(af.danceability!=null?af.danceability.toFixed(2):'?')+' BPM:'+(af.bpm||'?')+' ['+((t._genres||[]).slice(0,2).join(',')||'?')+']';
+    }).join('\n');
+    var tv=target?('Target E:'+target.energy.toFixed(2)+' V:'+target.valence.toFixed(2)+' D:'+target.danceability.toFixed(2)+' BPM:'+target.tempo):'';
+    var raw=await callOpenAIWithFallback([
+      {role:'system',content:'You are a picky music critic. Review a 50-track playlist and identify the WEAKEST 4-6 picks — tracks that are genre-off, energy-off, too predictable, too jarring, or break the flow. Do NOT flag tracks just because you personally dislike them. Flag only objective misfits relative to target & brief. JSON only.'},
+      {role:'user',content:'Brief: "'+(brief||'(none)')+'"\nBusiness: '+dnaLabel+'\nMoods: '+(moods.join(', ')||'(none)')+'\n'+tv+'\n\nPlaylist:\n'+trackSummary+'\n\nReturn: {"weak_picks":[{"index":1-50,"reason":"one short phrase"}],"overall_score":0-100,"biggest_risk":"one sentence"}'}
+    ],{max_tokens:800,stage:'🧐 Critic Pass',temperature:0.3});
+    var parsed=safeJSON(raw);
+    if(parsed&&parsed.weak_picks){
+      parsed.weak_picks.slice(0,6).forEach(function(w){
+        var idx=(w.index|0)-1;
+        if(idx>=0&&idx<tracks.length){
+          tracks[idx]._criticFlag=true;
+          tracks[idx]._criticReason=w.reason||'critic flag';
+        }
+      });
+      if(typeof brainLog==='function')brainLog('🧐','Critic',(parsed.weak_picks.length||0)+' flagged · score:'+(parsed.overall_score||'?')+' · risk:'+(parsed.biggest_risk||'—').substring(0,60),true);
+      if(typeof window!=='undefined')window._criticResult=parsed;
+    }
+  }catch(e){if(typeof brainLog==='function')brainLog('⚠️','Critic',e.message);}
+  return tracks;
+}
+window.criticPass=criticPass;
+
+/* ═══ Per-slot target vectors — build 4 variants for morning/afternoon/evening/night ═══ */
+function perSlotTargetVectors(baseTarget,energyByHour){
+  if(!baseTarget)return null;
+  var slots=['morning','afternoon','evening','night'];
+  var eMap=energyByHour||{morning:3,afternoon:3,evening:3,night:3};
+  var out={};
+  slots.forEach(function(slot){
+    var scale=(eMap[slot]||3)/3; /* 1-5 → ~0.33-1.67 */
+    var ev=Math.max(0.05,Math.min(0.95,(baseTarget.energy||0.5)*scale));
+    /* Gentle per-slot bpm offset */
+    var bpmOff=slot==='morning'?-10:slot==='afternoon'?-3:slot==='evening'?+4:+10;
+    out[slot]={
+      energy:ev,
+      valence:baseTarget.valence,
+      danceability:Math.max(0.05,Math.min(0.95,(baseTarget.danceability||0.5)+(scale-1)*0.15)),
+      tempo:Math.max(60,Math.min(180,(baseTarget.tempo||120)+bpmOff)),
+      instrumentalness:baseTarget.instrumentalness,
+      _band:{
+        energy:[Math.max(0,ev-0.18),Math.min(1,ev+0.18)],
+        valence:baseTarget._band?baseTarget._band.valence:[0.2,0.9],
+        danceability:baseTarget._band?baseTarget._band.danceability:[0.25,0.9],
+        tempo:[Math.max(60,(baseTarget.tempo||120)+bpmOff-18),Math.min(180,(baseTarget.tempo||120)+bpmOff+18)]
+      }
+    };
+  });
+  return out;
+}
+window.perSlotTargetVectors=perSlotTargetVectors;
+
+/* Dedup candidates against a set of already-known track IDs (e.g., curator reference) */
+function dedupAgainstIds(tracks,excludeIds){
+  if(!excludeIds||!excludeIds.length)return tracks;
+  var set={};excludeIds.forEach(function(id){if(id)set[id]=true;});
+  return tracks.filter(function(t){return!(t.id&&set[t.id])&&!(t.spotifyId&&set[t.spotifyId])});
+}
+window.dedupAgainstIds=dedupAgainstIds;
 
 const BIZ_DNA={
 cafe:{label:'בית קפה',baseGenres:['Indie','Acoustic','Jazz','Bossa Nova','Lo-Fi','Folk'],avoid:['Metal','Trap','Hard Rock','EDM'],avoidMoods:['aggressive','dark','anxious','manic'],avoidTextures:['harsh','distorted','heavy bass','industrial'],avoidCliches:['generic coffee shop jazz','elevator music','muzak','obvious bossa nova covers'],bpmRange:[70,115],energy:'low-mid',vibe:'אינטימי, חם, שיחתי. מוזיקה שלא מפריעה לשיחה אבל יוצרת אווירה.',anchorArtists:['Norah Jones','Jack Johnson','Iron & Wine','José González','Bon Iver'],adjacentWorlds:['Khruangbin','Mildlife','Skinshape','Mild High Club','Connan Mockasin'],hebrewRef:['שלומי שבן','דניאל סלומון','מירי מסיקה','עברי לידר'],curatorialDistance:4,refArtists:['Norah Jones','Jack Johnson','Iron & Wine','José González','Bon Iver']},
@@ -2709,9 +3088,12 @@ function _learnBatch(rows){if(!LEARNING_SHEET_WEBHOOK||!rows.length)return;var b
 
 /* ═══════════════════════════════════════════════════════
    PROCESS DOC — writes narrative of each brain run to Google Doc
+   ⛔ DISABLED by user request — mirror mechanism turned off.
+   To re-enable, restore PROCESS_DOC_WEBHOOK and remove the early return below.
    ═══════════════════════════════════════════════════════ */
-var PROCESS_DOC_WEBHOOK='https://script.google.com/macros/s/AKfycbxN3w0TbWIvmSIptYPgn-J3dkK4B3lO7uFvIWEFhaouzlhL08J8b_SWLAXvfDc0pkIk/exec';
+var PROCESS_DOC_WEBHOOK=''; /* disabled — was: https://script.google.com/macros/s/AKfycbxN3w0TbWIvmSIptYPgn-J3dkK4B3lO7uFvIWEFhaouzlhL08J8b_SWLAXvfDc0pkIk/exec */
 function _writeProcessDoc(){
+return; /* ⛔ Mirror disabled — no external Google Doc logging */
 if(!PROCESS_DOC_WEBHOOK||!brainLogs.length)return;
 var dna=wiz.bizDNA||{};var fd=wiz.faders||{};
 var lines=[];
@@ -3287,7 +3669,7 @@ try{
       wiz.brainSheetMatch=_validMatches[0].row;
       wiz.brainSheetMatchMeta={index:_validMatches[0].row_index,confidence:_validMatches[0].weight,reason:_validMatches[0].reason||_match.primary_reason};
       /* Compute target vector from top matches */
-      var _tv=computeTargetVector({faders:wiz.faders||{energy:50,vocal:50,familiarity:50,hebrew:50},dna:wiz.bizDNA||BIZ_DNA[cat],brainSheetMatches:_validMatches,demoData:wiz.demoData});
+      var _tv=computeTargetVector({faders:wiz.faders||{energy:50,vocal:50,familiarity:50,hebrew:50},dna:wiz.bizDNA||BIZ_DNA[cat],brainSheetMatches:_validMatches,demoData:wiz.demoData,bizKey:(wiz.desc||'').substring(0,40)});
       wiz.targetVector=_tv;
       /* Build context block — now higher priority, listing all top matches */
       var _ctxLines=[];
@@ -3311,12 +3693,12 @@ try{
     }else{
       wiz.brainSheetMatch=null;wiz.brainSheetMatches=[];wiz.brainSheetContext='';
       /* Still compute target vector from DNA even without sheet match */
-      wiz.targetVector=computeTargetVector({faders:wiz.faders||{energy:50,vocal:50,familiarity:50,hebrew:50},dna:wiz.bizDNA||BIZ_DNA[cat],demoData:wiz.demoData});
+      wiz.targetVector=computeTargetVector({faders:wiz.faders||{energy:50,vocal:50,familiarity:50,hebrew:50},dna:wiz.bizDNA||BIZ_DNA[cat],demoData:wiz.demoData,bizKey:(wiz.desc||'').substring(0,40)});
       brainLog('⚠️','טבלת מוח','לא נמצאה שורה תואמת — משתמש ב-target vector בסיסי',true);
     }
   }else{
     brainLog('⚠️','טבלת מוח','נתונים לא זמינים — ממשיכים ללא',true);
-    wiz.targetVector=computeTargetVector({faders:wiz.faders||{energy:50,vocal:50,familiarity:50,hebrew:50},dna:wiz.bizDNA||BIZ_DNA[cat]});
+    wiz.targetVector=computeTargetVector({faders:wiz.faders||{energy:50,vocal:50,familiarity:50,hebrew:50},dna:wiz.bizDNA||BIZ_DNA[cat],bizKey:(wiz.desc||'').substring(0,40)});
   }
 }catch(_eBS){console.warn('[BrainSheet] match step failed:',_eBS);brainLog('⚠️','טבלת מוח','שגיאה: '+_eBS.message,true);}
 brainLog('✅','ניתוח',r.business_type+' | '+r.atmosphere,true);document.getElementById('descLoading').style.display='none';_wizBusy=false;wizGo(4);wiz._deepAnalysisPromise=_runDeepAnalysis(d,r)}catch(e){document.getElementById('descLoading').style.display='none';document.getElementById('descNav').style.display='flex';document.getElementById('descNextBtn').disabled=false;document.getElementById('descError').style.display='block';document.getElementById('descError').textContent='שגיאה: '+e.message;_wizBusy=false}}
@@ -3956,6 +4338,29 @@ st.textContent='Pre-fetching from Spotify...';
 let pool=[];
 try{pool=await prefetchFromSpotify(seeds,dna,targetAudio,constraints)}catch(e){brainLog('⚠️','Pool','Pre-fetch failed: '+e.message)}
 
+/* Phase 5a (v9): Anchor-and-Extend — fetch real tracks from curator reference playlists */
+var _curatorPlaylistIds=[];
+try{
+  var _bsMatches=wiz.brainSheetMatches||[];
+  _bsMatches.forEach(function(m){
+    var row=m.row||m;
+    if(row.playlistIds&&row.playlistIds.length)row.playlistIds.forEach(function(id){if(id&&_curatorPlaylistIds.indexOf(id)===-1)_curatorPlaylistIds.push(id);});
+  });
+  if(_curatorPlaylistIds.length){
+    st.textContent='Anchor-and-extend from curators...';
+    var _curatorTracks=await fetchCuratorPlaylistTracks(_curatorPlaylistIds.slice(0,4),12);
+    if(_curatorTracks.length){
+      var _existAnchor={};pool.forEach(function(p){if(p.id)_existAnchor[p.id]=true;});
+      var _anchorsAdded=0;
+      _curatorTracks.forEach(function(ct){
+        if(!_existAnchor[ct.id]){ct._isAnchor=true;pool.push(ct);_existAnchor[ct.id]=true;_anchorsAdded++;}
+      });
+      wiz._curatorReferenceIds=_curatorTracks.map(function(t){return t.id}).filter(Boolean);
+      brainLog('⚓','Anchors','Added '+_anchorsAdded+' curator-reference tracks from '+_curatorPlaylistIds.length+' playlists (pool: '+pool.length+')',true);
+    }
+  }
+}catch(e){brainLog('⚠️','Anchors',e.message);}
+
 /* Phase 5.5: Vote-Based Recommendations — use liked samples as seeds */
 if(voteSignal.likedIds.length){
   st.textContent='Vote-based recommendations...';
@@ -4235,6 +4640,77 @@ brainLog('✅','Genre Audit','Removed '+_genreFiltered+' tracks that conflict wi
 st.textContent='Critic review...';
 tracks=await criticReview(tracks,wiz,dna,constraints,targetAudio);
 
+/* ═══ Phase 8.5 (v9): Over-generate → MMR Select → Greedy Sequence → Critic Pass ═══
+   When we have significantly more than 50 tracks (pool + enriched candidates),
+   MMR picks the best 50 balancing fit + diversity, sequencer orders harmonically,
+   critic flags weak picks for later replacement. */
+try{
+  var _targetVec=wiz.targetVector||null;
+  if(_targetVec&&tracks&&tracks.length>50){
+    st.textContent='v9: MMR selecting 50 best...';
+    var _preCount=tracks.length;
+    /* Attempt brief-embedding scoring when a brief exists — additional relevance signal */
+    if(wiz.musicBrief&&wiz.musicBrief.length>10){
+      try{await scoreTrackByBrief(tracks,wiz.musicBrief);}catch(e){}
+    }
+    /* MMR select 50 with diversity */
+    var _mmrOpts={lambda:0.72,clusterCap:5,artistCap:2};
+    /* Per-slot MMR when hours mode is active */
+    if(wiz.useHours&&wiz.energy){
+      var _perSlot=perSlotTargetVectors(_targetVec,wiz.energy);
+      if(_perSlot){
+        var _slots=['morning','afternoon','evening','night'];
+        var _perSlotCount=Math.ceil(50/_slots.length);
+        var _combined=[];var _usedIds={};
+        _slots.forEach(function(slot){
+          var slotTarget=_perSlot[slot];
+          var slotPool=tracks.filter(function(t){return!_usedIds[t.id||'_'+t.artist+t.title];});
+          var picked=mmrSelect(slotPool,slotTarget,_perSlotCount,_mmrOpts);
+          picked.forEach(function(p){p._slotAssigned=slot;p.slot=slot;_usedIds[p.id||'_'+p.artist+p.title]=true;_combined.push(p);});
+        });
+        if(_combined.length>=40)tracks=_combined.slice(0,50);
+        else tracks=mmrSelect(tracks,_targetVec,50,_mmrOpts);
+        brainLog('🎚️','Per-Slot MMR','4 slots × '+_perSlotCount+' tracks each = '+tracks.length+' selected',true);
+      }else{
+        tracks=mmrSelect(tracks,_targetVec,50,_mmrOpts);
+      }
+    }else{
+      tracks=mmrSelect(tracks,_targetVec,50,_mmrOpts);
+    }
+    brainLog('🎯','MMR Select','Picked '+tracks.length+' from '+_preCount+' (λ=0.72, artistCap=2, clusterCap=5)',true);
+  }
+  /* Dedup against curator reference tracks (don't repeat what's already in reference playlists) */
+  if(wiz._curatorReferenceIds&&wiz._curatorReferenceIds.length){
+    var _beforeCurDedup=tracks.length;
+    tracks=dedupAgainstIds(tracks,wiz._curatorReferenceIds);
+    var _removedCur=_beforeCurDedup-tracks.length;
+    if(_removedCur>0)brainLog('🔄','Curator Dedup','Removed '+_removedCur+' tracks already in reference playlists',true);
+  }
+  /* Greedy harmonic sequence — orders by Camelot key + BPM + energy arc */
+  if(tracks&&tracks.length>=10&&tracks.some(function(t){return t.audioFeatures})){
+    st.textContent='v9: Harmonic sequencing...';
+    var _arcMode=(wiz.useHours||(_targetVec&&_targetVec.energy>0.7))?'stable':'gentle-build';
+    var _sequenced=greedySequence(tracks,_targetVec,{arc:_arcMode});
+    if(_sequenced&&_sequenced.length===tracks.length){
+      tracks=_sequenced;
+      brainLog('🎼','Harmonic Seq','Greedy-sequenced '+tracks.length+' tracks (arc='+_arcMode+', Camelot-aware)',true);
+    }
+  }
+  /* Critic pass — flag 4-6 weakest picks */
+  if(tracks&&tracks.length>=20){
+    st.textContent='v9: Critic pass...';
+    var _critCtx={
+      brief:wiz.musicBrief||'',
+      dnaLabel:dna.label||'',
+      moods:(wiz.selectedMoods||[]).map(function(mid){var b=(typeof MOOD_BUBBLES!=='undefined')&&MOOD_BUBBLES.find(function(bb){return bb.id===mid});return b?b.name:mid;}),
+      target:_targetVec
+    };
+    tracks=await criticPass(tracks,_critCtx);
+    var _flagged=tracks.filter(function(t){return t._criticFlag}).length;
+    if(_flagged>0)brainLog('🧐','Critic Flags',_flagged+' tracks flagged for review',true);
+  }
+}catch(e){brainLog('⚠️','v9 Select',e.message);}
+
 /* Phase 9: Similarity Check (#10) */
 st.textContent='Similarity check...';
 tracks=await checkTrackSimilarity(tracks);
@@ -4297,7 +4773,7 @@ return tracks}
 
 async function finishWizard(){if(_wizBusy)return;_wizBusy=true;_wizShowProgress=true;if(wiz._deepAnalysisPromise){try{await wiz._deepAnalysisPromise}catch(e){}}var _sab=document.getElementById('saveAnalysisBtn');if(_sab){_sab.disabled=false;_sab.textContent='📊 שמור לניתוח';_sab.style.opacity='1'}if(wiz.useHours){wiz.energy={morning:+document.getElementById('eMorning').value,afternoon:+document.getElementById('eAfternoon').value,evening:+document.getElementById('eEvening').value,night:+document.getElementById('eNight').value}}else{wiz.energy={}}const st=document.getElementById('wizStatus');showWizLoading(3);updateWizStatus('בונה פרופיל...');if(wiz.useHours){brainLog('⚡','אנרגיה','בוקר:'+wiz.energy.morning+' צהריים:'+wiz.energy.afternoon+' ערב:'+wiz.energy.evening+' לילה:'+wiz.energy.night)}else{brainLog('⏰','שעות','ללא חלוקה לשעות — פלייליסט אחיד')}brainLog('🏗️','פרופיל','משלב נתונים...',true);if(clientBrainEvents.length){await distillClientBrain()}try{const _voteSignal=buildVoteSignal();wiz._voteSignal=_voteSignal;if(_voteSignal.hasVotes){brainLog('🗳️','Vote Signal','👍 '+_voteSignal.liked.length+' liked, 👎 '+_voteSignal.disliked.length+' disliked',true);if(_voteSignal.likedAudioAvg)brainLog('📊','Liked Pattern','E:'+_voteSignal.likedAudioAvg.energy+' V:'+_voteSignal.likedAudioAvg.valence+' D:'+_voteSignal.likedAudioAvg.danceability+' BPM:'+_voteSignal.likedAudioAvg.bpm,true);if(_voteSignal.dislikedArtists.length)brainLog('🚫','Blacklist',_voteSignal.dislikedArtists.join(', '),true)}const liked=_voteSignal.liked,disliked=_voteSignal.disliked,f=wiz.faders,g=wiz.genres.length?'\nGenres: '+wiz.genres.join(', '):'',rf=wiz.refs.length?'\nRef: '+wiz.refs.map(r=>r.artist+' - '+r.title).join(', '):'';const famTarget=f.familiarity;const famDesc2='🚨 FAMILIARITY DOSAGE: Target familiarity/popularity for EVERY track is '+famTarget+'/100. '+(famTarget<25?'ABSOLUTE NICHE — only deep cuts, indie/underground artists with <100K monthly Spotify listeners. ZERO mainstream hits or radio singles.':famTarget<40?'Mostly niche — underground and lesser-known tracks, with occasional recognizable anchor.':famTarget>75?'Mainstream — primarily well-known hits and chart songs that most people recognize.':famTarget>60?'Leaning mainstream — mostly recognizable tracks, with some fresh discoveries.':'Balanced mix — half recognizable, half discovery. Neither pure mainstream nor pure niche.')+' Do NOT pick songs that deviate significantly from this popularity band.';const hebDesc2='Hebrew songs: '+f.hebrew+'% of total';const vocTarget=(f.vocal/100).toFixed(2);const vocDesc2='🚨 VOCAL DOSAGE: Target vocal presence for EVERY track is '+vocTarget+' (0.0=pure instrumental, 0.3=light vocals/ambient voices, 0.5=balanced, 0.7=vocal-forward, 1.0=full vocal performance). This is the vocal level each song should have. '+(f.vocal<20?'INSTRUMENTAL ONLY — all tracks must be instrumental/ambient with NO singing.':f.vocal>80?'VOCAL ONLY — all tracks must have prominent singing/vocals.':'Allow ±0.15 variance for natural mix.');const nrgTarget=(f.energy/100).toFixed(2);const nrgDesc2='🚨 ENERGY DOSAGE: Target energy level for EVERY track is '+nrgTarget+' (on a 0.0-1.0 scale where 0=silent/ambient, 0.3=calm/chill, 0.5=moderate, 0.7=upbeat/driving, 1.0=explosive). This is NOT a ratio of energetic vs calm songs — it is the energy level each individual song should have. Allow ±0.15 natural variance (range '+(Math.max(0,f.energy-15)/100).toFixed(2)+'-'+(Math.min(100,f.energy+15)/100).toFixed(2)+') for flow and breathing room, but the AVERAGE energy of all 50 tracks must land near '+nrgTarget+'. Do NOT pick songs outside this band unless there is a strong musical reason.';const dna=wiz.bizDNA||BIZ_DNA.general;
 /* Recompute target vector with final faders + moods, then cache on wiz */
-var _tvFinal=computeTargetVector({faders:f,dna:dna,brainSheetMatches:wiz.brainSheetMatches,brainSheetMatch:wiz.brainSheetMatch,demoData:wiz.demoData,moods:wiz.selectedMoods});
+var _tvFinal=computeTargetVector({faders:f,dna:dna,brainSheetMatches:wiz.brainSheetMatches,brainSheetMatch:wiz.brainSheetMatch,demoData:wiz.demoData,moods:wiz.selectedMoods,bizKey:(wiz.desc||'').substring(0,40)});
 wiz.targetVector=_tvFinal;
 brainLog('🎚️','Final Target','E:'+_tvFinal.energy.toFixed(2)+' V:'+_tvFinal.valence.toFixed(2)+' D:'+_tvFinal.danceability.toFixed(2)+' BPM:'+_tvFinal.tempo+' Inst:'+_tvFinal.instrumentalness.toFixed(2),true);
 var _timeCtx=timeContextSignals();

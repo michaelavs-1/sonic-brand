@@ -36,24 +36,24 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Missing API key' });
     }
 
-    // Newer models (gpt-5.x) use max_completion_tokens instead of max_tokens
+    // gpt-5.x: use max_completion_tokens, no custom temperature, no response_format
     const resolvedModel = model || 'gpt-4o';
     const isNewModel = /^gpt-5/.test(resolvedModel);
-    const tokenParam = isNewModel ? 'max_completion_tokens' : 'max_tokens';
+
+    const payload = {
+      model: resolvedModel,
+      messages: messages,
+      [isNewModel ? 'max_completion_tokens' : 'max_tokens']: max_tokens || 3000,
+    };
+    if (!isNewModel) {
+      payload.temperature = temperature || 0.7;
+      if (response_format) payload.response_format = response_format;
+    }
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Authorization': 'Bearer ' + key,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: resolvedModel,
-        messages: messages,
-        [tokenParam]: max_tokens || 3000,
-        temperature: temperature || 0.7,
-        response_format: response_format
-      })
+      headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
 
     const data = await openaiRes.json();

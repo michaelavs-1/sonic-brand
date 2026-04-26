@@ -873,10 +873,14 @@ async function fillUp(existing, faders){
 }
 
 /* ─────────── OpenAI proxy ─────────── */
+function getOpenAIKey(){
+  // Same origin → reads v1's saved key from localStorage
+  try { return localStorage.getItem('openai_key') || ''; } catch(e){ return ''; }
+}
 async function callOpenAI(messages, opts){
   opts = opts || {};
   const body = {
-    apiKey: '', // proxy uses server key
+    apiKey: getOpenAIKey(), // user's saved v1 key, or '' → server fallback
     model: opts.model || 'gpt-4o-mini',
     temperature: opts.temperature || 0.6,
     messages,

@@ -189,30 +189,95 @@ async function loadSpotifyUser(){
 async function buildBrainContext(){
   state.brainContext.assembled = false;
 
-  // L0 — Data Box (synchronous, local knowledge base)
-  state.brainContext.l0 = (window.SB_matchDataBox && window.SB_matchDataBox(state.bizDesc)) || null;
-  if(state.brainContext.l0){
-    console.log('[brain L0] matched:', state.brainContext.l0.label);
-  }
+  // L0 — match Data Box entry (synchronous keyword match)
+  const l0Match = (window.SB_matchDataBox && window.SB_matchDataBox(state.bizDesc)) || null;
 
-  const [l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
+  // Run all fetches in parallel — L0 DNA fetch runs alongside L1-L4
+  const [l0Res, l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
+    l0Match ? fetchL0_DNA(l0Match.playlistIds) : Promise.resolve(null),
     state.refPlaylist ? fetchL1_DNA(state.refPlaylist) : Promise.resolve(null),
     fetchL2_Cohort(state.bizType),
     fetchL3_GenreArchive(Array.from(state.selectedMoods)),
     fetchL4_Feedback(state.bizType),
   ]);
+
+  const l0DNA = l0Res.status==='fulfilled' ? l0Res.value : null;
+  state.brainContext.l0 = l0Match ? { ...l0Match, dna: l0DNA } : null;
   state.brainContext.l1 = l1Res.status==='fulfilled' ? l1Res.value : null;
   state.brainContext.l2 = l2Res.status==='fulfilled' ? l2Res.value : null;
   state.brainContext.l3 = l3Res.status==='fulfilled' ? l3Res.value : null;
   state.brainContext.l4 = l4Res.status==='fulfilled' ? l4Res.value : null;
   state.brainContext.assembled = true;
   console.log('[brain]', {
-    l0: state.brainContext.l0 ? 'databox('+state.brainContext.l0.label+')' : '-',
+    l0: state.brainContext.l0 ? `databox(${state.brainContext.l0.label}, artists=${l0DNA ? l0DNA.topArtists.length : 0})` : '-',
     l1: state.brainContext.l1 ? 'DNA('+state.brainContext.l1.trackCount+')' : '-',
     l2: state.brainContext.l2 ? 'cohort('+state.brainContext.l2.cohort_size+')' : '-',
     l3: state.brainContext.l3 ? 'archive('+state.brainContext.l3.archive_size+')' : '-',
     l4: state.brainContext.l4 ? 'feedback('+state.brainContext.l4.feedback_count+')' : '-',
   });
+}
+
+/* ─── L0: Data Box Playlist DNA — fetches tracks from example playlists, extracts artists + seeds ─── */
+async function fetchL0_DNA(playlistIds){
+  if(!playlistIds || !playlistIds.length) return null;
+  const tok = await refreshSpotifyTokenIfNeeded();
+  if(!tok) return null;
+
+  // Sample up to 3 playlists from the Data Box entry
+  const samplePids = playlistIds.slice(0, 3);
+  const allTracks = [];
+
+  await Promise.allSettled(samplePids.map(async pid => {
+    try{
+      const r = await fetch(
+        `https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(id,name),popularity,album(release_date)))&limit=30`,
+        {headers:{'Authorization':'Bearer '+tok}}
+      );
+      if(!r.ok) return;
+      const j = await r.json();
+      const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id);
+      allTracks.push(...tracks);
+    } catch(e){}
+  }));
+
+  if(allTracks.length < 5) return null;
+
+  // Deduplicate by track ID
+  const seen = new Set();
+  const unique = allTracks.filter(t=>{ if(seen.has(t.id)) return false; seen.add(t.id); return true; });
+
+  // Sort by popularity, take top 50
+  const top50 = unique.sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,50);
+
+  // Fetch audio features for DNA analysis
+  let audioStats = null;
+  try{
+    const afRes = await fetch(
+      `https://api.spotify.com/v1/audio-features?ids=${top50.slice(0,50).map(t=>t.id).join(',')}`,
+      {headers:{'Authorization':'Bearer '+tok}}
+    );
+    if(afRes.ok){
+      const afJson = await afRes.json();
+      const features = (afJson.audio_features||[]).filter(f=>f);
+      if(features.length) audioStats = analyzeAudioStats(features, top50);
+    }
+  } catch(e){}
+
+  // Count artist appearances across all sampled playlists
+  const artistCount = {};
+  unique.forEach(t=>(t.artists||[]).forEach(a=>{
+    artistCount[a.name] = (artistCount[a.name]||0) + 1;
+  }));
+  const topArtists = Object.entries(artistCount)
+    .sort((a,b)=>b[1]-a[1]).slice(0,10).map(([name])=>name);
+
+  return {
+    topTrackIds: top50.slice(0,5).map(t=>t.id),   // seeds for Spotify recommendations
+    topArtists,                                     // pass to GPT as reference
+    audioStats,
+    trackCount: unique.length,
+    playlistCount: samplePids.length,
+  };
 }
 
 /* ─── L1: Reference Playlist DNA ─── */
@@ -455,13 +520,20 @@ function assembleBrainBlocks(){
   const ctx = state.brainContext;
   const blocks = [];
 
-  // L0 — Data Box: the ground truth music knowledge for this business type
+  // L0 — Data Box: real playlist DNA from SonicBrands knowledge base
   if(ctx.l0){
-    const lines = ['[L0 — DATA BOX: מאגר הידע המוזיקלי של SonicBrands]'];
-    lines.push(`סוג עסק זוהה: ${ctx.l0.label}`);
-    lines.push(`ז'אנרים מוכחים לסוג עסק זה: ${ctx.l0.genres}`);
-    lines.push(`מטרת המוזיקה: ${ctx.l0.purpose}`);
-    lines.push('⚠️ זהו הידע המוכח ביותר — יש לדבוק בז\'אנרים אלה כ-GROUND TRUTH. אלא אם ה-DNA של הפלייליסט הספציפי מראה אחרת.');
+    const lines = ['[L0 — DATA BOX: DNA מפלייליסטים לדוגמה לסוג עסק זה]'];
+    lines.push(`סוג עסק: ${ctx.l0.label}`);
+    lines.push(`ז'אנרים מוכחים: ${ctx.l0.genres}`);
+    if(ctx.l0.dna && ctx.l0.dna.topArtists && ctx.l0.dna.topArtists.length){
+      lines.push(`אמנים אופייניים (נותחו מתוך ${ctx.l0.dna.playlistCount} פלייליסטים לדוגמה): ${ctx.l0.dna.topArtists.join(', ')}`);
+      lines.push('חפש אמנים בסגנון דומה לאלו — לא חייב להשתמש בדיוק באמנים האלו, אלא בסגנון שלהם.');
+    }
+    if(ctx.l0.dna && ctx.l0.dna.audioStats){
+      const st = ctx.l0.dna.audioStats;
+      lines.push(`מאפיינים אודיו מהפלייליסטים: אנרגיה=${st.energy.toFixed(2)}, טמפו≈${Math.round(st.tempo)} BPM, ריקודיות=${st.dance.toFixed(2)}`);
+    }
+    lines.push(`מטרה: ${ctx.l0.purpose}`);
     blocks.push(lines.join('\n'));
   }
 
@@ -526,7 +598,12 @@ function renderBrainBanner(){
     return;
   }
   const parts = [];
-  if(ctx.l0) parts.push(`📋 <strong>Data Box:</strong> ${escapeHtml(ctx.l0.label)} — <em>${escapeHtml(ctx.l0.genres)}</em>`);
+  if(ctx.l0){
+    const dnaInfo = ctx.l0.dna
+      ? ` · נותח ${ctx.l0.dna.trackCount} שירים · אמנים: ${ctx.l0.dna.topArtists.slice(0,4).map(escapeHtml).join(', ')}`
+      : '';
+    parts.push(`📋 <strong>Data Box:</strong> ${escapeHtml(ctx.l0.label)}${dnaInfo}`);
+  }
   if(ctx.l1 && ctx.l1.summary) parts.push(`🧬 <strong>פלייליסט שלך:</strong> ${escapeHtml(ctx.l1.summary)}`);
   if(ctx.l2 && ctx.l2.cohort_size >= 3) parts.push(`📚 <strong>Robin זוכרת:</strong> ${ctx.l2.cohort_size} פלייליסטים${ctx.l2.used_fallback?' (כולל general)':''}`);
   if(ctx.l3 && ctx.l3.archive_size >= 1) parts.push(`🏷️ <strong>ארכיון ז'אנרים:</strong> ${ctx.l3.archive_size} רשומות`);
@@ -817,36 +894,15 @@ async function spotifySearch(artist, title){
   return null;
 }
 
-async function fetchL0Seeds(playlistIds){
-  // Fetch top tracks from a Data Box example playlist to use as Spotify rec seeds
-  const tok = await refreshSpotifyTokenIfNeeded();
-  if(!tok || !playlistIds || !playlistIds.length) return [];
-  for(const pid of playlistIds.slice(0,3)){
-    try{
-      const r = await fetch(
-        `https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,popularity))&limit=20`,
-        {headers:{'Authorization':'Bearer '+tok}}
-      );
-      if(!r.ok) continue;
-      const j = await r.json();
-      const ids = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id)
-        .sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,3).map(t=>t.id);
-      if(ids.length >= 2) return ids;
-    } catch(e){}
-  }
-  return [];
-}
-
 async function fillUp(existing, faders){
-  // Mixed seeds: L1 DNA → L2 cohort → L0 Data Box playlists → existing validated tracks
+  // Seed priority: L1 DNA → L2 cohort → L0 Data Box DNA → existing validated tracks
   const ctx = state.brainContext || {};
   let seeds = [];
   if(ctx.l1 && Array.isArray(ctx.l1.topTrackIds)) seeds.push(...ctx.l1.topTrackIds.slice(0,2));
   if(ctx.l2 && Array.isArray(ctx.l2.cohort_top_ids)) seeds.push(...ctx.l2.cohort_top_ids.slice(0,2));
-  // If we still have room and L0 data box is available, fetch seed tracks from its example playlists
-  if(seeds.length < 3 && ctx.l0 && Array.isArray(ctx.l0.playlistIds)){
-    const l0seeds = await fetchL0Seeds(ctx.l0.playlistIds);
-    seeds.push(...l0seeds);
+  // L0 DNA already fetched — use its top track IDs directly (no extra API call needed)
+  if(seeds.length < 3 && ctx.l0 && ctx.l0.dna && Array.isArray(ctx.l0.dna.topTrackIds)){
+    seeds.push(...ctx.l0.dna.topTrackIds.slice(0,3));
   }
   // Dedupe and fill from existing validated tracks
   seeds = Array.from(new Set(seeds.filter(Boolean)));

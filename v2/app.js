@@ -226,7 +226,9 @@ async function fetchL0_DNA(playlistIds){
   if(!tok) return null;
 
   // Sample up to 3 playlists from the Data Box entry
-  const samplePids = playlistIds.slice(0, 3);
+  // Shuffle playlist order every run → different playlists sampled → different DNA
+  const shuffledPids = playlistIds.slice().sort(()=>Math.random()-0.5);
+  const samplePids = shuffledPids.slice(0, 3);
   const allTracks = [];
 
   await Promise.allSettled(samplePids.map(async pid => {
@@ -971,7 +973,13 @@ async function fillUp(existing, faders){
   else if(faders.vocal > 75){ params.max_instrumentalness = 0.3; }
 
   if(faders.familiarity < 30){ params.max_popularity = 35; }
-  else if(faders.familiarity > 70){ params.min_popularity = 55; }
+  else if(faders.familiarity > 70){ params.min_popularity = 55; params.max_popularity = 85; }
+  else {
+    // Mid-range: cap at 72 to avoid always getting mega-hits (top 1% of streams)
+    // Adds random offset so each run returns different tier of results
+    params.max_popularity = 60 + Math.floor(Math.random() * 20); // 60-79
+    params.min_popularity = 20 + Math.floor(Math.random() * 20); // 20-39
+  }
 
   try{
     const qs = new URLSearchParams();
@@ -1202,8 +1210,9 @@ async function enrichPreviews(tracks){
   for(let i=0; i<missing.length; i+=50){
     const batch = missing.slice(i,i+50);
     try{
+      // No market param — previews are less restricted without market filter
       const r = await fetch(
-        `https://api.spotify.com/v1/tracks?ids=${batch.map(t=>t.id).join(',')}&market=IL`,
+        `https://api.spotify.com/v1/tracks?ids=${batch.map(t=>t.id).join(',')}`,
         {headers:{'Authorization':'Bearer '+tok}}
       );
       if(!r.ok) continue;

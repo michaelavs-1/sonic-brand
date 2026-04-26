@@ -27,6 +27,7 @@ const state = {
   spotifyToken: null,
   spotifyUser: null,
   generatedTracks: [],
+  regenCount: 0,       // how many times "צרו שוב" was pressed
   feedback: {}, // trackKey -> 'up' | 'down'
   brainContext: {
     l0: null, // Data Box — SonicBrands knowledge base (Michael's spreadsheet)
@@ -757,7 +758,12 @@ async function startGeneration(){
     const moods = Array.from(state.selectedMoods);
 
     setLoadingStatus('בונה פרופיל מוזיקלי…','');
-    const candidates = await generateCandidates(faders, moods);
+    // Pass previously generated tracks so GPT won't repeat them
+    const excludeTracks = state.generatedTracks.map(t=>`${t.artist} — ${t.title}`);
+    const candidates = await generateCandidates(faders, moods, {
+      attempt: state.regenCount,
+      exclude: excludeTracks
+    });
 
     setLoadingStatus('מאמת ב-Spotify…',`${candidates.length} שירים`);
     const validated = await validateOnSpotify(candidates);
@@ -790,19 +796,27 @@ function setLoadingStatus(step, detail){
   $('loadingDetail').textContent = detail || '';
 }
 
-async function generateCandidates(faders, moods){
+async function generateCandidates(faders, moods, opts){
+  opts = opts || {};
+  const attempt  = opts.attempt || 0;            // 0 = first time, 1+ = regen
+  const exclude  = opts.exclude || [];            // "artist — title" strings to avoid
+
   const fmDesc = describeFamiliarity(faders.familiarity);
   const heDesc = describeHebrew(faders.hebrew);
   const voDesc = describeVocal(faders.vocal);
   const enDesc = describeEnergy(faders.energy);
   const erDesc = describeEra(faders.era);
 
+  const regenNote = attempt > 0
+    ? `\n⚠️ זוהי יצירה מחדש מספר ${attempt}. חובה להציג בחירה שונה לחלוטין מהפעם הקודמת — אמנים שונים, שירים שונים, זוויות שונות של הסגנון. אל תחזור על אף שיר מהרשימה הבאה.`
+    : '';
+
   const sys = `אתה רובין, מומחה ליצירת פלייליסטים מותאמי-עסק.
 המטרה: לייצר 60 מועמדים אמיתיים מ-Spotify לפלייליסט עסקי.
 חוקים קשיחים:
 - כל שיר חייב להיות קיים באמת ב-Spotify, אמן ושם מדויקים.
 - אל תמציא שירים. אם אתה לא בטוח באמן או בשם — אל תכלול אותו.
-- שמור על הסגנונות והאווירות שביקש העסק.
+- שמור על הסגנונות והאווירות שביקש העסק.${regenNote}
 ${fmDesc}
 ${heDesc}
 ${voDesc}
@@ -812,6 +826,11 @@ ${erDesc}
 
   const brainBlocks = state.brainContext.assembled ? assembleBrainBlocks() : '';
 
+  // Build exclusion block (cap at 40 to keep prompt lean)
+  const excludeBlock = exclude.length
+    ? `\nשירים שכבר הוצגו — אסור לכלול אף אחד מהם:\n${exclude.slice(0, 40).join('\n')}`
+    : '';
+
   const usr = `תיאור העסק: "${state.bizDesc}"
 סוג: ${state.bizType||'עסק'}
 אווירות נבחרות: ${moods.join(', ')||'(ברירת מחדל)'}
@@ -819,14 +838,18 @@ ${erDesc}
 ${state.refPlaylist?'פלייליסט ייחוס URL: '+state.refPlaylist:''}
 
 ${brainBlocks}
+${excludeBlock}
 
 צור 60 מועמדים מגוונים שמתאימים לכל החוקים והמידע למעלה.
 אם ניתנו DNA / קוהורט / ארכיון — שלב את כולם לאיזון מדויק שמתאים לעסק הזה.`;
 
+  // Slightly higher temperature on each regen for more variety
+  const temperature = Math.min(0.95, 0.72 + attempt * 0.06);
+
   const raw = await callOpenAI([
     {role:'system', content:sys},
     {role:'user', content:usr},
-  ], {model:'gpt-4o', max_tokens:6000, temperature:0.7});
+  ], {model:'gpt-4o', max_tokens:6000, temperature});
   const parsed = safeJSON(raw);
   const tracks = (parsed.tracks||[]).filter(t=>t.artist && t.title);
   return tracks.slice(0, 60);
@@ -1264,6 +1287,7 @@ async function saveAnalysis(){
 
 /* ─────────── Regenerate ─────────── */
 async function regenerate(){
+  state.regenCount = (state.regenCount || 0) + 1;
   await startGeneration();
 }
 

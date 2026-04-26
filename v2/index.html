@@ -201,7 +201,6 @@ input,textarea{font-family:inherit;color:inherit}
     <div class="dot"></div>
     <div class="dot"></div>
     <div class="dot"></div>
-    <div class="dot"></div>
   </div>
 
   <!-- ═══════════════ SCREEN 1: WELCOME ═══════════════ -->
@@ -295,48 +294,13 @@ input,textarea{font-family:inherit;color:inherit}
 
       <div class="row" style="margin-top:24px;justify-content:space-between">
         <button class="btn btn-ghost" onclick="goBack()">← חזרה</button>
-        <button class="btn btn-primary" onclick="goNext()">המשך ←</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══════════════ SCREEN 5: HOURS + REFRESH ═══════════════ -->
-  <div class="screen" data-screen="5">
-    <div class="screen-card">
-      <h2>כמה שאלות אחרונות על העסק</h2>
-      <p>ולא תדאגו יותר ממוזיקה לעולם.</p>
-
-      <div class="section-title">🕐 שעות פתיחה</div>
-      <div class="hours-grid">
-        <div class="hour-input">
-          <label>שעת פתיחה</label>
-          <input type="time" id="openTime" value="09:00">
-        </div>
-        <div class="hour-input">
-          <label>שעת סגירה</label>
-          <input type="time" id="closeTime" value="23:00">
-        </div>
-      </div>
-
-      <div class="section-title">🔄 כל כמה זמן תרצו פלייליסט חדש?</div>
-      <div class="refresh-options" id="refreshOptions">
-        <div class="refresh-pill" data-days="1">כל יום</div>
-        <div class="refresh-pill selected" data-days="3">כל 3 ימים</div>
-        <div class="refresh-pill" data-days="7">שבועי</div>
-        <div class="refresh-pill" data-days="14">דו-שבועי</div>
-        <div class="refresh-pill" data-days="30">חודשי</div>
-      </div>
-      <p style="font-size:12px;color:var(--muted);margin-top:8px">בשביל הקהל המזדמן, הקהל הקבוע והעובדים, נמליץ על פלייליסט חדש כל 3 ימים.</p>
-
-      <div class="row" style="margin-top:32px;justify-content:space-between">
-        <button class="btn btn-ghost" onclick="goBack()">← חזרה</button>
         <button class="btn btn-primary" onclick="startGeneration()">צרו לי פלייליסט ←</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════ SCREEN 6: PLAYLIST ═══════════════ -->
-  <div class="screen" data-screen="6">
+  <!-- ═══════════════ SCREEN 5: PLAYLIST ═══════════════ -->
+  <div class="screen" data-screen="5">
     <div class="screen-card">
       <div class="playlist-loading" id="playlistLoading">
         <div class="spinner"></div>

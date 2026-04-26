@@ -13,7 +13,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 /* ─────────── State ─────────── */
 const state = {
   step: 1,
-  totalSteps: 6,
+  totalSteps: 5,
   bizDesc: '',
   refPlaylist: '',
   bizType: null,        // detected
@@ -613,7 +613,7 @@ function renderBrainBanner(){
   el.style.display = 'block';
 }
 
-/* ─────────── Screen 3: Business info → 4 transition ─────────── */
+/* ─────────── Screen 3: Business info — analyze in background, then jump to 4 ─────────── */
 async function submitBizInfo(){
   const desc = $('bizDesc').value.trim();
   if(desc.length < 8){
@@ -623,22 +623,29 @@ async function submitBizInfo(){
   state.bizDesc = desc;
   state.refPlaylist = $('refPlaylist').value.trim();
 
-  setStep(4);
-  await detectBusinessType();
-  renderMoods();
-  renderMC();
+  // Show loading state on the button — stay on screen 3 while analyzing
+  const btn = document.querySelector('[data-screen="3"] .btn-primary');
+  if(btn){ btn.disabled = true; btn.textContent = 'מנתח את העסק…'; }
 
-  // Build brain context (L1-L4) — depends on bizType + selectedMoods
-  await buildBrainContext();
+  try{
+    // Run detection + brain context in parallel, completely in the background
+    await detectBusinessType();
+    await buildBrainContext();
 
-  // Apply L1 hints to UI (fader pre-selection + vibe keywords as moods)
-  if(state.brainContext.l1){
-    if(state.brainContext.l1.faderHints) applyFaderHints(state.brainContext.l1.faderHints);
-    if(state.brainContext.l1.vibeKeywords) state.brainContext.l1.vibeKeywords.forEach(k=>state.selectedMoods.add(k));
+    // Apply L0/L1 hints before rendering
+    if(state.brainContext.l1){
+      if(state.brainContext.l1.faderHints) applyFaderHints(state.brainContext.l1.faderHints);
+      if(state.brainContext.l1.vibeKeywords) state.brainContext.l1.vibeKeywords.forEach(k=>state.selectedMoods.add(k));
+    }
+
+    // Everything ready — now transition
+    renderMoods();
+    renderMC();
+    renderBrainBanner();
+    setStep(4);
+  } finally {
+    if(btn){ btn.disabled = false; btn.textContent = 'המשך ←'; }
   }
-  renderMoods();
-  renderMC();
-  renderBrainBanner();
 }
 
 async function detectBusinessType(){
@@ -726,20 +733,12 @@ function selectMC(key, id){
   });
 }
 
-/* ─────────── Screen 5: Refresh days ─────────── */
-document.addEventListener('click', (e)=>{
-  if(e.target.classList && e.target.classList.contains('refresh-pill')){
-    document.querySelectorAll('.refresh-pill').forEach(p=>p.classList.remove('selected'));
-    e.target.classList.add('selected');
-    state.refreshDays = Number(e.target.dataset.days);
-  }
-});
-
-/* ─────────── Screen 6: Generation pipeline ─────────── */
+/* ─────────── Screen 5: Generation pipeline ─────────── */
 async function startGeneration(){
-  state.hours.open = $('openTime').value || '09:00';
-  state.hours.close = $('closeTime').value || '23:00';
-  setStep(6);
+  // Use default hours (screen 5 removed)
+  state.hours.open = '09:00';
+  state.hours.close = '23:00';
+  setStep(5);
   $('playlistLoading').style.display = 'block';
   $('playlistResult').style.display = 'none';
 

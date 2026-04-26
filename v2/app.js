@@ -29,6 +29,7 @@ const state = {
   generatedTracks: [],
   feedback: {}, // trackKey -> 'up' | 'down'
   brainContext: {
+    l0: null, // Data Box — SonicBrands knowledge base (Michael's spreadsheet)
     l1: null, // Reference Playlist DNA
     l2: null, // Historical Cohort Memory
     l3: null, // Genre-Tag Priors
@@ -187,6 +188,13 @@ async function loadSpotifyUser(){
 
 async function buildBrainContext(){
   state.brainContext.assembled = false;
+
+  // L0 — Data Box (synchronous, local knowledge base)
+  state.brainContext.l0 = (window.SB_matchDataBox && window.SB_matchDataBox(state.bizDesc)) || null;
+  if(state.brainContext.l0){
+    console.log('[brain L0] matched:', state.brainContext.l0.label);
+  }
+
   const [l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
     state.refPlaylist ? fetchL1_DNA(state.refPlaylist) : Promise.resolve(null),
     fetchL2_Cohort(state.bizType),
@@ -199,6 +207,7 @@ async function buildBrainContext(){
   state.brainContext.l4 = l4Res.status==='fulfilled' ? l4Res.value : null;
   state.brainContext.assembled = true;
   console.log('[brain]', {
+    l0: state.brainContext.l0 ? 'databox('+state.brainContext.l0.label+')' : '-',
     l1: state.brainContext.l1 ? 'DNA('+state.brainContext.l1.trackCount+')' : '-',
     l2: state.brainContext.l2 ? 'cohort('+state.brainContext.l2.cohort_size+')' : '-',
     l3: state.brainContext.l3 ? 'archive('+state.brainContext.l3.archive_size+')' : '-',
@@ -445,6 +454,17 @@ async function fetchL4_Feedback(bizCategory){
 function assembleBrainBlocks(){
   const ctx = state.brainContext;
   const blocks = [];
+
+  // L0 — Data Box: the ground truth music knowledge for this business type
+  if(ctx.l0){
+    const lines = ['[L0 — DATA BOX: מאגר הידע המוזיקלי של SonicBrands]'];
+    lines.push(`סוג עסק זוהה: ${ctx.l0.label}`);
+    lines.push(`ז'אנרים מוכחים לסוג עסק זה: ${ctx.l0.genres}`);
+    lines.push(`מטרת המוזיקה: ${ctx.l0.purpose}`);
+    lines.push('⚠️ זהו הידע המוכח ביותר — יש לדבוק בז\'אנרים אלה כ-GROUND TRUTH. אלא אם ה-DNA של הפלייליסט הספציפי מראה אחרת.');
+    blocks.push(lines.join('\n'));
+  }
+
   if(ctx.l1){
     const lines = ['[L1 — REFERENCE PLAYLIST DNA]'];
     if(ctx.l1.summary) lines.push(`DNA: ${ctx.l1.summary}`);
@@ -496,19 +516,20 @@ function applyFaderHints(faderHints){
   }
 }
 
-/* ─── Banner rendering on Screen 4 ─── */
+/* ─── Banner rendering on Screen 4 — L0-L4 ─── */
 function renderBrainBanner(){
   const ctx = state.brainContext;
   const el = document.getElementById('brainBanner');
   if(!el) return;
-  if(!ctx.l1 && !ctx.l2 && !ctx.l3 && !ctx.l4) {
+  if(!ctx.l0 && !ctx.l1 && !ctx.l2 && !ctx.l3 && !ctx.l4) {
     el.style.display = 'none';
     return;
   }
   const parts = [];
+  if(ctx.l0) parts.push(`📋 <strong>Data Box:</strong> ${escapeHtml(ctx.l0.label)} — <em>${escapeHtml(ctx.l0.genres)}</em>`);
   if(ctx.l1 && ctx.l1.summary) parts.push(`🧬 <strong>פלייליסט שלך:</strong> ${escapeHtml(ctx.l1.summary)}`);
   if(ctx.l2 && ctx.l2.cohort_size >= 3) parts.push(`📚 <strong>Robin זוכרת:</strong> ${ctx.l2.cohort_size} פלייליסטים${ctx.l2.used_fallback?' (כולל general)':''}`);
-  if(ctx.l3 && ctx.l3.archive_size >= 1) parts.push(`🏷️ <strong>ארכיון ז'אנרים:</strong> ${ctx.l3.archive_size} רשומות תואמות`);
+  if(ctx.l3 && ctx.l3.archive_size >= 1) parts.push(`🏷️ <strong>ארכיון ז'אנרים:</strong> ${ctx.l3.archive_size} רשומות`);
   if(ctx.l4 && ctx.l4.feedback_count > 0) parts.push(`👍 <strong>משוב:</strong> ${ctx.l4.feedback_count} הצבעות`);
   if(!parts.length){ el.style.display = 'none'; return; }
   el.innerHTML = parts.join(' · ');
@@ -796,12 +817,37 @@ async function spotifySearch(artist, title){
   return null;
 }
 
+async function fetchL0Seeds(playlistIds){
+  // Fetch top tracks from a Data Box example playlist to use as Spotify rec seeds
+  const tok = await refreshSpotifyTokenIfNeeded();
+  if(!tok || !playlistIds || !playlistIds.length) return [];
+  for(const pid of playlistIds.slice(0,3)){
+    try{
+      const r = await fetch(
+        `https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,popularity))&limit=20`,
+        {headers:{'Authorization':'Bearer '+tok}}
+      );
+      if(!r.ok) continue;
+      const j = await r.json();
+      const ids = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id)
+        .sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,3).map(t=>t.id);
+      if(ids.length >= 2) return ids;
+    } catch(e){}
+  }
+  return [];
+}
+
 async function fillUp(existing, faders){
-  // Mixed seeds: prefer L1 DNA top + L2 cohort top, fill remainder from existing
+  // Mixed seeds: L1 DNA → L2 cohort → L0 Data Box playlists → existing validated tracks
   const ctx = state.brainContext || {};
   let seeds = [];
   if(ctx.l1 && Array.isArray(ctx.l1.topTrackIds)) seeds.push(...ctx.l1.topTrackIds.slice(0,2));
   if(ctx.l2 && Array.isArray(ctx.l2.cohort_top_ids)) seeds.push(...ctx.l2.cohort_top_ids.slice(0,2));
+  // If we still have room and L0 data box is available, fetch seed tracks from its example playlists
+  if(seeds.length < 3 && ctx.l0 && Array.isArray(ctx.l0.playlistIds)){
+    const l0seeds = await fetchL0Seeds(ctx.l0.playlistIds);
+    seeds.push(...l0seeds);
+  }
   // Dedupe and fill from existing validated tracks
   seeds = Array.from(new Set(seeds.filter(Boolean)));
   const existingIds = existing.filter(t=>t.id).map(t=>t.id);
@@ -1150,6 +1196,7 @@ async function saveAnalysis(){
       business_name: state.bizType || 'Robin User',
       brain_logs: JSON.stringify([
         {e:'🤖',t:'v2',d:'Robin v2 generation',time:new Date().toLocaleTimeString('he-IL')},
+        {e:'📋',t:'L0',d: state.brainContext.l0 ? ('data-box: '+state.brainContext.l0.label+' | '+state.brainContext.l0.genres.slice(0,60)) : 'no data-box match'},
         {e:'🧬',t:'L1',d: state.brainContext.l1 ? ('DNA: '+(state.brainContext.l1.summary||'').slice(0,80)+' tracks='+state.brainContext.l1.trackCount) : 'no ref playlist'},
         {e:'📚',t:'L2',d: state.brainContext.l2 ? ('cohort='+state.brainContext.l2.cohort_size+(state.brainContext.l2.used_fallback?' (fallback general)':'')) : 'no cohort'},
         {e:'🏷️',t:'L3',d: state.brainContext.l3 ? ('archive='+state.brainContext.l3.archive_size) : 'no genre archive'},

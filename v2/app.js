@@ -872,15 +872,84 @@ async function fillUp(existing, faders){
   }
 }
 
-/* ─────────── OpenAI proxy ─────────── */
-function getOpenAIKey(){
-  // Same origin → reads v1's saved key from localStorage
+/* ─────────── OpenAI key management ─────────── */
+
+// Fetch key from Supabase (cross-device), fallback to localStorage
+async function getOpenAIKey(){
+  try {
+    const { data } = await sb.from('app_settings').select('value').eq('key','openai_key').single();
+    if(data?.value) return data.value;
+  } catch(e){}
   try { return localStorage.getItem('openai_key') || ''; } catch(e){ return ''; }
 }
+
+// Save key to Supabase (cross-device) + localStorage backup
+async function saveOpenAIKey(value){
+  try {
+    const { error } = await sb.from('app_settings')
+      .upsert({ key:'openai_key', value, updated_at:new Date().toISOString() }, { onConflict:'key' });
+    if(error) throw error;
+    try{ localStorage.setItem('openai_key', value); }catch(e){}
+    return true;
+  } catch(e){
+    console.warn('saveOpenAIKey failed:', e);
+    return false;
+  }
+}
+
+/* ─────────── Settings modal ─────────── */
+async function openSettingsModal(){
+  const key = await getOpenAIKey();
+  const inp = $('apiKeyInput'), st = $('keyStatus');
+  if(key){
+    inp.value = key;
+    st.textContent = '✓ מפתח שמור';
+    st.className = 'key-status ok';
+  } else {
+    inp.value = '';
+    st.textContent = '';
+    st.className = 'key-status';
+  }
+  $('settingsOverlay').classList.add('open');
+  setTimeout(()=> inp.focus(), 120);
+}
+
+function closeSettingsModal(){
+  $('settingsOverlay').classList.remove('open');
+}
+
+function overlayClick(e){
+  if(e.target === $('settingsOverlay')) closeSettingsModal();
+}
+
+async function saveKeyAndClose(){
+  const value = $('apiKeyInput').value.trim();
+  const st = $('keyStatus'), btn = $('saveKeyBtn');
+  if(!value){
+    st.textContent = 'אנא הכנס מפתח תקין';
+    st.className = 'key-status err';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'שומר…';
+  const ok = await saveOpenAIKey(value);
+  if(ok){
+    st.textContent = '✓ נשמר בהצלחה!';
+    st.className = 'key-status ok';
+    setTimeout(()=>{ closeSettingsModal(); btn.disabled=false; btn.textContent='שמור מפתח'; }, 1200);
+  } else {
+    st.textContent = '⚠️ שגיאה בשמירה — בדוק חיבור';
+    st.className = 'key-status err';
+    btn.disabled = false;
+    btn.textContent = 'שמור מפתח';
+  }
+}
+
+/* ─────────── OpenAI proxy ─────────── */
 async function callOpenAI(messages, opts){
   opts = opts || {};
   const body = {
-    apiKey: getOpenAIKey(), // user's saved v1 key, or '' → server fallback
+    apiKey: await getOpenAIKey(), // Supabase → localStorage → server fallback
     model: opts.model || 'gpt-4o-mini',
     temperature: opts.temperature || 0.6,
     messages,

@@ -1,4 +1,18 @@
-const SERVER_KEY = ['sk-proj-Y-3tc_l5y5g1gBa-cvT3WpH3cqfA6WuR3mzTKTK8mPmhlDeBECYVg5l6x5','J5tZjw0rO6t5m_HRT3BlbkFJyTXGjWy7pcaopIgbgKQGGuiAqEG9VeBdjEsDHsr7hZVEB9FIjg-TQXihdMzTuDpD3ARONemX0A'].join('');
+// Supabase — for cross-device key storage
+const SB_URL  = 'https://xhkqrxljncazvbgkmqex.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
+
+async function getKeyFromSupabase(){
+  try {
+    const res = await fetch(
+      `${SB_URL}/rest/v1/app_settings?key=eq.openai_key&select=value&limit=1`,
+      { headers:{ 'apikey': SB_ANON, 'Authorization': `Bearer ${SB_ANON}` } }
+    );
+    const rows = await res.json();
+    if(Array.isArray(rows) && rows.length > 0 && rows[0].value) return rows[0].value;
+  } catch(e){}
+  return null;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -15,7 +29,8 @@ export default async function handler(req, res) {
 
   try {
     const { apiKey, model, messages, max_tokens, temperature, response_format } = req.body;
-    const key = apiKey || process.env.OPENAI_API_KEY || SERVER_KEY;
+    // Priority: request body → env var → Supabase app_settings
+    const key = apiKey || process.env.OPENAI_API_KEY || (await getKeyFromSupabase());
 
     if (!key) {
       return res.status(400).json({ error: 'Missing API key' });

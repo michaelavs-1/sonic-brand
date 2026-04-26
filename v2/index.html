@@ -157,6 +157,23 @@ input,textarea{font-family:inherit;color:inherit}
 .toast.show{transform:translateX(-50%) translateY(0)}
 .toast.error{border-color:var(--accent-3);color:var(--accent-3)}
 
+/* ─── Gear / Settings ─── */
+.gear-btn{background:transparent;border:none;color:var(--muted);font-size:20px;padding:6px;line-height:1;transition:color .2s,transform .35s;cursor:pointer;flex-shrink:0;border-radius:8px}
+.gear-btn:hover{color:var(--text);transform:rotate(60deg);background:var(--bg-2)}
+
+.settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(5px);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
+.settings-overlay.open{opacity:1;pointer-events:all}
+.settings-modal{background:var(--card);border:1px solid var(--border-2);border-radius:var(--r-lg);padding:28px 24px;width:min(420px,90vw);box-shadow:var(--shadow-1);transform:translateY(18px);transition:transform .25s}
+.settings-overlay.open .settings-modal{transform:translateY(0)}
+.settings-modal-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+.settings-modal-head h3{margin:0;font-size:18px;font-weight:800}
+.modal-close{background:transparent;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:2px 8px;border-radius:8px;transition:color .15s,background .15s}
+.modal-close:hover{color:var(--text);background:var(--bg-2)}
+.settings-sub{font-size:13px;color:var(--muted);margin:0 0 20px;line-height:1.55}
+.key-status{font-size:13px;font-weight:600;min-height:20px;margin-top:10px}
+.key-status.ok{color:var(--accent)}
+.key-status.err{color:var(--accent-3)}
+
 /* Responsive */
 @media(max-width:600px){
   .app{padding:16px 14px 32px}
@@ -171,10 +188,11 @@ input,textarea{font-family:inherit;color:inherit}
 <div class="app" id="app">
   <div class="brand">
     <div class="brand-logo">🎵</div>
-    <div>
+    <div style="flex:1">
       <div class="brand-name">Robin</div>
       <div class="brand-tag" style="font-size:10px">SonicBrands · v2 preview</div>
     </div>
+    <button class="gear-btn" onclick="openSettingsModal()" title="הגדרות מפתח">⚙️</button>
   </div>
 
   <div class="progress" id="progress">
@@ -347,6 +365,28 @@ input,textarea{font-family:inherit;color:inherit}
 </div>
 
 <div class="toast" id="toast"></div>
+
+<!-- ═══════════════ SETTINGS MODAL ═══════════════ -->
+<div class="settings-overlay" id="settingsOverlay" onclick="overlayClick(event)">
+  <div class="settings-modal">
+    <div class="settings-modal-head">
+      <h3>⚙️ הגדרות מפתח</h3>
+      <button class="modal-close" onclick="closeSettingsModal()">✕</button>
+    </div>
+    <p class="settings-sub">
+      המפתח ישמר בשרת (Supabase) ויעבוד מכל מכשיר.<br>
+      לרכישת מפתח: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" style="color:var(--accent);font-weight:700">platform.openai.com →</a>
+    </p>
+    <div class="input-wrap" style="margin-bottom:4px">
+      <label class="input-label">מפתח OpenAI</label>
+      <input type="password" class="input-text" id="apiKeyInput" placeholder="sk-proj-..." dir="ltr" autocomplete="off" style="letter-spacing:.05em">
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;margin-top:16px">
+      <button class="btn btn-primary" onclick="saveKeyAndClose()" id="saveKeyBtn">שמור מפתח</button>
+      <div class="key-status" id="keyStatus"></div>
+    </div>
+  </div>
+</div>
 
 <script src="/v2/mc-mappings.js"></script>
 <script src="/v2/app.js"></script>

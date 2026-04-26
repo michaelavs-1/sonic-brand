@@ -522,20 +522,22 @@ function assembleBrainBlocks(){
   const ctx = state.brainContext;
   const blocks = [];
 
-  // L0 — Data Box: real playlist DNA from SonicBrands knowledge base
+  // L0 — Data Box: HARD GENRE RULES — mandatory, overrides all other suggestions
   if(ctx.l0){
-    const lines = ['[L0 — DATA BOX: DNA מפלייליסטים לדוגמה לסוג עסק זה]'];
+    const lines = ['[L0 — DATA BOX: כלל ברזל — חובה לציית]'];
     lines.push(`סוג עסק: ${ctx.l0.label}`);
-    lines.push(`ז'אנרים מוכחים: ${ctx.l0.genres}`);
+    lines.push(`✅ ז'אנרים מותרים בלבד: ${ctx.l0.genres}`);
+    lines.push(`❌ אסור לחלוטין: פופ ישראלי מיינסטרים, מזרחית, שירים ידועים מהרדיו הישראלי, Hip Hop מסחרי, EDM — אלא אם הם מופיעים מפורשות ברשימת המותרים לעיל`);
     if(ctx.l0.dna && ctx.l0.dna.topArtists && ctx.l0.dna.topArtists.length){
-      lines.push(`אמנים אופייניים (נותחו מתוך ${ctx.l0.dna.playlistCount} פלייליסטים לדוגמה): ${ctx.l0.dna.topArtists.join(', ')}`);
-      lines.push('חפש אמנים בסגנון דומה לאלו — לא חייב להשתמש בדיוק באמנים האלו, אלא בסגנון שלהם.');
+      lines.push(`📌 אמנים לדוגמה מניתוח ${ctx.l0.dna.playlistCount} פלייליסטים אמיתיים: ${ctx.l0.dna.topArtists.join(', ')}`);
+      lines.push(`→ בחר אמנים בסגנון דומה לאלו. לא חייב בדיוק אותם, אבל אותו עולם מוזיקלי.`);
     }
     if(ctx.l0.dna && ctx.l0.dna.audioStats){
       const st = ctx.l0.dna.audioStats;
-      lines.push(`מאפיינים אודיו מהפלייליסטים: אנרגיה=${st.energy.toFixed(2)}, טמפו≈${Math.round(st.tempo)} BPM, ריקודיות=${st.dance.toFixed(2)}`);
+      lines.push(`🎚️ אנרגיה=${st.energy.toFixed(2)}, טמפו≈${Math.round(st.tempo)} BPM`);
     }
-    lines.push(`מטרה: ${ctx.l0.purpose}`);
+    lines.push(`🎯 מטרת המוזיקה: ${ctx.l0.purpose}`);
+    lines.push(`⚠️ L0 הוא הכלל העליון — שאר השכבות (L1-L4) משלימות ומדייקות, לא עוקפות.`);
     blocks.push(lines.join('\n'));
   }
 
@@ -784,6 +786,9 @@ async function startGeneration(){
     }
 
     state.generatedTracks = final.slice(0, PLAYLIST_SIZE);
+    // Enrich any missing preview_url by fetching directly from Spotify
+    setLoadingStatus('טוען תצוגות מקדימות…','');
+    state.generatedTracks = await enrichPreviews(state.generatedTracks);
     await saveAnalysis();
     renderPlaylist();
   } catch(e){
@@ -1175,6 +1180,30 @@ function describeEra(v){
   if(v >= 40) return '📅 שנים: מקלאסי לעכשווי, מגוון.';
   if(v >= 20) return '📅 שנים: שנות ה-90 ושנות ה-2000.';
   return '📅 שנים: רטרו וקלאסי — לפני 2000.';
+}
+
+/* ─────────── Fetch preview URLs for tracks that are missing them ─────────── */
+async function enrichPreviews(tracks){
+  const tok = await refreshSpotifyTokenIfNeeded();
+  if(!tok) return tracks;
+  const missing = tracks.filter(t=>t.id && !t.preview);
+  if(!missing.length) return tracks;
+  // Batch: up to 50 IDs per call
+  for(let i=0; i<missing.length; i+=50){
+    const batch = missing.slice(i,i+50);
+    try{
+      const r = await fetch(
+        `https://api.spotify.com/v1/tracks?ids=${batch.map(t=>t.id).join(',')}&market=IL`,
+        {headers:{'Authorization':'Bearer '+tok}}
+      );
+      if(!r.ok) continue;
+      const j = await r.json();
+      (j.tracks||[]).forEach((sp,idx)=>{
+        if(sp && sp.preview_url) batch[idx].preview = sp.preview_url;
+      });
+    } catch(e){}
+  }
+  return tracks;
 }
 
 /* ─────────── Audio preview player ─────────── */

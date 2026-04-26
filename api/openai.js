@@ -47,8 +47,9 @@ export default async function handler(req, res) {
     };
     if (!isNewModel) {
       payload.temperature = temperature || 0.7;
-      if (response_format) payload.response_format = response_format;
     }
+    // response_format supported by all models
+    if (response_format) payload.response_format = response_format;
 
     const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',

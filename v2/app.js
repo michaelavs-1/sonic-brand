@@ -28,6 +28,13 @@ const state = {
   spotifyUser: null,
   generatedTracks: [],
   feedback: {}, // trackKey -> 'up' | 'down'
+  brainContext: {
+    l1: null, // Reference Playlist DNA
+    l2: null, // Historical Cohort Memory
+    l3: null, // Genre-Tag Priors
+    l4: null, // Feedback Reranker
+    assembled: false,
+  },
 };
 
 /* ─────────── Helpers ─────────── */
@@ -170,6 +177,344 @@ async function loadSpotifyUser(){
   } catch(e){}
 }
 
+/* ═══════════════════════════════════════════════════════════════
+   ROBIN BRAIN — Layered Context (L1-L4)
+   L1: Reference Playlist DNA (single URL)
+   L2: Historical Cohort Memory (analyses by biz_category)
+   L3: Genre-Tag Priors (analyses with matching genres)
+   L4: Feedback Reranker (track_feedback by biz_category)
+   ═══════════════════════════════════════════════════════════════ */
+
+async function buildBrainContext(){
+  state.brainContext.assembled = false;
+  const [l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
+    state.refPlaylist ? fetchL1_DNA(state.refPlaylist) : Promise.resolve(null),
+    fetchL2_Cohort(state.bizType),
+    fetchL3_GenreArchive(Array.from(state.selectedMoods)),
+    fetchL4_Feedback(state.bizType),
+  ]);
+  state.brainContext.l1 = l1Res.status==='fulfilled' ? l1Res.value : null;
+  state.brainContext.l2 = l2Res.status==='fulfilled' ? l2Res.value : null;
+  state.brainContext.l3 = l3Res.status==='fulfilled' ? l3Res.value : null;
+  state.brainContext.l4 = l4Res.status==='fulfilled' ? l4Res.value : null;
+  state.brainContext.assembled = true;
+  console.log('[brain]', {
+    l1: state.brainContext.l1 ? 'DNA('+state.brainContext.l1.trackCount+')' : '-',
+    l2: state.brainContext.l2 ? 'cohort('+state.brainContext.l2.cohort_size+')' : '-',
+    l3: state.brainContext.l3 ? 'archive('+state.brainContext.l3.archive_size+')' : '-',
+    l4: state.brainContext.l4 ? 'feedback('+state.brainContext.l4.feedback_count+')' : '-',
+  });
+}
+
+/* ─── L1: Reference Playlist DNA ─── */
+function parsePlaylistId(url){
+  if(!url) return null;
+  const m = String(url).match(/playlist\/([A-Za-z0-9]+)/);
+  return m ? m[1] : null;
+}
+
+async function fetchL1_DNA(url){
+  const id = parsePlaylistId(url);
+  if(!id) return null;
+  const tok = await refreshSpotifyTokenIfNeeded();
+  if(!tok) return null;
+  try{
+    const tr = await fetch(`https://api.spotify.com/v1/playlists/${id}/tracks?fields=items(track(id,name,artists(id,name),album(release_date,images),popularity,duration_ms))&limit=100`, {
+      headers:{'Authorization':'Bearer '+tok}
+    });
+    if(!tr.ok) return null;
+    const trJson = await tr.json();
+    const tracks = (trJson.items||[]).map(it=>it.track).filter(t=>t && t.id);
+    if(tracks.length < 5) return null;
+    const ids = tracks.map(t=>t.id);
+    const af = await fetch(`https://api.spotify.com/v1/audio-features?ids=${ids.slice(0,100).join(',')}`, {
+      headers:{'Authorization':'Bearer '+tok}
+    });
+    const afJson = af.ok ? await af.json() : {audio_features:[]};
+    const features = (afJson.audio_features||[]).filter(f=>f);
+
+    const stats = analyzeAudioStats(features, tracks);
+    const faderHints = mapDNAToFaders(stats);
+    const narration = await narrateDNA(stats, tracks).catch(()=>({summary:'', vibe_keywords:[]}));
+
+    const topByPop = tracks.slice().sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,5);
+    const artistCount = {};
+    tracks.forEach(t=>(t.artists||[]).forEach(a=>{ artistCount[a.name]=(artistCount[a.name]||0)+1; }));
+    const topArtists = Object.entries(artistCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n])=>n);
+
+    return {
+      summary: narration.summary || '',
+      vibeKeywords: Array.isArray(narration.vibe_keywords) ? narration.vibe_keywords : [],
+      faderHints,
+      topTrackIds: topByPop.map(t=>t.id),
+      topTracksDisplay: topByPop.map(t=>`${t.artists.map(a=>a.name).join(', ')} — ${t.name}`),
+      topArtists,
+      audioStats: stats,
+      trackCount: tracks.length,
+    };
+  } catch(e){
+    console.warn('[brain L1] failed:', e);
+    return null;
+  }
+}
+
+function analyzeAudioStats(features, tracks){
+  const mean = arr => arr.length ? arr.reduce((s,x)=>s+x,0)/arr.length : 0;
+  const energy = mean(features.map(f=>f.energy||0));
+  const valence = mean(features.map(f=>f.valence||0));
+  const dance = mean(features.map(f=>f.danceability||0));
+  const tempo = mean(features.map(f=>f.tempo||0));
+  const instr = mean(features.map(f=>f.instrumentalness||0));
+  const acoust = mean(features.map(f=>f.acousticness||0));
+  const popularity = mean(tracks.map(t=>t.popularity||0));
+
+  const hebRe = /[\u0590-\u05FF]/;
+  const hebrewTracks = tracks.filter(t=>hebRe.test(t.name||'') || (t.artists||[]).some(a=>hebRe.test(a.name||''))).length;
+  const hebrewRatio = tracks.length ? hebrewTracks/tracks.length : 0;
+
+  const years = tracks.map(t=>{
+    const d = (t.album && t.album.release_date) || '';
+    return Number(d.slice(0,4)) || 0;
+  }).filter(y=>y > 1950);
+  const yearMean = mean(years);
+  const currentYear = new Date().getFullYear();
+  let eraScore = 50;
+  if(yearMean){
+    const age = currentYear - yearMean;
+    if(age <= 3) eraScore = 90;
+    else if(age <= 8) eraScore = 70;
+    else if(age <= 15) eraScore = 50;
+    else if(age <= 25) eraScore = 25;
+    else eraScore = 10;
+  }
+
+  return {energy, valence, dance, tempo, instr, acoust, popularity, hebrewRatio, yearMean, eraScore};
+}
+
+function mapDNAToFaders(stats){
+  return {
+    familiarity: Math.round(Math.min(100, stats.popularity)),
+    hebrew: Math.round(stats.hebrewRatio * 100),
+    vocal: Math.round((1 - stats.instr) * 100),
+    energy: Math.round(stats.energy * 100),
+    era: Math.round(stats.eraScore),
+  };
+}
+
+async function narrateDNA(stats, tracks){
+  const sample = tracks.slice(0,8).map(t=>`${t.artists.map(a=>a.name).join(', ')} — ${t.name}`).join('\n');
+  const sys = 'אתה מנתח DNA של פלייליסט. החזר JSON: {"summary":"משפט אחד 12-20 מילים בעברית","vibe_keywords":["3-5 מילות מפתח אווירה בעברית"]}';
+  const usr = `סטטיסטיקות:
+energy=${stats.energy.toFixed(2)} valence=${stats.valence.toFixed(2)} dance=${stats.dance.toFixed(2)}
+instrumentalness=${stats.instr.toFixed(2)} acoustic=${stats.acoust.toFixed(2)}
+popularity_avg=${stats.popularity.toFixed(0)} hebrew=${(stats.hebrewRatio*100).toFixed(0)}% year_avg=${stats.yearMean.toFixed(0)}
+
+8 דוגמיות:
+${sample}
+
+נתח: סגנון/ז'אנר עיקרי, אווירה דומיננטית, טווח עידן.`;
+  const raw = await callOpenAI([{role:'system',content:sys},{role:'user',content:usr}], {model:'gpt-4o-mini', max_tokens:300, temperature:0.5});
+  return safeJSON(raw);
+}
+
+/* ─── L2: Historical Cohort Memory ─── */
+async function fetchL2_Cohort(bizCategory){
+  if(!bizCategory) return null;
+  try{
+    let { data, error } = await sb.from('analyses').select('id,description,faders,tracks,track_count,brain_version').eq('biz_category', bizCategory).gte('track_count', 10).order('created_at', {ascending:false}).limit(20);
+    if(error) throw error;
+    let cohortSize = data ? data.length : 0;
+    let usedFallback = false;
+    if(cohortSize < 3){
+      const r2 = await sb.from('analyses').select('id,description,faders,tracks,track_count,brain_version').eq('biz_category', 'general').gte('track_count', 10).order('created_at', {ascending:false}).limit(20);
+      if(!r2.error && r2.data){
+        data = (data||[]).concat(r2.data);
+        cohortSize = data.length;
+        usedFallback = true;
+      }
+    }
+    if(!data || !data.length) return null;
+
+    const trackFreq = {};
+    const artistFreq = {};
+    let totalTracks = 0;
+    for(const row of data){
+      let tracks = row.tracks;
+      try { if(typeof tracks === 'string') tracks = JSON.parse(tracks); } catch(e){}
+      if(!Array.isArray(tracks)) continue;
+      for(const t of tracks){
+        if(!t || !t.artist || !t.title) continue;
+        totalTracks++;
+        const key = `${t.artist}|${t.title}`;
+        if(!trackFreq[key]) trackFreq[key] = {count:0, id:t.id||null, artist:t.artist, title:t.title, reason:t.reason||''};
+        trackFreq[key].count++;
+        if(!trackFreq[key].id && t.id) trackFreq[key].id = t.id;
+        artistFreq[t.artist] = (artistFreq[t.artist]||0) + 1;
+      }
+    }
+    const sortedTracks = Object.values(trackFreq).sort((a,b)=>b.count-a.count);
+    const topWithIds = sortedTracks.filter(t=>t.id).slice(0,10);
+    const topArtists = Object.entries(artistFreq).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,c])=>({name:n,count:c}));
+
+    return {
+      cohort_size: cohortSize,
+      used_fallback: usedFallback,
+      cohort_top_ids: topWithIds.map(t=>t.id),
+      cohort_top_tracks: topWithIds.map(t=>({artist:t.artist, title:t.title, id:t.id, reason:t.reason, count:t.count})),
+      cohort_top_artists: topArtists,
+      total_tracks_seen: totalTracks,
+    };
+  } catch(e){
+    console.warn('[brain L2] failed:', e);
+    return null;
+  }
+}
+
+/* ─── L3: Genre-Tag Priors ─── */
+async function fetchL3_GenreArchive(moods){
+  if(!moods || !moods.length) return null;
+  try{
+    const moodLowers = moods.map(m=>String(m).toLowerCase().trim()).filter(Boolean);
+    const { data, error } = await sb.from('analyses').select('id,description,genres,tracks,track_count').gte('track_count', 5).limit(50);
+    if(error || !data) return null;
+
+    const matching = [];
+    for(const row of data){
+      let genres = row.genres;
+      try { if(typeof genres === 'string') genres = JSON.parse(genres); } catch(e){}
+      if(!Array.isArray(genres) || !genres.length) continue;
+      const genreLowers = genres.map(g=>String(g).toLowerCase());
+      const hit = moodLowers.some(m=>genreLowers.some(g=>g===m || g.includes(m) || m.includes(g)));
+      if(hit) matching.push(row);
+    }
+    if(!matching.length) return null;
+
+    const trackFreq = {};
+    for(const row of matching){
+      let tracks = row.tracks;
+      try { if(typeof tracks === 'string') tracks = JSON.parse(tracks); } catch(e){}
+      if(!Array.isArray(tracks)) continue;
+      for(const t of tracks){
+        if(!t || !t.artist || !t.title) continue;
+        const key = `${t.artist}|${t.title}`;
+        if(!trackFreq[key]) trackFreq[key] = {count:0, id:t.id||null, artist:t.artist, title:t.title};
+        trackFreq[key].count++;
+        if(!trackFreq[key].id && t.id) trackFreq[key].id = t.id;
+      }
+    }
+    const top = Object.values(trackFreq).filter(t=>t.id).sort((a,b)=>b.count-a.count).slice(0,10);
+    return {
+      archive_size: matching.length,
+      genre_top_ids: top.map(t=>t.id),
+      genre_top_tracks: top.map(t=>({artist:t.artist, title:t.title, count:t.count})),
+    };
+  } catch(e){
+    console.warn('[brain L3] failed:', e);
+    return null;
+  }
+}
+
+/* ─── L4: Feedback Reranker (placeholder, ready for future) ─── */
+async function fetchL4_Feedback(bizCategory){
+  if(!bizCategory) return null;
+  try{
+    const { data, error } = await sb.from('track_feedback').select('track_artist,track_title,feedback_type').eq('biz_category', bizCategory).limit(500);
+    if(error || !data || !data.length) return null;
+    const score = {};
+    for(const row of data){
+      const key = `${row.track_artist}|${row.track_title}`;
+      if(!score[key]) score[key] = {artist:row.track_artist, title:row.track_title, up:0, down:0};
+      if(row.feedback_type === 'up') score[key].up++;
+      else if(row.feedback_type === 'down') score[key].down++;
+    }
+    const arr = Object.values(score).map(s=>({...s, score: s.up - s.down}));
+    const boost = arr.filter(s=>s.score >= 2).map(s=>`${s.artist} — ${s.title}`);
+    const block = arr.filter(s=>s.score <= -2).map(s=>`${s.artist} — ${s.title}`);
+    return {
+      feedback_count: data.length,
+      boost_list: boost.slice(0,10),
+      block_list: block.slice(0,10),
+    };
+  } catch(e){
+    console.warn('[brain L4] failed:', e);
+    return null;
+  }
+}
+
+/* ─── Prompt block assembly ─── */
+function assembleBrainBlocks(){
+  const ctx = state.brainContext;
+  const blocks = [];
+  if(ctx.l1){
+    const lines = ['[L1 — REFERENCE PLAYLIST DNA]'];
+    if(ctx.l1.summary) lines.push(`DNA: ${ctx.l1.summary}`);
+    if(ctx.l1.topTracksDisplay && ctx.l1.topTracksDisplay.length) lines.push(`שירי דגל: ${ctx.l1.topTracksDisplay.slice(0,5).join(' | ')}`);
+    if(ctx.l1.topArtists && ctx.l1.topArtists.length) lines.push(`אמנים מרכזיים: ${ctx.l1.topArtists.join(', ')}`);
+    blocks.push(lines.join('\n'));
+  }
+  if(ctx.l2 && ctx.l2.cohort_top_tracks && ctx.l2.cohort_top_tracks.length >= 3){
+    const lines = ['[L2 — COHORT MEMORY (Robin זוכרת מעסקים דומים)]'];
+    lines.push(`מעבודות קודמות עם "${state.bizType}"${ctx.l2.used_fallback?' (כולל general)':''}, ${ctx.l2.cohort_size} פלייליסטים:`);
+    ctx.l2.cohort_top_tracks.slice(0,8).forEach(t=>{
+      lines.push(`- ${t.artist} — ${t.title}${t.reason?` (${String(t.reason).slice(0,50)})`:''}`);
+    });
+    lines.push('שאף לרוח דומה — לא חזרה מילולית.');
+    blocks.push(lines.join('\n'));
+  }
+  if(ctx.l3 && ctx.l3.genre_top_tracks && ctx.l3.genre_top_tracks.length >= 3){
+    const lines = ['[L3 — GENRE ARCHIVE]'];
+    lines.push("מארכיון לפי-ז'אנרים שמתאים לאווירות שבחרת:");
+    ctx.l3.genre_top_tracks.slice(0,6).forEach(t=>lines.push(`- ${t.artist} — ${t.title}`));
+    blocks.push(lines.join('\n'));
+  }
+  if(ctx.l4 && (ctx.l4.boost_list.length || ctx.l4.block_list.length)){
+    const lines = ['[L4 — FEEDBACK SIGNALS]'];
+    if(ctx.l4.boost_list.length) lines.push(`חובה לכלול אם זמין: ${ctx.l4.boost_list.slice(0,5).join(', ')}`);
+    if(ctx.l4.block_list.length) lines.push(`הימנע מ: ${ctx.l4.block_list.slice(0,5).join(', ')}`);
+    blocks.push(lines.join('\n'));
+  }
+  return blocks.join('\n\n');
+}
+
+/* ─── Apply L1 fader hints to MC state ─── */
+function applyFaderHints(faderHints){
+  if(!window.SB_V2_MC || !faderHints) return;
+  const findClosest = (val, options)=>{
+    let bestId = 3, bestDiff = Infinity;
+    for(const opt of options){
+      const diff = Math.abs(val - opt.value);
+      if(diff < bestDiff){ bestDiff = diff; bestId = opt.id; }
+    }
+    return bestId;
+  };
+  for(const key of ['familiarity','hebrew','vocal','energy','era']){
+    const val = faderHints[key];
+    if(val == null) continue;
+    const q = window.SB_V2_MC[key];
+    if(!q || !q.options) continue;
+    state.mc[key] = findClosest(val, q.options);
+  }
+}
+
+/* ─── Banner rendering on Screen 4 ─── */
+function renderBrainBanner(){
+  const ctx = state.brainContext;
+  const el = document.getElementById('brainBanner');
+  if(!el) return;
+  if(!ctx.l1 && !ctx.l2 && !ctx.l3 && !ctx.l4) {
+    el.style.display = 'none';
+    return;
+  }
+  const parts = [];
+  if(ctx.l1 && ctx.l1.summary) parts.push(`🧬 <strong>פלייליסט שלך:</strong> ${escapeHtml(ctx.l1.summary)}`);
+  if(ctx.l2 && ctx.l2.cohort_size >= 3) parts.push(`📚 <strong>Robin זוכרת:</strong> ${ctx.l2.cohort_size} פלייליסטים${ctx.l2.used_fallback?' (כולל general)':''}`);
+  if(ctx.l3 && ctx.l3.archive_size >= 1) parts.push(`🏷️ <strong>ארכיון ז'אנרים:</strong> ${ctx.l3.archive_size} רשומות תואמות`);
+  if(ctx.l4 && ctx.l4.feedback_count > 0) parts.push(`👍 <strong>משוב:</strong> ${ctx.l4.feedback_count} הצבעות`);
+  if(!parts.length){ el.style.display = 'none'; return; }
+  el.innerHTML = parts.join(' · ');
+  el.style.display = 'block';
+}
+
 /* ─────────── Screen 3: Business info → 4 transition ─────────── */
 async function submitBizInfo(){
   const desc = $('bizDesc').value.trim();
@@ -184,6 +529,18 @@ async function submitBizInfo(){
   await detectBusinessType();
   renderMoods();
   renderMC();
+
+  // Build brain context (L1-L4) — depends on bizType + selectedMoods
+  await buildBrainContext();
+
+  // Apply L1 hints to UI (fader pre-selection + vibe keywords as moods)
+  if(state.brainContext.l1){
+    if(state.brainContext.l1.faderHints) applyFaderHints(state.brainContext.l1.faderHints);
+    if(state.brainContext.l1.vibeKeywords) state.brainContext.l1.vibeKeywords.forEach(k=>state.selectedMoods.add(k));
+  }
+  renderMoods();
+  renderMC();
+  renderBrainBanner();
 }
 
 async function detectBusinessType(){
@@ -356,13 +713,18 @@ ${enDesc}
 ${erDesc}
 החזר JSON: {"tracks":[{"artist":"...","title":"...","reason":"5 מילים בעברית"}]}`;
 
+  const brainBlocks = state.brainContext.assembled ? assembleBrainBlocks() : '';
+
   const usr = `תיאור העסק: "${state.bizDesc}"
 סוג: ${state.bizType||'עסק'}
 אווירות נבחרות: ${moods.join(', ')||'(ברירת מחדל)'}
 שעות פעילות: ${state.hours.open}-${state.hours.close}
-${state.refPlaylist?'פלייליסט ייחוס: '+state.refPlaylist:''}
+${state.refPlaylist?'פלייליסט ייחוס URL: '+state.refPlaylist:''}
 
-צור 60 מועמדים מגוונים שמתאימים לכל החוקים.`;
+${brainBlocks}
+
+צור 60 מועמדים מגוונים שמתאימים לכל החוקים והמידע למעלה.
+אם ניתנו DNA / קוהורט / ארכיון — שלב את כולם לאיזון מדויק שמתאים לעסק הזה.`;
 
   const raw = await callOpenAI([
     {role:'system', content:sys},
@@ -435,8 +797,19 @@ async function spotifySearch(artist, title){
 }
 
 async function fillUp(existing, faders){
-  // Use Spotify recommendations seeded by first 5 valid IDs
-  const seeds = existing.filter(t=>t.id).slice(0, 5).map(t=>t.id);
+  // Mixed seeds: prefer L1 DNA top + L2 cohort top, fill remainder from existing
+  const ctx = state.brainContext || {};
+  let seeds = [];
+  if(ctx.l1 && Array.isArray(ctx.l1.topTrackIds)) seeds.push(...ctx.l1.topTrackIds.slice(0,2));
+  if(ctx.l2 && Array.isArray(ctx.l2.cohort_top_ids)) seeds.push(...ctx.l2.cohort_top_ids.slice(0,2));
+  // Dedupe and fill from existing validated tracks
+  seeds = Array.from(new Set(seeds.filter(Boolean)));
+  const existingIds = existing.filter(t=>t.id).map(t=>t.id);
+  for(const id of existingIds){
+    if(seeds.length >= 5) break;
+    if(!seeds.includes(id)) seeds.push(id);
+  }
+  seeds = seeds.slice(0, 5);
   if(!seeds.length) return existing;
   const need = 50 - existing.length;
   const params = {
@@ -702,7 +1075,13 @@ async function saveAnalysis(){
         reason:(t.reason||'').slice(0,200),
       }))),
       business_name: state.bizType || 'Robin User',
-      brain_logs: JSON.stringify([{e:'🤖',t:'v2',d:'Robin v2 generation',time:new Date().toLocaleTimeString('he-IL')}]),
+      brain_logs: JSON.stringify([
+        {e:'🤖',t:'v2',d:'Robin v2 generation',time:new Date().toLocaleTimeString('he-IL')},
+        {e:'🧬',t:'L1',d: state.brainContext.l1 ? ('DNA: '+(state.brainContext.l1.summary||'').slice(0,80)+' tracks='+state.brainContext.l1.trackCount) : 'no ref playlist'},
+        {e:'📚',t:'L2',d: state.brainContext.l2 ? ('cohort='+state.brainContext.l2.cohort_size+(state.brainContext.l2.used_fallback?' (fallback general)':'')) : 'no cohort'},
+        {e:'🏷️',t:'L3',d: state.brainContext.l3 ? ('archive='+state.brainContext.l3.archive_size) : 'no genre archive'},
+        {e:'👍',t:'L4',d: state.brainContext.l4 ? ('feedback='+state.brainContext.l4.feedback_count) : 'no feedback'},
+      ]),
       created_at: new Date().toISOString(),
     });
   } catch(e){ console.warn('saveAnalysis failed:', e); }

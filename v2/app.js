@@ -267,29 +267,31 @@ async function fetchL0_DNA(playlistIds){
     }
   } catch(e){}
 
-  // Count artist appearances across all sampled playlists
+  // Count artist appearances across playlists
   const artistCount = {};
   unique.forEach(t=>(t.artists||[]).forEach(a=>{
     artistCount[a.name] = (artistCount[a.name]||0) + 1;
   }));
-  const topArtists = Object.entries(artistCount)
-    .sort((a,b)=>b[1]-a[1]).slice(0,10).map(([name])=>name);
+  const sorted = Object.entries(artistCount).sort((a,b)=>b[1]-a[1]);
+  // topArtists: the mega-famous ones — define the STYLE but GPT must NOT copy them
+  const topArtists = sorted.slice(0,6).map(([name])=>name);
+  // nicheArtists: appear only 1x — less obvious, what GPT SHOULD pick from
+  const nicheArtists = sorted.filter(([,c])=>c===1)
+    .sort(()=>Math.random()-0.5).slice(0,12).map(([name])=>name);
 
-  // Diverse seeds: mix of popular + mid-range + niche tracks (not always top-5)
-  // Shuffle before slicing so seeds vary across runs
-  const shuffled = unique.slice().sort(()=>Math.random()-0.5);
-  const topTier  = shuffled.filter(t=>(t.popularity||0) >= 60).slice(0,2).map(t=>t.id);
-  const midTier  = shuffled.filter(t=>(t.popularity||0) >= 30 && (t.popularity||0) < 60).slice(0,2).map(t=>t.id);
-  const lowTier  = shuffled.filter(t=>(t.popularity||0) < 30).slice(0,1).map(t=>t.id);
-  const diverseSeeds = [...topTier, ...midTier, ...lowTier].filter(Boolean).slice(0,5);
+  // Random seeds per run: shuffle full pool, pick diverse tiers
+  const rnd = unique.slice().sort(()=>Math.random()-0.5);
+  const diverseSeeds = [
+    ...rnd.filter(t=>(t.popularity||0)>=60).slice(0,1).map(t=>t.id),
+    ...rnd.filter(t=>(t.popularity||0)>=30&&(t.popularity||0)<60).slice(0,2).map(t=>t.id),
+    ...rnd.filter(t=>(t.popularity||0)<30).slice(0,2).map(t=>t.id),
+  ].filter(Boolean).slice(0,5);
 
-  return {
-    topTrackIds: diverseSeeds,   // diverse seeds → varied Spotify recommendations
-    topArtists,
-    audioStats,
-    trackCount: unique.length,
-    playlistCount: samplePids.length,
-  };
+  // Full shuffled pool — fillUp picks random seeds each regen
+  const allTrackIds = unique.slice().sort(()=>Math.random()-0.5).map(t=>t.id).filter(Boolean);
+
+  return { topTrackIds: diverseSeeds, allTrackIds, topArtists, nicheArtists, audioStats,
+           trackCount: unique.length, playlistCount: samplePids.length };
 }
 
 /* ─── L1: Reference Playlist DNA ─── */
@@ -538,9 +540,15 @@ function assembleBrainBlocks(){
     lines.push(`סוג עסק: ${ctx.l0.label}`);
     lines.push(`✅ ז'אנרים מותרים בלבד: ${ctx.l0.genres}`);
     lines.push(`❌ אסור לחלוטין: פופ ישראלי מיינסטרים, מזרחית, שירים ידועים מהרדיו הישראלי, Hip Hop מסחרי, EDM — אלא אם הם מופיעים מפורשות ברשימת המותרים לעיל`);
-    if(ctx.l0.dna && ctx.l0.dna.topArtists && ctx.l0.dna.topArtists.length){
-      lines.push(`📌 אמנים לדוגמה מניתוח ${ctx.l0.dna.playlistCount} פלייליסטים אמיתיים: ${ctx.l0.dna.topArtists.join(', ')}`);
-      lines.push(`→ בחר אמנים בסגנון דומה לאלו. לא חייב בדיוק אותם, אבל אותו עולם מוזיקלי.`);
+    if(ctx.l0.dna){
+      if(ctx.l0.dna.topArtists && ctx.l0.dna.topArtists.length){
+        lines.push(`🚫 אמנים שמופיעים יתר על המידה בז'אנר (אסור לבחור אותם — כבר ידועים מדי): ${ctx.l0.dna.topArtists.join(', ')}`);
+      }
+      if(ctx.l0.dna.nicheArtists && ctx.l0.dna.nicheArtists.length){
+        lines.push(`✨ אמנים פחות ידועים מאותו עולם (העדיפו לבחור מתוך אלו ודומים להם): ${ctx.l0.dna.nicheArtists.join(', ')}`);
+      } else {
+        lines.push(`→ מצא אמנים פחות ידועים מאותו עולם מוזיקלי — לא הכוכבים הגדולים.`);
+      }
     }
     if(ctx.l0.dna && ctx.l0.dna.audioStats){
       const st = ctx.l0.dna.audioStats;
@@ -945,9 +953,12 @@ async function fillUp(existing, faders){
   let seeds = [];
   if(ctx.l1 && Array.isArray(ctx.l1.topTrackIds)) seeds.push(...ctx.l1.topTrackIds.slice(0,2));
   if(ctx.l2 && Array.isArray(ctx.l2.cohort_top_ids)) seeds.push(...ctx.l2.cohort_top_ids.slice(0,2));
-  // L0 DNA already fetched — use its top track IDs directly (no extra API call needed)
-  if(seeds.length < 3 && ctx.l0 && ctx.l0.dna && Array.isArray(ctx.l0.dna.topTrackIds)){
-    seeds.push(...ctx.l0.dna.topTrackIds.slice(0,3));
+  // L0: pick RANDOM tracks from full pool each time — breaks the always-same-seeds loop
+  if(seeds.length < 3 && ctx.l0 && ctx.l0.dna){
+    const pool = Array.isArray(ctx.l0.dna.allTrackIds) ? ctx.l0.dna.allTrackIds
+                 : (ctx.l0.dna.topTrackIds || []);
+    const rndPick = pool.slice().sort(()=>Math.random()-0.5).slice(0,3);
+    seeds.push(...rndPick);
   }
   // Dedupe and fill from existing validated tracks
   seeds = Array.from(new Set(seeds.filter(Boolean)));

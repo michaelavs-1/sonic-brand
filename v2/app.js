@@ -273,9 +273,17 @@ async function fetchL0_DNA(playlistIds){
   const topArtists = Object.entries(artistCount)
     .sort((a,b)=>b[1]-a[1]).slice(0,10).map(([name])=>name);
 
+  // Diverse seeds: mix of popular + mid-range + niche tracks (not always top-5)
+  // Shuffle before slicing so seeds vary across runs
+  const shuffled = unique.slice().sort(()=>Math.random()-0.5);
+  const topTier  = shuffled.filter(t=>(t.popularity||0) >= 60).slice(0,2).map(t=>t.id);
+  const midTier  = shuffled.filter(t=>(t.popularity||0) >= 30 && (t.popularity||0) < 60).slice(0,2).map(t=>t.id);
+  const lowTier  = shuffled.filter(t=>(t.popularity||0) < 30).slice(0,1).map(t=>t.id);
+  const diverseSeeds = [...topTier, ...midTier, ...lowTier].filter(Boolean).slice(0,5);
+
   return {
-    topTrackIds: top50.slice(0,5).map(t=>t.id),   // seeds for Spotify recommendations
-    topArtists,                                     // pass to GPT as reference
+    topTrackIds: diverseSeeds,   // diverse seeds → varied Spotify recommendations
+    topArtists,
     audioStats,
     trackCount: unique.length,
     playlistCount: samplePids.length,
@@ -827,7 +835,9 @@ async function generateCandidates(faders, moods, opts){
 חוקים קשיחים:
 - כל שיר חייב להיות קיים באמת ב-Spotify, אמן ושם מדויקים.
 - אל תמציא שירים. אם אתה לא בטוח באמן או בשם — אל תכלול אותו.
-- שמור על הסגנונות והאווירות שביקש העסק.${regenNote}
+- שמור על הסגנונות והאווירות שביקש העסק.
+- גיוון חובה: אל תבחר רק את השירים הכי ברורים/מפורסמים של כל ז'אנר. בחר מגוון — ~40% שירים מוכרים, ~40% פחות מוכרים, ~20% נישה/גילויים. אמנים פחות מוכרים אבל איכותיים הם נכס.
+- אל תחזור על אותם אמנים יותר מ-2 פעמים ברשימה כולה. פזר בין אמנים רבים ומגוונים.${regenNote}
 ${fmDesc}
 ${heDesc}
 ${voDesc}
@@ -854,8 +864,8 @@ ${excludeBlock}
 צור ${candidateCount} מועמדים מגוונים שמתאימים לכל החוקים והמידע למעלה.
 אם ניתנו DNA / קוהורט / ארכיון — שלב את כולם לאיזון מדויק שמתאים לעסק הזה.`;
 
-  // Slightly higher temperature on each regen for more variety
-  const temperature = Math.min(0.95, 0.72 + attempt * 0.06);
+  // Base temperature 0.85 → more creative from the first run. Higher on each regen.
+  const temperature = Math.min(0.97, 0.85 + attempt * 0.04);
 
   const raw = await callOpenAI([
     {role:'system', content:sys},

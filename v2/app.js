@@ -769,20 +769,21 @@ async function startGeneration(){
     setLoadingStatus('מאמת ב-Spotify…',`${candidates.length} שירים`);
     const validated = await validateOnSpotify(candidates);
 
+    const PLAYLIST_SIZE = 30; // ברזל — 30 שירים מדויקים
+
     let final = validated.filter(t=>t.id);
-    if(final.length < 45){
-      setLoadingStatus('משלים ל-50 שירים…',`כרגע ${final.length}`);
+    if(final.length < PLAYLIST_SIZE - 5){
+      setLoadingStatus(`משלים ל-${PLAYLIST_SIZE} שירים…`,`כרגע ${final.length}`);
       const filled = await fillUp(final, faders);
       final = filled;
     }
 
     if(final.length < 8){
-      // Fallback: render whatever we have rather than failing
       setLoadingStatus('בעיה ביצירת פלייליסט','מעט שירים. נסה שוב או בדוק חיבור.');
       showToast('נמצאו רק '+final.length+' שירים. נסה שוב.', true);
     }
 
-    state.generatedTracks = final.slice(0, 50);
+    state.generatedTracks = final.slice(0, PLAYLIST_SIZE);
     await saveAnalysis();
     renderPlaylist();
   } catch(e){
@@ -808,12 +809,16 @@ async function generateCandidates(faders, moods, opts){
   const enDesc = describeEnergy(faders.energy);
   const erDesc = describeEra(faders.era);
 
+  // Newer models are slower — request fewer candidates to stay within timeout
+  const isNewModel = /^gpt-5/.test(getMainModel());
+  const candidateCount = isNewModel ? 40 : 60;
+
   const regenNote = attempt > 0
     ? `\n⚠️ זוהי יצירה מחדש מספר ${attempt}. חובה להציג בחירה שונה לחלוטין מהפעם הקודמת — אמנים שונים, שירים שונים, זוויות שונות של הסגנון. אל תחזור על אף שיר מהרשימה הבאה.`
     : '';
 
   const sys = `אתה רובין, מומחה ליצירת פלייליסטים מותאמי-עסק.
-המטרה: לייצר 60 מועמדים אמיתיים מ-Spotify לפלייליסט עסקי.
+המטרה: לייצר ${candidateCount} מועמדים אמיתיים מ-Spotify לפלייליסט עסקי.
 חוקים קשיחים:
 - כל שיר חייב להיות קיים באמת ב-Spotify, אמן ושם מדויקים.
 - אל תמציא שירים. אם אתה לא בטוח באמן או בשם — אל תכלול אותו.
@@ -841,7 +846,7 @@ ${state.refPlaylist?'פלייליסט ייחוס URL: '+state.refPlaylist:''}
 ${brainBlocks}
 ${excludeBlock}
 
-צור 60 מועמדים מגוונים שמתאימים לכל החוקים והמידע למעלה.
+צור ${candidateCount} מועמדים מגוונים שמתאימים לכל החוקים והמידע למעלה.
 אם ניתנו DNA / קוהורט / ארכיון — שלב את כולם לאיזון מדויק שמתאים לעסק הזה.`;
 
   // Slightly higher temperature on each regen for more variety
@@ -850,10 +855,10 @@ ${excludeBlock}
   const raw = await callOpenAI([
     {role:'system', content:sys},
     {role:'user', content:usr},
-  ], {model: getMainModel(), max_tokens:6000, temperature});
+  ], {model: getMainModel(), max_tokens: isNewModel ? 4000 : 6000, temperature});
   const parsed = safeJSON(raw);
   const tracks = (parsed.tracks||[]).filter(t=>t.artist && t.title);
-  return tracks.slice(0, 60);
+  return tracks.slice(0, candidateCount);
 }
 
 async function validateOnSpotify(candidates){
@@ -936,7 +941,7 @@ async function fillUp(existing, faders){
   }
   seeds = seeds.slice(0, 5);
   if(!seeds.length) return existing;
-  const need = 50 - existing.length;
+  const need = 30 - existing.length;
   const params = {
     seed_tracks: seeds.join(','),
     limit: Math.min(100, need*4),
@@ -974,7 +979,7 @@ async function fillUp(existing, faders){
     const out = existing.slice();
     for(const t of j.tracks){
       if(known.has(t.id)) continue;
-      if(out.filter(x=>x.id).length >= 50) break;
+      if(out.filter(x=>x.id).length >= 30) break;
       const isHe = /[\u0590-\u05FF]/.test(t.name + ' ' + t.artists.map(a=>a.name).join(' '));
       if(blockHebrew && isHe) continue;
       if(blockIntl && !isHe) continue;

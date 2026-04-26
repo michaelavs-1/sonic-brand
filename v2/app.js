@@ -24,6 +24,7 @@ const state = {
   mc: { familiarity: 3, hebrew: 3, vocal: 3, energy: 3, era: 3 },
   hours: { open: '09:00', close: '23:00' },
   refreshDays: 3,
+  selectedModel: localStorage.getItem('sb_model') || 'gpt-4o', // persists across sessions
   spotifyToken: null,
   spotifyUser: null,
   generatedTracks: [],
@@ -388,7 +389,7 @@ popularity_avg=${stats.popularity.toFixed(0)} hebrew=${(stats.hebrewRatio*100).t
 ${sample}
 
 נתח: סגנון/ז'אנר עיקרי, אווירה דומיננטית, טווח עידן.`;
-  const raw = await callOpenAI([{role:'system',content:sys},{role:'user',content:usr}], {model:'gpt-4o-mini', max_tokens:300, temperature:0.5});
+  const raw = await callOpenAI([{role:'system',content:sys},{role:'user',content:usr}], {model:getMiniModel(), max_tokens:300, temperature:0.5});
   return safeJSON(raw);
 }
 
@@ -660,7 +661,7 @@ async function detectBusinessType(){
     const j = await callOpenAI([
       {role:'system', content: sys},
       {role:'user', content: usr},
-    ], {model:'gpt-4o-mini', max_tokens:600, temperature:0.65});
+    ], {model:getMiniModel(), max_tokens:600, temperature:0.65});
     const parsed = safeJSON(j);
     state.bizType = parsed.biz_type || 'עסק';
     state.bizJoke = parsed.joke || '';
@@ -849,7 +850,7 @@ ${excludeBlock}
   const raw = await callOpenAI([
     {role:'system', content:sys},
     {role:'user', content:usr},
-  ], {model:'gpt-4o', max_tokens:6000, temperature});
+  ], {model: getMainModel(), max_tokens:6000, temperature});
   const parsed = safeJSON(raw);
   const tracks = (parsed.tracks||[]).filter(t=>t.artist && t.title);
   return tracks.slice(0, 60);
@@ -996,6 +997,31 @@ async function fillUp(existing, faders){
   }
 }
 
+/* ─────────── Model selector ─────────── */
+const MODELS = [
+  { id:'gpt-4o',   label:'4o',   title:'GPT-4o — יציב, מהיר' },
+  { id:'gpt-5.4',  label:'5.4',  title:'GPT-5.4 — חכם יותר, קצת איטי יותר' },
+  { id:'gpt-5.5',  label:'5.5',  title:'GPT-5.5 — הכי חזק, הכי איטי' },
+];
+
+function selectModel(id){
+  state.selectedModel = id;
+  localStorage.setItem('sb_model', id);
+  document.querySelectorAll('.model-pill').forEach(el=>{
+    el.classList.toggle('active', el.dataset.model === id);
+  });
+}
+
+// Main model: whichever the user selected
+function getMainModel(){ return state.selectedModel || 'gpt-4o'; }
+
+// Mini model: auto-mapped based on selected main model
+function getMiniModel(){
+  const m = getMainModel();
+  if(m === 'gpt-5.5' || m === 'gpt-5.4') return 'gpt-5.4-mini';
+  return 'gpt-4o-mini';
+}
+
 /* ─────────── OpenAI key management ─────────── */
 
 // Fetch key from Supabase (cross-device), fallback to localStorage
@@ -1074,7 +1100,7 @@ async function callOpenAI(messages, opts){
   opts = opts || {};
   const body = {
     apiKey: await getOpenAIKey(), // Supabase → localStorage → server fallback
-    model: opts.model || 'gpt-4o-mini',
+    model: opts.model || getMiniModel(),
     temperature: opts.temperature || 0.6,
     messages,
     max_tokens: opts.max_tokens || 2500,
@@ -1293,6 +1319,8 @@ async function regenerate(){
 
 /* ─────────── Boot ─────────── */
 (async function boot(){
+  // Init model picker to saved selection
+  selectModel(state.selectedModel);
   // Try to recover Spotify session
   await refreshSpotifyTokenIfNeeded();
   if(state.spotifyToken){

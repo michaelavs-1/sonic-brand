@@ -161,6 +161,12 @@ input,textarea{font-family:inherit;color:inherit}
 .gear-btn{background:transparent;border:none;color:var(--muted);font-size:20px;padding:6px;line-height:1;transition:color .2s,transform .35s;cursor:pointer;flex-shrink:0;border-radius:8px}
 .gear-btn:hover{color:var(--text);transform:rotate(60deg);background:var(--bg-2)}
 
+/* Model selector pills */
+.model-picker{display:flex;gap:4px;align-items:center;flex-shrink:0}
+.model-pill{background:var(--bg-2);border:1px solid var(--border-2);color:var(--muted);font-size:11px;font-weight:700;padding:4px 9px;border-radius:20px;cursor:pointer;transition:all .15s;font-family:inherit;line-height:1.4}
+.model-pill:hover{border-color:var(--muted);color:var(--text)}
+.model-pill.active{background:rgba(29,185,84,.12);border-color:var(--accent);color:var(--accent)}
+
 .settings-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(5px);z-index:200;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .25s}
 .settings-overlay.open{opacity:1;pointer-events:all}
 .settings-modal{background:var(--card);border:1px solid var(--border-2);border-radius:var(--r-lg);padding:28px 24px;width:min(420px,90vw);box-shadow:var(--shadow-1);transform:translateY(18px);transition:transform .25s}
@@ -191,6 +197,11 @@ input,textarea{font-family:inherit;color:inherit}
     <div style="flex:1">
       <div class="brand-name">Robin</div>
       <div class="brand-tag" style="font-size:10px">SonicBrands · v2 preview</div>
+    </div>
+    <div class="model-picker" id="modelPicker">
+      <button class="model-pill" data-model="gpt-4o"  onclick="selectModel('gpt-4o')"  title="GPT-4o — יציב, מהיר">4o</button>
+      <button class="model-pill" data-model="gpt-5.4" onclick="selectModel('gpt-5.4')" title="GPT-5.4 — חכם יותר">5.4</button>
+      <button class="model-pill" data-model="gpt-5.5" onclick="selectModel('gpt-5.5')" title="GPT-5.5 — הכי חזק">5.5</button>
     </div>
     <button class="gear-btn" onclick="openSettingsModal()" title="הגדרות מפתח">⚙️</button>
   </div>

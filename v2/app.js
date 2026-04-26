@@ -1177,6 +1177,41 @@ function describeEra(v){
   return '📅 שנים: רטרו וקלאסי — לפני 2000.';
 }
 
+/* ─────────── Audio preview player ─────────── */
+let _previewAudio = null;
+let _previewBtn   = null;
+
+function togglePreview(url, btn){
+  // No preview available
+  if(!url) return;
+
+  // Same button → pause
+  if(_previewBtn === btn && _previewAudio && !_previewAudio.paused){
+    _previewAudio.pause();
+    btn.classList.remove('playing');
+    btn.innerHTML = '▶';
+    _previewAudio = null; _previewBtn = null;
+    return;
+  }
+
+  // Stop previous
+  if(_previewAudio){ _previewAudio.pause(); }
+  if(_previewBtn){ _previewBtn.classList.remove('playing'); _previewBtn.innerHTML = '▶'; }
+
+  // Play new
+  _previewAudio = new Audio(url);
+  _previewBtn   = btn;
+  btn.classList.add('playing');
+  btn.innerHTML = '⏸';
+
+  _previewAudio.play().catch(()=>{});
+  _previewAudio.onended = ()=>{
+    btn.classList.remove('playing');
+    btn.innerHTML = '▶';
+    _previewAudio = null; _previewBtn = null;
+  };
+}
+
 /* ─────────── Render playlist ─────────── */
 function renderPlaylist(){
   $('playlistLoading').style.display = 'none';
@@ -1192,6 +1227,10 @@ function renderPlaylist(){
     const key = `${t.artist}|${t.title}`;
     const fb = state.feedback[key];
     const cover = t.cover ? `style="background-image:url('${t.cover}')"` : '';
+    const previewUrl = t.preview || '';
+    const playClass = previewUrl ? 'play-btn' : 'play-btn no-preview';
+    const playClick = previewUrl ? `onclick="togglePreview('${escapeAttr(previewUrl)}',this)"` : '';
+    const playTitle = previewUrl ? 'השמע תצוגה מקדימה' : 'אין תצוגה מקדימה';
     return `<div class="track-item">
       <div class="track-num">${i+1}</div>
       <div class="track-cover" ${cover}></div>
@@ -1200,6 +1239,7 @@ function renderPlaylist(){
         <div class="track-artist">${escapeHtml(t.artist)}</div>
       </div>
       <div class="track-vote">
+        <button class="${playClass}" ${playClick} title="${playTitle}">▶</button>
         <button class="vote-btn up${fb==='up'?' active':''}" onclick="voteTrack('${escapeAttr(key)}','up',this)">👍</button>
         <button class="vote-btn down${fb==='down'?' active':''}" onclick="voteTrack('${escapeAttr(key)}','down',this)">👎</button>
       </div>

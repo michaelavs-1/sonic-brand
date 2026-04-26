@@ -150,6 +150,12 @@ input,textarea{font-family:inherit;color:inherit}
 .vote-btn.up.active{color:var(--accent);border-color:var(--accent)}
 .vote-btn.down.active{color:var(--accent-3);border-color:var(--accent-3)}
 
+/* Preview play button */
+.play-btn{background:transparent;border:1px solid var(--border-2);color:var(--muted);width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;transition:all .2s;flex-shrink:0;padding:0}
+.play-btn:hover{border-color:var(--accent);color:var(--accent);transform:scale(1.1)}
+.play-btn.playing{background:var(--accent);border-color:var(--accent);color:#fff}
+.play-btn.no-preview{opacity:.25;cursor:default;pointer-events:none}
+
 .playlist-actions{display:flex;gap:10px;margin-top:22px;flex-wrap:wrap}
 
 /* Toast */
@@ -257,23 +263,26 @@ input,textarea{font-family:inherit;color:inherit}
   <!-- ═══════════════ SCREEN 3: BUSINESS INFO ═══════════════ -->
   <div class="screen" data-screen="3">
     <div class="screen-card">
-      <div class="notice">
-        <span>ℹ️</span>
-        <span>תהליך המידע והשאלות הוא חד-פעמי בזמן ההרשמה.</span>
+
+      <h2 style="font-size:22px;margin-bottom:6px">ספרו לי על העסק</h2>
+      <p style="margin-bottom:14px;font-size:14px">מה אתם, מי הקהל, מה האווירה שאתם רוצים ליצור.</p>
+
+      <div class="input-wrap" style="margin-bottom:18px">
+        <textarea class="input-textarea" id="bizDesc"
+          style="min-height:200px;font-size:16px;border-width:2px;border-color:var(--accent)"
+          placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח. אווירה אינטימית, לא רעשנית..."
+          maxlength="1000"></textarea>
       </div>
 
-      <h2>במילים פשוטות, ספרו לי על העסק</h2>
-      <p>תיאור חופשי — מה אתם, מי הקהל, מה האווירה שאתם מנסים ליצור.</p>
-
-      <div class="input-wrap">
-        <textarea class="input-textarea" id="bizDesc" placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח. אווירה אינטימית, לא רעשנית..." maxlength="1000"></textarea>
-      </div>
-
-      <div class="input-wrap">
-        <label class="input-label">פלייליסט קיים שמתאים לאווירת העסק (אופציונלי)</label>
-        <input class="input-text" id="refPlaylist" type="text" placeholder="https://open.spotify.com/playlist/..." dir="ltr">
-        <p style="font-size:12px;color:var(--muted);margin-top:6px">במידה ויש פלייליסט שנכון לאווירת העסק, ותרצו שאלמד אתכם גם דרכו, הדביקו אותו כאן.</p>
-      </div>
+      <details style="margin-bottom:4px">
+        <summary style="font-size:13px;color:var(--muted);cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px">
+          <span>+ פלייליסט רפרנס</span>
+          <span style="font-size:11px;opacity:.6">(אופציונלי — אלמד ממנו את הסגנון)</span>
+        </summary>
+        <div style="margin-top:10px">
+          <input class="input-text" id="refPlaylist" type="text" placeholder="https://open.spotify.com/playlist/..." dir="ltr">
+        </div>
+      </details>
 
       <div class="row" style="margin-top:24px;justify-content:space-between">
         <button class="btn btn-ghost" onclick="goBack()">← חזרה</button>

@@ -196,7 +196,7 @@ async function buildBrainContext(){
 
   // Run all fetches in parallel — L0 DNA fetch runs alongside L1-L4
   const [l0Res, l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
-    l0Match ? fetchL0_DNA(l0Match.playlistIds) : Promise.resolve(null),
+    l0Match ? fetchL0_DNA(l0Match, state.selectedMoods) : Promise.resolve(null),
     state.refPlaylist ? fetchL1_DNA(state.refPlaylist) : Promise.resolve(null),
     fetchL2_Cohort(state.bizType),
     fetchL3_GenreArchive(Array.from(state.selectedMoods)),
@@ -219,9 +219,26 @@ async function buildBrainContext(){
   });
 }
 
-/* ─── L0: Data Box Playlist DNA — fetches tracks from example playlists, extracts artists + seeds ─── */
-async function fetchL0_DNA(playlistIds){
-  if(!playlistIds || !playlistIds.length) return null;
+/* ─── L0: Data Box Playlist DNA — mood-filtered playlists, extracts artists + seeds ─── */
+async function fetchL0_DNA(entry, selectedMoods){
+  // Get playlists from entry — new format {playlists:[{id,moods}]} or legacy {playlistIds:[]}
+  let allPlaylists = [];
+  if(Array.isArray(entry.playlists)){
+    allPlaylists = entry.playlists;
+  } else if(Array.isArray(entry.playlistIds)){
+    allPlaylists = entry.playlistIds.map(id=>({id, moods:[]}));
+  }
+  if(!allPlaylists.length) return null;
+
+  // Filter by selected moods if available (use playlists that match ANY selected mood)
+  let chosen = allPlaylists;
+  if(selectedMoods && selectedMoods.size > 0){
+    const matched = allPlaylists.filter(p=>Array.isArray(p.moods) && p.moods.some(m=>selectedMoods.has(m)));
+    if(matched.length >= 2) chosen = matched;  // only filter if we have enough
+  }
+  const playlistIds = chosen.map(p=>p.id || p).filter(Boolean);
+  if(!playlistIds.length) return null;
+
   const tok = await refreshSpotifyTokenIfNeeded();
   if(!tok) return null;
 

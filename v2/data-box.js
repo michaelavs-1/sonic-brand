@@ -21,11 +21,18 @@ window.SB_DATA_BOX = {
       label: 'בר שכונתי / פאב',
       keywords: ['בר','פאב','שכונתי','pub','bar','ביליארד','בירה','beer','tavern'],
       genres: 'Lo-Fi / Indie / Rock',
-      playlistIds: [
-        '4wwqBmPvztunSovwUcuEbY','1AQI4Itc8ufEZOTuhVm1ih','61jNo7WKLOIQkahju8i0hw',
-        '37i9dQZF1DX6Gwl5uG0dwX','72JbwSy5zwNH17Fy1Dzxro','5JMSQOMQq5Pvj0wyGdsOIN',
-        '2nFiBPsadcJtkZB9wVwQ1j','1ZYiwkcUa0pZUAbyrFUnO6','6MNEDiFcAkOB5peLM7pnp2',
-        '3QwpkIyfYJ3KP1OYEM1wFG','1ZkZA7a9Fdw26WZyIV58Gw'
+      playlists: [
+        { id:'4wwqBmPvztunSovwUcuEbY', moods:['קליל','קצבי','אורבני','צעיר'] },
+        { id:'1AQI4Itc8ufEZOTuhVm1ih', moods:['אורבני','אפל','קצבי'] },
+        { id:'61jNo7WKLOIQkahju8i0hw', moods:['קצבי','צעיר','בועט'] },
+        { id:'37i9dQZF1DX6Gwl5uG0dwX', moods:['קצבי','בועט'] },
+        { id:'72JbwSy5zwNH17Fy1Dzxro', moods:['קצבי','קליל','בועט'] },
+        { id:'5JMSQOMQq5Pvj0wyGdsOIN', moods:['קצבי','קליל','בועט','צעיר'] },
+        { id:'2nFiBPsadcJtkZB9wVwQ1j', moods:['קצבי','בועט'] },
+        { id:'1ZYiwkcUa0pZUAbyrFUnO6', moods:[] },
+        { id:'6MNEDiFcAkOB5peLM7pnp2', moods:[] },
+        { id:'3QwpkIyfYJ3KP1OYEM1wFG', moods:[] },
+        { id:'1ZkZA7a9Fdw26WZyIV58Gw', moods:[] },
       ],
       purpose: 'a nostalgic, casual atmosphere — familiar rock and indie create a relaxed social environment',
       category: 'bars'
@@ -36,10 +43,15 @@ window.SB_DATA_BOX = {
       label: 'בר יין',
       keywords: ['יין','בר יין','וויסקי','ויסקי','ורמוט','wine bar','wine','קנטינה','cantina'],
       genres: 'RnB / Beats / Smooth Jazz / Bossa Nova / French Jazz / Vocal Jazz',
-      playlistIds: [
-        '6bX6RfpkoRwqH3at702xja','3iSzAEetVNA1fUoMPXyXma','37i9dQZF1DWWgccrbg3zbJ',
-        '37i9dQZF1E4xdJ0ma3vTH1','26hCFGqpzWO7WcDfaoSxzG','39tLdLdPZHekU6bPJLwe3n',
-        '0V1Xw5HVMI5fpYt81uMkca','3gcZeTnpMILN1Jv0tQcTit'
+      playlists: [
+        { id:'6bX6RfpkoRwqH3at702xja', moods:['אלגנטי','קצבי','סקסי'] },
+        { id:'3iSzAEetVNA1fUoMPXyXma', moods:['צעיר','קליל','מודרני'] },
+        { id:'37i9dQZF1DWWgccrbg3zbJ', moods:['אלגנטי','אינטימי','קצבי','יוקרתי'] },
+        { id:'37i9dQZF1E4xdJ0ma3vTH1', moods:['מודרני','קצבי','אורבני'] },
+        { id:'26hCFGqpzWO7WcDfaoSxzG', moods:['אלגנטי','משפחתי','יוקרתי','קליל'] },
+        { id:'39tLdLdPZHekU6bPJLwe3n', moods:['סקסי','קצבי','אלגנטי'] },
+        { id:'0V1Xw5HVMI5fpYt81uMkca', moods:['סקסי','קצבי','אלגנטי'] },
+        { id:'3gcZeTnpMILN1Jv0tQcTit', moods:['קצבי','קליל'] },
       ],
       purpose: 'sophisticated, cozy atmosphere — music sits underneath conversation, enables intimacy and slow drinking',
       category: 'bars'
@@ -50,10 +62,14 @@ window.SB_DATA_BOX = {
       label: 'דאנס בר',
       keywords: ['דאנס','ריקוד','ריקודים','מועדון','club','dance bar','clubbing','דיסקו'],
       genres: 'Indie Dance / Vocal House / Afro House / Deep House / Hip Hop / EDM / Pop Remixes',
-      playlistIds: [
-        '2S2R3fAMQ0APh45cU1TAth','37i9dQZF1DXcZDD7cfEKhW','37i9dQZF1E4qQ00I1Jm1ay',
-        '3EOra0sJJ4vKRVf49KZGNh','1po9a30RIjEq96GciF2OvY','487jKTFqWhs6b0AEUz0WpX',
-        '3DaU9QPNMVXNwegTUPamNw'
+      playlists: [
+        { id:'2S2R3fAMQ0APh45cU1TAth', moods:['בועט','רקיד','צעיר','קצבי','מודרני'] },
+        { id:'37i9dQZF1DXcZDD7cfEKhW', moods:['בועט','רקיד','צעיר','קצבי','מודרני'] },
+        { id:'37i9dQZF1E4qQ00I1Jm1ay', moods:['צעיר','אורבני','קצבי','סקסי'] },
+        { id:'3EOra0sJJ4vKRVf49KZGNh', moods:['צעיר','רקיד','אורבני','מודרני'] },
+        { id:'1po9a30RIjEq96GciF2OvY', moods:['רקיד','אורבני','אפל','צעיר'] },
+        { id:'487jKTFqWhs6b0AEUz0WpX', moods:['רקיד','צעיר','אורבני','מודרני','אפל'] },
+        { id:'3DaU9QPNMVXNwegTUPamNw', moods:['רקיד','צעיר','אורבני','מודרני','אפל'] },
       ],
       purpose: 'high energy — bass and tempo force close conversation, push alcohol sales, fusion of dancing and bar talk',
       category: 'bars'
@@ -64,9 +80,13 @@ window.SB_DATA_BOX = {
       label: 'בר קוקטיילים',
       keywords: ['קוקטיל','קוקטיילים','cocktail','cocktails','מיקסולוגי','mixology','aperitivo'],
       genres: 'Lofi / Bossa Nova / Vocal Jazz / Jazzy House',
-      playlistIds: [
-        '5R3X2RiiFhNaiNsZbteZfs','37i9dQZF1DWWgccrbg3zbJ','37i9dQZF1DX0khTY3HFA4M',
-        '79jjnPCe2TK4N3vTGfYJXK','37i9dQZF1DX6syac0fWYdV','7i8PotqqlAb88Bwybh7PAk'
+      playlists: [
+        { id:'5R3X2RiiFhNaiNsZbteZfs', moods:['רגוע','אלגנטי','יוקרתי','אינטימי'] },
+        { id:'37i9dQZF1DWWgccrbg3zbJ', moods:['משפחתי','קצבי','אלגנטי','יוקרתי','קליל'] },
+        { id:'37i9dQZF1DX0khTY3HFA4M', moods:['סקסי','קצבי','אפל','אלגנטי'] },
+        { id:'79jjnPCe2TK4N3vTGfYJXK', moods:['אלגנטי','משפחתי','יוקרתי','קליל'] },
+        { id:'37i9dQZF1DX6syac0fWYdV', moods:['רקיד','צעיר','אפל','אלגנטי','סקסי'] },
+        { id:'7i8PotqqlAb88Bwybh7PAk', moods:['רקיד','צעיר','אפל','אלגנטי','סקסי'] },
       ],
       purpose: 'music sits underneath conversation — cool, modern, subtle. Never louder than the conversation',
       category: 'bars'
@@ -77,10 +97,14 @@ window.SB_DATA_BOX = {
       label: 'בר קולינרי / גסטרו בר',
       keywords: ['גסטרו','קולינרי','culinary','גסטרובר','gastro','food and drinks','אוכל ובר','ביסטרו בר'],
       genres: 'Soul / Neo-Soul / Lo-Fi Beats / 90s-2000s Hip Hop / RnB',
-      playlistIds: [
-        '6N7E8beWM4r4tXNmo5NbJX','0bhpV9zKrJiCjdv6xX9wdc','37i9dQZF1DWYoYGBbGKurt',
-        '3WwBMqBr5TupGBwW9Ve9Pf','33alWtYP5HBWhRaji8k212','3gcZeTnpMILN1Jv0tQcTit',
-        '2XD24lgANiicaKd38DWBpg'
+      playlists: [
+        { id:'6N7E8beWM4r4tXNmo5NbJX', moods:['אורבני','קצבי','סקסי'] },
+        { id:'0bhpV9zKrJiCjdv6xX9wdc', moods:['אורבני','צעיר','קצבי'] },
+        { id:'37i9dQZF1DWYoYGBbGKurt', moods:['רגוע','אינטימי','אלגנטי'] },
+        { id:'3WwBMqBr5TupGBwW9Ve9Pf', moods:['קצבי','סקסי','מודרני','בועט','אורבני'] },
+        { id:'33alWtYP5HBWhRaji8k212', moods:['קצבי','אורבני','קליל'] },
+        { id:'3gcZeTnpMILN1Jv0tQcTit', moods:['קצבי','קליל'] },
+        { id:'2XD24lgANiicaKd38DWBpg', moods:[] },
       ],
       purpose: 'modern, late-night groove — music distinguishes bar from restaurant, enables table conversation, feels sophisticated',
       category: 'bars'
@@ -91,9 +115,12 @@ window.SB_DATA_BOX = {
       label: 'בר מלון / לובי מלון',
       keywords: ['מלון','לובי','hotel','lobby','בר מלון','hotel bar','לאונג׳','lounge'],
       genres: 'Instrumental / Chill / New Wave / Soft Jazz',
-      playlistIds: [
-        '6k9bh7kZWzm6fsZxrVm92U','5R3X2RiiFhNaiNsZbteZfs','37i9dQZF1DWVqfgj8NZEp1',
-        '6xwz5O60HTBCBJEeUceBGB','5rWwygGtLi1Ro8JtwNJZns'
+      playlists: [
+        { id:'6k9bh7kZWzm6fsZxrVm92U', moods:['צעיר','קליל'] },
+        { id:'5R3X2RiiFhNaiNsZbteZfs', moods:['יוקרתי','קליל','אינטימי'] },
+        { id:'37i9dQZF1DWVqfgj8NZEp1', moods:['יוקרתי','אלגנטי','אינטימי','רגוע'] },
+        { id:'6xwz5O60HTBCBJEeUceBGB', moods:['יוקרתי','אלגנטי','רגוע','אינטימי'] },
+        { id:'5rWwygGtLi1Ro8JtwNJZns', moods:['רגוע','אלגנטי','יוקרתי'] },
       ],
       purpose: 'welcoming, calming — connects new arrivals to the existing lobby atmosphere, universal and upscale',
       category: 'bars'
@@ -107,9 +134,12 @@ window.SB_DATA_BOX = {
       label: 'מסעדת פועלים / שוק',
       keywords: ['פועלים','שוק','עממי','מאפה','ארוחת עובדים','מזרחי עממי','חפיף','חפיפון'],
       genres: 'מוזיקה מזרחית ישנה / שירים טורקים / נעימות צפון אפריקאיות',
-      playlistIds: [
-        '2z4tm86ivNjyO3oKDpVOnV','1w26vYQCXCnritR3Zjl8Ho','1YAsFTPgF2keIHbcpYnHDU',
-        '7MT2zvfmRxAPEP1f3VKvAp','53GX7x7Z6bfrESNL7ndTKK'
+      playlists: [
+        { id:'2z4tm86ivNjyO3oKDpVOnV', moods:[] },
+        { id:'1w26vYQCXCnritR3Zjl8Ho', moods:[] },
+        { id:'1YAsFTPgF2keIHbcpYnHDU', moods:[] },
+        { id:'7MT2zvfmRxAPEP1f3VKvAp', moods:[] },
+        { id:'53GX7x7Z6bfrESNL7ndTKK', moods:['חאפלה','קצבי'] },
       ],
       purpose: 'familiar north-african and iraqi atmosphere — nostalgic, authentic, culturally resonant for the community',
       category: 'restaurants'
@@ -120,12 +150,21 @@ window.SB_DATA_BOX = {
       label: 'מסעדת שף / ביסטרו / יוקרה',
       keywords: ['שף','מסעדת שף','ביסטרו','יוקרה','fine dining','גורמה','gourmet','מסעדה יוקרתית','איטלקית','צרפתית','יפנית','תאילנדית','אסייתית','אירופאית'],
       genres: 'World Jazz / Instrumental Funk / French Jazz / Soul & Soulful House',
-      playlistIds: [
-        '37i9dQZF1EIgOj03IPzJ1N','1wVXfJA0uiOCX0ohySHxan','70E2PO0iRuTZrcm3PK20rb',
-        '79jjnPCe2TK4N3vTGfYJXK','3MFh9h1W1AhWD4jwWmaVA7','52btkQlZMKBkIaUuG5kSMf',
-        '60jaxNF3IP5GmASVpJ93Mc','6spuUOcX0rerhifPrAQqii','3zsTKkYKyldUAQOtRiFZa0',
-        '4HrRxH3MIyfb9eabjVUwzw','0tzHVhoFXRMbEWc89EEIJ7','0pRtayTQifQyZhoc1tKfRv',
-        '1lq2I8XFgXuTD6QLDlaTDD','3gcZeTnpMILN1Jv0tQcTit'
+      playlists: [
+        { id:'37i9dQZF1EIgOj03IPzJ1N', moods:['רגוע','אינטימי','משפחתי','אלגנטי'] },
+        { id:'1wVXfJA0uiOCX0ohySHxan', moods:['קצבי','קליל'] },
+        { id:'70E2PO0iRuTZrcm3PK20rb', moods:['רגוע','אלגנטי','קליל'] },
+        { id:'79jjnPCe2TK4N3vTGfYJXK', moods:['משפחתי','קליל','אלגנטי'] },
+        { id:'3MFh9h1W1AhWD4jwWmaVA7', moods:['קצבי','אלגנטי','קליל'] },
+        { id:'52btkQlZMKBkIaUuG5kSMf', moods:['קצבי','קליל'] },
+        { id:'60jaxNF3IP5GmASVpJ93Mc', moods:['רגוע','משפחתי','אינטימי','קליל'] },
+        { id:'6spuUOcX0rerhifPrAQqii', moods:['קצבי','קליל','אלגנטי'] },
+        { id:'3zsTKkYKyldUAQOtRiFZa0', moods:['מודרני','סקסי','רקיד','קצבי'] },
+        { id:'4HrRxH3MIyfb9eabjVUwzw', moods:['סקסי','קצבי','אלגנטי'] },
+        { id:'0tzHVhoFXRMbEWc89EEIJ7', moods:['קצבי','רקיד','יוקרתי','קליל'] },
+        { id:'0pRtayTQifQyZhoc1tKfRv', moods:['קצבי','רקיד','סקסי','קליל'] },
+        { id:'1lq2I8XFgXuTD6QLDlaTDD', moods:['קצבי','אלגנטי','קליל'] },
+        { id:'3gcZeTnpMILN1Jv0tQcTit', moods:['קצבי','קליל'] },
       ],
       purpose: 'chic, upscale feeling — diners relax and feel vibrant, music fills silence without dominating conversation',
       category: 'restaurants'

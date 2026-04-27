@@ -417,6 +417,18 @@ input,textarea{font-family:inherit;color:inherit}
       <button class="btn btn-primary" onclick="saveKeyAndClose()" id="saveKeyBtn">שמור מפתח</button>
       <div class="key-status" id="keyStatus"></div>
     </div>
+
+    <!-- Spotify session section -->
+    <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
+    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;font-weight:700">חשבון Spotify</div>
+    <div id="spotifySessionInfo" style="font-size:13px;color:var(--muted);margin-bottom:12px">בודק חיבור…</div>
+    <button class="btn btn-secondary" onclick="disconnectSpotify()" id="disconnectSpotifyBtn"
+      style="font-size:13px;padding:10px 16px;color:var(--accent-3);border-color:var(--accent-3)">
+      🔌 נתק Spotify (החלף חשבון)
+    </button>
+    <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">
+      אם אחר רוצה להשתמש — לחץ כאן לניתוק, ואז התחבר עם החשבון שלו.
+    </p>
   </div>
 </div>
 

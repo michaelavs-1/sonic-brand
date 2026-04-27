@@ -1452,8 +1452,39 @@ async function openSettingsModal(){
     st.textContent = '';
     st.className = 'key-status';
   }
+
+  // Show Spotify connection status
+  const info = $('spotifySessionInfo');
+  if(info){
+    if(state.spotifyUser){
+      const name = state.spotifyUser.display_name || state.spotifyUser.id || 'לא ידוע';
+      info.innerHTML = `מחובר כ: <strong style="color:var(--accent)">${escapeHtml(name)}</strong>`;
+    } else if(localStorage.getItem('sp_access')){
+      info.textContent = 'מחובר (טוקן שמור)';
+    } else {
+      info.textContent = 'לא מחובר';
+      $('disconnectSpotifyBtn') && ($('disconnectSpotifyBtn').style.display = 'none');
+    }
+  }
+
   $('settingsOverlay').classList.add('open');
   setTimeout(()=> inp.focus(), 120);
+}
+
+/* ─── Disconnect Spotify — clears all cached tokens ─── */
+function disconnectSpotify(){
+  // Clear all Spotify localStorage keys
+  ['sp_access','sp_refresh','sp_expiry','sp_verifier','sb_v2_state','spotify_id']
+    .forEach(k=>localStorage.removeItem(k));
+  // Reset state
+  state.spotifyToken  = null;
+  state.spotifyUser   = null;
+  state.userPlaylists = [];
+  state.selectedUserPlaylists = [];
+  closeSettingsModal();
+  // Go back to auth screen
+  setStep(2);
+  showToast('Spotify נותק — התחבר עם החשבון הרצוי');
 }
 
 function closeSettingsModal(){

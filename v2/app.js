@@ -310,8 +310,25 @@ async function fetchL0_DNA(entry, selectedMoods){
   // Full shuffled pool — fillUp picks random seeds each regen
   const allTrackIds = unique.slice().sort(()=>Math.random()-0.5).map(t=>t.id).filter(Boolean);
 
+  // Direct inclusions: up to 9 actual tracks from the Data Box playlists (30% of 30)
+  // Pick randomly from mid+niche popularity to avoid always same mega-hits
+  const directPool = unique
+    .filter(t=>t.id && (t.popularity||0) >= 15 && (t.popularity||0) <= 72)
+    .sort(()=>Math.random()-0.5);
+  const directTracks = directPool.slice(0, 9).map(t=>({
+    artist: (t.artists||[]).map(a=>a.name).join(', '),
+    title:  t.name||'',
+    id:     t.id,
+    cover:  (t.album&&t.album.images&&t.album.images.length) ? t.album.images[t.album.images.length-1].url : '',
+    popularity: t.popularity||0,
+    duration: t.duration_ms||0,
+    preview: '',
+    url: '',
+    reason: 'data-box',
+  }));
+
   return { topTrackIds: diverseSeeds, allTrackIds, topArtists, nicheArtists, audioStats,
-           trackCount: unique.length, playlistCount: samplePids.length };
+           trackCount: unique.length, playlistCount: samplePids.length, directTracks };
 }
 
 /* ─── L1: Reference Playlist DNA ─── */
@@ -833,8 +850,16 @@ async function startGeneration(){
     const moods = Array.from(state.selectedMoods);
 
     setLoadingStatus('בונה פרופיל מוזיקלי…','');
-    // Pass previously generated tracks so GPT won't repeat them
-    const excludeTracks = state.generatedTracks.map(t=>`${t.artist} — ${t.title}`);
+
+    // ── Data Box direct tracks (30%) ──────────────────────────────
+    const directTracks = (state.brainContext.l0?.dna?.directTracks || []);
+    const directIds = new Set(directTracks.map(t=>t.id).filter(Boolean));
+
+    // GPT generates the remaining 70% — tell it to avoid the direct tracks
+    const excludeTracks = [
+      ...state.generatedTracks.map(t=>`${t.artist} — ${t.title}`),
+      ...directTracks.map(t=>`${t.artist} — ${t.title}`),
+    ];
     const candidates = await generateCandidates(faders, moods, {
       attempt: state.regenCount,
       exclude: excludeTracks
@@ -844,9 +869,24 @@ async function startGeneration(){
     const validated = await validateOnSpotify(candidates);
 
     const PLAYLIST_SIZE = 30; // ברזל — 30 שירים מדויקים
+    const directCount = Math.min(directTracks.length, Math.round(PLAYLIST_SIZE * 0.30)); // up to 9
 
-    let final = validated.filter(t=>t.id);
-    if(final.length < PLAYLIST_SIZE - 5){
+    // Merge: validated GPT tracks (deduped against direct) + direct tracks
+    const gptTracks = validated.filter(t=>t.id && !directIds.has(t.id));
+    const gptSlot   = PLAYLIST_SIZE - directCount;
+
+    // Shuffle direct tracks each time so order varies
+    const chosenDirect = directTracks.slice().sort(()=>Math.random()-0.5).slice(0,directCount);
+
+    // Interleave: spread direct tracks across the playlist (not all at start)
+    let merged = [...gptTracks.slice(0, gptSlot)];
+    chosenDirect.forEach((dt,i)=>{
+      const pos = Math.floor((i+1) * merged.length / (directCount+1));
+      merged.splice(pos, 0, dt);
+    });
+
+    let final = merged;
+    if(final.filter(t=>t.id).length < PLAYLIST_SIZE - 5){
       setLoadingStatus(`משלים ל-${PLAYLIST_SIZE} שירים…`,`כרגע ${final.length}`);
       const filled = await fillUp(final, faders);
       final = filled;

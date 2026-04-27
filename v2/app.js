@@ -713,7 +713,6 @@ async function submitBizInfo(){
 
 async function detectBusinessType(){
   $('bizTypeName').textContent = 'מנתח...';
-  $('bizJoke').textContent = '— מזהה את הסוג…';
   $('bizFunc').textContent = '— טוען המלצות…';
 
   try{

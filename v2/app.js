@@ -15,6 +15,7 @@ const state = {
   step: 1,
   totalSteps: 6,
   energyLevel: null,  // 1=low, 2=high
+  useDataBox: true,   // toggle L0 Data Box on/off for A/B testing
   bizDesc: '',
   refPlaylist: '',
   bizType: null,        // detected
@@ -195,7 +196,10 @@ async function buildBrainContext(){
   state.brainContext.assembled = false;
 
   // L0 — match Data Box entry (synchronous keyword match)
-  const l0Match = (window.SB_matchDataBox && window.SB_matchDataBox(state.bizDesc)) || null;
+  // L0 can be disabled for A/B testing — toggle via the 📋 button in brand bar
+  const l0Match = state.useDataBox
+    ? ((window.SB_matchDataBox && window.SB_matchDataBox(state.bizDesc)) || null)
+    : null;
 
   // Run all fetches in parallel — L0 DNA fetch runs alongside L1-L4
   const [l0Res, l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
@@ -1224,6 +1228,19 @@ async function fillUp(existing, faders){
     if(r.ok){ const j=await r.json(); (j.tracks||[]).forEach(t=>addTrack(t,'fallback-rec')); }
   }catch(e){}
   return out;
+}
+
+/* ─────────── Data Box toggle ─────────── */
+function toggleDataBox(){
+  state.useDataBox = !state.useDataBox;
+  const btn = $('dataBoxToggle');
+  if(!btn) return;
+  btn.textContent = state.useDataBox ? '📋' : '🚫';
+  btn.title = state.useDataBox
+    ? 'Data Box פעיל — לחץ לכיבוי (מצב AI טהור)'
+    : 'Data Box כבוי (AI טהור) — לחץ להפעלה';
+  btn.style.opacity = state.useDataBox ? '1' : '0.45';
+  showToast(state.useDataBox ? '📋 Data Box פעיל' : '🚫 Data Box כבוי — AI טהור');
 }
 
 /* ─────────── Model selector ─────────── */

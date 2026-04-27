@@ -201,13 +201,15 @@ async function buildBrainContext(){
     ? ((window.SB_matchDataBox && window.SB_matchDataBox(state.bizDesc)) || null)
     : null;
 
-  // Run all fetches in parallel — L0 DNA fetch runs alongside L1-L4
+  // Pure AI mode: skip L0/L2/L3/L4 — only L1 (user's own ref playlist) may run
+  const pureAI = !state.useDataBox;
+
   const [l0Res, l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
     l0Match ? fetchL0_DNA(l0Match, state.selectedMoods) : Promise.resolve(null),
     state.refPlaylist ? fetchL1_DNA(state.refPlaylist) : Promise.resolve(null),
-    fetchL2_Cohort(state.bizType),
-    fetchL3_GenreArchive(Array.from(state.selectedMoods)),
-    fetchL4_Feedback(state.bizType),
+    pureAI ? Promise.resolve(null) : fetchL2_Cohort(state.bizType),
+    pureAI ? Promise.resolve(null) : fetchL3_GenreArchive(Array.from(state.selectedMoods)),
+    pureAI ? Promise.resolve(null) : fetchL4_Feedback(state.bizType),
   ]);
 
   const l0DNA = l0Res.status==='fulfilled' ? l0Res.value : null;
@@ -1233,13 +1235,26 @@ async function fillUp(existing, faders){
 function toggleDataBox(){
   state.useDataBox = !state.useDataBox;
   const btn = $('dataBoxToggle');
-  if(!btn) return;
-  btn.textContent = state.useDataBox ? '📋' : '🚫';
-  btn.title = state.useDataBox
-    ? 'Data Box פעיל — לחץ לכיבוי (מצב AI טהור)'
-    : 'Data Box כבוי (AI טהור) — לחץ להפעלה';
-  btn.style.opacity = state.useDataBox ? '1' : '0.45';
-  showToast(state.useDataBox ? '📋 Data Box פעיל' : '🚫 Data Box כבוי — AI טהור');
+  if(btn){
+    btn.textContent = state.useDataBox ? '📋' : '🚫';
+    btn.title = state.useDataBox
+      ? 'Data Box פעיל — לחץ לכיבוי (מצב AI טהור)'
+      : 'Data Box כבוי (AI טהור) — לחץ להפעלה';
+    btn.style.opacity = state.useDataBox ? '1' : '0.45';
+  }
+
+  // When switching to Pure AI — wipe ALL brain layers immediately
+  // (banner shows stale data from previous build otherwise)
+  if(!state.useDataBox){
+    state.brainContext.l0 = null;
+    state.brainContext.l2 = null;
+    state.brainContext.l3 = null;
+    state.brainContext.l4 = null;
+    renderBrainBanner(); // refresh banner → goes blank
+    showToast('🚫 Pure AI — כל השכבות כבויות. רק הבינה מלאכותית.');
+  } else {
+    showToast('📋 Data Box פעיל');
+  }
 }
 
 /* ─────────── Model selector ─────────── */

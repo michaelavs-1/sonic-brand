@@ -228,6 +228,7 @@ async function spotifyLogin(){
     code_challenge_method: 'S256',
     code_challenge: challenge,
     state: genRandomString(16),
+    show_dialog: 'true',   // force re-auth screen to grant new scopes
   }).toString();
   window.location.href = url;
 }

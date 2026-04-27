@@ -155,6 +155,19 @@ input,textarea{font-family:inherit;color:inherit}
 .vote-btn.up.active{color:var(--accent);border-color:var(--accent)}
 .vote-btn.down.active{color:var(--accent-3);border-color:var(--accent-3)}
 
+/* User playlist picker (screen 3) */
+.pl-picker-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.pl-picker-label{font-size:13px;font-weight:700;color:var(--muted)}
+.pl-picker-count{font-size:12px;color:var(--accent);font-weight:700;min-width:60px;text-align:left}
+.pl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:230px;overflow-y:auto;padding-bottom:2px}
+.pl-card{position:relative;cursor:pointer;border-radius:10px;overflow:hidden;border:2px solid var(--border-2);transition:border-color .15s,transform .15s;background:var(--bg-2)}
+.pl-card:hover{border-color:var(--muted);transform:scale(1.02)}
+.pl-card.selected{border-color:var(--accent);box-shadow:0 0 0 2px rgba(29,185,84,.25)}
+.pl-cover{width:100%;aspect-ratio:1;background:var(--card-2);background-size:cover;background-position:center}
+.pl-name{font-size:11px;font-weight:600;color:var(--text);padding:5px 6px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-check{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.pl-loading{color:var(--muted);font-size:13px;text-align:center;padding:24px;grid-column:1/-1}
+
 /* Energy choice cards */
 .energy-card{background:var(--bg-2);border:1.5px solid var(--border-2);border-radius:var(--r-md);padding:18px 20px;cursor:pointer;transition:all .2s;text-align:right;width:100%}
 .energy-card:hover{border-color:var(--accent);background:rgba(29,185,84,.06);transform:translateY(-1px)}
@@ -292,15 +305,19 @@ input,textarea{font-family:inherit;color:inherit}
           maxlength="1000"></textarea>
       </div>
 
-      <details style="margin-bottom:4px">
-        <summary style="font-size:13px;color:var(--muted);cursor:pointer;user-select:none;list-style:none;display:flex;align-items:center;gap:6px">
-          <span>+ פלייליסט רפרנס</span>
-          <span style="font-size:11px;opacity:.6">(אופציונלי — אלמד ממנו את הסגנון)</span>
-        </summary>
-        <div style="margin-top:10px">
-          <input class="input-text" id="refPlaylist" type="text" placeholder="https://open.spotify.com/playlist/..." dir="ltr">
+      <!-- Spotify Playlist Picker — loads when screen 3 is shown -->
+      <div id="playlistPickerSection" style="margin-top:4px">
+        <div class="pl-picker-head">
+          <span class="pl-picker-label">🎵 בחרו פלייליסטים שמייצגים את האווירה שאתם רוצים <span style="font-weight:400;opacity:.65">(עד 3)</span></span>
+          <span class="pl-picker-count" id="plPickerCount"></span>
         </div>
-      </details>
+        <div class="pl-grid" id="playlistPickerGrid">
+          <div class="pl-loading">מתחבר לספוטיפיי…</div>
+        </div>
+      </div>
+
+      <!-- Fallback manual URL (hidden, power users) -->
+      <input type="hidden" id="refPlaylist" value="">
 
       <div class="row" style="margin-top:24px;justify-content:space-between">
         <button class="btn btn-ghost" onclick="goBack()">← חזרה</button>

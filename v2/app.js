@@ -30,7 +30,9 @@ const state = {
   spotifyToken: null,
   spotifyUser: null,
   generatedTracks: [],
-  regenCount: 0,       // how many times "צרו שוב" was pressed
+  regenCount: 0,
+  userPlaylists: [],          // loaded from /v1/me/playlists
+  selectedUserPlaylists: [],  // IDs the user picked (max 3)       // how many times "צרו שוב" was pressed
   feedback: {}, // trackKey -> 'up' | 'down'
   brainContext: {
     l0: null, // Data Box — SonicBrands knowledge base (Michael's spreadsheet)
@@ -65,6 +67,101 @@ function base64url(arr){
     .replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
 }
 
+/* ─────────── Spotify playlist picker (screen 3) ─────────── */
+async function fetchUserPlaylists(){
+  const tok = await refreshSpotifyTokenIfNeeded();
+  if(!tok) return [];
+  try{
+    const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
+      headers:{'Authorization':'Bearer '+tok}
+    });
+    if(!r.ok) return [];
+    const j = await r.json();
+    return (j.items||[]).filter(p=>p&&p.id&&p.name);
+  }catch(e){ return []; }
+}
+
+function renderPlaylistPicker(playlists){
+  const grid = $('playlistPickerGrid');
+  if(!grid) return;
+  if(!playlists.length){
+    grid.innerHTML = '<div class="pl-loading">לא נמצאו פלייליסטים בחשבון</div>';
+    return;
+  }
+  grid.innerHTML = playlists.map(p=>{
+    const img = p.images&&p.images[0] ? p.images[0].url : '';
+    const sel = state.selectedUserPlaylists.includes(p.id);
+    return `<div class="pl-card${sel?' selected':''}" onclick="toggleUserPlaylist('${escapeAttr(p.id)}')" data-id="${escapeAttr(p.id)}">
+      <div class="pl-cover"${img?` style="background-image:url('${img}')"`:''}></div>
+      <div class="pl-name">${escapeHtml(p.name)}</div>
+      ${sel?'<div class="pl-check">✓</div>':''}
+    </div>`;
+  }).join('');
+}
+
+function toggleUserPlaylist(id){
+  const idx = state.selectedUserPlaylists.indexOf(id);
+  if(idx >= 0){
+    state.selectedUserPlaylists.splice(idx,1);
+  } else {
+    if(state.selectedUserPlaylists.length >= 3){
+      showToast('ניתן לבחור עד 3 פלייליסטים', true);
+      return;
+    }
+    state.selectedUserPlaylists.push(id);
+  }
+  // Refresh only the clicked card + counter (avoid full re-render)
+  document.querySelectorAll('.pl-card').forEach(card=>{
+    const isSel = state.selectedUserPlaylists.includes(card.dataset.id);
+    card.classList.toggle('selected', isSel);
+    let chk = card.querySelector('.pl-check');
+    if(isSel && !chk){
+      chk = document.createElement('div');
+      chk.className='pl-check'; chk.textContent='✓';
+      card.appendChild(chk);
+    } else if(!isSel && chk){
+      chk.remove();
+    }
+  });
+  const cnt = $('plPickerCount');
+  if(cnt) cnt.textContent = state.selectedUserPlaylists.length
+    ? `${state.selectedUserPlaylists.length}/3 נבחרו`
+    : '';
+}
+
+/* ─────────── Multi-playlist L1 DNA ─────────── */
+async function fetchMultiL1_DNA(playlistIds){
+  if(!playlistIds.length) return null;
+  const results = await Promise.allSettled(
+    playlistIds.map(id=>fetchL1_DNA('https://open.spotify.com/playlist/'+id))
+  );
+  const dnas = results.filter(r=>r.status==='fulfilled'&&r.value).map(r=>r.value);
+  if(!dnas.length) return null;
+  if(dnas.length===1) return dnas[0];
+
+  // Merge: combine artists, track IDs, vibe keywords; average audio stats
+  const topArtists = [...new Set(dnas.flatMap(d=>d.topArtists||[]))].slice(0,8);
+  const topTrackIds = [...new Set(dnas.flatMap(d=>d.topTrackIds||[]))].slice(0,5);
+  const vibeKeywords = [...new Set(dnas.flatMap(d=>d.vibeKeywords||[]))].slice(0,6);
+  const topTracksDisplay = dnas.flatMap(d=>d.topTracksDisplay||[]).slice(0,5);
+
+  // Average audio stats across all playlists
+  const statsKeys = ['energy','valence','dance','tempo','instr','hebrewRatio'];
+  const audioStats = {};
+  statsKeys.forEach(k=>{
+    const vals = dnas.map(d=>d.audioStats?.[k]).filter(v=>v!=null);
+    if(vals.length) audioStats[k] = vals.reduce((s,v)=>s+v,0)/vals.length;
+  });
+
+  return {
+    summary: `${dnas.length} פלייליסטים נבחרו`,
+    topArtists, topTrackIds, vibeKeywords, topTracksDisplay,
+    audioStats: Object.keys(audioStats).length ? audioStats : null,
+    faderHints: dnas[0].faderHints,
+    trackCount: dnas.reduce((s,d)=>s+(d.trackCount||0),0),
+  };
+}
+
 /* ─────────── Navigation ─────────── */
 function setStep(n){
   state.step = n;
@@ -79,6 +176,15 @@ function setStep(n){
   window.scrollTo({top:0,behavior:'smooth'});
   // Render energy choice screen when navigating to step 5
   if(n === 5) renderEnergyScreen();
+  // Load user playlists when entering screen 3 (after Spotify auth)
+  if(n === 3 && state.spotifyToken && !state.userPlaylists.length){
+    fetchUserPlaylists().then(playlists=>{
+      state.userPlaylists = playlists;
+      renderPlaylistPicker(playlists);
+    });
+  } else if(n === 3 && state.userPlaylists.length){
+    renderPlaylistPicker(state.userPlaylists); // re-render with current selections
+  }
 }
 function goNext(){ if(state.step < state.totalSteps) setStep(state.step+1); }
 function goBack(){ if(state.step > 1) setStep(state.step-1); }
@@ -206,7 +312,11 @@ async function buildBrainContext(){
 
   const [l0Res, l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
     l0Match ? fetchL0_DNA(l0Match, state.selectedMoods) : Promise.resolve(null),
-    state.refPlaylist ? fetchL1_DNA(state.refPlaylist) : Promise.resolve(null),
+    // L1: user-picked playlists (visual picker) → multi-DNA merge
+    //     fallback: manual ref playlist URL → single DNA
+    state.selectedUserPlaylists.length > 0
+      ? fetchMultiL1_DNA(state.selectedUserPlaylists)
+      : (state.refPlaylist ? fetchL1_DNA(state.refPlaylist) : Promise.resolve(null)),
     pureAI ? Promise.resolve(null) : fetchL2_Cohort(state.bizType),
     pureAI ? Promise.resolve(null) : fetchL3_GenreArchive(Array.from(state.selectedMoods)),
     pureAI ? Promise.resolve(null) : fetchL4_Feedback(state.bizType),
@@ -669,7 +779,12 @@ function renderBrainBanner(){
       : '';
     parts.push(`📋 <strong>Data Box:</strong> ${escapeHtml(ctx.l0.label)}${dnaInfo}`);
   }
-  if(ctx.l1 && ctx.l1.summary) parts.push(`🧬 <strong>פלייליסט שלך:</strong> ${escapeHtml(ctx.l1.summary)}`);
+  if(ctx.l1 && ctx.l1.summary){
+    const l1Label = state.selectedUserPlaylists.length > 1
+      ? `${state.selectedUserPlaylists.length} פלייליסטים שנבחרו`
+      : 'פלייליסט שלך';
+    parts.push(`🧬 <strong>${l1Label}:</strong> ${escapeHtml(ctx.l1.summary)}`);
+  }
   if(ctx.l2 && ctx.l2.cohort_size >= 3) parts.push(`📚 <strong>Robin זוכרת:</strong> ${ctx.l2.cohort_size} פלייליסטים${ctx.l2.used_fallback?' (כולל general)':''}`);
   if(ctx.l3 && ctx.l3.archive_size >= 1) parts.push(`🏷️ <strong>ארכיון ז'אנרים:</strong> ${ctx.l3.archive_size} רשומות`);
   if(ctx.l4 && ctx.l4.feedback_count > 0) parts.push(`👍 <strong>משוב:</strong> ${ctx.l4.feedback_count} הצבעות`);

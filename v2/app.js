@@ -1047,102 +1047,144 @@ async function spotifySearch(artist, title){
   return null;
 }
 
+/* ─── Approach G: resolve artist names → Spotify IDs ─── */
+async function resolveArtistIds(artistNames, tok){
+  const ids = [];
+  // Process in parallel, max 4 artists
+  await Promise.allSettled(artistNames.slice(0,4).map(async name=>{
+    try{
+      const r = await fetch('https://api.spotify.com/v1/search?'+new URLSearchParams({
+        q:name, type:'artist', limit:'1'
+      }), {headers:{'Authorization':'Bearer '+tok}});
+      if(!r.ok) return;
+      const j = await r.json();
+      const a = j.artists?.items?.[0];
+      if(a?.id) ids.push(a.id);
+    }catch(e){}
+  }));
+  return ids;
+}
+
+/* ─── Approach G: get top tracks directly from artists ─── */
+async function fetchArtistTopTracks(artistIds, tok, market='IL'){
+  const tracks = [];
+  await Promise.allSettled(artistIds.map(async id=>{
+    try{
+      const r = await fetch(`https://api.spotify.com/v1/artists/${id}/top-tracks?market=${market}`,
+        {headers:{'Authorization':'Bearer '+tok}});
+      if(!r.ok) return;
+      const j = await r.json();
+      // Shuffle + pick 3 per artist to vary results
+      const picked = (j.tracks||[]).sort(()=>Math.random()-0.5).slice(0,3);
+      tracks.push(...picked);
+    }catch(e){}
+  }));
+  return tracks;
+}
+
 async function fillUp(existing, faders){
-  // Seed priority: L1 DNA → L2 cohort → L0 Data Box DNA → existing validated tracks
   const ctx = state.brainContext || {};
+  const tok = await refreshSpotifyTokenIfNeeded();
+  if(!tok) return existing;
+
+  const known = new Set(existing.filter(t=>t.id).map(t=>t.id));
+  const blockHebrew = faders.hebrew < 20;
+  const blockIntl   = faders.hebrew > 80;
+  const need = 30 - existing.filter(t=>t.id).length;
+  if(need <= 0) return existing;
+
+  const out = existing.slice();
+
+  const addTrack = (t, reason='fill-up') => {
+    if(known.has(t.id) || out.filter(x=>x.id).length >= 30) return;
+    const isHe = /[\u0590-\u05FF]/.test(t.name+' '+(t.artists||[]).map(a=>a.name).join(' '));
+    if(blockHebrew && isHe) return;
+    if(blockIntl && !isHe) return;
+    out.push({
+      artist:(t.artists||[]).map(a=>a.name).join(', '), title:t.name, id:t.id,
+      url:t.external_urls?.spotify||'', cover:(t.album?.images||[]).at(-1)?.url||'',
+      preview:t.preview_url||'', popularity:t.popularity||0, duration:t.duration_ms||0, reason,
+    });
+    known.add(t.id);
+  };
+
+  /* ── Path G: Artist-based (breaks Spotify recommendations determinism) ── */
+  const nicheArtists = ctx.l0?.dna?.nicheArtists || [];
+  if(nicheArtists.length >= 2){
+    // Shuffle niche artists → different IDs every run
+    const shuffled = nicheArtists.slice().sort(()=>Math.random()-0.5);
+    const artistIds = await resolveArtistIds(shuffled, tok);
+
+    if(artistIds.length >= 1){
+      // 1. Direct top tracks from niche artists (always fresh)
+      const topTracks = await fetchArtistTopTracks(artistIds, tok);
+      topTracks.sort(()=>Math.random()-0.5).forEach(t=>addTrack(t,'artist-top'));
+
+      // 2. Spotify recommendations with artist seeds (varied vs track seeds)
+      if(out.filter(x=>x.id).length < 30){
+        const trackSeeds = [];
+        if(ctx.l1?.topTrackIds?.length) trackSeeds.push(...ctx.l1.topTrackIds.slice(0,1));
+
+        const params = {
+          seed_artists: artistIds.slice(0,Math.min(3,5-trackSeeds.length)).join(','),
+          limit: Math.min(100, need*3),
+          market: 'IL',
+        };
+        if(trackSeeds.length) params.seed_tracks = trackSeeds.join(',');
+
+        // Energy params
+        const el = state.energyLevel;
+        if(el===1){ params.target_energy=0.28+Math.random()*0.12; params.max_energy=0.50; params.target_tempo=75+Math.floor(Math.random()*20); }
+        else if(el===2){ params.target_energy=0.68+Math.random()*0.15; params.min_energy=0.55; params.target_tempo=110+Math.floor(Math.random()*30); }
+        params.max_popularity = 60 + Math.floor(Math.random()*20);
+        params.min_popularity = 15 + Math.floor(Math.random()*20);
+
+        try{
+          const qs = new URLSearchParams();
+          Object.entries(params).forEach(([k,v])=>{ if(v!=null) qs.set(k,String(v)); });
+          const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({action:'fetch',url:'https://api.spotify.com/v1/recommendations?'+qs,neutral:true})});
+          if(r.ok){ const j=await r.json(); (j.tracks||[]).forEach(t=>addTrack(t,'artist-rec')); }
+        }catch(e){}
+      }
+      return out;
+    }
+  }
+
+  /* ── Fallback: original track-seed recommendations ── */
   let seeds = [];
-  if(ctx.l1 && Array.isArray(ctx.l1.topTrackIds)) seeds.push(...ctx.l1.topTrackIds.slice(0,2));
-  if(ctx.l2 && Array.isArray(ctx.l2.cohort_top_ids)) seeds.push(...ctx.l2.cohort_top_ids.slice(0,2));
-  // L0: pick RANDOM tracks from full pool each time — breaks the always-same-seeds loop
-  if(seeds.length < 3 && ctx.l0 && ctx.l0.dna){
-    const pool = Array.isArray(ctx.l0.dna.allTrackIds) ? ctx.l0.dna.allTrackIds
-                 : (ctx.l0.dna.topTrackIds || []);
-    const rndPick = pool.slice().sort(()=>Math.random()-0.5).slice(0,3);
-    seeds.push(...rndPick);
+  if(ctx.l1?.topTrackIds?.length) seeds.push(...ctx.l1.topTrackIds.slice(0,2));
+  if(ctx.l2?.cohort_top_ids?.length) seeds.push(...ctx.l2.cohort_top_ids.slice(0,2));
+  if(seeds.length < 3 && ctx.l0?.dna?.allTrackIds?.length){
+    seeds.push(...ctx.l0.dna.allTrackIds.slice().sort(()=>Math.random()-0.5).slice(0,3));
   }
-  // Dedupe and fill from existing validated tracks
-  seeds = Array.from(new Set(seeds.filter(Boolean)));
-  const existingIds = existing.filter(t=>t.id).map(t=>t.id);
-  for(const id of existingIds){
-    if(seeds.length >= 5) break;
-    if(!seeds.includes(id)) seeds.push(id);
-  }
-  seeds = seeds.slice(0, 5);
-  if(!seeds.length) return existing;
-  const need = 30 - existing.length;
-  const params = {
+  seeds = Array.from(new Set(seeds.filter(Boolean))).slice(0,5);
+  if(!seeds.length) return out.length > existing.length ? out : existing;
+  const needFallback = 30 - out.filter(t=>t.id).length;
+  if(needFallback <= 0) return out;
+
+  const params2 = {
     seed_tracks: seeds.join(','),
-    limit: Math.min(100, need*4),
+    limit: Math.min(100, needFallback*4),
     market: 'IL',
   };
-  // Apply energy level from user's explicit choice (overrides MC fader)
-  const el = state.energyLevel; // 1=low, 2=high, null=use faders
-  if(el === 1){
-    params.target_energy = 0.28 + Math.random()*0.12; // 0.28-0.40
-    params.max_energy    = 0.50;
-    params.target_tempo  = 75 + Math.floor(Math.random()*20); // 75-95 BPM
-  } else if(el === 2){
-    params.target_energy = 0.68 + Math.random()*0.15; // 0.68-0.83
-    params.min_energy    = 0.55;
-    params.target_tempo  = 110 + Math.floor(Math.random()*30); // 110-140 BPM
-  } else if(faders.energy < 30){ params.target_energy = 0.25; params.max_energy = 0.45; }
-  else if(faders.energy > 70){ params.target_energy = 0.8; params.min_energy = 0.6; }
-  else { params.target_energy = faders.energy/100; }
-
-  if(faders.vocal < 25){ params.min_instrumentalness = 0.5; }
-  else if(faders.vocal > 75){ params.max_instrumentalness = 0.3; }
-
-  if(faders.familiarity < 30){ params.max_popularity = 35; }
-  else if(faders.familiarity > 70){ params.min_popularity = 55; params.max_popularity = 85; }
-  else {
-    // Mid-range: cap at 72 to avoid always getting mega-hits (top 1% of streams)
-    // Adds random offset so each run returns different tier of results
-    params.max_popularity = 60 + Math.floor(Math.random() * 20); // 60-79
-    params.min_popularity = 20 + Math.floor(Math.random() * 20); // 20-39
-  }
+  const el2 = state.energyLevel;
+  if(el2===1){ params2.target_energy=0.28+Math.random()*0.12; params2.max_energy=0.50; }
+  else if(el2===2){ params2.target_energy=0.68+Math.random()*0.15; params2.min_energy=0.55; }
+  else if(faders.energy<30){ params2.target_energy=0.25; params2.max_energy=0.45; }
+  else if(faders.energy>70){ params2.target_energy=0.8; params2.min_energy=0.6; }
+  else { params2.target_energy=faders.energy/100; }
+  params2.max_popularity = 60+Math.floor(Math.random()*20);
+  params2.min_popularity = 20+Math.floor(Math.random()*20);
 
   try{
     const qs = new URLSearchParams();
-    Object.keys(params).forEach(k=>{
-      if(params[k] !== undefined && params[k] !== null) qs.set(k, String(params[k]));
-    });
-    const recsUrl = 'https://api.spotify.com/v1/recommendations?' + qs.toString();
-    const r = await fetch('/api/spotify', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action:'fetch', url:recsUrl, neutral:true})
-    });
-    if(!r.ok) return existing;
-    const j = await r.json();
-    if(!j.tracks || !j.tracks.length) return existing;
-
-    const known = new Set(existing.filter(t=>t.id).map(t=>t.id));
-    const blockHebrew = faders.hebrew < 20;
-    const blockIntl = faders.hebrew > 80;
-    const out = existing.slice();
-    for(const t of j.tracks){
-      if(known.has(t.id)) continue;
-      if(out.filter(x=>x.id).length >= 30) break;
-      const isHe = /[\u0590-\u05FF]/.test(t.name + ' ' + t.artists.map(a=>a.name).join(' '));
-      if(blockHebrew && isHe) continue;
-      if(blockIntl && !isHe) continue;
-      out.push({
-        artist: t.artists.map(a=>a.name).join(', '),
-        title: t.name,
-        id: t.id,
-        url: t.external_urls && t.external_urls.spotify,
-        cover: t.album && t.album.images && t.album.images.length ? t.album.images[t.album.images.length-1].url : '',
-        preview: t.preview_url||'',
-        popularity: t.popularity||0,
-        duration: t.duration_ms||0,
-        reason: 'fill-up',
-      });
-      known.add(t.id);
-    }
-    return out;
-  } catch(e){
-    return existing;
-  }
+    Object.entries(params2).forEach(([k,v])=>{ if(v!=null) qs.set(k,String(v)); });
+    const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({action:'fetch',url:'https://api.spotify.com/v1/recommendations?'+qs,neutral:true})});
+    if(r.ok){ const j=await r.json(); (j.tracks||[]).forEach(t=>addTrack(t,'fallback-rec')); }
+  }catch(e){}
+  return out;
 }
 
 /* ─────────── Model selector ─────────── */

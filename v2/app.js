@@ -897,7 +897,8 @@ async function startGeneration(){
       showToast('נמצאו רק '+final.length+' שירים. נסה שוב.', true);
     }
 
-    // Hard constraint: max 2 tracks per artist, skip disliked artists entirely
+    // Diversity filter: max 2 per artist, skip disliked artists
+    // Applied BEFORE slicing to ensure we always aim for PLAYLIST_SIZE
     const dislikedArtistSet = new Set(
       Object.entries(state.feedback).filter(([,v])=>v==='down')
         .map(([k])=>k.split('|')[0].toLowerCase().trim())
@@ -905,15 +906,20 @@ async function startGeneration(){
     const artistCount = {};
     const diverse = final.filter(t=>{
       const a = (t.artist||'').toLowerCase().trim();
-      if(dislikedArtistSet.has(a)) return false;           // skip disliked
+      if(dislikedArtistSet.has(a)) return false;
       artistCount[a] = (artistCount[a]||0) + 1;
-      return artistCount[a] <= 2;                          // max 2 per artist
+      return artistCount[a] <= 2;
     });
 
-    state.generatedTracks = diverse.slice(0, PLAYLIST_SIZE);
-    // Enrich any missing preview_url by fetching directly from Spotify
-    setLoadingStatus('טוען תצוגות מקדימות…','');
-    state.generatedTracks = await enrichPreviews(state.generatedTracks);
+    // Always produce exactly PLAYLIST_SIZE — if diversity filter reduced count, run fillUp again
+    if(diverse.filter(t=>t.id).length < PLAYLIST_SIZE - 4 && state.brainContext.assembled){
+      setLoadingStatus('משלים שירים…','');
+      const topped = await fillUp(diverse, faders);
+      state.generatedTracks = topped.slice(0, PLAYLIST_SIZE);
+    } else {
+      state.generatedTracks = diverse.slice(0, PLAYLIST_SIZE);
+    }
+    // No longer need enrichPreviews — we use Spotify embed iframes instead
     await saveAnalysis();
     renderPlaylist();
   } catch(e){
@@ -1427,35 +1433,46 @@ async function enrichPreviews(tracks){
 let _previewAudio = null;
 let _previewBtn   = null;
 
-function togglePreview(url, btn){
-  // No preview available
-  if(!url) return;
+/* ─── Spotify iframe embed preview (replaces deprecated preview_url) ─── */
+let _currentEmbedId = null;
 
-  // Same button → pause
-  if(_previewBtn === btn && _previewAudio && !_previewAudio.paused){
-    _previewAudio.pause();
+function toggleEmbed(trackId, btn){
+  const wrap = btn.closest('.track-wrap');
+  const embedEl = wrap ? wrap.querySelector('.track-embed') : null;
+  const trackItem = wrap ? wrap.querySelector('.track-item') : null;
+  if(!embedEl) return;
+
+  // Same track → close
+  if(_currentEmbedId === trackId){
+    embedEl.classList.remove('open');
+    embedEl.innerHTML = '';
+    trackItem && trackItem.classList.remove('embed-open');
     btn.classList.remove('playing');
     btn.innerHTML = '▶';
-    _previewAudio = null; _previewBtn = null;
+    _currentEmbedId = null;
     return;
   }
 
-  // Stop previous
-  if(_previewAudio){ _previewAudio.pause(); }
-  if(_previewBtn){ _previewBtn.classList.remove('playing'); _previewBtn.innerHTML = '▶'; }
+  // Close previous
+  if(_currentEmbedId){
+    document.querySelectorAll('.track-embed.open').forEach(el=>{
+      el.classList.remove('open'); el.innerHTML = '';
+    });
+    document.querySelectorAll('.track-item.embed-open').forEach(el=>el.classList.remove('embed-open'));
+    document.querySelectorAll('.play-btn.playing').forEach(b=>{ b.classList.remove('playing'); b.innerHTML='▶'; });
+  }
 
-  // Play new
-  _previewAudio = new Audio(url);
-  _previewBtn   = btn;
+  // Open new embed
+  _currentEmbedId = trackId;
   btn.classList.add('playing');
   btn.innerHTML = '⏸';
-
-  _previewAudio.play().catch(()=>{});
-  _previewAudio.onended = ()=>{
-    btn.classList.remove('playing');
-    btn.innerHTML = '▶';
-    _previewAudio = null; _previewBtn = null;
-  };
+  trackItem && trackItem.classList.add('embed-open');
+  embedEl.classList.add('open');
+  // Dark theme Spotify embed — works for ALL tracks, no preview_url needed
+  embedEl.innerHTML = `<iframe
+    src="https://open.spotify.com/embed/track/${trackId}?utm_source=generator&theme=0"
+    allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+    loading="lazy"></iframe>`;
 }
 
 /* ─────────── Render playlist ─────────── */
@@ -1471,24 +1488,25 @@ function renderPlaylist(){
   const list = $('tracksList');
   list.innerHTML = state.generatedTracks.map((t,i)=>{
     const key = `${t.artist}|${t.title}`;
-    const fb = state.feedback[key];
+    const fb  = state.feedback[key];
     const cover = t.cover ? `style="background-image:url('${t.cover}')"` : '';
-    const previewUrl = t.preview || '';
-    const playClass = previewUrl ? 'play-btn' : 'play-btn no-preview';
-    const playClick = previewUrl ? `onclick="togglePreview('${escapeAttr(previewUrl)}',this)"` : '';
-    const playTitle = previewUrl ? 'השמע תצוגה מקדימה' : 'אין תצוגה מקדימה';
-    return `<div class="track-item">
-      <div class="track-num">${i+1}</div>
-      <div class="track-cover" ${cover}></div>
-      <div class="track-meta">
-        <div class="track-title">${escapeHtml(t.title)}</div>
-        <div class="track-artist">${escapeHtml(t.artist)}</div>
+    // Every validated track has an ID → always show play button (Spotify embed works for all)
+    const canPlay = !!t.id;
+    return `<div class="track-wrap">
+      <div class="track-item">
+        <div class="track-num">${i+1}</div>
+        <div class="track-cover" ${cover}></div>
+        <div class="track-meta">
+          <div class="track-title">${escapeHtml(t.title)}</div>
+          <div class="track-artist">${escapeHtml(t.artist)}</div>
+        </div>
+        <div class="track-vote">
+          <button class="play-btn${canPlay?'':' no-preview'}" ${canPlay?`onclick="toggleEmbed('${escapeAttr(t.id)}',this)"`:''}  title="${canPlay?'השמע תצוגה מקדימה':'אין זיהוי Spotify'}">▶</button>
+          <button class="vote-btn up${fb==='up'?' active':''}" onclick="voteTrack('${escapeAttr(key)}','up',this)">👍</button>
+          <button class="vote-btn down${fb==='down'?' active':''}" onclick="voteTrack('${escapeAttr(key)}','down',this)">👎</button>
+        </div>
       </div>
-      <div class="track-vote">
-        <button class="${playClass}" ${playClick} title="${playTitle}">▶</button>
-        <button class="vote-btn up${fb==='up'?' active':''}" onclick="voteTrack('${escapeAttr(key)}','up',this)">👍</button>
-        <button class="vote-btn down${fb==='down'?' active':''}" onclick="voteTrack('${escapeAttr(key)}','down',this)">👎</button>
-      </div>
+      <div class="track-embed"></div>
     </div>`;
   }).join('');
 }

@@ -34,6 +34,8 @@ window.SB_DATA_BOX = {
         { id:'3QwpkIyfYJ3KP1OYEM1wFG', moods:[] },
         { id:'1ZkZA7a9Fdw26WZyIV58Gw', moods:[] },
       ],
+      energyLow:  { label:'אינדי ולו-פיי', description:'כשהמקום עדיין שקט ואנשים מתחילים להגיע — מוזיקה שמאפשרת שיחה ומרגישה כמו הבר שאוהבים.' },
+      energyHigh: { label:'רוק ובועט', description:'כשהמקום מלא והאנרגיה מרקיעה — גיטרות, ביטים, ואנשים שמרגישים בבית.' },
       purpose: 'a nostalgic, casual atmosphere — familiar rock and indie create a relaxed social environment',
       category: 'bars'
     },
@@ -45,7 +47,6 @@ window.SB_DATA_BOX = {
       genres: 'RnB / Beats / Smooth Jazz / Bossa Nova / French Jazz / Vocal Jazz',
       playlists: [
         { id:'6bX6RfpkoRwqH3at702xja', moods:['אלגנטי','קצבי','סקסי'] },
-        { id:'3iSzAEetVNA1fUoMPXyXma', moods:['צעיר','קליל','מודרני'] },
         { id:'37i9dQZF1DWWgccrbg3zbJ', moods:['אלגנטי','אינטימי','קצבי','יוקרתי'] },
         { id:'37i9dQZF1E4xdJ0ma3vTH1', moods:['מודרני','קצבי','אורבני'] },
         { id:'26hCFGqpzWO7WcDfaoSxzG', moods:['אלגנטי','משפחתי','יוקרתי','קליל'] },
@@ -53,6 +54,8 @@ window.SB_DATA_BOX = {
         { id:'0V1Xw5HVMI5fpYt81uMkca', moods:['סקסי','קצבי','אלגנטי'] },
         { id:'3gcZeTnpMILN1Jv0tQcTit', moods:['קצבי','קליל'] },
       ],
+      energyLow:  { label:'ג׳אז צרפתי ובוסה נובה', description:'לתחילת הערב — שיחה נינוחה, טעימות ראשונות. המוזיקה יושבת מתחת לשיחה, לא מעליה.' },
+      energyHigh: { label:'RnB וביטים סקסיים', description:'לערב שמתחמם. הראש טיפה זז מצד לצד, הבקבוק השני כבר הוזמן.' },
       purpose: 'sophisticated, cozy atmosphere — music sits underneath conversation, enables intimacy and slow drinking',
       category: 'bars'
     },
@@ -71,6 +74,8 @@ window.SB_DATA_BOX = {
         { id:'487jKTFqWhs6b0AEUz0WpX', moods:['רקיד','צעיר','אורבני','מודרני','אפל'] },
         { id:'3DaU9QPNMVXNwegTUPamNw', moods:['רקיד','צעיר','אורבני','מודרני','אפל'] },
       ],
+      energyLow:  { label:'פופ קצבי ורמיקסים', description:'להיכנס לזרם — ביטים שמניעים אבל עדיין מאפשרים לדבר. לפני שהמסיבה מתחילה.' },
+      energyHigh: { label:'דיפ האוס ואלקטרו', description:'מסיבה מלאה — בייס, רמיקסים, אנרגיה שמכריחה לזוז.' },
       purpose: 'high energy — bass and tempo force close conversation, push alcohol sales, fusion of dancing and bar talk',
       category: 'bars'
     },
@@ -88,6 +93,8 @@ window.SB_DATA_BOX = {
         { id:'37i9dQZF1DX6syac0fWYdV', moods:['רקיד','צעיר','אפל','אלגנטי','סקסי'] },
         { id:'7i8PotqqlAb88Bwybh7PAk', moods:['רקיד','צעיר','אפל','אלגנטי','סקסי'] },
       ],
+      energyLow:  { label:'בוסה נובה וווקאל ג׳אז', description:'שיחה שקטה מעל הקוקטייל הראשון — אלגנטי, אינטימי, נינוח.' },
+      energyHigh: { label:'ג׳אזי האוס וביטים', description:'לקוקטייל השני — ביטים שמניעים אבל לא שוברים את האווירה.' },
       purpose: 'music sits underneath conversation — cool, modern, subtle. Never louder than the conversation',
       category: 'bars'
     },
@@ -106,6 +113,8 @@ window.SB_DATA_BOX = {
         { id:'3gcZeTnpMILN1Jv0tQcTit', moods:['קצבי','קליל'] },
         { id:'2XD24lgANiicaKd38DWBpg', moods:[] },
       ],
+      energyLow:  { label:'סול ו-RnB רך', description:'ארוחה ראשונה — מוזיקה שמבדילה אתכם ממסעדה רגילה, אבל עדיין מאפשרת שיחה.' },
+      energyHigh: { label:'היפ הופ וביטים גרובי', description:'כשהמקום מתחמם — קצב שמרים, ראשים זזים בין ביס לביס.' },
       purpose: 'modern, late-night groove — music distinguishes bar from restaurant, enables table conversation, feels sophisticated',
       category: 'bars'
     },
@@ -122,6 +131,8 @@ window.SB_DATA_BOX = {
         { id:'6xwz5O60HTBCBJEeUceBGB', moods:['יוקרתי','אלגנטי','רגוע','אינטימי'] },
         { id:'5rWwygGtLi1Ro8JtwNJZns', moods:['רגוע','אלגנטי','יוקרתי'] },
       ],
+      energyLow:  { label:'ג׳אז רך ואינסטרומנטלי', description:'קבלת פנים — מוזיקה שמחברת בין הנכנסים לאווירת הלובי. אלגנטי, שקט, מפנה מקום.' },
+      energyHigh: { label:'צ׳יל אלקטרו וניו-ווייב', description:'כשהבר מתחיל להתמלא — קצב עדין שמרגיש מודרני ומרים את האווירה.' },
       purpose: 'welcoming, calming — connects new arrivals to the existing lobby atmosphere, universal and upscale',
       category: 'bars'
     },
@@ -141,6 +152,8 @@ window.SB_DATA_BOX = {
         { id:'7MT2zvfmRxAPEP1f3VKvAp', moods:[] },
         { id:'53GX7x7Z6bfrESNL7ndTKK', moods:['חאפלה','קצבי'] },
       ],
+      energyLow:  { label:'מזרחית עדינה וקלאסית', description:'לארוחה שקטה — נגינות צפון אפריקאיות ותורכיות שמוציאות נוסטלגיה.' },
+      energyHigh: { label:'מזרחית קצבית ורועשת', description:'לאנרגיית הצהריים — ביטים, ריתמוסים, ואנשים שמרגישים בבית.' },
       purpose: 'familiar north-african and iraqi atmosphere — nostalgic, authentic, culturally resonant for the community',
       category: 'restaurants'
     },
@@ -166,6 +179,8 @@ window.SB_DATA_BOX = {
         { id:'1lq2I8XFgXuTD6QLDlaTDD', moods:['קצבי','אלגנטי','קליל'] },
         { id:'3gcZeTnpMILN1Jv0tQcTit', moods:['קצבי','קליל'] },
       ],
+      energyLow:  { label:'ג׳אז עולמי ופאנק מתון', description:'ארוחה ראשונה — מוזיקה שממלאת שקטים בחן, מאפשרת שיחה ומרגישה מדויקת למקום.' },
+      energyHigh: { label:'סולפול האוס ולטינו', description:'כשהמסעדה מלאה ויש אנרגיה — גרוב שמרים אבל לא שובר את האלגנטיות.' },
       purpose: 'chic, upscale feeling — diners relax and feel vibrant, music fills silence without dominating conversation',
       category: 'restaurants'
     },
@@ -189,6 +204,8 @@ window.SB_DATA_BOX = {
         '0JB65ghOmV4L8HpvqA1ePA','1oZgvIgDGkYIIO8tGdJsub','37i9dQZF1DWT9L7hoCDtjB',
         '2tuwpyW7rkN2bErlMPpX3t','37i9dQZF1DWUCy47lptxiG','7MT2zvfmRxAPEP1f3VKvAp'
       ],
+      energyLow:  { label:'ישראלי קליל ומוכר', description:'לארוחת בוקר וצהריים שקטים — מוזיקה מוכרת שמרגיעה ומאפשרת לשבת בנחת.' },
+      energyHigh: { label:'מזרחי קצבי ועולה', description:'לשעת ההמולה — ביטים וגרוב שמואצים את הקצב ואת המכירות.' },
       purpose: 'familiar upbeat Israeli music — matches lunch energy, customers feel at home and comfortable',
       category: 'restaurants'
     },
@@ -206,6 +223,8 @@ window.SB_DATA_BOX = {
         '1b881WhUkUGB0KjjvxKxzq','20Jp6qr45rQQlAUcNkPjXd','1m8tlUqBDidL9gA8cMD4ho',
         '1ZkZA7a9Fdw26WZyIV58Gw'
       ],
+      energyLow:  { label:'אינדי פופ ו-RnB עדין', description:'לשעות הבוקר ועבודה מהשולחן — מוזיקה שמרגישה "קול" בלי להפריע.' },
+      energyHigh: { label:'אינדי רוק ישראלי', description:'לאחר הצהריים כשהמקום מתמלא — קצב שמרים, ראשים מהנהנים, שיחות נמשכות.' },
       purpose: 'relaxed, inviting — head-bob worthy but no extreme bass or tempo. Enables work and conversation',
       category: 'cafes'
     },
@@ -218,6 +237,8 @@ window.SB_DATA_BOX = {
       playlistIds: [
         '5dRQCcekOYFR8K8Z5PA8KK','6eSP50WlHILqGuRBrgMhww','530uNcFyRtIB3r8b2O17mp'
       ],
+      energyLow:  { label:'פופ ואינדי מוכר', description:'לשעות השקטות — להיטים שכולם מכירים, אווירה נעימה ומוכרת.' },
+      energyHigh: { label:'פופ קצבי ואינדי רוק', description:'לשעות העומס — אנרגיה שמניעה את הסרוויס קדימה.' },
       purpose: 'accessible and familiar — broad appeal across age groups with known hits',
       category: 'cafes'
     },
@@ -244,6 +265,8 @@ window.SB_DATA_BOX = {
         '3D0h60khFXmfYWlCKNRZ17','2grgwRdgTA7QSCUQQhhgv8','1NrJZTctsmYy6vJ305oIhd',
         '33Gh7eRE6PsCBOVvw27oGN','3IADOkaYr1pprCcpPXfBfv','1q01v8Q8LFWQR0epGsHDzv'
       ],
+      energyLow:  { label:'פופ רך ו-RnB', description:'לשעות הרגועות — מוזיקה שמרימה את הרוח בלי להעמיס.' },
+      energyHigh: { label:'פמייל פאוור ורדיו להיטים', description:'לשעות ההמולה — שירים שמאחדות ומרגישות.' },
       purpose: 'uplifting energy for women — positive atmosphere during the long hairdressing process, sing-along potential',
       category: 'beauty'
     },
@@ -256,6 +279,8 @@ window.SB_DATA_BOX = {
       playlistIds: [
         '2AguYoBHvhW8IEjbzUaJRh','18Ad0Qk6HFuH0RmoJYI6sh','5gGb3w6lOEzmfZ7d4AFBkt'
       ],
+      energyLow:  { label:'בלוז ו-RnB קלאסי', description:'לגילוח מרגיע — מוזיקה גברית ואיכותית.' },
+      energyHigh: { label:'רוק והיפ הופ', description:'לאנרגיית הברבריה — ביטים שמרגישים בבית.' },
       purpose: 'masculine testosterone-driven environment — heavy on male voices in Rock and Rap, feels like a boys club',
       category: 'beauty'
     },
@@ -268,6 +293,8 @@ window.SB_DATA_BOX = {
       playlistIds: [
         '37i9dQZF1DXebxttQCq0zA','37i9dQZF1DWYaxoJ3YwOh3','37i9dQZF1DX65caF1CvtIN'
       ],
+      energyLow:  { label:'אמביינט וקלאסי רך', description:'לטיפול שלם — מוזיקה שמורידה דופק ומכניסה לרגיעה.' },
+      energyHigh: { label:'צ׳יל אינסטרומנטלי', description:'לתחילת הביקור — מרגיע עם קצת חיות.' },
       purpose: 'reduce heart rates and induce relaxation — calming, minimal, breath-paced, organic',
       category: 'beauty'
     },
@@ -280,6 +307,8 @@ window.SB_DATA_BOX = {
       playlistIds: [
         '6xLTji3pUH0RnAltYLgk9K','6wm6uONfugp5Y2XOQPDorX','3UE4447S8KhMb9Xw5csrbg'
       ],
+      energyLow:  { label:'פופ RnB רך', description:'לתחילת הביקור — טרנדי ונעים.' },
+      energyHigh: { label:'רדיו להיטים', description:'לאווירה חברתית — שירים שכולן מכירות.' },
       purpose: 'familiar energetic atmosphere — feel-good radio hits make the appointment fun and social',
       category: 'beauty'
     },
@@ -292,6 +321,8 @@ window.SB_DATA_BOX = {
       playlistIds: [
         '38urkSaLUJrsZnsL5YblQO','5VW3BIGp3psfD7aOpGWiOM','1EdmfpZXrxZeGT7TnqITi4'
       ],
+      energyLow:  { label:'לו-פיי ואמביינט', description:'לטיפול — יוצר אמון ומרגיע.' },
+      energyHigh: { label:'צ׳יל אינסטרומנטלי', description:'לחדר המתנה — נינוח עם נוכחות.' },
       purpose: 'clean instrumental — calm, reduce heart rate, reinforce clinical trust and professionalism',
       category: 'beauty'
     },
@@ -307,6 +338,8 @@ window.SB_DATA_BOX = {
       playlistIds: [
         '24gphesROpSxAy1Icv4iJ6','6buyfbddoaTUTXGZok6zno','1XNRitMRNotCvoQUmpp6D0'
       ],
+      energyLow:  { label:'רגאיי ותרופיקל מתון', description:'כשהחנות שקטה — ווייב חופש מרגיע.' },
+      energyHigh: { label:'תרופיקל האוס קצבי', description:'כשהחנות מלאה — חופש בקצב שמניע.' },
       purpose: 'immersive vacation atmosphere — elevates customer mood, reinforces brand, boosts dwell time and sales',
       category: 'clothing'
     },
@@ -319,6 +352,8 @@ window.SB_DATA_BOX = {
       playlistIds: [
         '37i9dQZF1DX0khTY3HFA4M','37i9dQZF1DX2TRYkJECvfC','6UbZqL2lg2j1ZIzGrbr7V3'
       ],
+      energyLow:  { label:'לו-פיי ולאונג׳ סנסואלי', description:'אינטימי ומרגיע.' },
+      energyHigh: { label:'דיפ האוס אינטימי', description:'קצב שמעצים ומכניס לאווירה.' },
       purpose: 'sensual, empowering — mimics intimate late-night setting, confident atmosphere',
       category: 'clothing'
     },
@@ -331,6 +366,8 @@ window.SB_DATA_BOX = {
       playlistIds: [
         '3GFgGQVFvdA5q6W3MOgCI4','0mDWNRMmvA9YKcjDDG5v8J','0HOLXwNqjo6DruEPkRY1iT'
       ],
+      energyLow:  { label:'אינדי דאנס עדין', description:'לקניה מרוכזת — ביטים יוקרתיים.' },
+      energyHigh: { label:'ניו דיסקו ואלקטרו', description:'לחנות מלאה — אנרגיה שמרימה.' },
       purpose: 'prestigious atmosphere — unique beats create instant upscale feeling, elevating to glorify the garments',
       category: 'clothing'
     },
@@ -344,6 +381,8 @@ window.SB_DATA_BOX = {
         '38C9DNtEBFdjWgX5beA5Kf','1tkE5kEyABOqi6culrKNlB','4plCeDzeVnk15wp1tJfTFA',
         '0ptDDmk80kbvPnGzGAVSd6'
       ],
+      energyLow:  { label:'אינדי רוק אורבני', description:'לכניסה — מוזיקה שאומרת אתה בבית.' },
+      energyHigh: { label:'ראפ והיפ הופ קצבי', description:'כשהחנות מלאה — ביטים אמיתיים.' },
       purpose: 'immediate cultural trust — music makes the customer feel at home in their culture, prolongs dwell time',
       category: 'clothing'
     },
@@ -357,6 +396,8 @@ window.SB_DATA_BOX = {
       keywords: ['צעצועים','קומיקס','comics','toys','גיימינג','gaming','רטרו','retro','משחקים','games','אנימה','anime'],
       genres: 'Synthwave / Retro 80s / Electro Pop / Chiptune',
       playlistIds: ['7dCEN3pOke0Nv1Iz62VBnJ','1niLsvjFMoS7w6xAUAsxw9'],
+      energyLow:  { label:'סינת׳ וייב ורטרו 80s', description:'נוסטלגיה שמחייכת ומזמינה.' },
+      energyHigh: { label:'אלקטרו פופ קצבי', description:'קצב שמרגיש כמו משחק.' },
       purpose: 'nostalgic, fun, immersive — connects with the retro and playful spirit of the products',
       category: 'other'
     }

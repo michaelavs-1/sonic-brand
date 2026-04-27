@@ -13,7 +13,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 /* ─────────── State ─────────── */
 const state = {
   step: 1,
-  totalSteps: 5,
+  totalSteps: 6,
+  energyLevel: null,  // 1=low, 2=high
   bizDesc: '',
   refPlaylist: '',
   bizType: null,        // detected
@@ -75,6 +76,8 @@ function setStep(n){
     d.classList.toggle('done', i+1 < n);
   });
   window.scrollTo({top:0,behavior:'smooth'});
+  // Render energy choice screen when navigating to step 5
+  if(n === 5) renderEnergyScreen();
 }
 function goNext(){ if(state.step < state.totalSteps) setStep(state.step+1); }
 function goBack(){ if(state.step > 1) setStep(state.step-1); }
@@ -773,11 +776,45 @@ function selectMC(key, id){
 }
 
 /* ─────────── Screen 5: Generation pipeline ─────────── */
+/* ─────────── Screen 5: Energy choice ─────────── */
+function renderEnergyScreen(){
+  const el = $('energyOptions');
+  if(!el) return;
+  const entry = state.brainContext && state.brainContext.l0;
+  const low  = (entry && entry.energyLow)  || { label:'רגוע וקליל',       description:'פלייליסט לשעות השקטות — מוזיקה שמאפשרת שיחה ואווירה נינוחה.' };
+  const high = (entry && entry.energyHigh) || { label:'קצבי ואנרגטי',     description:'פלייליסט לשעות הסוערות — קצב שמרים ומניע.' };
+
+  el.innerHTML = `
+    <button class="energy-card low" onclick="chooseEnergy(1)">
+      <div class="energy-card-label">
+        🎵 ${escapeHtml(low.label)}
+        <span class="energy-card-badge">אנרגיה נמוכה</span>
+      </div>
+      <div class="energy-card-desc">${escapeHtml(low.description)}</div>
+    </button>
+    <button class="energy-card high" onclick="chooseEnergy(2)">
+      <div class="energy-card-label">
+        🔥 ${escapeHtml(high.label)}
+        <span class="energy-card-badge">אנרגיה גבוהה</span>
+      </div>
+      <div class="energy-card-desc">${escapeHtml(high.description)}</div>
+    </button>`;
+}
+
+function chooseEnergy(level){
+  state.energyLevel = level;
+  startGeneration();
+}
+
+// Override setStep to render energy screen when entering step 5
+const _origSetStep = setStep;
+// Patch goNext on screen 4 → show energy screen
+document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goNext override
+
 async function startGeneration(){
-  // Use default hours (screen 5 removed)
   state.hours.open = '09:00';
   state.hours.close = '23:00';
-  setStep(5);
+  setStep(6);
   $('playlistLoading').style.display = 'block';
   $('playlistResult').style.display = 'none';
 
@@ -857,6 +894,12 @@ async function generateCandidates(faders, moods, opts){
     ? `\n⚠️ זוהי יצירה מחדש מספר ${attempt}. חובה להציג בחירה שונה לחלוטין מהפעם הקודמת — אמנים שונים, שירים שונים, זוויות שונות של הסגנון. אל תחזור על אף שיר מהרשימה הבאה.`
     : '';
 
+  const energyNote = state.energyLevel === 1
+    ? '\n🎵 אנרגיה נמוכה: שירים נינוחים, טמפו 70-95 BPM, energy Spotify 0.2-0.5. מוזיקה שמאפשרת שיחה ואווירה.'
+    : state.energyLevel === 2
+    ? '\n🔥 אנרגיה גבוהה: שירים קצביים, טמפו 100-145 BPM, energy Spotify 0.6-0.9. מוזיקה שמרימה ומניעה.'
+    : '';
+
   const sys = `אתה רובין, מומחה ליצירת פלייליסטים מותאמי-עסק.
 המטרה: לייצר ${candidateCount} מועמדים אמיתיים מ-Spotify לפלייליסט עסקי.
 חוקים קשיחים:
@@ -864,7 +907,7 @@ async function generateCandidates(faders, moods, opts){
 - אל תמציא שירים. אם אתה לא בטוח באמן או בשם — אל תכלול אותו.
 - שמור על הסגנונות והאווירות שביקש העסק.
 - גיוון חובה: אל תבחר רק את השירים הכי ברורים/מפורסמים של כל ז'אנר. בחר מגוון — ~40% שירים מוכרים, ~40% פחות מוכרים, ~20% נישה/גילויים. אמנים פחות מוכרים אבל איכותיים הם נכס.
-- אל תחזור על אותם אמנים יותר מ-2 פעמים ברשימה כולה. פזר בין אמנים רבים ומגוונים.${regenNote}
+- אל תחזור על אותם אמנים יותר מ-2 פעמים ברשימה כולה. פזר בין אמנים רבים ומגוונים.${regenNote}${energyNote}
 ${fmDesc}
 ${heDesc}
 ${voDesc}
@@ -992,8 +1035,17 @@ async function fillUp(existing, faders){
     limit: Math.min(100, need*4),
     market: 'IL',
   };
-  // Apply MC-derived audio features
-  if(faders.energy < 30){ params.target_energy = 0.25; params.max_energy = 0.45; }
+  // Apply energy level from user's explicit choice (overrides MC fader)
+  const el = state.energyLevel; // 1=low, 2=high, null=use faders
+  if(el === 1){
+    params.target_energy = 0.28 + Math.random()*0.12; // 0.28-0.40
+    params.max_energy    = 0.50;
+    params.target_tempo  = 75 + Math.floor(Math.random()*20); // 75-95 BPM
+  } else if(el === 2){
+    params.target_energy = 0.68 + Math.random()*0.15; // 0.68-0.83
+    params.min_energy    = 0.55;
+    params.target_tempo  = 110 + Math.floor(Math.random()*30); // 110-140 BPM
+  } else if(faders.energy < 30){ params.target_energy = 0.25; params.max_energy = 0.45; }
   else if(faders.energy > 70){ params.target_energy = 0.8; params.min_energy = 0.6; }
   else { params.target_energy = faders.energy/100; }
 

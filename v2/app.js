@@ -897,7 +897,20 @@ async function startGeneration(){
       showToast('נמצאו רק '+final.length+' שירים. נסה שוב.', true);
     }
 
-    state.generatedTracks = final.slice(0, PLAYLIST_SIZE);
+    // Hard constraint: max 2 tracks per artist, skip disliked artists entirely
+    const dislikedArtistSet = new Set(
+      Object.entries(state.feedback).filter(([,v])=>v==='down')
+        .map(([k])=>k.split('|')[0].toLowerCase().trim())
+    );
+    const artistCount = {};
+    const diverse = final.filter(t=>{
+      const a = (t.artist||'').toLowerCase().trim();
+      if(dislikedArtistSet.has(a)) return false;           // skip disliked
+      artistCount[a] = (artistCount[a]||0) + 1;
+      return artistCount[a] <= 2;                          // max 2 per artist
+    });
+
+    state.generatedTracks = diverse.slice(0, PLAYLIST_SIZE);
     // Enrich any missing preview_url by fetching directly from Spotify
     setLoadingStatus('טוען תצוגות מקדימות…','');
     state.generatedTracks = await enrichPreviews(state.generatedTracks);
@@ -940,6 +953,18 @@ async function generateCandidates(faders, moods, opts){
     ? '\n🔥 אנרגיה גבוהה: שירים קצביים, טמפו 100-145 BPM, energy Spotify 0.6-0.9. מוזיקה שמרימה ומניעה.'
     : '';
 
+  // In-session feedback — immediate effect on next generation
+  const likedKeys   = Object.entries(state.feedback).filter(([,v])=>v==='up').map(([k])=>k);
+  const dislikedKeys= Object.entries(state.feedback).filter(([,v])=>v==='down').map(([k])=>k);
+  const sessionFeedback = [
+    likedKeys.length
+      ? `\n✅ המשתמש אהב את הסגנון של השירים הבאים — חפש אמנים ושירים דומים להם:\n${likedKeys.slice(0,8).map(k=>k.replace('|',' — ')).join('\n')}`
+      : '',
+    dislikedKeys.length
+      ? `\n❌ המשתמש לא אהב את הסגנון של השירים הבאים — הימנע לחלוטין מאמנים דומים:\n${dislikedKeys.slice(0,8).map(k=>k.replace('|',' — ')).join('\n')}`
+      : '',
+  ].join('');
+
   const sys = `אתה רובין, מומחה ליצירת פלייליסטים מותאמי-עסק.
 המטרה: לייצר ${candidateCount} מועמדים אמיתיים מ-Spotify לפלייליסט עסקי.
 חוקים קשיחים:
@@ -947,7 +972,7 @@ async function generateCandidates(faders, moods, opts){
 - אל תמציא שירים. אם אתה לא בטוח באמן או בשם — אל תכלול אותו.
 - שמור על הסגנונות והאווירות שביקש העסק.
 - גיוון חובה: אל תבחר רק את השירים הכי ברורים/מפורסמים של כל ז'אנר. בחר מגוון — ~40% שירים מוכרים, ~40% פחות מוכרים, ~20% נישה/גילויים. אמנים פחות מוכרים אבל איכותיים הם נכס.
-- אל תחזור על אותם אמנים יותר מ-2 פעמים ברשימה כולה. פזר בין אמנים רבים ומגוונים.${regenNote}${energyNote}
+- אל תחזור על אותם אמנים יותר מ-2 פעמים ברשימה כולה. פזר בין אמנים רבים ומגוונים.${regenNote}${energyNote}${sessionFeedback}
 ${fmDesc}
 ${heDesc}
 ${voDesc}
@@ -1048,10 +1073,13 @@ async function spotifySearch(artist, title){
 }
 
 /* ─── Approach G: resolve artist names → Spotify IDs ─── */
+const _artistIdCache = {}; // session-level cache: name → spotifyId
+
 async function resolveArtistIds(artistNames, tok){
   const ids = [];
-  // Process in parallel, max 4 artists
   await Promise.allSettled(artistNames.slice(0,4).map(async name=>{
+    // Return from cache if available (avoids repeated Spotify searches)
+    if(_artistIdCache[name]){ ids.push(_artistIdCache[name]); return; }
     try{
       const r = await fetch('https://api.spotify.com/v1/search?'+new URLSearchParams({
         q:name, type:'artist', limit:'1'
@@ -1059,7 +1087,7 @@ async function resolveArtistIds(artistNames, tok){
       if(!r.ok) return;
       const j = await r.json();
       const a = j.artists?.items?.[0];
-      if(a?.id) ids.push(a.id);
+      if(a?.id){ _artistIdCache[name] = a.id; ids.push(a.id); }
     }catch(e){}
   }));
   return ids;
@@ -1095,8 +1123,16 @@ async function fillUp(existing, faders){
 
   const out = existing.slice();
 
+  // Skip artists the user explicitly disliked in this session
+  const dislikedFillArtists = new Set(
+    Object.entries(state.feedback).filter(([,v])=>v==='down')
+      .map(([k])=>k.split('|')[0].toLowerCase().trim())
+  );
+
   const addTrack = (t, reason='fill-up') => {
     if(known.has(t.id) || out.filter(x=>x.id).length >= 30) return;
+    const artistName = (t.artists||[]).map(a=>a.name).join(', ').toLowerCase().trim();
+    if(dislikedFillArtists.has(artistName)) return;  // skip disliked artists
     const isHe = /[\u0590-\u05FF]/.test(t.name+' '+(t.artists||[]).map(a=>a.name).join(' '));
     if(blockHebrew && isHe) return;
     if(blockIntl && !isHe) return;
@@ -1464,12 +1500,30 @@ function escapeAttr(s){
   return String(s||'').replace(/[\\'"<>&]/g, c=>'&#'+c.charCodeAt(0)+';');
 }
 
+function updateRegenBtn(){
+  const btn = $('regenBtn');
+  if(!btn) return;
+  const likes    = Object.values(state.feedback).filter(v=>v==='up').length;
+  const dislikes = Object.values(state.feedback).filter(v=>v==='down').length;
+  if(likes > 0 || dislikes > 0){
+    const parts = [];
+    if(likes)    parts.push(`${likes} ✅`);
+    if(dislikes) parts.push(`${dislikes} ❌`);
+    btn.textContent = `🔄 צרו שוב (${parts.join(' · ')})`;
+    btn.title = 'הפלייליסט הבא יתחשב בלייקים ודיסלייקים שלך';
+  } else {
+    btn.textContent = '🔄 צרו שוב';
+    btn.title = '';
+  }
+}
+
 async function voteTrack(key, vote, btn){
   state.feedback[key] = vote;
   // Update UI
   const parent = btn.parentElement;
   parent.querySelectorAll('.vote-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
+  updateRegenBtn(); // show liked/disliked count on regen button
   // Persist to track_feedback (best effort)
   const [artist, title] = key.split('|');
   try{

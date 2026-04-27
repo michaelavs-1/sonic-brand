@@ -713,7 +713,7 @@ async function detectBusinessType(){
   $('bizFunc').textContent = '— טוען המלצות…';
 
   try{
-    const sys = 'אתה רובין, מומחה אווירה מוזיקלית לעסקים. בהינתן תיאור עסק, החזר JSON: {"biz_type":"מילה אחת/שתיים בעברית, סוג העסק","joke":"בדיחה קצרה ומחממת לב על סוג העסק (8-15 מילים)","music_function":"תיאור של 1-2 משפטים על איך מוזיקה ממלאת תפקיד בעסק כזה","recommended_moods":["3-7 אווירות בעברית בקצרה"]}';
+    const sys = 'אתה רובין, מומחה אווירה מוזיקלית לעסקים. בהינתן תיאור עסק, החזר JSON: {"biz_type":"סוג העסק — 1-3 מילים בעברית (לדוגמה: בר יין, מסעדת שף, בית קפה שכונתי)","music_function":"משפט אחד, חכם וישיר (עד 18 מילים), שמסביר מה תפקיד המוזיקה בעסק הזה ספציפית. ללא פתיח כמו מניסיוני או סוגי עסקים. רק משפט אחד שנוגע בלב העסק.","recommended_moods":["3-6 אווירות בעברית קצרות המתאימות לעסק"]}';
     const usr = 'תיאור עסק: ' + state.bizDesc;
     const j = await callOpenAI([
       {role:'system', content: sys},
@@ -721,17 +721,14 @@ async function detectBusinessType(){
     ], {model:getMiniModel(), max_tokens:600, temperature:0.65});
     const parsed = safeJSON(j);
     state.bizType = parsed.biz_type || 'עסק';
-    state.bizJoke = parsed.joke || '';
     state.bizFunc = parsed.music_function || '';
     state.recommendedMoods = Array.isArray(parsed.recommended_moods) ? parsed.recommended_moods.slice(0,7) : [];
     parsed.recommended_moods && parsed.recommended_moods.forEach(m=>state.selectedMoods.add(m));
 
     $('bizTypeName').textContent = state.bizType;
-    $('bizJoke').textContent = state.bizJoke;
-    $('bizFunc').textContent = 'מניסיוני, סוגי עסקים כאלה צריכים: ' + state.bizFunc;
+    $('bizFunc').textContent = state.bizFunc;
   } catch(e){
     $('bizTypeName').textContent = 'עסק';
-    $('bizJoke').textContent = 'נחמד שהצטרפת. בואו נמשיך.';
     $('bizFunc').textContent = 'מוזיקה תעצב את האווירה ואת חוויית הקהל.';
     state.recommendedMoods = ['חמים','מאוזן','אינטימי','לא רעשני'];
     state.recommendedMoods.forEach(m=>state.selectedMoods.add(m));

@@ -6,7 +6,7 @@
 const SUPABASE_URL = 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
 const SPOTIFY_CLIENT_ID = 'b6404b5ae1684143b79d9a86bb4b6cba';
-const SPOTIFY_SCOPES = 'playlist-modify-public playlist-modify-private user-read-private user-read-email';
+const SPOTIFY_SCOPES = 'playlist-modify-public playlist-modify-private playlist-read-private playlist-read-collaborative user-read-private user-read-email';
 const SPOTIFY_REDIRECT = location.origin + location.pathname; // /v2 path
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
@@ -75,6 +75,10 @@ async function fetchUserPlaylists(){
     const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
       headers:{'Authorization':'Bearer '+tok}
     });
+    // 401/403 = token missing playlist-read-private scope → need re-auth
+    if(r.status === 401 || r.status === 403){
+      return 'needs-reauth';
+    }
     if(!r.ok) return [];
     const j = await r.json();
     return (j.items||[]).filter(p=>p&&p.id&&p.name);
@@ -179,6 +183,18 @@ function setStep(n){
   // Load user playlists when entering screen 3 (after Spotify auth)
   if(n === 3 && state.spotifyToken && !state.userPlaylists.length){
     fetchUserPlaylists().then(playlists=>{
+      if(playlists === 'needs-reauth'){
+        // Old token missing playlist-read scopes → clear and prompt reconnect
+        localStorage.removeItem('sp_access');
+        localStorage.removeItem('sp_refresh');
+        localStorage.removeItem('sp_expiry');
+        state.spotifyToken = null;
+        const grid = $('playlistPickerGrid');
+        if(grid) grid.innerHTML = `<div class="pl-loading" style="color:var(--accent-3)">
+          כדי לראות את הפלייליסטים שלך, <button onclick="spotifyLogin()" style="background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-size:13px">התחבר מחדש לספוטיפיי ←</button>
+        </div>`;
+        return;
+      }
       state.userPlaylists = playlists;
       renderPlaylistPicker(playlists);
     });

@@ -233,10 +233,12 @@ input,textarea{font-family:inherit;color:inherit}
       <div class="brand-name">Robin</div>
       <div class="brand-tag" style="font-size:10px">SonicBrands · v2 preview</div>
     </div>
-    <div class="model-picker" id="modelPicker">
-      <button class="model-pill" data-model="gpt-4o"  onclick="selectModel('gpt-4o')"  title="GPT-4o — יציב, מהיר">4o</button>
-      <button class="model-pill" data-model="gpt-5.4" onclick="selectModel('gpt-5.4')" title="GPT-5.4 — חכם יותר">5.4</button>
-      <button class="model-pill" data-model="gpt-5.5" onclick="selectModel('gpt-5.5')" title="GPT-5.5 — הכי חזק">5.5</button>
+    <!-- Spotify user badge -->
+    <div id="spotifyBadge" onclick="openSettingsModal()" title="חשבון Spotify"
+      style="display:none;align-items:center;gap:6px;cursor:pointer;background:var(--bg-2);border:1px solid var(--border-2);border-radius:20px;padding:4px 10px 4px 6px;flex-shrink:0">
+      <img id="spotifyBadgeImg" src="" alt="" width="22" height="22"
+        style="border-radius:50%;object-fit:cover;background:var(--card-2)">
+      <span id="spotifyBadgeName" style="font-size:12px;font-weight:700;color:var(--text);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
     </div>
     <button id="dataBoxToggle" class="gear-btn" onclick="toggleDataBox()" title="Data Box פעיל — לחץ לכיבוי (מצב AI טהור)" style="font-size:16px">📋</button>
     <button class="gear-btn" onclick="openSettingsModal()" title="הגדרות מפתח">⚙️</button>

@@ -26,7 +26,7 @@ const state = {
   mc: { familiarity: 3, hebrew: 3, vocal: 3, energy: 3, era: 3 },
   hours: { open: '09:00', close: '23:00' },
   refreshDays: 3,
-  selectedModel: localStorage.getItem('sb_model') || 'gpt-4o', // persists across sessions
+  selectedModel: 'gpt-5.4', // fixed model
   spotifyToken: null,
   spotifyUser: null,
   generatedTracks: [],
@@ -303,8 +303,31 @@ async function loadSpotifyUser(){
     });
     if(r.ok){
       state.spotifyUser = await r.json();
+      renderSpotifyBadge();
     }
   } catch(e){}
+}
+
+function renderSpotifyBadge(){
+  const user = state.spotifyUser;
+  const badge = $('spotifyBadge');
+  if(!badge) return;
+  if(!user){ badge.style.display = 'none'; return; }
+
+  const name = user.display_name || user.id || '';
+  const img  = user.images && user.images[0] ? user.images[0].url : '';
+
+  $('spotifyBadgeName').textContent = name;
+  const imgEl = $('spotifyBadgeImg');
+  if(img){ imgEl.src = img; imgEl.style.display = 'block'; }
+  else { imgEl.style.display = 'none'; }
+
+  badge.style.display = 'flex';
+}
+
+function clearSpotifyBadge(){
+  const badge = $('spotifyBadge');
+  if(badge) badge.style.display = 'none';
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1481,6 +1504,7 @@ function disconnectSpotify(){
   state.spotifyUser   = null;
   state.userPlaylists = [];
   state.selectedUserPlaylists = [];
+  clearSpotifyBadge();
   closeSettingsModal();
   // Go back to auth screen
   setStep(2);

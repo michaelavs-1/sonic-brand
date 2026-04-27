@@ -72,24 +72,29 @@ async function fetchUserPlaylists(){
   const tok = await refreshSpotifyTokenIfNeeded();
   if(!tok) return [];
   try{
-    const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50', {
+    const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0', {
       headers:{'Authorization':'Bearer '+tok}
     });
-    // 401/403 = token missing playlist-read-private scope → need re-auth
-    if(r.status === 401 || r.status === 403){
-      return 'needs-reauth';
+    // Never block on errors — just return empty and let user continue
+    if(!r.ok){
+      console.warn('[playlists] HTTP', r.status);
+      return [];
     }
-    if(!r.ok) return [];
     const j = await r.json();
     return (j.items||[]).filter(p=>p&&p.id&&p.name);
-  }catch(e){ return []; }
+  }catch(e){
+    console.warn('[playlists]', e);
+    return [];
+  }
 }
 
 function renderPlaylistPicker(playlists){
   const grid = $('playlistPickerGrid');
   if(!grid) return;
   if(!playlists.length){
-    grid.innerHTML = '<div class="pl-loading">לא נמצאו פלייליסטים בחשבון</div>';
+    grid.innerHTML = `<div class="pl-loading">
+      אין פלייליסטים בחשבון — אפשר להמשיך ללא בחירה 👍
+    </div>`;
     return;
   }
   grid.innerHTML = playlists.map(p=>{
@@ -181,25 +186,21 @@ function setStep(n){
   // Render energy choice screen when navigating to step 5
   if(n === 5) renderEnergyScreen();
   // Load user playlists when entering screen 3 (after Spotify auth)
-  if(n === 3 && state.spotifyToken && !state.userPlaylists.length){
-    fetchUserPlaylists().then(playlists=>{
-      if(playlists === 'needs-reauth'){
-        // Old token missing playlist-read scopes → clear and prompt reconnect
-        localStorage.removeItem('sp_access');
-        localStorage.removeItem('sp_refresh');
-        localStorage.removeItem('sp_expiry');
-        state.spotifyToken = null;
-        const grid = $('playlistPickerGrid');
-        if(grid) grid.innerHTML = `<div class="pl-loading" style="color:var(--accent-3)">
-          כדי לראות את הפלייליסטים שלך, <button onclick="spotifyLogin()" style="background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-size:13px">התחבר מחדש לספוטיפיי ←</button>
-        </div>`;
-        return;
-      }
-      state.userPlaylists = playlists;
-      renderPlaylistPicker(playlists);
-    });
-  } else if(n === 3 && state.userPlaylists.length){
-    renderPlaylistPicker(state.userPlaylists); // re-render with current selections
+  if(n === 3){
+    if(state.spotifyToken && !state.userPlaylists.length){
+      const grid = $('playlistPickerGrid');
+      if(grid) grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
+      fetchUserPlaylists().then(playlists=>{
+        state.userPlaylists = playlists;
+        renderPlaylistPicker(playlists);
+      });
+    } else if(state.userPlaylists.length){
+      renderPlaylistPicker(state.userPlaylists);
+    } else if(!state.spotifyToken){
+      // Not connected — hide picker section or show connect hint
+      const grid = $('playlistPickerGrid');
+      if(grid) grid.innerHTML = '<div class="pl-loading">יש להתחבר לSpotify כדי לבחור פלייליסטים</div>';
+    }
   }
 }
 function goNext(){ if(state.step < state.totalSteps) setStep(state.step+1); }
@@ -228,7 +229,6 @@ async function spotifyLogin(){
     code_challenge_method: 'S256',
     code_challenge: challenge,
     state: genRandomString(16),
-    show_dialog: 'true',   // force re-auth screen to grant new scopes
   }).toString();
   window.location.href = url;
 }

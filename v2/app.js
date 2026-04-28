@@ -57,6 +57,13 @@ function genRandomString(len){
   const arr=new Uint8Array(len);crypto.getRandomValues(arr);
   return Array.from(arr).map(b=>chars[b%chars.length]).join('');
 }
+/* ─── Hard refresh — bypasses all browser cache ─── */
+function hardRefresh(){
+  // Remove ?v= or ?refresh= params from current URL, add fresh timestamp
+  const base = window.location.origin + window.location.pathname;
+  window.location.replace(base + '?refresh=' + Date.now());
+}
+
 async function sha256(s){
   const buf=new TextEncoder().encode(s);
   const h=await crypto.subtle.digest('SHA-256', buf);

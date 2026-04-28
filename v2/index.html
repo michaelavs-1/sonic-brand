@@ -242,12 +242,23 @@ input,textarea{font-family:inherit;color:inherit}
       <div class="brand-name">Robin</div>
       <div class="brand-tag" style="font-size:10px">SonicBrands · v2 preview</div>
     </div>
-    <!-- Spotify user badge -->
-    <div id="spotifyBadge" onclick="openSettingsModal()" title="חשבון Spotify"
-      style="display:none;align-items:center;gap:6px;cursor:pointer;background:var(--bg-2);border:1px solid var(--border-2);border-radius:20px;padding:4px 10px 4px 6px;flex-shrink:0">
-      <img id="spotifyBadgeImg" src="" alt="" width="22" height="22"
-        style="border-radius:50%;object-fit:cover;background:var(--card-2)">
-      <span id="spotifyBadgeName" style="font-size:12px;font-weight:700;color:var(--text);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <!-- Spotify user badge (click → account menu) -->
+    <div id="spotifyBadge" style="display:none;position:relative;flex-shrink:0">
+      <button onclick="toggleAccountMenu(event)"
+        style="display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid rgba(29,185,84,.4);border-radius:22px;padding:5px 12px 5px 6px;cursor:pointer;font-family:inherit">
+        <img id="spotifyBadgeImg" src="" alt="" width="26" height="26"
+          style="border-radius:50%;object-fit:cover;background:var(--card-2);border:1.5px solid rgba(29,185,84,.5)">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;min-width:0">
+          <span style="font-size:10px;color:var(--accent);font-weight:700;line-height:1">Spotify</span>
+          <span id="spotifyBadgeName" style="font-size:12px;font-weight:800;color:var(--text);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3"></span>
+        </div>
+        <span style="font-size:10px;color:var(--muted);margin-right:-2px">▾</span>
+      </button>
+      <!-- Account dropdown menu -->
+      <div id="accountMenu" style="display:none;position:absolute;top:calc(100% + 6px);left:0;background:var(--card);border:1px solid var(--border-2);border-radius:12px;box-shadow:var(--shadow-1);min-width:170px;z-index:50;overflow:hidden">
+        <button onclick="switchSpotifyAccount()" style="display:block;width:100%;text-align:right;padding:12px 16px;background:none;border:none;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border)">🔄 החלף חשבון</button>
+        <button onclick="disconnectSpotify()" style="display:block;width:100%;text-align:right;padding:12px 16px;background:none;border:none;font-size:13px;font-weight:700;color:var(--accent-3);cursor:pointer">🔌 התנתק</button>
+      </div>
     </div>
     <button id="dataBoxToggle" class="gear-btn" onclick="toggleDataBox()" title="Data Box פעיל — לחץ לכיבוי (מצב AI טהור)" style="font-size:16px">📋</button>
     <button class="gear-btn" onclick="openSettingsModal()" title="הגדרות מפתח">⚙️</button>

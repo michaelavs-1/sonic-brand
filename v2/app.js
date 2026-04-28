@@ -359,7 +359,7 @@ async function loadSpotifyUser(){
 }
 
 function renderSpotifyBadge(){
-  const user = state.spotifyUser;
+  const user  = state.spotifyUser;
   const badge = $('spotifyBadge');
   if(!badge) return;
   if(!user){ badge.style.display = 'none'; return; }
@@ -372,13 +372,31 @@ function renderSpotifyBadge(){
   if(img){ imgEl.src = img; imgEl.style.display = 'block'; }
   else { imgEl.style.display = 'none'; }
 
-  badge.style.display = 'flex';
+  badge.style.display = 'block';
 }
 
 function clearSpotifyBadge(){
   const badge = $('spotifyBadge');
   if(badge) badge.style.display = 'none';
+  closeAccountMenu();
 }
+
+/* ─── Account dropdown menu ─── */
+function toggleAccountMenu(e){
+  e.stopPropagation();
+  const menu = $('accountMenu');
+  if(!menu) return;
+  const isOpen = menu.style.display !== 'none';
+  menu.style.display = isOpen ? 'none' : 'block';
+}
+
+function closeAccountMenu(){
+  const menu = $('accountMenu');
+  if(menu) menu.style.display = 'none';
+}
+
+// Close menu when clicking anywhere else
+document.addEventListener('click', ()=>closeAccountMenu());
 
 /* ═══════════════════════════════════════════════════════════════
    ROBIN BRAIN — Layered Context (L1-L4)

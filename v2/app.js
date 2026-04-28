@@ -227,24 +227,54 @@ function updateScreen2UI(){
   if(!hasSession || !noSession) return;
 
   if(state.spotifyUser){
-    // Show user card
-    const name = state.spotifyUser.display_name || state.spotifyUser.id || 'Spotify';
+    // ✅ User loaded — show their card
+    const name = state.spotifyUser.display_name || state.spotifyUser.id || 'Spotify User';
     const img  = state.spotifyUser.images?.[0]?.url || '';
     $('s2Name').textContent = name;
     const av = $('s2Avatar');
     if(img){ av.src = img; av.style.display = 'block'; }
-    else { av.style.display = 'none'; }
+    else    { av.style.display = 'none'; }
     hasSession.style.display = 'block';
     noSession.style.display  = 'none';
+
   } else if(localStorage.getItem('sp_access')){
-    // Token exists but user not loaded yet — try to load
-    hasSession.style.display = 'none';
-    noSession.style.display  = 'block';
+    // ⏳ Token exists but user not loaded yet — show loading, load in background
+    hasSession.innerHTML = `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:13px">
+      <div class="spinner" style="width:28px;height:28px;margin:0 auto 10px"></div>בודק חיבור Spotify…</div>`;
+    hasSession.style.display = 'block';
+    noSession.style.display  = 'none';
+    // Try to load user — if fails, fall back to connect button
     refreshSpotifyTokenIfNeeded().then(tok=>{
-      if(tok) loadSpotifyUser().then(updateScreen2UI);
+      if(!tok){
+        // Token invalid — clear and show connect
+        localStorage.removeItem('sp_access');
+        localStorage.removeItem('sp_refresh');
+        localStorage.removeItem('sp_expiry');
+        state.spotifyToken = null;
+        hasSession.style.display = 'none';
+        noSession.style.display  = 'block';
+        return;
+      }
+      loadSpotifyUser().then(()=>{
+        // Restore the HTML (was replaced by loading spinner)
+        hasSession.innerHTML = `
+          <h2 style="margin-bottom:6px">ברוכים הבאים</h2>
+          <p style="margin-bottom:18px;color:var(--muted);font-size:14px">מחובר לחשבון הבא:</p>
+          <div class="s2-user-card">
+            <img id="s2Avatar" class="s2-user-avatar" src="" alt="">
+            <div class="s2-user-info">
+              <div class="s2-user-name" id="s2Name">—</div>
+              <div class="s2-user-sub">✓ Spotify מחובר</div>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block" onclick="continueWithSession()">המשך עם חשבון זה ←</button>
+          <button class="s2-switch" onclick="switchSpotifyAccount()">זה לא אני — התחבר עם חשבון אחר</button>`;
+        updateScreen2UI(); // re-run now that user is in state
+      });
     });
+
   } else {
-    // No session
+    // ❌ No session at all — show connect button
     hasSession.style.display = 'none';
     noSession.style.display  = 'block';
   }
@@ -1953,15 +1983,25 @@ async function regenerate(){
 
 /* ─────────── Boot ─────────── */
 (async function boot(){
-  // Init model picker to saved selection
   selectModel(state.selectedModel);
-  // Try to recover Spotify session
-  await refreshSpotifyTokenIfNeeded();
-  if(state.spotifyToken){
-    await loadSpotifyUser();
-  }
-  // Handle Spotify callback if present
+
+  // 1. Handle Spotify OAuth callback (user just authenticated)
   if(new URLSearchParams(location.search).get('code')){
     await handleSpotifyCallback();
+    return; // handleSpotifyCallback navigates to step 3
   }
+
+  // 2. Try to restore existing Spotify session
+  const tok = await refreshSpotifyTokenIfNeeded();
+  if(tok){
+    await loadSpotifyUser();
+    // loadSpotifyUser calls renderSpotifyBadge() on success
+  }
+
+  // 3. Show screen 2 instead of screen 1 if a session exists
+  //    This forces the user to see WHO is connected before proceeding
+  if(state.spotifyToken){
+    setStep(2); // updateScreen2UI() is called inside setStep
+  }
+  // Otherwise stays on screen 1 (default)
 })();

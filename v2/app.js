@@ -368,16 +368,31 @@ async function loadSpotifyUser(){
 function renderSpotifyBadge(){
   const user  = state.spotifyUser;
   const badge = $('spotifyBadge');
+  const strip = $('spotifyStrip');
   if(!badge) return;
-  if(!user){ badge.style.display = 'none'; return; }
+  if(!user){
+    badge.style.display = 'none';
+    if(strip) strip.style.display = 'none';
+    return;
+  }
 
-  const name = user.display_name || user.id || '';
+  const name = user.display_name || user.id || 'Spotify User';
   const img  = user.images && user.images[0] ? user.images[0].url : '';
 
+  // Small badge in toolbar
   $('spotifyBadgeName').textContent = name;
   const imgEl = $('spotifyBadgeImg');
   if(img){ imgEl.src = img; imgEl.style.display = 'block'; }
   else { imgEl.style.display = 'none'; }
+
+  // Prominent strip below brand bar
+  if(strip){
+    $('spotifyStripName').textContent = name;
+    const stripImg = $('spotifyStripImg');
+    if(img){ stripImg.src = img; stripImg.style.display = 'block'; }
+    else { stripImg.style.display = 'none'; }
+    strip.style.display = 'flex';
+  }
 
   badge.style.display = 'block';
 }
@@ -385,6 +400,8 @@ function renderSpotifyBadge(){
 function clearSpotifyBadge(){
   const badge = $('spotifyBadge');
   if(badge) badge.style.display = 'none';
+  const strip = $('spotifyStrip');
+  if(strip) strip.style.display = 'none';
   closeAccountMenu();
 }
 

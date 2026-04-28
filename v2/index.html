@@ -268,6 +268,17 @@ input,textarea{font-family:inherit;color:inherit}
     <button class="gear-btn" onclick="openSettingsModal()" title="הגדרות מפתח">⚙️</button>
   </div>
 
+  <!-- Spotify account strip — shown when connected -->
+  <div id="spotifyStrip" style="display:none;background:rgba(29,185,84,.12);border:1px solid rgba(29,185,84,.3);border-radius:10px;padding:8px 14px;margin-bottom:10px;display:none;align-items:center;gap:10px;font-size:13px">
+    <img id="spotifyStripImg" src="" width="28" height="28" style="border-radius:50%;object-fit:cover;border:2px solid rgba(29,185,84,.5);flex-shrink:0">
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:800;color:var(--text)" id="spotifyStripName"></div>
+      <div style="font-size:11px;color:var(--accent);font-weight:600">✓ מחובר ל-Spotify</div>
+    </div>
+    <button onclick="toggleAccountMenu(event)" style="background:none;border:1px solid rgba(29,185,84,.4);border-radius:8px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;font-family:inherit">החלף ▾</button>
+    <!-- reuse same accountMenu -->
+  </div>
+
   <div class="progress" id="progress">
     <div class="dot active"></div>
     <div class="dot"></div>
@@ -467,8 +478,8 @@ input,textarea{font-family:inherit;color:inherit}
   </div>
 </div>
 
-<script src="/v2/mc-mappings.js?v=28042026"></script>
-<script src="/v2/data-box.js?v=28042026"></script>
-<script src="/v2/app.js?v=28042026"></script>
+<script src="/v2/mc-mappings.js?v=28042026b"></script>
+<script src="/v2/data-box.js?v=28042026b"></script>
+<script src="/v2/app.js?v=28042026b"></script>
 </body>
 </html>

@@ -215,6 +215,15 @@ input,textarea{font-family:inherit;color:inherit}
 .key-status.ok{color:var(--accent)}
 .key-status.err{color:var(--accent-3)}
 
+/* Screen 2 — Spotify auth states */
+.s2-user-card{display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,rgba(29,185,84,.1),rgba(29,185,84,.05));border:1.5px solid rgba(29,185,84,.35);border-radius:16px;padding:18px 20px;margin-bottom:22px}
+.s2-user-avatar{width:52px;height:52px;border-radius:50%;object-fit:cover;background:var(--card-2);border:2px solid rgba(29,185,84,.4);flex-shrink:0}
+.s2-user-info{flex:1;min-width:0}
+.s2-user-name{font-size:16px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s2-user-sub{font-size:12px;color:var(--accent);font-weight:600;margin-top:2px}
+.s2-switch{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:0;text-decoration:underline;margin-top:12px;display:block;text-align:center}
+.s2-switch:hover{color:var(--accent-3)}
+
 /* Responsive */
 @media(max-width:600px){
   .app{padding:16px 14px 32px}
@@ -266,29 +275,38 @@ input,textarea{font-family:inherit;color:inherit}
     </div>
   </div>
 
-  <!-- ═══════════════ SCREEN 2: SIGN UP ═══════════════ -->
+  <!-- ═══════════════ SCREEN 2: SPOTIFY AUTH ═══════════════ -->
   <div class="screen" data-screen="2">
     <div class="screen-card">
-      <h2>לכניסה עם חשבון הספוטיפיי שלכם</h2>
-      <p>נהיה מחוברים לחשבון הספוטיפיי כדי לבנות את הפלייליסטים ישירות שם.</p>
-      <button class="signup-spotify-btn" onclick="spotifyLogin()">
-        <span>🎵</span><span>התחברות עם Spotify</span>
-      </button>
-      <div class="divider">או</div>
-      <p class="signup-link">במידה ואין לכם חשבון, <a href="https://www.spotify.com/il-en/premium/" target="_blank" rel="noopener">לחצו כאן ←</a></p>
-      <p style="font-size:12px;color:var(--muted);text-align:center;margin-top:6px">קבלו ספוטיפיי פרימיום מוזל ל-3 חודשים</p>
 
-      <div class="info-tip" id="infoTip" onclick="toggleInfoTip(event)">
-        <span class="info-tip-i">i</span>
-        <span>מדוע ספוטיפיי?</span>
-        <div class="info-tip-tooltip">
-          השירות מבוסס ספוטיפיי מטעמי נוחות, שליטה וסאונד עבור בעל העסק. כל פלייליסט שלכם יווצר ביוזר העסקי של רובין, ויהיה זמין וגלוי אך ורק לכם.
+      <!-- State A: already connected -->
+      <div id="s2HasSession" style="display:none">
+        <h2 style="margin-bottom:6px">ברוכים הבאים</h2>
+        <p style="margin-bottom:18px;color:var(--muted);font-size:14px">מחובר לחשבון הבא:</p>
+        <div class="s2-user-card">
+          <img id="s2Avatar" class="s2-user-avatar" src="" alt="">
+          <div class="s2-user-info">
+            <div class="s2-user-name" id="s2Name">—</div>
+            <div class="s2-user-sub">✓ Spotify מחובר</div>
+          </div>
         </div>
+        <button class="btn btn-primary btn-block" onclick="continueWithSession()">המשך עם חשבון זה ←</button>
+        <button class="s2-switch" onclick="switchSpotifyAccount()">זה לא אני — התחבר עם חשבון אחר</button>
+      </div>
+
+      <!-- State B: not connected -->
+      <div id="s2NoSession">
+        <h2>חיבור לספוטיפיי</h2>
+        <p>הפלייליסטים יישמרו ישירות בחשבון שלכם.</p>
+        <button class="signup-spotify-btn" onclick="spotifyLogin()">
+          <span>🎵</span><span>התחברות עם Spotify</span>
+        </button>
+        <div class="divider">או</div>
+        <p class="signup-link">אין חשבון? <a href="https://www.spotify.com/il-en/premium/" target="_blank" rel="noopener">הצטרפו לספוטיפיי ←</a></p>
       </div>
 
       <div class="row" style="margin-top:24px;justify-content:space-between">
         <button class="btn btn-ghost" onclick="goBack()">← חזרה</button>
-        <button class="btn btn-secondary" onclick="goNext()" id="continueAuthBtn">המשך ←</button>
       </div>
     </div>
   </div>

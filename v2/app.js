@@ -183,8 +183,8 @@ function setStep(n){
     d.classList.toggle('done', i+1 < n);
   });
   window.scrollTo({top:0,behavior:'smooth'});
-  // Render energy choice screen when navigating to step 5
   if(n === 5) renderEnergyScreen();
+  if(n === 2) updateScreen2UI();
   // Load user playlists when entering screen 3 (after Spotify auth)
   if(n === 3){
     if(state.spotifyToken && !state.userPlaylists.length){
@@ -212,6 +212,54 @@ function toggleInfoTip(e){
   $('infoTip').classList.toggle('show');
 }
 document.addEventListener('click', ()=>$('infoTip').classList.remove('show'));
+
+/* ─────────── Screen 2: show correct state ─────────── */
+function updateScreen2UI(){
+  const hasSession = $('s2HasSession');
+  const noSession  = $('s2NoSession');
+  if(!hasSession || !noSession) return;
+
+  if(state.spotifyUser){
+    // Show user card
+    const name = state.spotifyUser.display_name || state.spotifyUser.id || 'Spotify';
+    const img  = state.spotifyUser.images?.[0]?.url || '';
+    $('s2Name').textContent = name;
+    const av = $('s2Avatar');
+    if(img){ av.src = img; av.style.display = 'block'; }
+    else { av.style.display = 'none'; }
+    hasSession.style.display = 'block';
+    noSession.style.display  = 'none';
+  } else if(localStorage.getItem('sp_access')){
+    // Token exists but user not loaded yet — try to load
+    hasSession.style.display = 'none';
+    noSession.style.display  = 'block';
+    refreshSpotifyTokenIfNeeded().then(tok=>{
+      if(tok) loadSpotifyUser().then(updateScreen2UI);
+    });
+  } else {
+    // No session
+    hasSession.style.display = 'none';
+    noSession.style.display  = 'block';
+  }
+}
+
+function continueWithSession(){
+  setStep(3);
+}
+
+function switchSpotifyAccount(){
+  // Clear ALL cached tokens → fresh login
+  ['sp_access','sp_refresh','sp_expiry','sp_verifier','sb_v2_state','spotify_id']
+    .forEach(k=>localStorage.removeItem(k));
+  state.spotifyToken  = null;
+  state.spotifyUser   = null;
+  state.userPlaylists = [];
+  state.selectedUserPlaylists = [];
+  clearSpotifyBadge();
+  updateScreen2UI();
+  // Start fresh auth
+  spotifyLogin();
+}
 
 /* ─────────── Screen 2: Spotify auth ─────────── */
 async function spotifyLogin(){
@@ -304,6 +352,8 @@ async function loadSpotifyUser(){
     if(r.ok){
       state.spotifyUser = await r.json();
       renderSpotifyBadge();
+      // Update screen 2 if it's currently shown
+      if(state.step === 2) updateScreen2UI();
     }
   } catch(e){}
 }

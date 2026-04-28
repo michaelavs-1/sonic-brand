@@ -1957,20 +1957,10 @@ async function regenerate(){
     return;
   }
 
-  // 2. Try to restore existing Spotify session
+  // 2. Restore Spotify session silently — no navigation, just loads user data
   try{
     const tok = await refreshSpotifyTokenIfNeeded();
-    if(tok){
-      await loadSpotifyUser(); // sets state.spotifyUser + calls renderSpotifyBadge()
-    }
-  } catch(e){
-    console.warn('[boot] session restore failed:', e);
-  }
-
-  // 3. If user loaded successfully → show screen 2 (account confirmation)
-  //    If not → stay on screen 1 (welcome)
-  if(state.spotifyUser){
-    setStep(2); // updateScreen2UI() is sync — shows user card immediately
-  }
-  // else: screen 1 stays (default)
+    if(tok) await loadSpotifyUser();
+  } catch(e){}
+  // Stays on screen 1 always — user sees the strip with account name if connected
 })();

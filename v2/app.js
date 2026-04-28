@@ -220,61 +220,27 @@ function toggleInfoTip(e){
 }
 document.addEventListener('click', ()=>$('infoTip').classList.remove('show'));
 
-/* ─────────── Screen 2: show correct state ─────────── */
+/* ─────────── Screen 2: show correct state (SYNC ONLY — no async here) ─────────── */
 function updateScreen2UI(){
   const hasSession = $('s2HasSession');
   const noSession  = $('s2NoSession');
   if(!hasSession || !noSession) return;
 
   if(state.spotifyUser){
-    // ✅ User loaded — show their card
+    // ✅ User already loaded by boot — show their card
     const name = state.spotifyUser.display_name || state.spotifyUser.id || 'Spotify User';
     const img  = state.spotifyUser.images?.[0]?.url || '';
-    $('s2Name').textContent = name;
-    const av = $('s2Avatar');
-    if(img){ av.src = img; av.style.display = 'block'; }
-    else    { av.style.display = 'none'; }
+    const s2Name = $('s2Name');
+    const s2Av   = $('s2Avatar');
+    if(s2Name) s2Name.textContent = name;
+    if(s2Av){
+      if(img){ s2Av.src = img; s2Av.style.display = 'block'; }
+      else   { s2Av.style.display = 'none'; }
+    }
     hasSession.style.display = 'block';
     noSession.style.display  = 'none';
-
-  } else if(localStorage.getItem('sp_access')){
-    // ⏳ Token exists but user not loaded yet — show loading, load in background
-    hasSession.innerHTML = `<div style="text-align:center;padding:20px 0;color:var(--muted);font-size:13px">
-      <div class="spinner" style="width:28px;height:28px;margin:0 auto 10px"></div>בודק חיבור Spotify…</div>`;
-    hasSession.style.display = 'block';
-    noSession.style.display  = 'none';
-    // Try to load user — if fails, fall back to connect button
-    refreshSpotifyTokenIfNeeded().then(tok=>{
-      if(!tok){
-        // Token invalid — clear and show connect
-        localStorage.removeItem('sp_access');
-        localStorage.removeItem('sp_refresh');
-        localStorage.removeItem('sp_expiry');
-        state.spotifyToken = null;
-        hasSession.style.display = 'none';
-        noSession.style.display  = 'block';
-        return;
-      }
-      loadSpotifyUser().then(()=>{
-        // Restore the HTML (was replaced by loading spinner)
-        hasSession.innerHTML = `
-          <h2 style="margin-bottom:6px">ברוכים הבאים</h2>
-          <p style="margin-bottom:18px;color:var(--muted);font-size:14px">מחובר לחשבון הבא:</p>
-          <div class="s2-user-card">
-            <img id="s2Avatar" class="s2-user-avatar" src="" alt="">
-            <div class="s2-user-info">
-              <div class="s2-user-name" id="s2Name">—</div>
-              <div class="s2-user-sub">✓ Spotify מחובר</div>
-            </div>
-          </div>
-          <button class="btn btn-primary btn-block" onclick="continueWithSession()">המשך עם חשבון זה ←</button>
-          <button class="s2-switch" onclick="switchSpotifyAccount()">זה לא אני — התחבר עם חשבון אחר</button>`;
-        updateScreen2UI(); // re-run now that user is in state
-      });
-    });
-
   } else {
-    // ❌ No session at all — show connect button
+    // ❌ No user loaded — always show connect button (boot handles loading)
     hasSession.style.display = 'none';
     noSession.style.display  = 'block';
   }
@@ -1985,23 +1951,26 @@ async function regenerate(){
 (async function boot(){
   selectModel(state.selectedModel);
 
-  // 1. Handle Spotify OAuth callback (user just authenticated)
+  // 1. Handle Spotify OAuth callback (highest priority)
   if(new URLSearchParams(location.search).get('code')){
     await handleSpotifyCallback();
-    return; // handleSpotifyCallback navigates to step 3
+    return;
   }
 
   // 2. Try to restore existing Spotify session
-  const tok = await refreshSpotifyTokenIfNeeded();
-  if(tok){
-    await loadSpotifyUser();
-    // loadSpotifyUser calls renderSpotifyBadge() on success
+  try{
+    const tok = await refreshSpotifyTokenIfNeeded();
+    if(tok){
+      await loadSpotifyUser(); // sets state.spotifyUser + calls renderSpotifyBadge()
+    }
+  } catch(e){
+    console.warn('[boot] session restore failed:', e);
   }
 
-  // 3. Show screen 2 instead of screen 1 if a session exists
-  //    This forces the user to see WHO is connected before proceeding
-  if(state.spotifyToken){
-    setStep(2); // updateScreen2UI() is called inside setStep
+  // 3. If user loaded successfully → show screen 2 (account confirmation)
+  //    If not → stay on screen 1 (welcome)
+  if(state.spotifyUser){
+    setStep(2); // updateScreen2UI() is sync — shows user card immediately
   }
-  // Otherwise stays on screen 1 (default)
+  // else: screen 1 stays (default)
 })();

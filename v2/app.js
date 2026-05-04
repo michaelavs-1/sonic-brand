@@ -391,6 +391,8 @@ function renderSpotifyBadge(){
   }
 
   badge.style.display = 'block';
+  // Refresh screen 2 if it's visible
+  if(state.step === 2) updateScreen2UI();
 }
 
 function clearSpotifyBadge(){
@@ -1957,10 +1959,16 @@ async function regenerate(){
     return;
   }
 
-  // 2. Restore Spotify session silently — no navigation, just loads user data
+  // 2. Restore session silently — 4 second max, never blocks the app
   try{
-    const tok = await refreshSpotifyTokenIfNeeded();
-    if(tok) await loadSpotifyUser();
+    const timer = new Promise(r=>setTimeout(r,4000)); // 4s timeout
+    await Promise.race([
+      (async()=>{
+        const tok = await refreshSpotifyTokenIfNeeded();
+        if(tok) await loadSpotifyUser();
+      })(),
+      timer
+    ]);
   } catch(e){}
-  // Stays on screen 1 always — user sees the strip with account name if connected
+  // Always stays on screen 1 — strip shows who is connected
 })();

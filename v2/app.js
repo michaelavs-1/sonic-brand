@@ -376,10 +376,19 @@ async function handleSpotifyCallback(){
     state.spotifyToken = tokens.access_token;
 
     // Load user profile — wait for it
+    state._needsReauth = false;
     await loadSpotifyUser();
 
-    const name = state.spotifyUser?.display_name || state.spotifyUser?.id || '';
-    showToast(name ? `✓ מחובר כ: ${name}` : '✓ מחובר ל-Spotify');
+    if(state._needsReauth){
+      // Token has old scopes — must re-authorize to get user-read-private
+      // Show badge as "מחובר" and prompt re-auth for full experience
+      state.spotifyUser = { display_name: 'מחובר ל-Spotify', id: 'connected', images: [] };
+      spotifyShowUser(state.spotifyUser);
+      showToast('✓ מחובר — לחץ "החלף" לשם ופלייליסטים', false);
+    } else {
+      const name = state.spotifyUser?.display_name || state.spotifyUser?.id || '';
+      showToast(name ? `✓ מחובר כ: ${name}` : '✓ מחובר ל-Spotify');
+    }
     setStep(3);
     return true;
   } catch(err){
@@ -425,6 +434,9 @@ async function loadSpotifyUser(){
       state.spotifyUser = await r.json();
       try{ localStorage.setItem('sp_user', JSON.stringify(state.spotifyUser)); }catch(e){}
       spotifyShowUser(state.spotifyUser);
+    } else if(r.status === 403 || r.status === 401){
+      // Token missing user-read-private scope — mark for re-auth
+      state._needsReauth = true;
     }
   } catch(e){}
 }

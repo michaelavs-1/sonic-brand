@@ -82,15 +82,10 @@ async function fetchUserPlaylists(){
     const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0', {
       headers:{'Authorization':'Bearer '+tok}
     });
-    if(r.status === 403){
-      // Missing playlist-read-private scope — token was issued before we added it
-      // Signal that re-auth is needed (without clearing tokens)
+    if(r.status === 403 || r.status === 401){
       return 'needs-reauth';
     }
-    if(!r.ok){
-      console.warn('[playlists] HTTP', r.status);
-      return [];
-    }
+    if(!r.ok) return [];
     const j = await r.json();
     return (j.items||[]).filter(p=>p&&p.id&&p.name);
   }catch(e){
@@ -210,10 +205,11 @@ function setStep(n){
       if(grid) grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
       fetchUserPlaylists().then(result=>{
         if(result === 'needs-reauth'){
-          if(grid) grid.innerHTML = `<div class="pl-loading" style="color:var(--accent-3)">
-            נדרש חיבור מחדש כדי לראות פלייליסטים —
-            <button onclick="switchSpotifyAccount()" style="background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">לחץ כאן ←</button>
-          </div>`;
+          // Auto re-auth to get playlist scopes — seamless, no manual action needed
+          if(grid) grid.innerHTML = '<div class="pl-loading">מעדכן הרשאות Spotify…</div>';
+          // Clear old token and re-authenticate silently with new scopes
+          _clearAll(); clearSpotifyBadge();
+          spotifyLogin(true); // forceDialog to grant new playlist-read scopes
         } else {
           state.userPlaylists = result;
           renderPlaylistPicker(result);

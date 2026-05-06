@@ -323,10 +323,19 @@ async function handleSpotifyCallback(){
     localStorage.setItem('sp_refresh', j.refresh_token);
     localStorage.setItem('sp_expiry', String(Date.now()+j.expires_in*1000));
     state.spotifyToken = j.access_token;
-    await loadSpotifyUser();
-    renderSpotifyBadge(); // force update strip/badge regardless
-    const displayName = state.spotifyUser?.display_name || state.spotifyUser?.id || 'Spotify';
-    showToast(`✓ מחובר כ: ${displayName}`);
+
+    // Show "connected" badge immediately — don't wait for user data
+    // This ensures the strip/badge always shows after auth
+    if(!state.spotifyUser) state.spotifyUser = { display_name: 'Spotify', id: 'connected', images: [] };
+    renderSpotifyBadge();
+
+    // Load real user data in background — will update badge when ready
+    loadSpotifyUser().then(()=>renderSpotifyBadge());
+
+    const displayName = state.spotifyUser?.display_name !== 'Spotify'
+      ? state.spotifyUser.display_name
+      : (state.spotifyUser?.id || 'Spotify');
+    showToast(`✓ מחובר ל-Spotify`);
     setStep(3);
     return true;
   } catch(e){

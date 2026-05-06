@@ -227,34 +227,58 @@ document.addEventListener('click', ()=>$('infoTip').classList.remove('show'));
    token refresh + API calls in background.
 ═══════════════════════════════════════════ */
 
-// Cache user object in localStorage for instant display
-function _cacheUser(user){
-  try{ localStorage.setItem('sp_user', JSON.stringify(user)); }catch(e){}
-}
-function _getCachedUser(){
-  try{ return JSON.parse(localStorage.getItem('sp_user')||'null'); }catch(e){ return null; }
-}
-function _clearAll(){
-  ['sp_access','sp_refresh','sp_expiry','sp_verifier','sb_v2_state','spotify_id','sp_user']
-    .forEach(k=>localStorage.removeItem(k));
-  try{ ['sp_verifier'].forEach(k=>sessionStorage.removeItem(k)); }catch(e){}
-  document.cookie = 'sp_verifier=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+/* ═══════════════════════════════════════════
+   SPOTIFY SSO — CLEAN BUILD v2
+   Rules:
+   - show_dialog:true ALWAYS → each user picks their own account
+   - No fake fallback users — if load fails, nothing shows
+   - verifier stored in 3 places (localStorage + sessionStorage + cookie)
+   - One clear UI function: spotifyShowUser(user)
+═══════════════════════════════════════════ */
+
+const SP_STORAGE_KEYS = ['sp_access','sp_refresh','sp_expiry','sp_verifier','sp_user','sb_v2_state','spotify_id'];
+
+function spotifyClearAll(){
+  SP_STORAGE_KEYS.forEach(k=>{
+    localStorage.removeItem(k);
+    try{ sessionStorage.removeItem(k); }catch(e){}
+  });
+  document.cookie = 'sp_verifier=; path=/; max-age=0; SameSite=Lax';
   state.spotifyToken = null;
   state.spotifyUser  = null;
   state.userPlaylists = [];
   state.selectedUserPlaylists = [];
 }
 
-// Show screen 2 in correct state — PURELY SYNC, reads from state only
+function spotifyShowUser(user){
+  // Single function that updates ALL UI elements showing connected account
+  const name = (user && (user.display_name || user.id)) || null;
+  const img  = user?.images?.[0]?.url || '';
+  const ids = ['spotifyBadgeName','spotifyStripName','s3AccountName'];
+  const imgs = ['spotifyBadgeImg','spotifyStripImg','s3AccountImg'];
+  const containers = {
+    spotifyBadge:   name ? 'block' : 'none',
+    spotifyStrip:   name ? 'flex'  : 'none',
+    s3AccountLine:  name ? 'flex'  : 'none',
+  };
+
+  if(name){
+    ids.forEach(id=>{ const el=$( id); if(el) el.textContent=name; });
+    imgs.forEach(id=>{ const el=$(id); if(!el) return; if(img){el.src=img;el.style.display='block';}else{el.style.display='none';} });
+  }
+  Object.entries(containers).forEach(([id,disp])=>{ const el=$(id); if(el) el.style.display=disp; });
+
+  if(state.step === 2) updateScreen2UI();
+}
+
 function updateScreen2UI(){
-  const has = $('s2HasSession');
-  const no  = $('s2NoSession');
+  const has = $('s2HasSession'), no = $('s2NoSession');
   if(!has||!no) return;
   const user = state.spotifyUser;
   if(user){
-    const name = user.display_name || user.id || 'Spotify';
+    const name = user.display_name || user.id || '';
     const img  = user.images?.[0]?.url || '';
-    const nameEl = $('s2Name'), avEl = $('s2Avatar');
+    const nameEl=$('s2Name'), avEl=$('s2Avatar');
     if(nameEl) nameEl.textContent = name;
     if(avEl){ if(img){avEl.src=img;avEl.style.display='block';}else{avEl.style.display='none';} }
     has.style.display='block'; no.style.display='none';
@@ -266,34 +290,36 @@ function updateScreen2UI(){
 function continueWithSession(){ setStep(3); }
 
 function switchSpotifyAccount(){
-  _clearAll();
-  clearSpotifyBadge();
+  spotifyClearAll();
+  spotifyShowUser(null);
   updateScreen2UI();
-  spotifyLogin(true); // forceDialog=true → shows account picker + new scopes
+  spotifyLogin(); // show_dialog always true now
 }
 
 function disconnectSpotify(){
-  _clearAll();
-  clearSpotifyBadge();
+  spotifyClearAll();
+  spotifyShowUser(null);
   updateScreen2UI();
   closeSettingsModal();
   setStep(2);
-  showToast('Spotify נותק — התחבר עם החשבון הרצוי');
+  showToast('Spotify נותק');
 }
 
-/* ─────────── Screen 2: Spotify auth ─────────── */
-async function spotifyLogin(forceDialog = false){
-  localStorage.setItem('spotify_id', SPOTIFY_CLIENT_ID);
+// Legacy aliases
+function _clearAll(){ spotifyClearAll(); }
+function renderSpotifyBadge(){ spotifyShowUser(state.spotifyUser); }
+function clearSpotifyBadge(){ spotifyShowUser(null); }
+
+/* ─── SSO: Connect with Spotify ─── */
+async function spotifyLogin(){
   const verifier = genRandomString(64);
-  // Store verifier in 3 places for maximum cross-browser/context reliability
+  const challenge = base64url(await sha256(verifier));
+  // Store verifier in 3 places for cross-browser/context reliability
   localStorage.setItem('sp_verifier', verifier);
   try{ sessionStorage.setItem('sp_verifier', verifier); }catch(e){}
-  // Cookie: works even when browser context changes (e.g. WhatsApp → Safari)
-  const exp = new Date(Date.now() + 10*60*1000).toUTCString();
-  document.cookie = `sp_verifier=${verifier}; path=/; expires=${exp}; SameSite=Lax`;
-  localStorage.setItem('sb_v2_state', JSON.stringify({step: state.step}));
-  const challenge = base64url(await sha256(verifier));
-  const params = {
+  document.cookie = `sp_verifier=${verifier}; path=/; max-age=600; SameSite=Lax`;
+
+  window.location.href = 'https://accounts.spotify.com/authorize?' + new URLSearchParams({
     client_id: SPOTIFY_CLIENT_ID,
     response_type: 'code',
     redirect_uri: SPOTIFY_REDIRECT,
@@ -301,56 +327,72 @@ async function spotifyLogin(forceDialog = false){
     code_challenge_method: 'S256',
     code_challenge: challenge,
     state: genRandomString(16),
-  };
-  // Force dialog when switching accounts or when re-granting scopes
-  if(forceDialog) params.show_dialog = 'true';
-  window.location.href = 'https://accounts.spotify.com/authorize?' + new URLSearchParams(params).toString();
+    show_dialog: 'true', // SSO: ALWAYS show account picker — each user picks their own
+  }).toString();
 }
 
+/* ─── SSO: Handle redirect back from Spotify ─── */
 async function handleSpotifyCallback(){
   const code = new URLSearchParams(window.location.search).get('code');
   if(!code) return false;
   history.replaceState(null,'',location.pathname);
-  // Read verifier from all storage mechanisms (fallback chain)
-  const verifier = localStorage.getItem('sp_verifier') ||
+
+  // Read verifier from all storage mechanisms
+  const verifier =
+    localStorage.getItem('sp_verifier') ||
     (()=>{ try{ return sessionStorage.getItem('sp_verifier'); }catch(e){ return null; } })() ||
     (document.cookie.match(/(?:^|;\s*)sp_verifier=([^;]*)/) || [])[1] || null;
-  if(!verifier) return false;
+
+  if(!verifier){
+    showToast('שגיאת חיבור — נסה שוב', true);
+    setStep(2);
+    return false;
+  }
+
+  // Clean up verifier immediately
+  localStorage.removeItem('sp_verifier');
+  try{ sessionStorage.removeItem('sp_verifier'); }catch(e){}
+  document.cookie = 'sp_verifier=; path=/; max-age=0; SameSite=Lax';
+
   try{
+    // Exchange code for tokens
     const r = await fetch('https://accounts.spotify.com/api/token', {
-      method:'POST',
-      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      method: 'POST',
+      headers: {'Content-Type':'application/x-www-form-urlencoded'},
       body: new URLSearchParams({
-        grant_type:'authorization_code', code,
+        grant_type: 'authorization_code', code,
         redirect_uri: SPOTIFY_REDIRECT,
         client_id: SPOTIFY_CLIENT_ID,
         code_verifier: verifier,
       })
     });
-    const j = await r.json();
-    if(j.error) throw new Error(j.error_description||j.error);
-    localStorage.setItem('sp_access', j.access_token);
-    localStorage.setItem('sp_refresh', j.refresh_token);
-    localStorage.setItem('sp_expiry', String(Date.now()+j.expires_in*1000));
-    state.spotifyToken = j.access_token;
+    const tokens = await r.json();
+    if(tokens.error) throw new Error(tokens.error_description || tokens.error);
 
-    // Load real user data — WAIT for it before showing badge or navigating
+    // Store tokens
+    localStorage.setItem('sp_access', tokens.access_token);
+    localStorage.setItem('sp_refresh', tokens.refresh_token);
+    localStorage.setItem('sp_expiry', String(Date.now() + tokens.expires_in * 1000));
+    state.spotifyToken = tokens.access_token;
+
+    // Load user profile — wait for it
     await loadSpotifyUser();
-    renderSpotifyBadge();
 
     const name = state.spotifyUser?.display_name || state.spotifyUser?.id || '';
     showToast(name ? `✓ מחובר כ: ${name}` : '✓ מחובר ל-Spotify');
     setStep(3);
     return true;
-  } catch(e){
-    showToast('שגיאת Spotify: '+e.message, true);
+  } catch(err){
+    showToast('שגיאת Spotify: ' + (err.message||'נסה שוב'), true);
+    setStep(2);
     return false;
   }
 }
 
+/* ─── Refresh token if needed ─── */
 async function refreshSpotifyTokenIfNeeded(){
   const exp = Number(localStorage.getItem('sp_expiry')||0);
-  if(exp > Date.now()+30000){
+  if(exp > Date.now() + 30000){
     state.spotifyToken = localStorage.getItem('sp_access');
     return state.spotifyToken;
   }
@@ -360,23 +402,19 @@ async function refreshSpotifyTokenIfNeeded(){
     const r = await fetch('https://accounts.spotify.com/api/token', {
       method:'POST',
       headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({
-        grant_type:'refresh_token', refresh_token:rt,
-        client_id: SPOTIFY_CLIENT_ID,
-      })
+      body: new URLSearchParams({ grant_type:'refresh_token', refresh_token:rt, client_id:SPOTIFY_CLIENT_ID })
     });
     const j = await r.json();
     if(j.error) throw new Error(j.error);
     localStorage.setItem('sp_access', j.access_token);
     if(j.refresh_token) localStorage.setItem('sp_refresh', j.refresh_token);
-    localStorage.setItem('sp_expiry', String(Date.now()+j.expires_in*1000));
+    localStorage.setItem('sp_expiry', String(Date.now() + j.expires_in * 1000));
     state.spotifyToken = j.access_token;
     return j.access_token;
-  } catch(e){
-    return null;
-  }
+  } catch(e){ return null; }
 }
 
+/* ─── Load user profile from Spotify ─── */
 async function loadSpotifyUser(){
   if(!state.spotifyToken) return;
   try{
@@ -385,83 +423,23 @@ async function loadSpotifyUser(){
     });
     if(r.ok){
       state.spotifyUser = await r.json();
-      _cacheUser(state.spotifyUser);
-      renderSpotifyBadge();
-      if(state.step === 2) updateScreen2UI();
+      try{ localStorage.setItem('sp_user', JSON.stringify(state.spotifyUser)); }catch(e){}
+      spotifyShowUser(state.spotifyUser);
     }
   } catch(e){}
 }
 
-function renderSpotifyBadge(){
-  const user  = state.spotifyUser;
-  const badge = $('spotifyBadge');
-  const strip = $('spotifyStrip');
-  if(!badge) return;
-  if(!user){
-    badge.style.display = 'none';
-    if(strip) strip.style.display = 'none';
-    const s3l = $('s3AccountLine');
-    if(s3l) s3l.style.display = 'none';
-    return;
-  }
-
-  const name = user.display_name || user.id || 'Spotify User';
-  const img  = user.images && user.images[0] ? user.images[0].url : '';
-
-  // Small badge in toolbar
-  $('spotifyBadgeName').textContent = name;
-  const imgEl = $('spotifyBadgeImg');
-  if(img){ imgEl.src = img; imgEl.style.display = 'block'; }
-  else { imgEl.style.display = 'none'; }
-
-  // Prominent strip below brand bar
-  if(strip){
-    $('spotifyStripName').textContent = name;
-    const stripImg = $('spotifyStripImg');
-    if(img){ stripImg.src = img; stripImg.style.display = 'block'; }
-    else { stripImg.style.display = 'none'; }
-    strip.style.display = 'flex';
-  }
-
-  badge.style.display = 'block';
-
-  // Update screen 3 account indicator
-  const s3line = $('s3AccountLine');
-  const s3name = $('s3AccountName');
-  const s3img  = $('s3AccountImg');
-  if(s3line && s3name){
-    s3name.textContent = name;
-    if(s3img){ if(img){s3img.src=img;s3img.style.display='block';}else{s3img.style.display='none';} }
-    s3line.style.display = 'flex';
-  }
-
-  if(state.step === 2) updateScreen2UI();
-}
-
-function clearSpotifyBadge(){
-  const badge = $('spotifyBadge');
-  if(badge) badge.style.display = 'none';
-  const strip = $('spotifyStrip');
-  if(strip) strip.style.display = 'none';
-  closeAccountMenu();
-}
-
-/* ─── Account dropdown menu ─── */
+/* ─── Account menu ─── */
 function toggleAccountMenu(e){
   e.stopPropagation();
   const menu = $('accountMenu');
   if(!menu) return;
-  const isOpen = menu.style.display !== 'none';
-  menu.style.display = isOpen ? 'none' : 'block';
+  menu.style.display = menu.style.display !== 'none' ? 'none' : 'block';
 }
-
 function closeAccountMenu(){
-  const menu = $('accountMenu');
-  if(menu) menu.style.display = 'none';
+  const m = $('accountMenu'); if(m) m.style.display='none';
 }
-
-// Close menu when clicking anywhere else
-document.addEventListener('click', ()=>closeAccountMenu());
+document.addEventListener('click', closeAccountMenu);
 
 /* ═══════════════════════════════════════════════════════════════
    ROBIN BRAIN — Layered Context (L1-L4)
@@ -1987,23 +1965,23 @@ async function regenerate(){
     return;
   }
 
-  // 2. Instant display from cache — SYNC, no waiting
-  const cached = _getCachedUser();
-  if(cached && localStorage.getItem('sp_access')){
-    state.spotifyUser = cached;
-    renderSpotifyBadge();  // strip + badge show immediately
+  // 2. Restore cached session — show immediately if valid cache exists
+  const cachedUser = (()=>{ try{ return JSON.parse(localStorage.getItem('sp_user')||'null'); }catch(e){ return null; } })();
+  const hasToken   = !!localStorage.getItem('sp_access');
+
+  if(cachedUser && hasToken){
+    state.spotifyUser = cachedUser;
+    spotifyShowUser(cachedUser); // show immediately from cache
   }
 
-  // 3. Verify token in background — updates UI if needed, never blocks
-  if(localStorage.getItem('sp_access')){
+  // 3. Verify + refresh token in background
+  if(hasToken){
     refreshSpotifyTokenIfNeeded()
       .then(tok=>{
         if(!tok){
-          // Token invalid — clear everything
-          _clearAll(); clearSpotifyBadge(); updateScreen2UI();
+          spotifyClearAll(); spotifyShowUser(null); updateScreen2UI();
         } else {
-          // Token valid — refresh user data silently
-          return loadSpotifyUser();
+          loadSpotifyUser(); // refresh user data silently
         }
       })
       .catch(()=>{});

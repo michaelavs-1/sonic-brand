@@ -82,7 +82,11 @@ async function fetchUserPlaylists(){
     const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0', {
       headers:{'Authorization':'Bearer '+tok}
     });
-    // Never block on errors — just return empty and let user continue
+    if(r.status === 403){
+      // Missing playlist-read-private scope — token was issued before we added it
+      // Signal that re-auth is needed (without clearing tokens)
+      return 'needs-reauth';
+    }
     if(!r.ok){
       console.warn('[playlists] HTTP', r.status);
       return [];
@@ -192,21 +196,29 @@ function setStep(n){
   window.scrollTo({top:0,behavior:'smooth'});
   if(n === 5) renderEnergyScreen();
   if(n === 2) updateScreen2UI();
-  // Load user playlists when entering screen 3 (after Spotify auth)
+  // Load user playlists when entering screen 3
   if(n === 3){
-    if(state.spotifyToken && !state.userPlaylists.length){
-      const grid = $('playlistPickerGrid');
-      if(grid) grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
-      fetchUserPlaylists().then(playlists=>{
-        state.userPlaylists = playlists;
-        renderPlaylistPicker(playlists);
-      });
-    } else if(state.userPlaylists.length){
-      renderPlaylistPicker(state.userPlaylists);
-    } else if(!state.spotifyToken){
-      // Not connected — hide picker section or show connect hint
+    // Use localStorage as fallback if state.spotifyToken not yet set by background refresh
+    const hasAccess = state.spotifyToken || localStorage.getItem('sp_access');
+    if(!hasAccess){
       const grid = $('playlistPickerGrid');
       if(grid) grid.innerHTML = '<div class="pl-loading">יש להתחבר לSpotify כדי לבחור פלייליסטים</div>';
+    } else if(state.userPlaylists.length){
+      renderPlaylistPicker(state.userPlaylists);
+    } else {
+      const grid = $('playlistPickerGrid');
+      if(grid) grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
+      fetchUserPlaylists().then(result=>{
+        if(result === 'needs-reauth'){
+          if(grid) grid.innerHTML = `<div class="pl-loading" style="color:var(--accent-3)">
+            נדרש חיבור מחדש כדי לראות פלייליסטים —
+            <button onclick="switchSpotifyAccount()" style="background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">לחץ כאן ←</button>
+          </div>`;
+        } else {
+          state.userPlaylists = result;
+          renderPlaylistPicker(result);
+        }
+      });
     }
   }
 }
@@ -266,7 +278,7 @@ function switchSpotifyAccount(){
   _clearAll();
   clearSpotifyBadge();
   updateScreen2UI();
-  spotifyLogin();
+  spotifyLogin(true); // forceDialog=true → shows account picker + new scopes
 }
 
 function disconnectSpotify(){
@@ -279,14 +291,13 @@ function disconnectSpotify(){
 }
 
 /* ─────────── Screen 2: Spotify auth ─────────── */
-async function spotifyLogin(){
-  // PKCE flow
+async function spotifyLogin(forceDialog = false){
   localStorage.setItem('spotify_id', SPOTIFY_CLIENT_ID);
   const verifier = genRandomString(64);
   localStorage.setItem('sp_verifier', verifier);
   localStorage.setItem('sb_v2_state', JSON.stringify({step: state.step}));
   const challenge = base64url(await sha256(verifier));
-  const url = 'https://accounts.spotify.com/authorize?' + new URLSearchParams({
+  const params = {
     client_id: SPOTIFY_CLIENT_ID,
     response_type: 'code',
     redirect_uri: SPOTIFY_REDIRECT,
@@ -294,8 +305,10 @@ async function spotifyLogin(){
     code_challenge_method: 'S256',
     code_challenge: challenge,
     state: genRandomString(16),
-  }).toString();
-  window.location.href = url;
+  };
+  // Force dialog when switching accounts or when re-granting scopes
+  if(forceDialog) params.show_dialog = 'true';
+  window.location.href = 'https://accounts.spotify.com/authorize?' + new URLSearchParams(params).toString();
 }
 
 async function handleSpotifyCallback(){

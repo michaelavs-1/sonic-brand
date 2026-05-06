@@ -334,18 +334,12 @@ async function handleSpotifyCallback(){
     localStorage.setItem('sp_expiry', String(Date.now()+j.expires_in*1000));
     state.spotifyToken = j.access_token;
 
-    // Show "connected" badge immediately — don't wait for user data
-    // This ensures the strip/badge always shows after auth
-    if(!state.spotifyUser) state.spotifyUser = { display_name: 'Spotify', id: 'connected', images: [] };
+    // Load real user data — WAIT for it before showing badge or navigating
+    await loadSpotifyUser();
     renderSpotifyBadge();
 
-    // Load real user data in background — will update badge when ready
-    loadSpotifyUser().then(()=>renderSpotifyBadge());
-
-    const displayName = state.spotifyUser?.display_name !== 'Spotify'
-      ? state.spotifyUser.display_name
-      : (state.spotifyUser?.id || 'Spotify');
-    showToast(`✓ מחובר ל-Spotify`);
+    const name = state.spotifyUser?.display_name || state.spotifyUser?.id || '';
+    showToast(name ? `✓ מחובר כ: ${name}` : '✓ מחובר ל-Spotify');
     setStep(3);
     return true;
   } catch(e){
@@ -385,31 +379,17 @@ async function refreshSpotifyTokenIfNeeded(){
 
 async function loadSpotifyUser(){
   if(!state.spotifyToken) return;
-  // Retry up to 3 times — handles transient network issues after cross-context auth
-  for(let attempt = 0; attempt < 3; attempt++){
-    try{
-      const r = await fetch('https://api.spotify.com/v1/me', {
-        headers:{'Authorization':'Bearer '+state.spotifyToken}
-      });
-      if(r.ok){
-        const user = await r.json();
-        // Only update if we got a real name (not just the fallback)
-        if(user && (user.display_name || user.id)){
-          state.spotifyUser = user;
-          _cacheUser(state.spotifyUser);
-          renderSpotifyBadge();
-          if(state.step === 2) updateScreen2UI();
-          return; // success
-        }
-      }
-      console.warn('[loadSpotifyUser] HTTP', r.status, 'attempt', attempt+1);
-    } catch(e){
-      console.warn('[loadSpotifyUser] error attempt', attempt+1, e.message);
+  try{
+    const r = await fetch('https://api.spotify.com/v1/me', {
+      headers:{'Authorization':'Bearer '+state.spotifyToken}
+    });
+    if(r.ok){
+      state.spotifyUser = await r.json();
+      _cacheUser(state.spotifyUser);
+      renderSpotifyBadge();
+      if(state.step === 2) updateScreen2UI();
     }
-    // Wait before retry (1s, then 2s)
-    if(attempt < 2) await new Promise(res=>setTimeout(res, 1000*(attempt+1)));
-  }
-  console.warn('[loadSpotifyUser] all attempts failed');
+  } catch(e){}
 }
 
 function renderSpotifyBadge(){

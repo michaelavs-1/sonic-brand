@@ -396,6 +396,8 @@ function renderSpotifyBadge(){
   if(!user){
     badge.style.display = 'none';
     if(strip) strip.style.display = 'none';
+    const s3l = $('s3AccountLine');
+    if(s3l) s3l.style.display = 'none';
     return;
   }
 

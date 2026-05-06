@@ -237,6 +237,8 @@ function _getCachedUser(){
 function _clearAll(){
   ['sp_access','sp_refresh','sp_expiry','sp_verifier','sb_v2_state','spotify_id','sp_user']
     .forEach(k=>localStorage.removeItem(k));
+  try{ ['sp_verifier'].forEach(k=>sessionStorage.removeItem(k)); }catch(e){}
+  document.cookie = 'sp_verifier=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
   state.spotifyToken = null;
   state.spotifyUser  = null;
   state.userPlaylists = [];
@@ -283,7 +285,12 @@ function disconnectSpotify(){
 async function spotifyLogin(forceDialog = false){
   localStorage.setItem('spotify_id', SPOTIFY_CLIENT_ID);
   const verifier = genRandomString(64);
+  // Store verifier in 3 places for maximum cross-browser/context reliability
   localStorage.setItem('sp_verifier', verifier);
+  try{ sessionStorage.setItem('sp_verifier', verifier); }catch(e){}
+  // Cookie: works even when browser context changes (e.g. WhatsApp → Safari)
+  const exp = new Date(Date.now() + 10*60*1000).toUTCString();
+  document.cookie = `sp_verifier=${verifier}; path=/; expires=${exp}; SameSite=Lax`;
   localStorage.setItem('sb_v2_state', JSON.stringify({step: state.step}));
   const challenge = base64url(await sha256(verifier));
   const params = {
@@ -304,7 +311,10 @@ async function handleSpotifyCallback(){
   const code = new URLSearchParams(window.location.search).get('code');
   if(!code) return false;
   history.replaceState(null,'',location.pathname);
-  const verifier = localStorage.getItem('sp_verifier');
+  // Read verifier from all storage mechanisms (fallback chain)
+  const verifier = localStorage.getItem('sp_verifier') ||
+    (()=>{ try{ return sessionStorage.getItem('sp_verifier'); }catch(e){ return null; } })() ||
+    (document.cookie.match(/(?:^|;\s*)sp_verifier=([^;]*)/) || [])[1] || null;
   if(!verifier) return false;
   try{
     const r = await fetch('https://accounts.spotify.com/api/token', {

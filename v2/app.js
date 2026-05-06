@@ -220,48 +220,62 @@ function toggleInfoTip(e){
 }
 document.addEventListener('click', ()=>$('infoTip').classList.remove('show'));
 
-/* ─────────── Screen 2: show correct state (SYNC ONLY — no async here) ─────────── */
-function updateScreen2UI(){
-  const hasSession = $('s2HasSession');
-  const noSession  = $('s2NoSession');
-  if(!hasSession || !noSession) return;
+/* ═══════════════════════════════════════════
+   SPOTIFY AUTH — CLEAN BUILD
+   Rule: UI is always sync. Async only for
+   token refresh + API calls in background.
+═══════════════════════════════════════════ */
 
-  if(state.spotifyUser){
-    // ✅ User already loaded by boot — show their card
-    const name = state.spotifyUser.display_name || state.spotifyUser.id || 'Spotify User';
-    const img  = state.spotifyUser.images?.[0]?.url || '';
-    const s2Name = $('s2Name');
-    const s2Av   = $('s2Avatar');
-    if(s2Name) s2Name.textContent = name;
-    if(s2Av){
-      if(img){ s2Av.src = img; s2Av.style.display = 'block'; }
-      else   { s2Av.style.display = 'none'; }
-    }
-    hasSession.style.display = 'block';
-    noSession.style.display  = 'none';
+// Cache user object in localStorage for instant display
+function _cacheUser(user){
+  try{ localStorage.setItem('sp_user', JSON.stringify(user)); }catch(e){}
+}
+function _getCachedUser(){
+  try{ return JSON.parse(localStorage.getItem('sp_user')||'null'); }catch(e){ return null; }
+}
+function _clearAll(){
+  ['sp_access','sp_refresh','sp_expiry','sp_verifier','sb_v2_state','spotify_id','sp_user']
+    .forEach(k=>localStorage.removeItem(k));
+  state.spotifyToken = null;
+  state.spotifyUser  = null;
+  state.userPlaylists = [];
+  state.selectedUserPlaylists = [];
+}
+
+// Show screen 2 in correct state — PURELY SYNC, reads from state only
+function updateScreen2UI(){
+  const has = $('s2HasSession');
+  const no  = $('s2NoSession');
+  if(!has||!no) return;
+  const user = state.spotifyUser;
+  if(user){
+    const name = user.display_name || user.id || 'Spotify';
+    const img  = user.images?.[0]?.url || '';
+    const nameEl = $('s2Name'), avEl = $('s2Avatar');
+    if(nameEl) nameEl.textContent = name;
+    if(avEl){ if(img){avEl.src=img;avEl.style.display='block';}else{avEl.style.display='none';} }
+    has.style.display='block'; no.style.display='none';
   } else {
-    // ❌ No user loaded — always show connect button (boot handles loading)
-    hasSession.style.display = 'none';
-    noSession.style.display  = 'block';
+    has.style.display='none'; no.style.display='block';
   }
 }
 
-function continueWithSession(){
-  setStep(3);
-}
+function continueWithSession(){ setStep(3); }
 
 function switchSpotifyAccount(){
-  // Clear ALL cached tokens → fresh login
-  ['sp_access','sp_refresh','sp_expiry','sp_verifier','sb_v2_state','spotify_id']
-    .forEach(k=>localStorage.removeItem(k));
-  state.spotifyToken  = null;
-  state.spotifyUser   = null;
-  state.userPlaylists = [];
-  state.selectedUserPlaylists = [];
+  _clearAll();
   clearSpotifyBadge();
   updateScreen2UI();
-  // Start fresh auth
   spotifyLogin();
+}
+
+function disconnectSpotify(){
+  _clearAll();
+  clearSpotifyBadge();
+  updateScreen2UI();
+  closeSettingsModal();
+  setStep(2);
+  showToast('Spotify נותק — התחבר עם החשבון הרצוי');
 }
 
 /* ─────────── Screen 2: Spotify auth ─────────── */
@@ -354,8 +368,8 @@ async function loadSpotifyUser(){
     });
     if(r.ok){
       state.spotifyUser = await r.json();
+      _cacheUser(state.spotifyUser);  // cache for instant display on next load
       renderSpotifyBadge();
-      // Update screen 2 if it's currently shown
       if(state.step === 2) updateScreen2UI();
     }
   } catch(e){}
@@ -1584,22 +1598,7 @@ async function openSettingsModal(){
   setTimeout(()=> inp.focus(), 120);
 }
 
-/* ─── Disconnect Spotify — clears all cached tokens ─── */
-function disconnectSpotify(){
-  // Clear all Spotify localStorage keys
-  ['sp_access','sp_refresh','sp_expiry','sp_verifier','sb_v2_state','spotify_id']
-    .forEach(k=>localStorage.removeItem(k));
-  // Reset state
-  state.spotifyToken  = null;
-  state.spotifyUser   = null;
-  state.userPlaylists = [];
-  state.selectedUserPlaylists = [];
-  clearSpotifyBadge();
-  closeSettingsModal();
-  // Go back to auth screen
-  setStep(2);
-  showToast('Spotify נותק — התחבר עם החשבון הרצוי');
-}
+// disconnectSpotify defined earlier in auth section
 
 function closeSettingsModal(){
   $('settingsOverlay').classList.remove('open');
@@ -1953,22 +1952,32 @@ async function regenerate(){
 (async function boot(){
   selectModel(state.selectedModel);
 
-  // 1. Handle Spotify OAuth callback (highest priority)
+  // 1. Handle OAuth callback — highest priority
   if(new URLSearchParams(location.search).get('code')){
     await handleSpotifyCallback();
     return;
   }
 
-  // 2. Restore session silently — 4 second max, never blocks the app
-  try{
-    const timer = new Promise(r=>setTimeout(r,4000)); // 4s timeout
-    await Promise.race([
-      (async()=>{
-        const tok = await refreshSpotifyTokenIfNeeded();
-        if(tok) await loadSpotifyUser();
-      })(),
-      timer
-    ]);
-  } catch(e){}
-  // Always stays on screen 1 — strip shows who is connected
+  // 2. Instant display from cache — SYNC, no waiting
+  const cached = _getCachedUser();
+  if(cached && localStorage.getItem('sp_access')){
+    state.spotifyUser = cached;
+    renderSpotifyBadge();  // strip + badge show immediately
+  }
+
+  // 3. Verify token in background — updates UI if needed, never blocks
+  if(localStorage.getItem('sp_access')){
+    refreshSpotifyTokenIfNeeded()
+      .then(tok=>{
+        if(!tok){
+          // Token invalid — clear everything
+          _clearAll(); clearSpotifyBadge(); updateScreen2UI();
+        } else {
+          // Token valid — refresh user data silently
+          return loadSpotifyUser();
+        }
+      })
+      .catch(()=>{});
+  }
+  // Always stays on screen 1
 })();

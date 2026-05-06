@@ -204,16 +204,9 @@ function setStep(n){
       const grid = $('playlistPickerGrid');
       if(grid) grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
       fetchUserPlaylists().then(result=>{
-        if(result === 'needs-reauth'){
-          // Auto re-auth to get playlist scopes — seamless, no manual action needed
-          if(grid) grid.innerHTML = '<div class="pl-loading">מעדכן הרשאות Spotify…</div>';
-          // Clear old token and re-authenticate silently with new scopes
-          _clearAll(); clearSpotifyBadge();
-          spotifyLogin(true); // forceDialog to grant new playlist-read scopes
-        } else {
-          state.userPlaylists = result;
-          renderPlaylistPicker(result);
-        }
+        // Never re-auth from here — would cause infinite loop
+        state.userPlaylists = Array.isArray(result) ? result : [];
+        renderPlaylistPicker(state.userPlaylists);
       });
     }
   }

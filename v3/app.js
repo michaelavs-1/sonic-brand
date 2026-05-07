@@ -353,11 +353,21 @@ async function handleSpotifyCallback(){
     localStorage.setItem('sp3_expiry', String(Date.now()+tokens.expires_in*1000));
     state.spotifyToken = tokens.access_token;
 
-    // Validate: load user profile
-    await loadSpotifyUser();
+    // Show "connected" badge IMMEDIATELY — before any API call
+    // This guarantees the badge always shows after successful auth
+    if(!state.spotifyUser){
+      state.spotifyUser = { display_name: null, id: null, images: [], _pending: true };
+      spotifyShowUser({ display_name: '✓ Spotify', id: null, images: [] });
+    }
 
-    const name = state.spotifyUser?.display_name || state.spotifyUser?.id || '';
-    showToast(name ? `✓ מחובר כ: ${name}` : '✓ מחובר ל-Spotify');
+    // Load real profile in background — updates badge with real name
+    loadSpotifyUser().then(()=>{
+      if(state.spotifyUser && !state.spotifyUser._pending){
+        spotifyShowUser(state.spotifyUser);
+      }
+    });
+
+    showToast('✓ מחובר ל-Spotify');
     setStep(3);
     return true;
   } catch(err){
@@ -387,22 +397,21 @@ async function refreshSpotifyTokenIfNeeded(){
   }catch(e){ return null; }
 }
 
-/* ─── Load user profile — returns true if scopes OK, false if 403 ─── */
+/* ─── Load user profile from Spotify ─── */
 async function loadSpotifyUser(){
-  if(!state.spotifyToken) return true; // no token = not a scope issue
+  if(!state.spotifyToken) return;
   try{
     const r=await fetch('https://api.spotify.com/v1/me',{
       headers:{'Authorization':'Bearer '+state.spotifyToken}
     });
     if(r.ok){
-      state.spotifyUser=await r.json();
-      try{localStorage.setItem('sp3_user',JSON.stringify(state.spotifyUser));}catch(e){}
-      spotifyShowUser(state.spotifyUser);
-      return true; // scopes OK
+      const user = await r.json();
+      state.spotifyUser = user; // clear _pending flag
+      try{localStorage.setItem('sp3_user',JSON.stringify(user));}catch(e){}
+      spotifyShowUser(user);
     }
-    if(r.status===401||r.status===403) return false; // scope issue
-    return true; // other errors are not scope issues
-  }catch(e){ return true; } // network errors: don't loop
+    // On any error: badge stays with "✓ Spotify" fallback already shown
+  }catch(e){}
 }
 
 /* ─── Account menu ─── */

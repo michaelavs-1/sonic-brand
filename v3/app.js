@@ -1645,8 +1645,7 @@ async function regenerate(){
   if(new URLSearchParams(location.search).get('code')){
     await handleSpotifyCallback();
     // Restore playlist screen after callback
-    if(state.generatedTracks.length) setStep(6);
-    return;
+    return; // handleSpotifyCallback handles the screen
   }
   spotifyClearLegacy();
 })();
@@ -1695,6 +1694,15 @@ async function spotifyLogin(){
     state: st,
     show_dialog: 'true',
   });
+  // Save essential state before page redirect (survives reload)
+  try{
+    sessionStorage.setItem('sp3_saved_tracks', JSON.stringify(state.generatedTracks || []));
+    sessionStorage.setItem('sp3_saved_biz', JSON.stringify({
+      bizType: state.bizType, bizDesc: state.bizDesc,
+      mc: state.mc, energyLevel: state.energyLevel,
+      selectedMoods: [...(state.selectedMoods||[])],
+    }));
+  }catch(e){}
   location.href = 'https://accounts.spotify.com/authorize?' + params;
 }
 
@@ -1731,7 +1739,17 @@ async function handleSpotifyCallback(){
     const required = ['playlist-modify-public','playlist-modify-private','user-read-private'];
     const missing = required.filter(s=>!granted.includes(s));
     if(missing.length){
+      // Restore tracks even on scope failure so user can see the playlist
+      try{
+        const savedTracks = JSON.parse(sessionStorage.getItem('sp3_saved_tracks')||'[]');
+        const savedBiz = JSON.parse(sessionStorage.getItem('sp3_saved_biz')||'{}');
+        if(savedTracks.length) state.generatedTracks = savedTracks;
+        if(savedBiz.bizType) state.bizType = savedBiz.bizType;
+        sessionStorage.removeItem('sp3_saved_tracks');
+        sessionStorage.removeItem('sp3_saved_biz');
+      }catch(e){}
       spotifyClearSave();
+      if(state.generatedTracks.length) setStep(6);
       _showScopeFix();
       return;
     }
@@ -1743,9 +1761,25 @@ async function handleSpotifyCallback(){
     localStorage.setItem('sp3_expiry', String(expiry));
     if(tokens.refresh_token) localStorage.setItem('sp3_refresh', tokens.refresh_token);
 
-    // If user was trying to save — do it now
-    const pending = sessionStorage.getItem('sp3_pending_save');
-    if(pending){ sessionStorage.removeItem('sp3_pending_save'); await saveToSpotify(); }
+    // Restore state that was lost during page redirect
+    try{
+      const savedTracks = JSON.parse(sessionStorage.getItem('sp3_saved_tracks')||'[]');
+      const savedBiz = JSON.parse(sessionStorage.getItem('sp3_saved_biz')||'{}');
+      if(savedTracks.length) state.generatedTracks = savedTracks;
+      if(savedBiz.bizType) state.bizType = savedBiz.bizType;
+      if(savedBiz.bizDesc) state.bizDesc = savedBiz.bizDesc;
+      if(savedBiz.mc) state.mc = savedBiz.mc;
+      if(savedBiz.energyLevel) state.energyLevel = savedBiz.energyLevel;
+      if(savedBiz.selectedMoods) state.selectedMoods = new Set(savedBiz.selectedMoods);
+      sessionStorage.removeItem('sp3_saved_tracks');
+      sessionStorage.removeItem('sp3_saved_biz');
+    }catch(e){}
+
+    // Go to playlist screen and auto-save
+    if(state.generatedTracks.length){
+      setStep(6);
+      await saveToSpotify();
+    }
 
   } catch(e){
     showToast('שגיאת חיבור: ' + e.message, true);

@@ -1543,7 +1543,16 @@ async function voteTrack(key, vote, btn){
 async function saveToSpotify(){
   const btn = $('saveSpotifyBtn');
   const trackUris = state.generatedTracks.filter(t=>t.id).map(t=>'spotify:track:'+t.id);
-  if(!trackUris.length){ showToast('אין שירים מאומתים להוספה', true); return; }
+  if(!trackUris.length){ showToast('אין שירים להוספה', true); return; }
+
+  // Ensure we have a valid token — trigger OAuth if not
+  let tok = await refreshSpotifyToken();
+  if(!tok){
+    // Save intent, then redirect to Spotify auth
+    sessionStorage.setItem('sp3_pending_save', '1');
+    await spotifyLogin();
+    return; // page will redirect
+  }
 
   btn.disabled = true;
   btn.textContent = 'יוצר פלייליסט…';
@@ -1551,14 +1560,22 @@ async function saveToSpotify(){
   try{
     const playlistName = (state.bizType || 'Robin Mix') + ' · Robin';
 
-    // Create playlist via backend service account (no user OAuth needed)
-    const cr = await fetch('/api/spotify', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        action:'create_playlist',
-        name: playlistName,
-        description: 'Created by Robin · SonicBrand'
-      })
+    // Get user ID
+    const meRes = await fetch('https://api.spotify.com/v1/me',
+      {headers:{'Authorization':'Bearer '+tok}});
+    if(meRes.status === 401 || meRes.status === 403){
+      // Token invalid or wrong scopes
+      spotifyClearSave();
+      _showScopeFix();
+      return;
+    }
+    const me = await meRes.json();
+    if(!me.id) throw new Error('לא ניתן לזהות משתמש Spotify');
+
+    // Create playlist under user's own account
+    const cr = await fetch(`https://api.spotify.com/v1/users/${me.id}/playlists`, {
+      method:'POST', headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+      body: JSON.stringify({name:playlistName, public:true, description:'Created by Robin · SonicBrand'})
     });
     if(!cr.ok) throw new Error('יצירה נכשלה: ' + cr.status);
     const pl = await cr.json();
@@ -1566,15 +1583,14 @@ async function saveToSpotify(){
 
     // Add tracks in chunks of 100
     for(let i=0; i<trackUris.length; i+=100){
-      await fetch('/api/spotify', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action:'add_tracks', playlist_id:pl.id, uris:trackUris.slice(i,i+100)})
+      await fetch(`https://api.spotify.com/v1/playlists/${pl.id}/tracks`, {
+        method:'POST', headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+        body: JSON.stringify({uris:trackUris.slice(i,i+100)})
       });
     }
 
-    showToast('פלייליסט נוצר ✓');
-    const url = pl.external_urls?.spotify;
-    if(url) window.open(url, '_blank');
+    showToast('פלייליסט נשמר ב-Spotify ✓');
+    if(pl.external_urls?.spotify) window.open(pl.external_urls.spotify, '_blank');
 
   } catch(e){
     showToast('שגיאה: ' + e.message, true);
@@ -1625,7 +1641,160 @@ async function regenerate(){
 
 (async function boot(){
   selectModel(state.selectedModel);
-  // Clear any legacy OAuth tokens from previous v3 version
+  // Handle Spotify OAuth callback (user clicked "Save to Spotify" → auth → back)
+  if(new URLSearchParams(location.search).get('code')){
+    await handleSpotifyCallback();
+    // Restore playlist screen after callback
+    if(state.generatedTracks.length) setStep(6);
+    return;
+  }
   spotifyClearLegacy();
 })();
 
+
+/* ═══════════════════════════════════════════════════════
+   SPOTIFY OAUTH — Optional, triggered only by "Save to Spotify"
+   No required auth on app load. iOS-safe with scope fix screen.
+   ═══════════════════════════════════════════════════════ */
+
+async function _sha256(s){
+  const buf = new TextEncoder().encode(s);
+  const h = await crypto.subtle.digest('SHA-256', buf);
+  return new Uint8Array(h);
+}
+function _b64url(arr){
+  return btoa(String.fromCharCode.apply(null,arr))
+    .replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+}
+
+function spotifyClearSave(){
+  ['sp3_access','sp3_refresh','sp3_expiry','sp3_verifier','sp3_user'].forEach(k=>{
+    try{ localStorage.removeItem(k); sessionStorage.removeItem(k); }catch(e){}
+  });
+  document.cookie='sp3_scope_retry=; path=/; max-age=0; SameSite=Lax';
+  state.spotifyToken = null;
+  state.spotifyUser = null;
+}
+
+async function spotifyLogin(){
+  // Called only when user clicks "Save to Spotify" without a token
+  const verifier = _b64url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = _b64url(await _sha256(verifier));
+  const st = _b64url(crypto.getRandomValues(new Uint8Array(12)));
+  localStorage.setItem('sp3_verifier', verifier);
+  sessionStorage.setItem('sp3_verifier', verifier);
+  document.cookie = `sp_verifier=${verifier}; path=/; max-age=300; SameSite=Lax`;
+  localStorage.setItem('sb_v3_state', st);
+  const params = new URLSearchParams({
+    client_id: SPOTIFY_CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: SPOTIFY_REDIRECT,
+    scope: SPOTIFY_SCOPES,
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+    state: st,
+    show_dialog: 'true',
+  });
+  location.href = 'https://accounts.spotify.com/authorize?' + params;
+}
+
+async function handleSpotifyCallback(){
+  const params = new URLSearchParams(location.search);
+  const code = params.get('code');
+  if(!code){ history.replaceState({},'',(location.pathname)); return; }
+
+  const verifier =
+    localStorage.getItem('sp3_verifier') ||
+    sessionStorage.getItem('sp3_verifier') ||
+    (document.cookie.match(/sp_verifier=([^;]+)/)||[])[1] || '';
+
+  history.replaceState({}, '', location.pathname);
+
+  if(!verifier){ showToast('שגיאת אימות — נסה שוב', true); return; }
+
+  try{
+    const r = await fetch('https://accounts.spotify.com/api/token', {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({
+        code, redirect_uri: SPOTIFY_REDIRECT,
+        grant_type:'authorization_code',
+        client_id: SPOTIFY_CLIENT_ID,
+        code_verifier: verifier,
+      })
+    });
+    const tokens = await r.json();
+    if(!tokens.access_token){ showToast('חיבור נכשל — נסה שוב', true); return; }
+
+    // Validate scopes
+    const granted = (tokens.scope || '').split(' ');
+    const required = ['playlist-modify-public','playlist-modify-private','user-read-private'];
+    const missing = required.filter(s=>!granted.includes(s));
+    if(missing.length){
+      spotifyClearSave();
+      _showScopeFix();
+      return;
+    }
+
+    // Store token
+    state.spotifyToken = tokens.access_token;
+    const expiry = Date.now() + (tokens.expires_in||3600)*1000 - 60000;
+    localStorage.setItem('sp3_access', tokens.access_token);
+    localStorage.setItem('sp3_expiry', String(expiry));
+    if(tokens.refresh_token) localStorage.setItem('sp3_refresh', tokens.refresh_token);
+
+    // If user was trying to save — do it now
+    const pending = sessionStorage.getItem('sp3_pending_save');
+    if(pending){ sessionStorage.removeItem('sp3_pending_save'); await saveToSpotify(); }
+
+  } catch(e){
+    showToast('שגיאת חיבור: ' + e.message, true);
+  }
+}
+
+async function refreshSpotifyToken(){
+  const exp = Number(localStorage.getItem('sp3_expiry')||0);
+  if(exp > Date.now()+30000){
+    state.spotifyToken = localStorage.getItem('sp3_access');
+    return state.spotifyToken;
+  }
+  const refresh = localStorage.getItem('sp3_refresh');
+  if(!refresh) return null;
+  try{
+    const r = await fetch('https://accounts.spotify.com/api/token',{
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({
+        grant_type:'refresh_token', refresh_token:refresh, client_id:SPOTIFY_CLIENT_ID
+      })
+    });
+    const j = await r.json();
+    if(!j.access_token) return null;
+    state.spotifyToken = j.access_token;
+    const expiry = Date.now()+(j.expires_in||3600)*1000-60000;
+    localStorage.setItem('sp3_access', j.access_token);
+    localStorage.setItem('sp3_expiry', String(expiry));
+    if(j.refresh_token) localStorage.setItem('sp3_refresh', j.refresh_token);
+    return state.spotifyToken;
+  } catch(e){ return null; }
+}
+
+function _showScopeFix(){
+  // Show on screen 6 (playlist screen) or wherever we are
+  const existing = $('scopeFixMsg');
+  if(existing) existing.remove();
+  const btn = $('saveSpotifyBtn');
+  if(!btn) return;
+  const div = document.createElement('div');
+  div.id = 'scopeFixMsg';
+  div.style.cssText='background:rgba(255,60,0,.08);border:1px solid rgba(255,60,0,.3);border-radius:12px;padding:16px;margin-bottom:14px;font-size:13px;line-height:1.8;text-align:right';
+  div.innerHTML = `
+    <strong style="display:block;margin-bottom:8px">⚠️ נדרשות הרשאות מעודכנות</strong>
+    פתח <strong>Spotify</strong> ← הגדרות ← פרטיות ואבטחה ← אפליקציות ← <strong>sonic-brand</strong> ← הסר גישה.<br>
+    לחלופין: <a href="https://www.spotify.com/account/apps" target="_blank" style="color:var(--accent)">spotify.com/account/apps</a><br>
+    <button onclick="spotifyClearSave();this.closest('#scopeFixMsg').remove();saveToSpotify()"
+      class="btn btn-primary" style="margin-top:12px;font-size:13px;padding:10px 18px">
+      ✅ הסרתי — התחבר מחדש
+    </button>`;
+  btn.parentNode.insertBefore(div, btn);
+}

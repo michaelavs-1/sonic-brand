@@ -353,25 +353,27 @@ async function handleSpotifyCallback(){
     localStorage.setItem('sp3_expiry', String(Date.now()+tokens.expires_in*1000));
     state.spotifyToken = tokens.access_token;
 
-    // Check granted scopes — Spotify native app on Android sometimes skips scopes
+    // Check granted scopes — iOS Spotify app sometimes auto-approves with old scopes
     const grantedScope = tokens.scope || '';
-    const needsUserRead = !grantedScope.includes('user-read-private');
+    const missingScopes = ['user-read-private','playlist-read-private']
+      .filter(s => !grantedScope.includes(s));
 
-    if(needsUserRead){
-      // Critical scope missing — re-auth ONCE (sessionStorage prevents infinite loop)
-      const alreadyRetried = sessionStorage.getItem('sp3_scope_retry');
+    if(missingScopes.length > 0){
+      // Scope missing — re-auth ONCE using cookie (survives iOS redirects, sessionStorage does NOT)
+      const alreadyRetried = document.cookie.includes('sp3_scope_retry=1');
       if(!alreadyRetried){
-        sessionStorage.setItem('sp3_scope_retry', '1');
+        // Set cookie for 90 seconds — enough time for auth round-trip
+        document.cookie = 'sp3_scope_retry=1; path=/; max-age=90; SameSite=Lax';
         spotifyClearAll();
-        showToast('מעדכן הרשאות חד-פעמי...', false);
-        await new Promise(res=>setTimeout(res,1000));
+        showToast('מעדכן הרשאות — נא לאשר שוב ב-Spotify', false);
+        await new Promise(res=>setTimeout(res,1200));
         spotifyLogin();
         return false;
       }
-      // Second time still missing — proceed anyway, show fallback
-    } else {
-      sessionStorage.removeItem('sp3_scope_retry'); // clear retry flag on success
+      // Cookie present = already retried — proceed without those scopes
     }
+    // Clear retry cookie on any successful scope grant
+    document.cookie = 'sp3_scope_retry=; path=/; max-age=0; SameSite=Lax';
 
     // Load user profile — wait for it
     await loadSpotifyUser();

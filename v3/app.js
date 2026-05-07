@@ -363,21 +363,12 @@ async function handleSpotifyCallback(){
     ].filter(s => !grantedScope.includes(s));
 
     if(missingScopes.length > 0){
-      // Scope missing — re-auth ONCE using cookie (survives iOS redirects, sessionStorage does NOT)
-      const alreadyRetried = document.cookie.includes('sp3_scope_retry=1');
-      if(!alreadyRetried){
-        // Set cookie for 90 seconds — enough time for auth round-trip
-        document.cookie = 'sp3_scope_retry=1; path=/; max-age=90; SameSite=Lax';
-        spotifyClearAll();
-        showToast('מעדכן הרשאות — נא לאשר שוב ב-Spotify', false);
-        await new Promise(res=>setTimeout(res,1200));
-        spotifyLogin();
-        return false;
-      }
-      // Cookie present = already retried — proceed without those scopes
+      // iOS Spotify native app bypasses show_dialog and returns old scopes.
+      // Auto-retry doesn't work — must show user explicit instructions to revoke access.
+      spotifyClearAll();
+      showScopeFixScreen();
+      return false;
     }
-    // Clear retry cookie on any successful scope grant
-    document.cookie = 'sp3_scope_retry=; path=/; max-age=0; SameSite=Lax';
 
     // Load user profile — wait for it
     await loadSpotifyUser();
@@ -433,6 +424,48 @@ async function loadSpotifyUser(){
     }
     // On any error: badge stays with "✓ Spotify" fallback already shown
   }catch(e){}
+}
+
+/* ─── Scope fix screen — shown when iOS bypasses show_dialog ─── */
+function showScopeFixScreen(){
+  // Show screen 2 with clear revoke instructions
+  const has = $('s2HasSession'), no = $('s2NoSession');
+  if(has) has.style.display = 'none';
+  if(no)  no.style.display  = 'none';
+
+  let fix = $('s2ScopeFix');
+  if(!fix){
+    fix = document.createElement('div');
+    fix.id = 's2ScopeFix';
+    const card = document.querySelector('[data-screen="2"] .screen-card');
+    if(card) card.insertBefore(fix, card.firstChild);
+  }
+  fix.innerHTML = `
+    <div style="text-align:center;padding:10px 0 20px">
+      <div style="font-size:36px;margin-bottom:14px">⚠️</div>
+      <h3 style="margin-bottom:8px;font-size:18px">צריך לחבר מחדש ל-Spotify</h3>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:22px;line-height:1.65">
+        אפליקציית Spotify שמרה הרשאות ישנות.<br>
+        יש להסיר אותן ולחבר מחדש — פעם אחת בלבד.
+      </p>
+      <div style="background:var(--bg-2);border-radius:12px;padding:16px 18px;text-align:right;margin-bottom:22px;border:1px solid var(--border-2)">
+        <p style="font-weight:800;margin-bottom:10px;font-size:14px">🔧 שלבים (נדרשת פעולה אחת):</p>
+        <p style="color:var(--muted);font-size:13px;line-height:2">
+          1️⃣ פתח <strong>Spotify</strong> באייפון<br>
+          2️⃣ הגדרות (⚙️) ← <strong>פרטיות ואבטחה</strong> ← <strong>אפליקציות</strong><br>
+          3️⃣ מצא <strong>sonic-brand</strong> ← <strong>הסר גישה</strong><br>
+          4️⃣ חזור לכאן ← לחץ "התחבר מחדש"
+        </p>
+        <p style="color:var(--muted);font-size:12px;margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          לחלופין: <a href="https://www.spotify.com/account/apps" target="_blank" style="color:var(--accent)">spotify.com/account/apps →</a>
+        </p>
+      </div>
+      <button onclick="spotifyClearAll();spotifyLogin()" class="btn btn-primary btn-block" style="margin-bottom:10px">
+        ✅ הסרתי גישה — התחבר מחדש
+      </button>
+    </div>`;
+  fix.style.display = 'block';
+  setStep(2);
 }
 
 /* ─── Account menu ─── */

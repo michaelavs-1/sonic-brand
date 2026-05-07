@@ -353,17 +353,8 @@ async function handleSpotifyCallback(){
     localStorage.setItem('sp3_expiry', String(Date.now()+tokens.expires_in*1000));
     state.spotifyToken = tokens.access_token;
 
-    // Validate: load user profile (detects scope issues)
-    const scopeOk = await loadSpotifyUser();
-
-    if(!scopeOk && !state._scopeFixed){
-      // First-time scope fix: auto re-auth to grant all current scopes
-      state._scopeFixed = true;
-      showToast('מעדכן הרשאות Spotify חד-פעמי...', false);
-      await new Promise(res=>setTimeout(res,1200));
-      spotifyLogin(); // will re-auth with show_dialog:true + full scopes
-      return false;
-    }
+    // Validate: load user profile
+    await loadSpotifyUser();
 
     const name = state.spotifyUser?.display_name || state.spotifyUser?.id || '';
     showToast(name ? `✓ מחובר כ: ${name}` : '✓ מחובר ל-Spotify');

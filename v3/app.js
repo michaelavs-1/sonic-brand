@@ -353,21 +353,36 @@ async function handleSpotifyCallback(){
     localStorage.setItem('sp3_expiry', String(Date.now()+tokens.expires_in*1000));
     state.spotifyToken = tokens.access_token;
 
-    // Show "connected" badge IMMEDIATELY — before any API call
-    // This guarantees the badge always shows after successful auth
-    if(!state.spotifyUser){
-      state.spotifyUser = { display_name: null, id: null, images: [], _pending: true };
+    // Check granted scopes — Spotify native app on Android sometimes skips scopes
+    const grantedScope = tokens.scope || '';
+    const needsUserRead = !grantedScope.includes('user-read-private');
+
+    if(needsUserRead){
+      // Critical scope missing — re-auth ONCE (sessionStorage prevents infinite loop)
+      const alreadyRetried = sessionStorage.getItem('sp3_scope_retry');
+      if(!alreadyRetried){
+        sessionStorage.setItem('sp3_scope_retry', '1');
+        spotifyClearAll();
+        showToast('מעדכן הרשאות חד-פעמי...', false);
+        await new Promise(res=>setTimeout(res,1000));
+        spotifyLogin();
+        return false;
+      }
+      // Second time still missing — proceed anyway, show fallback
+    } else {
+      sessionStorage.removeItem('sp3_scope_retry'); // clear retry flag on success
+    }
+
+    // Load user profile — wait for it
+    await loadSpotifyUser();
+    // Ensure badge shows something even if profile load failed
+    if(!state.spotifyUser || state.spotifyUser._pending){
+      state.spotifyUser = { display_name: null, id: null, images: [] };
       spotifyShowUser({ display_name: '✓ Spotify', id: null, images: [] });
     }
 
-    // Load real profile in background — updates badge with real name
-    loadSpotifyUser().then(()=>{
-      if(state.spotifyUser && !state.spotifyUser._pending){
-        spotifyShowUser(state.spotifyUser);
-      }
-    });
-
-    showToast('✓ מחובר ל-Spotify');
+    const name = state.spotifyUser?.display_name || state.spotifyUser?.id || '';
+    showToast(name ? `✓ מחובר כ: ${name}` : '✓ מחובר ל-Spotify');
     setStep(3);
     return true;
   } catch(err){

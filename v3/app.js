@@ -355,8 +355,12 @@ async function handleSpotifyCallback(){
 
     // Check granted scopes — iOS Spotify app sometimes auto-approves with old scopes
     const grantedScope = tokens.scope || '';
-    const missingScopes = ['user-read-private','playlist-read-private']
-      .filter(s => !grantedScope.includes(s));
+    const missingScopes = [
+      'user-read-private',
+      'playlist-read-private',
+      'playlist-modify-public',
+      'playlist-modify-private'
+    ].filter(s => !grantedScope.includes(s));
 
     if(missingScopes.length > 0){
       // Scope missing — re-auth ONCE using cookie (survives iOS redirects, sessionStorage does NOT)

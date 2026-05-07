@@ -182,7 +182,21 @@ async function handleCallback(){
 async function loadUser(tok){
   try{
     const r=await fetch('https://api.spotify.com/v1/me',{headers:{'Authorization':'Bearer '+tok}});
+    if(r.status===403||r.status===401){
+      // Token has wrong/old scopes — show fix screen
+      showErr(
+        '<strong>⚠️ נדרשות הרשאות מעודכנות</strong><br><br>'+
+        '1️⃣ פתח <strong>Spotify</strong> באייפון<br>'+
+        '2️⃣ הגדרות ← פרטיות ואבטחה ← אפליקציות<br>'+
+        '3️⃣ <strong>sonic-brand</strong> ← הסר גישה<br>'+
+        '4️⃣ חזור לכאן ולחץ "התחבר מחדש"<br><br>'+
+        '<a href="https://www.spotify.com/account/apps" target="_blank">spotify.com/account/apps ←</a>'
+      );
+      reset('🔄 התחבר מחדש');
+      return;
+    }
     const u=await r.json();
+    if(!u.id){ showConnected({display_name:'מחובר',image:''}); return; }
     const user={id:u.id,display_name:u.display_name||u.id,image:(u.images&&u.images[0])?u.images[0].url:''};
     localStorage.setItem('sp_user',JSON.stringify(user));
     showConnected(user);

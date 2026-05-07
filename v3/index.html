@@ -73,8 +73,7 @@ input,textarea{font-family:inherit;color:inherit}
 .welcome-hero p{font-size:16px;line-height:1.6}
 
 /* Sign up (Screen 2) */
-.signup-spotify-btn{width:100%;background:#1DB954;color:#fff;border:none;padding:16px;border-radius:14px;font-weight:800;font-size:16px;display:flex;align-items:center;justify-content:center;gap:10px;cursor:pointer;transition:transform .15s,box-shadow .2s}
-.signup-spotify-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(29,185,84,.5)}
+
 .divider{display:flex;align-items:center;gap:12px;margin:18px 0;color:var(--muted);font-size:13px}
 .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border)}
 .signup-link{display:block;text-align:center;color:var(--muted);font-size:14px;margin-top:18px}
@@ -245,38 +244,10 @@ input,textarea{font-family:inherit;color:inherit}
       <div class="brand-name">Robin</div>
       <div class="brand-tag" style="font-size:10px">SonicBrands · v3 preview</div>
     </div>
-    <!-- Spotify user badge (click → account menu) -->
-    <div id="spotifyBadge" style="display:none;position:relative;flex-shrink:0">
-      <button onclick="toggleAccountMenu(event)"
-        style="display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid rgba(29,185,84,.4);border-radius:22px;padding:5px 12px 5px 6px;cursor:pointer;font-family:inherit">
-        <img id="spotifyBadgeImg" src="" alt="" width="26" height="26"
-          style="border-radius:50%;object-fit:cover;background:var(--card-2);border:1.5px solid rgba(29,185,84,.5)">
-        <div style="display:flex;flex-direction:column;align-items:flex-start;min-width:0">
-          <span style="font-size:10px;color:var(--accent);font-weight:700;line-height:1">Spotify</span>
-          <span id="spotifyBadgeName" style="font-size:12px;font-weight:800;color:var(--text);max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3"></span>
-        </div>
-        <span style="font-size:10px;color:var(--muted);margin-right:-2px">▾</span>
-      </button>
-      <!-- Account dropdown menu -->
-      <div id="accountMenu" style="display:none;position:absolute;top:calc(100% + 6px);left:0;background:var(--card);border:1px solid var(--border-2);border-radius:12px;box-shadow:var(--shadow-1);min-width:170px;z-index:50;overflow:hidden">
-        <button onclick="switchSpotifyAccount()" style="display:block;width:100%;text-align:right;padding:12px 16px;background:none;border:none;font-size:13px;font-weight:700;color:var(--text);cursor:pointer;border-bottom:1px solid var(--border)">🔄 החלף חשבון</button>
-        <button onclick="disconnectSpotify()" style="display:block;width:100%;text-align:right;padding:12px 16px;background:none;border:none;font-size:13px;font-weight:700;color:var(--accent-3);cursor:pointer">🔌 התנתק</button>
-      </div>
-    </div>
     <button id="dataBoxToggle" class="gear-btn" onclick="toggleDataBox()" title="Data Box" style="font-size:16px">📋</button>
     <button class="gear-btn" onclick="openSettingsModal()" title="הגדרות">⚙️</button>
   </div>
 
-  <!-- Spotify account strip — shown when connected -->
-  <div id="spotifyStrip" style="display:none;background:rgba(29,185,84,.12);border:1px solid rgba(29,185,84,.3);border-radius:10px;padding:8px 14px;margin-bottom:10px;align-items:center;gap:10px;font-size:13px">
-    <img id="spotifyStripImg" src="" width="28" height="28" style="border-radius:50%;object-fit:cover;border:2px solid rgba(29,185,84,.5);flex-shrink:0">
-    <div style="flex:1;min-width:0">
-      <div style="font-weight:800;color:var(--text)" id="spotifyStripName"></div>
-      <div style="font-size:11px;color:var(--accent);font-weight:600">✓ מחובר ל-Spotify</div>
-    </div>
-    <button onclick="toggleAccountMenu(event)" style="background:none;border:1px solid rgba(29,185,84,.4);border-radius:8px;color:var(--muted);font-size:11px;padding:4px 8px;cursor:pointer;font-family:inherit">החלף ▾</button>
-    <!-- reuse same accountMenu -->
-  </div>
 
   <div class="progress" id="progress">
     <div class="dot active"></div>
@@ -303,35 +274,28 @@ input,textarea{font-family:inherit;color:inherit}
   <!-- ═══════════════ SCREEN 2: SPOTIFY AUTH ═══════════════ -->
   <div class="screen" data-screen="2">
     <div class="screen-card">
-
-      <!-- State A: already connected -->
-      <div id="s2HasSession" style="display:none">
-        <h2 style="margin-bottom:6px">ברוכים הבאים</h2>
-        <p style="margin-bottom:18px;color:var(--muted);font-size:14px">מחובר לחשבון הבא:</p>
-        <div class="s2-user-card">
-          <img id="s2Avatar" class="s2-user-avatar" src="" alt="">
-          <div class="s2-user-info">
-            <div class="s2-user-name" id="s2Name">—</div>
-            <div class="s2-user-sub">✓ Spotify מחובר</div>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-block" onclick="continueWithSession()">המשך עם חשבון זה ←</button>
-        <button class="s2-switch" onclick="switchSpotifyAccount()">זה לא אני — התחבר עם חשבון אחר</button>
+      <div style="text-align:center;margin-bottom:18px">
+        <div style="font-size:40px;margin-bottom:8px">🎵</div>
+        <h2 style="margin-bottom:6px">פלייליסט השראה</h2>
+        <p style="color:var(--muted);font-size:14px;line-height:1.6">
+          אם יש לך פלייליסט Spotify שמייצג את האווירה שאתה רוצה —<br>
+          הדבק אותו כאן. Robin ישתמש בו כהשראה בלבד.
+        </p>
       </div>
 
-      <!-- State B: not connected -->
-      <div id="s2NoSession">
-        <h2>חיבור לספוטיפיי</h2>
-        <p>הפלייליסטים יישמרו ישירות בחשבון שלכם.</p>
-        <button class="signup-spotify-btn" onclick="spotifyLogin()">
-          <span>🎵</span><span>התחברות עם Spotify</span>
-        </button>
-        <div class="divider">או</div>
-        <p class="signup-link">אין חשבון? <a href="https://www.spotify.com/il-en/premium/" target="_blank" rel="noopener">הצטרפו לספוטיפיי ←</a></p>
+      <div class="input-wrap" style="margin-bottom:10px">
+        <input type="url" id="refPlaylistUrlS2" class="input-text"
+          style="direction:ltr;font-size:14px"
+          placeholder="https://open.spotify.com/playlist/..." />
       </div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:22px;text-align:center">
+        לא חובה — Robin מצליח גם בלי 🎯
+      </p>
 
-      <div class="row" style="margin-top:24px;justify-content:space-between">
-        <button class="btn btn-ghost" onclick="setStep(1)">← דף הבית</button>
+      <button class="btn btn-primary btn-block" onclick="continueFromS2()">המשך ←</button>
+
+      <div class="row" style="margin-top:16px;justify-content:space-between">
+        <button class="btn btn-ghost" onclick="setStep(1)">← חזור</button>
       </div>
     </div>
   </div>
@@ -340,14 +304,8 @@ input,textarea{font-family:inherit;color:inherit}
   <div class="screen" data-screen="3">
     <div class="screen-card">
 
-      <!-- Connected account indicator -->
-      <div id="s3AccountLine" style="display:none;align-items:center;gap:8px;background:rgba(29,185,84,.1);border:1px solid rgba(29,185,84,.3);border-radius:10px;padding:8px 12px;margin-bottom:14px;font-size:13px">
-        <img id="s3AccountImg" src="" width="24" height="24" style="border-radius:50%;object-fit:cover;flex-shrink:0">
-        <span>מחובר כ: <strong id="s3AccountName" style="color:var(--accent)"></strong></span>
-        <button onclick="switchSpotifyAccount()" style="margin-right:auto;background:none;border:none;color:var(--muted);font-size:12px;cursor:pointer;font-family:inherit;text-decoration:underline">החלף</button>
-      </div>
 
-      <h2 style="font-size:22px;margin-bottom:6px">ספרו לי על העסק</h2>
+            <h2 style="font-size:22px;margin-bottom:6px">ספרו לי על העסק</h2>
       <p style="margin-bottom:14px;font-size:14px">מה אתם, מי הקהל, מה האווירה שאתם רוצים ליצור.</p>
 
       <div class="input-wrap" style="margin-bottom:18px">
@@ -357,16 +315,7 @@ input,textarea{font-family:inherit;color:inherit}
           maxlength="1000"></textarea>
       </div>
 
-      <!-- Spotify Playlist Picker — loads when screen 3 is shown -->
-      <div id="playlistPickerSection" style="margin-top:4px">
-        <div class="pl-picker-head">
-          <span class="pl-picker-label">🎵 בחרו פלייליסטים שמייצגים את האווירה שאתם רוצים <span style="font-weight:400;opacity:.65">(עד 3)</span></span>
-          <span class="pl-picker-count" id="plPickerCount"></span>
-        </div>
-        <div class="pl-grid" id="playlistPickerGrid">
-          <div class="pl-loading">מתחבר לספוטיפיי…</div>
-        </div>
-      </div>
+
 
       <!-- Fallback manual URL (hidden, power users) -->
       <input type="hidden" id="refPlaylist" value="">
@@ -470,17 +419,10 @@ input,textarea{font-family:inherit;color:inherit}
       <div class="key-status" id="keyStatus"></div>
     </div>
 
-    <!-- Spotify session section -->
+    <!-- Playlist info -->
     <hr style="border:none;border-top:1px solid var(--border);margin:20px 0">
-    <div style="font-size:13px;color:var(--muted);margin-bottom:10px;font-weight:700">חשבון Spotify</div>
-    <div id="spotifySessionInfo" style="font-size:13px;color:var(--muted);margin-bottom:12px">בודק חיבור…</div>
-    <button class="btn btn-secondary" onclick="disconnectSpotify()" id="disconnectSpotifyBtn"
-      style="font-size:13px;padding:10px 16px;color:var(--accent-3);border-color:var(--accent-3)">
-      🔌 נתק Spotify (החלף חשבון)
-    </button>
-    <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">
-      אם אחר רוצה להשתמש — לחץ כאן לניתוק, ואז התחבר עם החשבון שלו.
-    </p>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:8px;font-weight:700">פלייליסטים</div>
+    <div id="spotifySessionInfo" style="font-size:13px;color:var(--muted)">פלייליסטים נוצרים דרך שרת SonicBrand</div>
   </div>
 </div>
 

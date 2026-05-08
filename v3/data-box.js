@@ -422,3 +422,58 @@ window.SB_matchDataBox = function(bizDesc){
   }
   return bestScore >= 3 ? best : null;
 };
+
+/* ──────────────────────────────────────
+   Live Data Box — fetches the Google Sheet at runtime via /api/databox.
+   Stored in window.SB_LIVE_ENTRIES (array of live entries).
+   Matching checks live entries first, falls back to SB_DATA_BOX.
+────────────────────────────────────────*/
+window.SB_LIVE_ENTRIES = null;
+
+window.SB_loadLiveDataBox = async function(){
+  try{
+    const r = await fetch('/api/databox');
+    if(!r.ok) return;
+    const json = await r.json();
+    if(Array.isArray(json.entries) && json.entries.length){
+      window.SB_LIVE_ENTRIES = json.entries;
+      console.log('[DataBox] Live entries loaded:', json.entries.length, json.stale ? '(stale)' : '');
+    }
+  }catch(e){
+    console.warn('[DataBox] Live load failed, using static fallback:', e.message);
+  }
+};
+
+/* Updated match: live data first, fallback to static */
+window.SB_matchDataBox = function(bizDesc){
+  const text = (bizDesc||'').toLowerCase();
+  const scoreEntry = (entry) => {
+    let score = 0;
+    for(const kw of (entry.keywords||[])){
+      if(text.includes(kw.toLowerCase())) score += kw.length;
+    }
+    return score;
+  };
+
+  // Search live entries first
+  if(window.SB_LIVE_ENTRIES && window.SB_LIVE_ENTRIES.length){
+    let best = null, bestScore = 0;
+    for(const entry of window.SB_LIVE_ENTRIES){
+      const score = scoreEntry(entry);
+      if(score > bestScore){ bestScore = score; best = entry; }
+    }
+    if(bestScore >= 3){
+      // Attach live energy data
+      return { ...best, liveEnergy: best.energy };
+    }
+  }
+
+  // Fallback: static SB_DATA_BOX
+  if(!window.SB_DATA_BOX) return null;
+  let best = null, bestScore = 0;
+  for(const entry of window.SB_DATA_BOX.entries){
+    const score = scoreEntry(entry);
+    if(score > bestScore){ bestScore = score; best = entry; }
+  }
+  return bestScore >= 3 ? best : null;
+};

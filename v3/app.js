@@ -465,7 +465,7 @@ async function buildBrainContext(){
   const pureAI = !state.useDataBox;
 
   const [l0Res, l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
-    l0Match ? fetchL0_DNA(l0Match, state.selectedMoods) : Promise.resolve(null),
+    l0Match ? fetchL0_DNA(l0Match, state.selectedMoods, state.energyLevel||1) : Promise.resolve(null),
     // L1: user-picked playlists (visual picker) → multi-DNA merge
     //     fallback: manual ref playlist URL → single DNA
     state.selectedUserPlaylists.length > 0
@@ -493,112 +493,167 @@ async function buildBrainContext(){
 }
 
 /* ─── L0: Data Box Playlist DNA — mood-filtered playlists, extracts artists + seeds ─── */
-async function fetchL0_DNA(entry, selectedMoods){
-  // Get playlists from entry — new format {playlists:[{id,moods}]} or legacy {playlistIds:[]}
-  let allPlaylists = [];
-  if(Array.isArray(entry.playlists)){
-    allPlaylists = entry.playlists;
-  } else if(Array.isArray(entry.playlistIds)){
-    allPlaylists = entry.playlistIds.map(id=>({id, moods:[]}));
-  }
-  if(!allPlaylists.length) return null;
+async function fetchL0_DNA(entry, selectedMoods, energyLevel){
+  /* ── Resolve playlist pool for this energy level ── */
+  let playlistIds = [];
 
-  // Filter by selected moods if available (use playlists that match ANY selected mood)
-  let chosen = allPlaylists;
-  if(selectedMoods && selectedMoods.size > 0){
-    const matched = allPlaylists.filter(p=>Array.isArray(p.moods) && p.moods.some(m=>selectedMoods.has(m)));
-    if(matched.length >= 2) chosen = matched;  // only filter if we have enough
+  // Priority 1: live Data Box energy-specific playlists (from Google Sheet)
+  const liveEnergy = entry.liveEnergy || entry.energy || {};
+  const lvData = liveEnergy[energyLevel] || liveEnergy[1] || liveEnergy[2] || null;
+  if(lvData && Array.isArray(lvData.playlists) && lvData.playlists.length){
+    playlistIds = lvData.playlists;
+  } else {
+    // Priority 2: old format with mood-tagged playlists
+    let pool = Array.isArray(entry.playlists) ? entry.playlists : [];
+    if(selectedMoods && selectedMoods.size > 0){
+      const matched = pool.filter(p => Array.isArray(p.moods) && p.moods.some(m => selectedMoods.has(m)));
+      if(matched.length >= 2) pool = matched;
+    }
+    playlistIds = pool.map(p => p.id || p).filter(Boolean);
   }
-  const playlistIds = chosen.map(p=>p.id || p).filter(Boolean);
   if(!playlistIds.length) return null;
 
-  const tok = await refreshSpotifyTokenIfNeeded();
-  if(!tok) return null;
+  /* ── Sample playlists randomly (different each run) ── */
+  const shuffledPids = playlistIds.slice().sort(() => Math.random() - 0.5);
+  const samplePids   = shuffledPids.slice(0, Math.min(4, shuffledPids.length));
 
-  // Sample up to 3 playlists from the Data Box entry
-  // Shuffle playlist order every run → different playlists sampled → different DNA
-  const shuffledPids = playlistIds.slice().sort(()=>Math.random()-0.5);
-  const samplePids = shuffledPids.slice(0, 3);
-  const allTracks = [];
-
+  /* ── Fetch tracks from sampled playlists ── */
+  const rawTracks = [];
   await Promise.allSettled(samplePids.map(async pid => {
     try{
-      const r = await fetch(
-        `https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(id,name),popularity,album(release_date)))&limit=30`,
-        {headers:{'Authorization':'Bearer '+tok}}
-      );
+      const r = await fetch('/api/spotify', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'fetch',
+          url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(id,name),popularity,album(release_date,images)))&limit=50`,
+          neutral:true})
+      });
       if(!r.ok) return;
       const j = await r.json();
       const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id);
-      allTracks.push(...tracks);
-    } catch(e){}
+      // Random sample from each playlist
+      rawTracks.push(...tracks.sort(()=>Math.random()-0.5).slice(0, 20));
+    }catch(e){}
   }));
 
-  if(allTracks.length < 5) return null;
+  if(rawTracks.length < 3) return null;
 
-  // Deduplicate by track ID
+  // Deduplicate
   const seen = new Set();
-  const unique = allTracks.filter(t=>{ if(seen.has(t.id)) return false; seen.add(t.id); return true; });
+  const unique = rawTracks.filter(t=>{ if(seen.has(t.id)) return false; seen.add(t.id); return true; });
 
-  // Sort by popularity, take top 50
-  const top50 = unique.sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,50);
-
-  // Fetch audio features for DNA analysis
-  let audioStats = null;
+  /* ── Fetch audio features for BPM / energy filtering ── */
+  const ids100 = unique.slice(0, 100).map(t => t.id);
+  let featureMap = {};
   try{
-    const afRes = await fetch(
-      `https://api.spotify.com/v1/audio-features?ids=${top50.slice(0,50).map(t=>t.id).join(',')}`,
-      {headers:{'Authorization':'Bearer '+tok}}
-    );
+    const afRes = await fetch('/api/spotify', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({action:'fetch',
+        url:`https://api.spotify.com/v1/audio-features?ids=${ids100.join(',')}`, neutral:true})
+    });
     if(afRes.ok){
       const afJson = await afRes.json();
-      const features = (afJson.audio_features||[]).filter(f=>f);
-      if(features.length) audioStats = analyzeAudioStats(features, top50);
+      (afJson.audio_features||[]).filter(f=>f).forEach(f=>{ featureMap[f.id]=f; });
     }
-  } catch(e){}
+  }catch(e){}
 
-  // Count artist appearances across playlists
+  /* ── BPM / energy filter ──
+     energy 1 (רגוע):   Spotify energy < 0.68, tempo < 130 BPM
+     energy 2 (מקפיץ):  Spotify energy > 0.40, tempo > 90  BPM
+     No features → pass through (don't drop tracks we can't analyse)
+  ── */
+  const energyPass = (t) => {
+    const f = featureMap[t.id];
+    if(!f) return true;
+    if(energyLevel === 1) return f.energy < 0.70 && f.tempo < 135;
+    if(energyLevel === 2) return f.energy > 0.38 && f.tempo > 88;
+    return true;
+  };
+  const filtered = unique.filter(energyPass);
+  const pool = filtered.length >= 5 ? filtered : unique; // graceful fallback
+
+  /* ── Artist analysis ── */
   const artistCount = {};
-  unique.forEach(t=>(t.artists||[]).forEach(a=>{
+  pool.forEach(t=>(t.artists||[]).forEach(a=>{
     artistCount[a.name] = (artistCount[a.name]||0) + 1;
   }));
   const sorted = Object.entries(artistCount).sort((a,b)=>b[1]-a[1]);
-  // topArtists: the mega-famous ones — define the STYLE but GPT must NOT copy them
-  const topArtists = sorted.slice(0,6).map(([name])=>name);
-  // nicheArtists: appear only 1x — less obvious, what GPT SHOULD pick from
+  const topArtists   = sorted.slice(0, 6).map(([n])=>n);
   const nicheArtists = sorted.filter(([,c])=>c===1)
-    .sort(()=>Math.random()-0.5).slice(0,12).map(([name])=>name);
+    .sort(()=>Math.random()-0.5).slice(0, 12).map(([n])=>n);
 
-  // Random seeds per run: shuffle full pool, pick diverse tiers
-  const rnd = unique.slice().sort(()=>Math.random()-0.5);
+  /* ── Audio stats ── */
+  const features = Object.values(featureMap).filter(f=>f);
+  const audioStats = features.length ? analyzeAudioStats(features, pool) : null;
+
+  /* ── Diverse seed selection (by popularity tier) ── */
+  const rnd = pool.slice().sort(()=>Math.random()-0.5);
   const diverseSeeds = [
     ...rnd.filter(t=>(t.popularity||0)>=60).slice(0,1).map(t=>t.id),
     ...rnd.filter(t=>(t.popularity||0)>=30&&(t.popularity||0)<60).slice(0,2).map(t=>t.id),
     ...rnd.filter(t=>(t.popularity||0)<30).slice(0,2).map(t=>t.id),
   ].filter(Boolean).slice(0,5);
 
-  // Full shuffled pool — fillUp picks random seeds each regen
-  const allTrackIds = unique.slice().sort(()=>Math.random()-0.5).map(t=>t.id).filter(Boolean);
+  const allTrackIds = pool.slice().sort(()=>Math.random()-0.5).map(t=>t.id).filter(Boolean);
 
-  // Direct inclusions: up to 9 actual tracks from the Data Box playlists (30% of 30)
-  // Pick randomly from mid+niche popularity to avoid always same mega-hits
-  const directPool = unique
-    .filter(t=>t.id && (t.popularity||0) >= 15 && (t.popularity||0) <= 72)
+  /* ── Spotify Recommendations seeded from playlist tracks ──
+     This is the "inspiration" step: tracks that aren't in the playlists
+     but live in the same musical neighbourhood.
+  ── */
+  let recTracks = [];
+  if(diverseSeeds.length >= 2){
+    try{
+      const recParams = new URLSearchParams({ seed_tracks: diverseSeeds.join(','), limit: '60', market: 'IL' });
+      if(energyLevel === 1){ recParams.set('max_energy','0.68'); recParams.set('target_energy','0.40'); recParams.set('max_tempo','130'); recParams.set('target_tempo','90'); }
+      if(energyLevel === 2){ recParams.set('min_energy','0.45'); recParams.set('target_energy','0.72'); recParams.set('min_tempo','95'); recParams.set('target_tempo','120'); }
+      // Popularity targets based on known/unknown level
+      const kl = entry.knownLevel || 3;
+      if(kl <= 2){ recParams.set('max_popularity','55'); recParams.set('target_popularity','35'); }
+      else if(kl >= 4){ recParams.set('min_popularity','50'); recParams.set('target_popularity','70'); }
+
+      const recRes = await fetch('/api/spotify', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({action:'fetch', url:`https://api.spotify.com/v1/recommendations?${recParams}`, neutral:true})
+      });
+      if(recRes.ok){
+        const recJson = await recRes.json();
+        recTracks = (recJson.tracks||[]).filter(t=>t&&t.id&&energyPass(t));
+      }
+    }catch(e){}
+  }
+
+  /* ── Direct tracks: 30% from playlists, 70% from recommendations ── */
+  const directPool = pool
+    .filter(t => t.id && (t.popularity||0) >= 15 && (t.popularity||0) <= 75)
     .sort(()=>Math.random()-0.5);
-  const directTracks = directPool.slice(0, 9).map(t=>({
-    artist: (t.artists||[]).map(a=>a.name).join(', '),
-    title:  t.name||'',
-    id:     t.id,
-    cover:  (t.album&&t.album.images&&t.album.images.length) ? t.album.images[t.album.images.length-1].url : '',
+  const anchorTracks = directPool.slice(0, 9);
+
+  // Merge rec tracks (deduplicated against anchors)
+  const anchorSet = new Set(anchorTracks.map(t=>t.id));
+  const recUnique  = recTracks.filter(t=>!anchorSet.has(t.id)).slice(0, 20);
+
+  const directTracks = [...anchorTracks, ...recUnique].slice(0, 20).map(t=>({
+    artist:    (t.artists||[]).map(a=>a.name).join(', '),
+    title:     t.name||''  ,
+    id:        t.id,
+    cover:     (t.album?.images?.length) ? t.album.images[t.album.images.length-1].url : '',
     popularity: t.popularity||0,
-    duration: t.duration_ms||0,
-    preview: '',
-    url: '',
-    reason: 'data-box',
+    duration:   t.duration_ms||0,
+    preview: '', url: '',
+    reason: anchorSet.has(t.id) ? 'data-box' : 'inspired',
   }));
 
-  return { topTrackIds: diverseSeeds, allTrackIds, topArtists, nicheArtists, audioStats,
-           trackCount: unique.length, playlistCount: samplePids.length, directTracks };
+  return {
+    topTrackIds: diverseSeeds,
+    allTrackIds: [...allTrackIds, ...recUnique.map(t=>t.id)],
+    topArtists,
+    nicheArtists,
+    audioStats,
+    trackCount: pool.length + recTracks.length,
+    playlistCount: samplePids.length,
+    directTracks,
+    energyLevel,
+    genres: lvData?.genres || entry.genres || '',
+  };
 }
 
 /* ─── L1: Reference Playlist DNA ─── */
@@ -1225,38 +1280,10 @@ async function generateCandidates(faders, moods, opts){
     : '';
 
   const energyNote = state.energyLevel === 1
-    ? '\n🎵 אנרגיה נמוכה: שירים נינוחים, טמפו 70-95 BPM, energy Spotify 0.2-0.5. מוזיקה שמאפשרת שיחה ואווירה.'
+    ? '🎵 אנרגיית הפלייליסט: רגועה ושקטה — BPM נמוך (60-110), אנרגיה מרוסנת. מתאים לשעות שקטות, שיחות, רקע נינוח.'
     : state.energyLevel === 2
-    ? '\n🔥 אנרגיה גבוהה: שירים קצביים, טמפו 100-145 BPM, energy Spotify 0.6-0.9. מוזיקה שמרימה ומניעה.'
+    ? '🎵 אנרגיית הפלייליסט: מקפיצה ואנרגטית — BPM גבוה (100-170), Spotify energy > 0.5. מתאים לשעות עמוסות, ריקוד, עומס.'
     : '';
-
-  // In-session feedback — immediate effect on next generation
-  const likedKeys   = Object.entries(state.feedback).filter(([,v])=>v==='up').map(([k])=>k);
-  const dislikedKeys= Object.entries(state.feedback).filter(([,v])=>v==='down').map(([k])=>k);
-  const sessionFeedback = [
-    likedKeys.length
-      ? `\n✅ המשתמש אהב את הסגנון של השירים הבאים — חפש אמנים ושירים דומים להם:\n${likedKeys.slice(0,8).map(k=>k.replace('|',' — ')).join('\n')}`
-      : '',
-    dislikedKeys.length
-      ? `\n❌ המשתמש לא אהב את הסגנון של השירים הבאים — הימנע לחלוטין מאמנים דומים:\n${dislikedKeys.slice(0,8).map(k=>k.replace('|',' — ')).join('\n')}`
-      : '',
-  ].join('');
-
-  const sys = `אתה רובין, מומחה ליצירת פלייליסטים מותאמי-עסק.
-המטרה: לייצר ${candidateCount} מועמדים אמיתיים מ-Spotify לפלייליסט עסקי.
-חוקים קשיחים:
-- כל שיר חייב להיות קיים באמת ב-Spotify, אמן ושם מדויקים.
-- אל תמציא שירים. אם אתה לא בטוח באמן או בשם — אל תכלול אותו.
-- שמור על הסגנונות והאווירות שביקש העסק.
-- גיוון חובה: אל תבחר רק את השירים הכי ברורים/מפורסמים של כל ז'אנר. בחר מגוון — ~40% שירים מוכרים, ~40% פחות מוכרים, ~20% נישה/גילויים. אמנים פחות מוכרים אבל איכותיים הם נכס.
-- אל תחזור על אותם אמנים יותר מ-2 פעמים ברשימה כולה. פזר בין אמנים רבים ומגוונים.${regenNote}${energyNote}${sessionFeedback}
-${fmDesc}
-${heDesc}
-${voDesc}
-${enDesc}
-${erDesc}
-החזר JSON: {"tracks":[{"artist":"...","title":"...","reason":"5 מילים בעברית"}]}`;
-
   const brainBlocks = state.brainContext.assembled ? assembleBrainBlocks() : '';
 
   // Build exclusion block (cap at 40 to keep prompt lean)
@@ -1960,6 +1987,8 @@ async function regenerate(){
 
 (async function boot(){
   selectModel(state.selectedModel);
+  // Load live Data Box from Google Sheet in background
+  if(window.SB_loadLiveDataBox) window.SB_loadLiveDataBox();
 
   // 1. OAuth callback — highest priority
   if(new URLSearchParams(location.search).get('code')){

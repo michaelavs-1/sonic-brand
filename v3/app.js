@@ -13,8 +13,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 /* ─────────── State ─────────── */
 const state = {
   step: 1,
-  totalSteps: 6,
-  energyLevel: null,  // 1=low, 2=high
+  totalSteps: 5,
+  energyLevel: 1,   // always generate both; this is used internally
   useDataBox: true,   // toggle L0 Data Box on/off for A/B testing
   bizDesc: '',
   refPlaylist: '',
@@ -30,6 +30,8 @@ const state = {
   spotifyToken: null,
   spotifyUser: null,
   generatedTracks: [],
+  playlist1: [],
+  playlist2: [],
   regenCount: 0,
   userPlaylists: [],          // loaded from /v1/me/playlists
   selectedUserPlaylists: [],  // IDs the user picked (max 3)       // how many times "צרו שוב" was pressed
@@ -190,7 +192,6 @@ function setStep(n){
     d.classList.toggle('done', i+1 < n);
   });
   window.scrollTo({top:0,behavior:'smooth'});
-  if(n === 5) renderEnergyScreen();
   if(n === 2) updateScreen2UI();
   // Load user playlists when entering screen 3
   if(n === 3){
@@ -1066,16 +1067,17 @@ async function detectBusinessType(){
 }
 
 /* ─────────── Screen 4: Moods + MC ─────────── */
+// Data Box atmospheres — from Google Sheet columns b-i, rows 1-3
 const MOOD_LIBRARY = [
-  'אנרגטי','רגוע','אינטימי','חברותי','קליל','אלגנטי','אקלקטי',
-  'נוסטלגי','עכשווי','מסיבתי','מינימליסטי','חמים','קר ומגניב',
-  'משפחתי','צעיר','בוגר','עירוני','כפרי','מסתורי','שמשי','חורפי',
-  'אופטימי','מהורהר','קצבי','רומנטי','אנרגיה גבוהה','שקט','דחוס',
+  'חמים','רגוע','חברותי','קלאסי','צעיר','שקט','יוקרתי','סקסי',
+  'משפחתי','אנרגטי','קליל','מודרני','אורבני','הומה','מחוספס','חפלה',
+  'שמח','אינטימי','אלגנטי','מינימליסטי','כפרי','מסיבתי','אפל','לא מחייב',
 ];
 
 function renderMoods(){
   const grid = $('moodsGrid');
   // Combine recommended + library, dedup
+  // Show recommended moods first, then all Data Box atmospheres
   const all = Array.from(new Set([...state.recommendedMoods, ...MOOD_LIBRARY]));
   grid.innerHTML = all.map(m=>{
     const sel = state.selectedMoods.has(m);
@@ -1154,103 +1156,90 @@ const _origSetStep = setStep;
 // Patch goNext on screen 4 → show energy screen
 document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goNext override
 
+/* ── Core generation loop — runs once per energy level ── */
+async function generateTracklist(energyLevel, attempt){
+  attempt = attempt || 0;
+  state.energyLevel = energyLevel;
+  await buildBrainContext();
+  const faders = window.SB_V2_mcToFaders(state.mc);
+  const moods  = Array.from(state.selectedMoods);
+
+  const label = energyLevel===1 ? '🌙 רגוע' : '🔥 מקפיץ';
+  const directTracks = (state.brainContext.l0?.dna?.directTracks || []);
+  const directIds    = new Set(directTracks.map(t=>t.id).filter(Boolean));
+
+  setLoadingStatus(`${label} — בונה רשימה…`, '');
+  const candidates = await generateCandidates(faders, moods, {
+    attempt, exclude: directTracks.map(t=>`${t.artist} — ${t.title}`)
+  });
+
+  setLoadingStatus(`${label} — מאמת ב-Spotify…`, `${candidates.length} שירים`);
+  const validated = await validateOnSpotify(candidates);
+
+  const PLAYLIST_SIZE = 30;
+  const directCount  = Math.min(directTracks.length, Math.round(PLAYLIST_SIZE * 0.30));
+  const gptTracks    = validated.filter(t=>t.id && !directIds.has(t.id));
+  const chosenDirect = directTracks.slice().sort(()=>Math.random()-0.5).slice(0, directCount);
+
+  let merged = [...gptTracks.slice(0, PLAYLIST_SIZE - directCount)];
+  chosenDirect.forEach((dt,i)=>{
+    const pos = Math.floor((i+1)*merged.length/(directCount+1));
+    merged.splice(pos, 0, dt);
+  });
+
+  if(merged.filter(t=>t.id).length < PLAYLIST_SIZE - 5){
+    setLoadingStatus(`${label} — משלים שירים…`, '');
+    merged = await fillUp(merged, faders);
+  }
+
+  const disliked = new Set(
+    Object.entries(state.feedback).filter(([,v])=>v==='down')
+      .map(([k])=>k.split('|')[0].toLowerCase().trim())
+  );
+  const artistCnt = {};
+  const diverse = merged.filter(t=>{
+    const a=(t.artist||'').toLowerCase().trim();
+    if(disliked.has(a)) return false;
+    artistCnt[a]=(artistCnt[a]||0)+1;
+    return artistCnt[a]<=2;
+  });
+
+  if(diverse.filter(t=>t.id).length < PLAYLIST_SIZE-4 && state.brainContext.assembled){
+    const topped = await fillUp(diverse, faders);
+    return topped.slice(0, PLAYLIST_SIZE);
+  }
+  return diverse.slice(0, PLAYLIST_SIZE);
+}
+
 async function startGeneration(){
   state.hours.open = '09:00';
   state.hours.close = '23:00';
-  setStep(6);
+  setStep(5);
   $('playlistLoading').style.display = 'block';
-  $('playlistResult').style.display = 'none';
+  $('playlistResult').style.display  = 'none';
 
-  // CRITICAL: Verify Spotify token before starting
   setLoadingStatus('בודק חיבור Spotify…','');
   const tok = await refreshSpotifyTokenIfNeeded();
   if(!tok){
     setLoadingStatus('Spotify לא מחובר','חזור למסך 2 ולחץ "התחברות עם Spotify"');
-    showToast('נדרש חיבור Spotify לפני יצירת פלייליסט', true);
+    showToast('נדרש חיבור Spotify', true);
     setTimeout(()=>setStep(2), 1500);
     return;
   }
 
   try{
-    const faders = window.SB_V2_mcToFaders(state.mc);
-    const moods = Array.from(state.selectedMoods);
+    // Generate both energy levels sequentially
+    state.playlist1 = await generateTracklist(1, state.regenCount);
+    state.playlist2 = await generateTracklist(2, state.regenCount);
 
-    setLoadingStatus('בונה פרופיל מוזיקלי…','');
-
-    // ── Data Box direct tracks (30%) ──────────────────────────────
-    const directTracks = (state.brainContext.l0?.dna?.directTracks || []);
-    const directIds = new Set(directTracks.map(t=>t.id).filter(Boolean));
-
-    // GPT generates the remaining 70% — tell it to avoid the direct tracks
-    const excludeTracks = [
-      ...state.generatedTracks.map(t=>`${t.artist} — ${t.title}`),
-      ...directTracks.map(t=>`${t.artist} — ${t.title}`),
-    ];
-    const candidates = await generateCandidates(faders, moods, {
-      attempt: state.regenCount,
-      exclude: excludeTracks
-    });
-
-    setLoadingStatus('מאמת ב-Spotify…',`${candidates.length} שירים`);
-    const validated = await validateOnSpotify(candidates);
-
-    const PLAYLIST_SIZE = 30; // ברזל — 30 שירים מדויקים
-    const directCount = Math.min(directTracks.length, Math.round(PLAYLIST_SIZE * 0.30)); // up to 9
-
-    // Merge: validated GPT tracks (deduped against direct) + direct tracks
-    const gptTracks = validated.filter(t=>t.id && !directIds.has(t.id));
-    const gptSlot   = PLAYLIST_SIZE - directCount;
-
-    // Shuffle direct tracks each time so order varies
-    const chosenDirect = directTracks.slice().sort(()=>Math.random()-0.5).slice(0,directCount);
-
-    // Interleave: spread direct tracks across the playlist (not all at start)
-    let merged = [...gptTracks.slice(0, gptSlot)];
-    chosenDirect.forEach((dt,i)=>{
-      const pos = Math.floor((i+1) * merged.length / (directCount+1));
-      merged.splice(pos, 0, dt);
-    });
-
-    let final = merged;
-    if(final.filter(t=>t.id).length < PLAYLIST_SIZE - 5){
-      setLoadingStatus(`משלים ל-${PLAYLIST_SIZE} שירים…`,`כרגע ${final.length}`);
-      const filled = await fillUp(final, faders);
-      final = filled;
-    }
-
-    if(final.length < 8){
-      setLoadingStatus('בעיה ביצירת פלייליסט','מעט שירים. נסה שוב או בדוק חיבור.');
-      showToast('נמצאו רק '+final.length+' שירים. נסה שוב.', true);
-    }
-
-    // Diversity filter: max 2 per artist, skip disliked artists
-    // Applied BEFORE slicing to ensure we always aim for PLAYLIST_SIZE
-    const dislikedArtistSet = new Set(
-      Object.entries(state.feedback).filter(([,v])=>v==='down')
-        .map(([k])=>k.split('|')[0].toLowerCase().trim())
-    );
-    const artistCount = {};
-    const diverse = final.filter(t=>{
-      const a = (t.artist||'').toLowerCase().trim();
-      if(dislikedArtistSet.has(a)) return false;
-      artistCount[a] = (artistCount[a]||0) + 1;
-      return artistCount[a] <= 2;
-    });
-
-    // Always produce exactly PLAYLIST_SIZE — if diversity filter reduced count, run fillUp again
-    if(diverse.filter(t=>t.id).length < PLAYLIST_SIZE - 4 && state.brainContext.assembled){
-      setLoadingStatus('משלים שירים…','');
-      const topped = await fillUp(diverse, faders);
-      state.generatedTracks = topped.slice(0, PLAYLIST_SIZE);
-    } else {
-      state.generatedTracks = diverse.slice(0, PLAYLIST_SIZE);
-    }
-    // No longer need enrichPreviews — we use Spotify embed iframes instead
+    $('playlistLoading').style.display = 'none';
+    $('playlistResult').style.display  = 'block';
+    renderPlaylist(1);
+    renderPlaylist(2);
     await saveAnalysis();
-    renderPlaylist();
   } catch(e){
     console.error(e);
-    setLoadingStatus('שגיאה',e.message||'נסה שוב');
+    setLoadingStatus('שגיאה', e.message||'נסה שוב');
     showToast('שגיאה: '+(e.message||'unknown'), true);
   }
 }
@@ -1284,12 +1273,35 @@ async function generateCandidates(faders, moods, opts){
     : state.energyLevel === 2
     ? '🎵 אנרגיית הפלייליסט: מקפיצה ואנרגטית — BPM גבוה (100-170), Spotify energy > 0.5. מתאים לשעות עמוסות, ריקוד, עומס.'
     : '';
+  // In-session feedback
+  const likedKeys    = Object.entries(state.feedback).filter(([,v])=>v==='up').map(([k])=>k);
+  const dislikedKeys = Object.entries(state.feedback).filter(([,v])=>v==='down').map(([k])=>k);
+  const sessionFeedback = [
+    likedKeys.length    ? `\n✅ אהב סגנון אלו — חפש דומים:\n${likedKeys.slice(0,8).map(k=>k.replace('|',' — ')).join('\n')}` : '',
+    dislikedKeys.length ? `\n❌ לא אהב אלו — הימנע לחלוטין:\n${dislikedKeys.slice(0,8).map(k=>k.replace('|',' — ')).join('\n')}` : '',
+  ].join('');
+
   const brainBlocks = state.brainContext.assembled ? assembleBrainBlocks() : '';
 
   // Build exclusion block (cap at 40 to keep prompt lean)
   const excludeBlock = exclude.length
     ? `\nשירים שכבר הוצגו — אסור לכלול אף אחד מהם:\n${exclude.slice(0, 40).join('\n')}`
     : '';
+
+  const sys = `אתה רובין, מומחה ליצירת פלייליסטים מותאמי-עסק.
+המטרה: לייצר ${candidateCount} מועמדים אמיתיים מ-Spotify לפלייליסט עסקי.
+חוקים קשיחים:
+- כל שיר חייב להיות קיים באמת ב-Spotify, אמן ושם מדויקים.
+- אל תמציא שירים. אם אתה לא בטוח — אל תכלול.
+- שמור על הסגנונות והאווירות שביקש העסק.
+- גיוון חובה: ~40% מוכרים, ~40% פחות מוכרים, ~20% נישה. אמנים פחות מוכרים אבל איכותיים הם נכס.
+- אל תחזור על אמן יותר מ-2 פעמים.${regenNote}${energyNote}${sessionFeedback}
+${fmDesc}
+${heDesc}
+${voDesc}
+${enDesc}
+${erDesc}
+החזר JSON: {"tracks":[{"artist":"...","title":"...","reason":"5 מילים בעברית"}]}`;
 
   const usr = `תיאור העסק: "${state.bizDesc}"
 סוג: ${state.bizType||'עסק'}
@@ -1817,133 +1829,117 @@ function toggleEmbed(trackId, btn){
 }
 
 /* ─────────── Render playlist ─────────── */
-function renderPlaylist(){
-  $('playlistLoading').style.display = 'none';
-  $('playlistResult').style.display = 'block';
-  $('playlistTitle').textContent = (state.bizType || 'הפלייליסט שלכם') + ' — Robin Mix';
-  const validCount = state.generatedTracks.filter(t=>t.id).length;
-  const totalDur = state.generatedTracks.reduce((s,t)=>s+(t.duration||0),0);
-  const min = Math.round(totalDur/60000);
-  $('playlistMeta').textContent = `${state.generatedTracks.length} שירים · ${validCount} מאומתים ב-Spotify · ${min} דקות`;
+function renderPlaylist(energyLevel){
+  const tracks = energyLevel===1 ? state.playlist1 : state.playlist2;
+  const sfx = String(energyLevel);
+  if(!tracks || !tracks.length) return;
 
-  const list = $('tracksList');
-  list.innerHTML = state.generatedTracks.map((t,i)=>{
-    const key = `${t.artist}|${t.title}`;
-    const fb  = state.feedback[key];
-    const cover = t.cover ? `style="background-image:url('${t.cover}')"` : '';
-    // Every validated track has an ID → always show play button (Spotify embed works for all)
-    const canPlay = !!t.id;
+  const validCount = tracks.filter(t=>t.id).length;
+  const totalDur   = tracks.reduce((s,t)=>s+(t.duration||0),0);
+  const min        = Math.round(totalDur/60000);
+
+  const titleEl = $('playlistTitle'+sfx);
+  const metaEl  = $('playlistMeta'+sfx);
+  if(titleEl) titleEl.textContent = (state.bizType||'Robin Mix') + (energyLevel===1 ? ' · רגוע' : ' · מקפיץ');
+  if(metaEl)  metaEl.textContent  = `${tracks.length} שירים · ${validCount} מאומתים ב-Spotify · ${min} דקות`;
+
+  const list = $('tracksList'+sfx);
+  if(!list) return;
+  list.innerHTML = tracks.map((t,i)=>{
+    const cover = t.cover ? `background-image:url('${t.cover}')` : '';
+    const voteKey = `${t.artist}|${t.title}`;
+    const vUp  = state.feedback[voteKey]==='up'   ? ' active' : '';
+    const vDn  = state.feedback[voteKey]==='down' ? ' active' : '';
+    const hasId = !!t.id;
+    const embedId = `embed_${sfx}_${i}`;
+    const itemId  = `item_${sfx}_${i}`;
     return `<div class="track-wrap">
-      <div class="track-item">
+      <div class="track-item" id="${itemId}">
         <div class="track-num">${i+1}</div>
-        <div class="track-cover" ${cover}></div>
+        <div class="track-cover" style="${cover}"></div>
         <div class="track-meta">
-          <div class="track-title">${escapeHtml(t.title)}</div>
-          <div class="track-artist">${escapeHtml(t.artist)}</div>
+          <div class="track-title">${escapeHtml(t.title||'—')}</div>
+          <div class="track-artist">${escapeHtml(t.artist||'—')}</div>
         </div>
+        ${hasId ? `<button class="play-btn" id="play_${sfx}_${i}" onclick="toggleEmbed(${energyLevel},${i},'${t.id}')" title="האזן">▶</button>` : ''}
         <div class="track-vote">
-          <button class="play-btn${canPlay?'':' no-preview'}" ${canPlay?`onclick="toggleEmbed('${escapeAttr(t.id)}',this)"`:''}  title="${canPlay?'השמע תצוגה מקדימה':'אין זיהוי Spotify'}">▶</button>
-          <button class="vote-btn up${fb==='up'?' active':''}" onclick="voteTrack('${escapeAttr(key)}','up',this)">👍</button>
-          <button class="vote-btn down${fb==='down'?' active':''}" onclick="voteTrack('${escapeAttr(key)}','down',this)">👎</button>
+          <button class="vote-btn up${vUp}" onclick="vote(${energyLevel},${i},'up')" title="אהבתי">👍</button>
+          <button class="vote-btn down${vDn}" onclick="vote(${energyLevel},${i},'down')" title="לא בשבילי">👎</button>
         </div>
       </div>
-      <div class="track-embed"></div>
+      <div class="track-embed" id="${embedId}"></div>
     </div>`;
   }).join('');
 }
 
-function escapeHtml(s){
-  return String(s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-}
-function escapeAttr(s){
-  return String(s||'').replace(/[\\'"<>&]/g, c=>'&#'+c.charCodeAt(0)+';');
-}
-
-function updateRegenBtn(){
-  const btn = $('regenBtn');
-  if(!btn) return;
-  const likes    = Object.values(state.feedback).filter(v=>v==='up').length;
-  const dislikes = Object.values(state.feedback).filter(v=>v==='down').length;
-  if(likes > 0 || dislikes > 0){
-    const parts = [];
-    if(likes)    parts.push(`${likes} ✅`);
-    if(dislikes) parts.push(`${dislikes} ❌`);
-    btn.textContent = `🔄 צרו שוב (${parts.join(' · ')})`;
-    btn.title = 'הפלייליסט הבא יתחשב בלייקים ודיסלייקים שלך';
+function toggleEmbed(energyLevel, idx, spotifyId){
+  const sfx = String(energyLevel);
+  const embedDiv = $('embed_'+sfx+'_'+idx);
+  const itemDiv  = $('item_'+sfx+'_'+idx);
+  const btn      = $('play_'+sfx+'_'+idx);
+  if(!embedDiv) return;
+  const isOpen = embedDiv.classList.contains('open');
+  if(isOpen){
+    embedDiv.classList.remove('open');
+    embedDiv.innerHTML = '';
+    itemDiv && itemDiv.classList.remove('embed-open');
+    btn && btn.classList.remove('playing');
   } else {
-    btn.textContent = '🔄 צרו שוב';
-    btn.title = '';
+    embedDiv.classList.add('open');
+    embedDiv.innerHTML = `<iframe src="https://open.spotify.com/embed/track/${spotifyId}?utm_source=generator" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>`;
+    itemDiv && itemDiv.classList.add('embed-open');
+    btn && btn.classList.add('playing');
   }
 }
 
-async function voteTrack(key, vote, btn){
-  state.feedback[key] = vote;
-  // Update UI
-  const parent = btn.parentElement;
-  parent.querySelectorAll('.vote-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active');
-  updateRegenBtn(); // show liked/disliked count on regen button
-  // Persist to track_feedback (best effort)
-  const [artist, title] = key.split('|');
-  try{
-    await sb.from('track_feedback').insert({
-      track_artist: artist,
-      track_title: title,
-      feedback_type: vote,
-      reason: 'v2-' + vote,
-      biz_category: state.bizType || 'unknown',
-      brain_version: 'v2-robin',
-      faders: window.SB_V2_mcToFaders(state.mc),
-      created_at: new Date().toISOString(),
-    });
-  } catch(e){ console.warn('Feedback save failed:', e); }
+function vote(energyLevel, idx, dir){
+  const tracks = energyLevel===1 ? state.playlist1 : state.playlist2;
+  const t = tracks[idx]; if(!t) return;
+  const key = `${t.artist}|${t.title}`;
+  state.feedback[key] = state.feedback[key]===dir ? undefined : dir;
+  renderPlaylist(energyLevel); // re-render just this playlist
 }
 
-/* ─────────── Save to Spotify ─────────── */
-async function saveToSpotify(){
-  const tok = await refreshSpotifyTokenIfNeeded();
+
+async function saveToSpotify(energyLevel){
+  energyLevel = energyLevel || 1;
+  const tracks = energyLevel===1 ? state.playlist1 : state.playlist2;
+  const btnId  = 'saveSpotifyBtn'+energyLevel;
+  const btn    = $(btnId);
+  const trackUris = (tracks||[]).filter(t=>t.id).map(t=>'spotify:track:'+t.id);
+  if(!trackUris.length){ showToast('אין שירים מאומתים להוספה', true); return; }
+
+  let tok = await refreshSpotifyTokenIfNeeded();
   if(!tok){
-    showToast('נדרש חיבור Spotify', true);
-    return;
+    sessionStorage.setItem('sp3_pending_save', String(energyLevel));
+    await spotifyLogin(); return;
   }
-  if(!state.spotifyUser) await loadSpotifyUser();
-  if(!state.spotifyUser){
-    showToast('שגיאה בטעינת משתמש Spotify', true);
-    return;
-  }
-  $('saveSpotifyBtn').disabled = true;
-  $('saveSpotifyBtn').textContent = 'יוצר…';
+  if(btn) btn.disabled = true;
+  if(btn) btn.textContent = 'יוצר פלייליסט…';
   try{
-    const trackIds = state.generatedTracks.filter(t=>t.id).map(t=>'spotify:track:'+t.id);
-    if(!trackIds.length) throw new Error('אין שירים מאומתים');
-
-    const playlistName = (state.bizType||'Robin Mix') + ' · Robin';
-    const cr = await fetch(`https://api.spotify.com/v1/users/${state.spotifyUser.id}/playlists`, {
-      method:'POST',
-      headers:{'Authorization':'Bearer '+tok, 'Content-Type':'application/json'},
-      body: JSON.stringify({name: playlistName, public:false, description:'Created by Robin · SonicBrands'}),
+    const label = energyLevel===1 ? 'רגוע' : 'מקפיץ';
+    const playlistName = (state.bizType||'Robin Mix')+' · '+label+' · Robin';
+    const meRes = await fetch('https://api.spotify.com/v1/me',{headers:{'Authorization':'Bearer '+tok}});
+    if(meRes.status===403||meRes.status===401){ spotifyClearAll(); _showScopeFix(); return; }
+    const me = await meRes.json();
+    if(!me.id) throw new Error('לא ניתן לזהות משתמש Spotify');
+    const cr = await fetch(`https://api.spotify.com/v1/users/${me.id}/playlists`,{
+      method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+      body:JSON.stringify({name:playlistName,public:true,description:'Created by Robin · SonicBrand'})
     });
-    if(!cr.ok) throw new Error('יצירה נכשלה: ' + cr.status);
+    if(!cr.ok) throw new Error('יצירה נכשלה: '+cr.status);
     const pl = await cr.json();
-    // Add in chunks of 100
-    for(let i=0; i<trackIds.length; i+=100){
-      const chunk = trackIds.slice(i, i+100);
-      await fetch(`https://api.spotify.com/v1/playlists/${pl.id}/tracks`, {
-        method:'POST',
-        headers:{'Authorization':'Bearer '+tok, 'Content-Type':'application/json'},
-        body: JSON.stringify({uris: chunk}),
+    if(!pl.id) throw new Error(pl.error||'שגיאה ביצירת פלייליסט');
+    for(let i=0;i<trackUris.length;i+=100){
+      await fetch(`https://api.spotify.com/v1/playlists/${pl.id}/tracks`,{
+        method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
+        body:JSON.stringify({uris:trackUris.slice(i,i+100)})
       });
     }
-    showToast('נשמר ב-Spotify ✓');
-    if(pl.external_urls && pl.external_urls.spotify){
-      window.open(pl.external_urls.spotify, '_blank');
-    }
-  } catch(e){
-    showToast('שגיאה: '+e.message, true);
-  } finally {
-    $('saveSpotifyBtn').disabled = false;
-    $('saveSpotifyBtn').textContent = '💾 שמור ב-Spotify';
-  }
+    showToast('פלייליסט נשמר ב-Spotify ✓');
+    if(pl.external_urls?.spotify) window.open(pl.external_urls.spotify,'_blank');
+  }catch(e){ showToast('שגיאה: '+e.message,true); }
+  finally{ if(btn){btn.disabled=false;btn.textContent='💾 שמור ב-Spotify';} }
 }
 
 /* ─────────── Save analysis ─────────── */
@@ -1980,9 +1976,20 @@ async function saveAnalysis(){
 }
 
 /* ─────────── Regenerate ─────────── */
-async function regenerate(){
-  state.regenCount = (state.regenCount || 0) + 1;
-  await startGeneration();
+async function regenerate(energyLevel){
+  energyLevel = energyLevel || 1;
+  state.regenCount = (state.regenCount||0)+1;
+  const sfx  = String(energyLevel);
+  const btn  = $('regenBtn'+sfx);
+  const list = $('tracksList'+sfx);
+  if(btn) btn.disabled = true;
+  if(list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><div class="spinner" style="width:32px;height:32px;border-width:2px;margin:0 auto 12px"></div><div>מייצר מחדש…</div></div>';
+  try{
+    const tracks = await generateTracklist(energyLevel, state.regenCount);
+    if(energyLevel===1) state.playlist1=tracks; else state.playlist2=tracks;
+    renderPlaylist(energyLevel);
+  }catch(e){ showToast('שגיאה: '+e.message,true); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='🔄 צרו שוב'; } }
 }
 
 (async function boot(){

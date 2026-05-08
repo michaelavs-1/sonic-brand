@@ -284,7 +284,6 @@ input,textarea{font-family:inherit;color:inherit}
     <div class="dot"></div>
     <div class="dot"></div>
     <div class="dot"></div>
-    <div class="dot"></div>
   </div>
 
   <!-- ═══════════════ SCREEN 1: WELCOME ═══════════════ -->
@@ -400,27 +399,13 @@ input,textarea{font-family:inherit;color:inherit}
 
       <div class="row" style="margin-top:24px;justify-content:space-between">
         <button class="btn btn-ghost" onclick="goBack()">← חזרה</button>
-        <button class="btn btn-primary" onclick="goNext()">המשך ←</button>
+        <button class="btn btn-primary" onclick="startGeneration()">צרו פלייליסט ←</button>
       </div>
     </div>
   </div>
 
-  <!-- ═══════════════ SCREEN 5: ENERGY CHOICE ═══════════════ -->
+  <!-- ═══════════════ SCREEN 5: PLAYLISTS ═══════════════ -->
   <div class="screen" data-screen="5">
-    <div class="screen-card">
-      <h2 style="margin-bottom:6px">בחרו את האנרגיה</h2>
-      <p style="margin-bottom:22px;font-size:14px">שני פלייליסטים מותאמים לעסק שלכם — אחד לשעות השקטות, אחד לשעות הסוערות.</p>
-
-      <div id="energyOptions" style="display:flex;flex-direction:column;gap:14px">
-        <!-- injected by renderEnergyScreen() -->
-      </div>
-
-      <button class="btn btn-ghost" onclick="goBack()" style="margin-top:22px">← חזרה</button>
-    </div>
-  </div>
-
-  <!-- ═══════════════ SCREEN 6: PLAYLIST ═══════════════ -->
-  <div class="screen" data-screen="6">
     <div class="screen-card">
       <div class="playlist-loading" id="playlistLoading">
         <div class="spinner"></div>
@@ -431,17 +416,37 @@ input,textarea{font-family:inherit;color:inherit}
       </div>
 
       <div id="playlistResult" style="display:none">
-        <div class="playlist-header">
-          <h1 class="playlist-title" id="playlistTitle">הפלייליסט שלכם</h1>
-          <div class="playlist-meta" id="playlistMeta"></div>
+
+        <!-- ── Playlist 1: רגוע ── -->
+        <div id="playlistSection1">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="background:rgba(167,139,250,.15);color:var(--accent-2);font-weight:700;font-size:12px;padding:4px 12px;border-radius:10px">🌙 רגוע</span>
+            <h2 class="playlist-title" id="playlistTitle1" style="margin:0;font-size:19px"></h2>
+          </div>
+          <div class="playlist-meta" id="playlistMeta1" style="margin-bottom:10px;font-size:12px"></div>
+          <div class="tracks-list" id="tracksList1"></div>
+          <div class="playlist-actions" style="margin-top:14px">
+            <button class="btn btn-primary" onclick="saveToSpotify(1)" id="saveSpotifyBtn1">💾 שמור ב-Spotify</button>
+            <button class="btn btn-secondary" onclick="regenerate(1)" id="regenBtn1">🔄 צרו שוב</button>
+          </div>
         </div>
 
-        <div class="tracks-list" id="tracksList"></div>
+        <div style="height:1px;background:var(--border);margin:28px 0"></div>
 
-        <div class="playlist-actions">
-          <button class="btn btn-primary" onclick="saveToSpotify()" id="saveSpotifyBtn">💾 שמור ב-Spotify</button>
-          <button class="btn btn-secondary" onclick="regenerate()" id="regenBtn">🔄 צרו שוב</button>
+        <!-- ── Playlist 2: מקפיץ ── -->
+        <div id="playlistSection2">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <span style="background:rgba(29,185,84,.15);color:var(--accent);font-weight:700;font-size:12px;padding:4px 12px;border-radius:10px">🔥 מקפיץ</span>
+            <h2 class="playlist-title" id="playlistTitle2" style="margin:0;font-size:19px"></h2>
+          </div>
+          <div class="playlist-meta" id="playlistMeta2" style="margin-bottom:10px;font-size:12px"></div>
+          <div class="tracks-list" id="tracksList2"></div>
+          <div class="playlist-actions" style="margin-top:14px">
+            <button class="btn btn-primary" onclick="saveToSpotify(2)" id="saveSpotifyBtn2">💾 שמור ב-Spotify</button>
+            <button class="btn btn-secondary" onclick="regenerate(2)" id="regenBtn2">🔄 צרו שוב</button>
+          </div>
         </div>
+
       </div>
     </div>
   </div>

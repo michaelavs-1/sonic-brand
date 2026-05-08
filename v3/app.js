@@ -49,6 +49,8 @@ const state = {
 
 /* ─────────── Helpers ─────────── */
 function $(id){ return document.getElementById(id); }
+function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escapeAttr(s){ return String(s||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
 function showToast(msg, isError){
   const t = $('toast');
   t.textContent = msg;

@@ -191,26 +191,7 @@ function setStep(n){
   });
   window.scrollTo({top:0,behavior:'smooth'});
   if(n === 2) updateScreen2UI();
-  // Load user playlists when entering screen 3
-  if(n === 3){
-    // Use localStorage as fallback if state.spotifyToken not yet set by background refresh
-    const hasAccess = state.spotifyToken || localStorage.getItem('sp3_access');
-    if(!hasAccess){
-      const grid = $('playlistPickerGrid');
-      if(grid) grid.innerHTML = '<div class="pl-loading">יש להתחבר לSpotify כדי לבחור פלייליסטים</div>';
-    } else if(state.userPlaylists.length){
-      renderPlaylistPicker(state.userPlaylists);
-    } else {
-      const grid = $('playlistPickerGrid');
-      if(grid) grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
-      // Race with 8s timeout — prevents "stuck loading" on iOS/slow connections
-      const _timeout = new Promise(res => setTimeout(() => res([]), 8000));
-      Promise.race([fetchUserPlaylists(), _timeout]).then(result=>{
-        state.userPlaylists = Array.isArray(result) ? result : [];
-        renderPlaylistPicker(state.userPlaylists);
-      }).catch(()=>{ renderPlaylistPicker([]); });
-    }
-  }
+
 }
 function goNext(){ if(state.step < state.totalSteps) setStep(state.step+1); }
 function goBack(){ if(state.step > 1) setStep(state.step-1); }

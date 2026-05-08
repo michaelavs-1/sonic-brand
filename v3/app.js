@@ -79,22 +79,44 @@ function base64url(arr){
 
 /* ─────────── Spotify playlist picker (screen 3) ─────────── */
 async function fetchUserPlaylists(){
-  // Use existing token directly — avoid blocking refresh which can hang on iOS
-  const tok = state.spotifyToken || localStorage.getItem('sp3_access');
-  if(!tok) return [];
-  try{
-    const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0', {
-      headers:{'Authorization':'Bearer '+tok},
-      signal: AbortSignal.timeout(6000) // 6s hard timeout
-    });
-    if(r.status === 403 || r.status === 401) return [];
-    if(!r.ok) return [];
-    const j = await r.json();
-    return (j.items||[]).filter(p=>p&&p.id&&p.name);
-  }catch(e){
-    console.warn('[playlists]', e.name === 'TimeoutError' ? 'timeout' : e);
-    return [];
+  // 1. Get token — use cached or refresh
+  let tok = state.spotifyToken || localStorage.getItem('sp3_access');
+  const exp = Number(localStorage.getItem('sp3_expiry') || 0);
+  // Refresh if expired or close to expiry
+  if(!tok || exp < Date.now() + 30000){
+    tok = await refreshSpotifyTokenIfNeeded();
   }
+  if(!tok) return [];
+
+  const doFetch = async (token) => {
+    // Manual AbortController for cross-browser compatibility
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try{
+      const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0', {
+        headers:{'Authorization':'Bearer '+token},
+        signal: ctrl.signal
+      });
+      clearTimeout(timer);
+      if(r.status === 401){ return 'expired'; }
+      if(!r.ok) return [];
+      const j = await r.json();
+      return (j.items||[]).filter(p=>p&&p.id&&p.name);
+    }catch(e){
+      clearTimeout(timer);
+      console.warn('[playlists]', e.name==='AbortError' ? 'timeout' : e.message);
+      return [];
+    }
+  };
+
+  let result = await doFetch(tok);
+  // If token expired, refresh once and retry
+  if(result === 'expired'){
+    const fresh = await refreshSpotifyTokenIfNeeded();
+    if(fresh) result = await doFetch(fresh);
+    else result = [];
+  }
+  return Array.isArray(result) ? result : [];
 }
 
 function renderPlaylistPicker(playlists){

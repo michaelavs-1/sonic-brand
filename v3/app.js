@@ -101,9 +101,7 @@ function renderPlaylistPicker(playlists){
   const grid = $('playlistPickerGrid');
   if(!grid) return;
   if(!playlists.length){
-    grid.innerHTML = `<div class="pl-loading">
-      אין פלייליסטים בחשבון — אפשר להמשיך ללא בחירה 👍
-    </div>`;
+    grid.innerHTML = '<div class="pl-loading">לא נמצאו פלייליסטים — ממשיכים בלי בחירה 👍</div>';
     return;
   }
   grid.innerHTML = playlists.map(p=>{
@@ -205,11 +203,12 @@ function setStep(n){
     } else {
       const grid = $('playlistPickerGrid');
       if(grid) grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
-      fetchUserPlaylists().then(result=>{
-        // Never re-auth from here — would cause infinite loop
+      // Race with 8s timeout — prevents "stuck loading" on iOS/slow connections
+      const _timeout = new Promise(res => setTimeout(() => res([]), 8000));
+      Promise.race([fetchUserPlaylists(), _timeout]).then(result=>{
         state.userPlaylists = Array.isArray(result) ? result : [];
         renderPlaylistPicker(state.userPlaylists);
-      });
+      }).catch(()=>{ renderPlaylistPicker([]); });
     }
   }
 }
@@ -1990,6 +1989,16 @@ async function regenerate(energyLevel){
     renderPlaylist(energyLevel);
   }catch(e){ showToast('שגיאה: '+e.message,true); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='🔄 צרו שוב'; } }
+}
+
+/* ─── Accordion: toggle playlist track list ─── */
+function toggleAccordion(n){
+  const head = $('accordionHead'+n);
+  const body = $('accordionBody'+n);
+  if(!head || !body) return;
+  const isOpen = body.classList.contains('open');
+  head.classList.toggle('open', !isOpen);
+  body.classList.toggle('open', !isOpen);
 }
 
 (async function boot(){

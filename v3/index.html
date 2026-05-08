@@ -227,6 +227,23 @@ input,textarea{font-family:inherit;color:inherit}
 .s2-switch{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;padding:0;text-decoration:underline;margin-top:12px;display:block;text-align:center}
 .s2-switch:hover{color:var(--accent-3)}
 
+/* Accordion playlists */
+.pl-accordion{border:1px solid var(--border-2);border-radius:var(--r-md);overflow:hidden;margin-bottom:0}
+.pl-accordion-head{display:flex;align-items:center;gap:12px;padding:16px 18px;cursor:pointer;background:var(--bg-2);transition:background .2s;user-select:none}
+.pl-accordion-head:hover{background:var(--card-2)}
+.pl-accordion-badge{font-size:12px;font-weight:700;padding:4px 12px;border-radius:10px;flex-shrink:0}
+.pl-accordion-badge.calm{background:rgba(167,139,250,.15);color:var(--accent-2)}
+.pl-accordion-badge.hype{background:rgba(29,185,84,.15);color:var(--accent)}
+.pl-accordion-info{flex:1;min-width:0}
+.pl-accordion-title{font-size:16px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-accordion-meta{font-size:12px;color:var(--muted);margin-top:2px}
+.pl-accordion-chevron{color:var(--muted);font-size:13px;transition:transform .3s;flex-shrink:0}
+.pl-accordion-head.open .pl-accordion-chevron{transform:rotate(180deg)}
+.pl-accordion-body{max-height:0;overflow:hidden;transition:max-height .4s ease}
+.pl-accordion-body.open{max-height:4000px}
+.pl-accordion-inner{padding:0 14px 16px}
+.pl-accordion-actions{padding:12px 18px 14px;background:var(--bg-2);border-top:1px solid var(--border);display:flex;gap:10px;flex-wrap:wrap}
+
 /* Responsive */
 @media(max-width:600px){
   .app{padding:16px 14px 32px}
@@ -418,30 +435,44 @@ input,textarea{font-family:inherit;color:inherit}
       <div id="playlistResult" style="display:none">
 
         <!-- ── Playlist 1: רגוע ── -->
-        <div id="playlistSection1">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-            <span style="background:rgba(167,139,250,.15);color:var(--accent-2);font-weight:700;font-size:12px;padding:4px 12px;border-radius:10px">🌙 רגוע</span>
-            <h2 class="playlist-title" id="playlistTitle1" style="margin:0;font-size:19px"></h2>
+        <div id="playlistSection1" class="pl-accordion">
+          <div class="pl-accordion-head" id="accordionHead1" onclick="toggleAccordion(1)">
+            <span class="pl-accordion-badge calm">🌙 רגוע</span>
+            <div class="pl-accordion-info">
+              <div class="pl-accordion-title" id="playlistTitle1"></div>
+              <div class="pl-accordion-meta" id="playlistMeta1"></div>
+            </div>
+            <span class="pl-accordion-chevron">▼</span>
           </div>
-          <div class="playlist-meta" id="playlistMeta1" style="margin-bottom:10px;font-size:12px"></div>
-          <div class="tracks-list" id="tracksList1"></div>
-          <div class="playlist-actions" style="margin-top:14px">
+          <div class="pl-accordion-body" id="accordionBody1">
+            <div class="pl-accordion-inner">
+              <div class="tracks-list" id="tracksList1"></div>
+            </div>
+          </div>
+          <div class="pl-accordion-actions">
             <button class="btn btn-primary" onclick="saveToSpotify(1)" id="saveSpotifyBtn1">💾 שמור ב-Spotify</button>
             <button class="btn btn-secondary" onclick="regenerate(1)" id="regenBtn1">🔄 צרו שוב</button>
           </div>
         </div>
 
-        <div style="height:1px;background:var(--border);margin:28px 0"></div>
+        <div style="height:12px"></div>
 
         <!-- ── Playlist 2: מקפיץ ── -->
-        <div id="playlistSection2">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-            <span style="background:rgba(29,185,84,.15);color:var(--accent);font-weight:700;font-size:12px;padding:4px 12px;border-radius:10px">🔥 מקפיץ</span>
-            <h2 class="playlist-title" id="playlistTitle2" style="margin:0;font-size:19px"></h2>
+        <div id="playlistSection2" class="pl-accordion">
+          <div class="pl-accordion-head" id="accordionHead2" onclick="toggleAccordion(2)">
+            <span class="pl-accordion-badge hype">🔥 מקפיץ</span>
+            <div class="pl-accordion-info">
+              <div class="pl-accordion-title" id="playlistTitle2"></div>
+              <div class="pl-accordion-meta" id="playlistMeta2"></div>
+            </div>
+            <span class="pl-accordion-chevron">▼</span>
           </div>
-          <div class="playlist-meta" id="playlistMeta2" style="margin-bottom:10px;font-size:12px"></div>
-          <div class="tracks-list" id="tracksList2"></div>
-          <div class="playlist-actions" style="margin-top:14px">
+          <div class="pl-accordion-body" id="accordionBody2">
+            <div class="pl-accordion-inner">
+              <div class="tracks-list" id="tracksList2"></div>
+            </div>
+          </div>
+          <div class="pl-accordion-actions">
             <button class="btn btn-primary" onclick="saveToSpotify(2)" id="saveSpotifyBtn2">💾 שמור ב-Spotify</button>
             <button class="btn btn-secondary" onclick="regenerate(2)" id="regenBtn2">🔄 צרו שוב</button>
           </div>

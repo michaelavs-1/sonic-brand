@@ -79,43 +79,50 @@ function base64url(arr){
 
 /* ─────────── Spotify playlist picker (screen 3) ─────────── */
 async function fetchUserPlaylists(){
-  // 1. Get token — use cached or refresh
-  let tok = state.spotifyToken || localStorage.getItem('sp3_access');
-  const exp = Number(localStorage.getItem('sp3_expiry') || 0);
-  // Refresh if expired or close to expiry
-  if(!tok || exp < Date.now() + 30000){
-    tok = await refreshSpotifyTokenIfNeeded();
-  }
+  const tok = state.spotifyToken || localStorage.getItem('sp3_access');
   if(!tok) return [];
 
+  // Fetch with hard timeout — no dependency on refreshSpotifyTokenIfNeeded
   const doFetch = async (token) => {
-    // Manual AbortController for cross-browser compatibility
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const t = setTimeout(()=>ctrl.abort(), 7000);
     try{
-      const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0', {
-        headers:{'Authorization':'Bearer '+token},
-        signal: ctrl.signal
-      });
-      clearTimeout(timer);
-      if(r.status === 401){ return 'expired'; }
+      const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0',
+        {headers:{'Authorization':'Bearer '+token}, signal:ctrl.signal});
+      clearTimeout(t);
+      if(r.status===401) return null;   // signal: needs fresh token
       if(!r.ok) return [];
       const j = await r.json();
       return (j.items||[]).filter(p=>p&&p.id&&p.name);
-    }catch(e){
-      clearTimeout(timer);
-      console.warn('[playlists]', e.name==='AbortError' ? 'timeout' : e.message);
-      return [];
-    }
+    }catch(e){ clearTimeout(t); return []; }
   };
 
   let result = await doFetch(tok);
-  // If token expired, refresh once and retry
-  if(result === 'expired'){
-    const fresh = await refreshSpotifyTokenIfNeeded();
-    if(fresh) result = await doFetch(fresh);
-    else result = [];
+
+  // If 401 — do a self-contained token refresh (own timeout, no external deps)
+  if(result === null){
+    const refresh = localStorage.getItem('sp3_refresh');
+    if(!refresh) return [];
+    const ctrl2 = new AbortController();
+    const t2 = setTimeout(()=>ctrl2.abort(), 5000);
+    try{
+      const r2 = await fetch('https://accounts.spotify.com/api/token',{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({grant_type:'refresh_token',refresh_token:refresh,client_id:SPOTIFY_CLIENT_ID}),
+        signal: ctrl2.signal
+      });
+      clearTimeout(t2);
+      if(!r2.ok) return [];
+      const d = await r2.json();
+      if(!d.access_token) return [];
+      state.spotifyToken = d.access_token;
+      localStorage.setItem('sp3_access', d.access_token);
+      localStorage.setItem('sp3_expiry', String(Date.now()+(d.expires_in||3600)*1000-60000));
+      result = await doFetch(d.access_token);
+    }catch(e){ clearTimeout(t2); return []; }
   }
+
   return Array.isArray(result) ? result : [];
 }
 

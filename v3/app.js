@@ -2040,7 +2040,9 @@ function toggleAccordion(n){
   // 2. Restore from cache instantly (sync)
   const cachedUser=(()=>{try{return JSON.parse(localStorage.getItem('sp3_user')||'null');}catch(e){return null;}})();
   if(cachedUser && localStorage.getItem('sp3_access')){
-    state.spotifyUser=cachedUser; spotifyShowUser(cachedUser);
+    state.spotifyUser=cachedUser;
+    state.spotifyToken=localStorage.getItem('sp3_access'); // make token immediately available
+    spotifyShowUser(cachedUser);
   }
 
   // 3. Verify token in background

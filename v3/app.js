@@ -2045,11 +2045,12 @@ function toggleAccordion(n){
     spotifyShowUser(cachedUser);
   }
 
-  // 3. Verify token in background
+  // 3. Verify token in background — do NOT clear tokens on failure (race condition fix)
   if(localStorage.getItem('sp3_access')){
     refreshSpotifyTokenIfNeeded().then(tok=>{
-      if(!tok){ spotifyClearAll(); spotifyShowUser(null); updateScreen2UI(); }
-      else { loadSpotifyUser(); }
+      if(tok){ loadSpotifyUser(); }
+      // On failure: leave tokens intact — fetchUserPlaylists will handle it with inline refresh
+      // Clearing tokens here causes race condition: clears sp3_refresh before fetchUserPlaylists uses it
     }).catch(()=>{});
   }
 })();

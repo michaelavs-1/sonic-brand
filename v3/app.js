@@ -23,7 +23,7 @@ const state = {
   bizFunc: '',
   recommendedMoods: [], // pre-marked
   selectedMoods: new Set(),
-  mc: { familiarity: 3, hebrew: 3, vocal: 3, energy: 3, era: 3 },
+  mc: { familiarity: 3, hebrew: 3 },
   hours: { open: '09:00', close: '23:00' },
   refreshDays: 3,
   selectedModel: 'gpt-5.4', // fixed model
@@ -1093,7 +1093,7 @@ function toggleMood(m, el){
 
 function renderMC(){
   const c = $('mcContainer');
-  const order = ['familiarity','hebrew','vocal','energy','era'];
+  const order = ['familiarity','hebrew'];
   c.innerHTML = order.map(key=>{
     const q = window.SB_V2_MC[key];
     const opts = q.options.map(o=>{

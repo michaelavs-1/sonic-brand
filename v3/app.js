@@ -1184,59 +1184,254 @@ const _origSetStep = setStep;
 document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goNext override
 
 /* ── Core generation loop — runs once per energy level ── */
+/* ═══════════════════════════════════════════════════════════
+   NEW ARCHITECTURE (v4-brain):
+   Data Box = everything. GPT selects, never invents.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Step 1: Build a pool of tracks from the Data Box playlists ──
+   Fetches ALL playlists for the matched entry + energy level.
+   Also gets Spotify Recommendations from those tracks.
+   Returns: array of Spotify track objects (with id, artists, album, etc.)
+── */
+async function buildTrackPool(entry, energyLevel){
+  const liveEnergy = entry.liveEnergy || entry.energy || {};
+  const lvData = liveEnergy[energyLevel] || liveEnergy[1] || liveEnergy[2] || null;
+  let playlistIds = lvData?.playlists || [];
+
+  // Fallback to old format
+  if(!playlistIds.length && Array.isArray(entry.playlists)){
+    playlistIds = entry.playlists.map(p=>p.id||p).filter(Boolean);
+  }
+  if(!playlistIds.length) return [];
+
+  // Shuffle for variety — different playlists get sampled each run
+  const shuffled = playlistIds.slice().sort(()=>Math.random()-0.5);
+  const toFetch  = shuffled.slice(0, Math.min(shuffled.length, 10)); // up to 10 playlists
+
+  // Phase 1: fetch tracks from each playlist in parallel
+  const rawTracks = [];
+  await Promise.allSettled(toFetch.map(async pid=>{
+    try{
+      const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'fetch',
+          url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(name),popularity,duration_ms,album(images,release_date)))&limit=50`,
+          neutral:true})});
+      if(!r.ok) return;
+      const j = await r.json();
+      const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id);
+      rawTracks.push(...tracks);
+    }catch(e){}
+  }));
+
+  // Deduplicate
+  const seen = new Set();
+  const unique = rawTracks.filter(t=>{ if(seen.has(t.id)) return false; seen.add(t.id); return true; });
+
+  // Phase 2: audio features for BPM/energy filter
+  let featureMap = {};
+  const idBatch = unique.slice(0,100).map(t=>t.id);
+  if(idBatch.length){
+    try{
+      const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'fetch',url:`https://api.spotify.com/v1/audio-features?ids=${idBatch.join(',')}`,neutral:true})});
+      if(r.ok){ const j=await r.json(); (j.audio_features||[]).filter(f=>f).forEach(f=>{featureMap[f.id]=f;}); }
+    }catch(e){}
+  }
+
+  // Energy filter
+  const energyPass = t=>{
+    const f=featureMap[t.id]; if(!f) return true;
+    if(energyLevel===1) return f.energy<0.72 && f.tempo<138;
+    if(energyLevel===2) return f.energy>0.35 && f.tempo>85;
+    return true;
+  };
+  const basePool = unique.filter(energyPass);
+
+  // Phase 3: Spotify Recommendations from pool seeds ("you might also like")
+  const seedIds = basePool.slice().sort(()=>Math.random()-0.5).slice(0,5).map(t=>t.id);
+  if(seedIds.length>=2){
+    const rp = new URLSearchParams({seed_tracks:seedIds.join(','),limit:'100',market:'IL'});
+    if(energyLevel===1){rp.set('max_energy','0.72');rp.set('target_energy','0.42');rp.set('max_tempo','135');}
+    else{rp.set('min_energy','0.42');rp.set('target_energy','0.72');rp.set('min_tempo','90');}
+    try{
+      const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'fetch',url:`https://api.spotify.com/v1/recommendations?${rp}`,neutral:true})});
+      if(r.ok){
+        const j=await r.json();
+        (j.tracks||[]).filter(t=>t&&t.id&&!seen.has(t.id)&&energyPass(t)).forEach(t=>{seen.add(t.id);basePool.push(t);});
+      }
+    }catch(e){}
+  }
+
+  return basePool;
+}
+
+/* ── Step 2: GPT selects from the pool (never invents) ──
+   Sends up to 200 tracks to GPT. GPT picks the best 30 for this business.
+   Matches picks back to pool to get Spotify IDs.
+── */
+async function selectFromPool(pool, faders, moods, energyLevel){
+  if(!pool.length) return [];
+
+  // Pre-filter by familiarity preference
+  const fl = faders.familiarity;
+  let candidates = pool;
+  if(fl<25)       candidates = pool.filter(t=>(t.popularity||0)<=50);
+  else if(fl>75)  candidates = pool.filter(t=>(t.popularity||0)>=40);
+  if(candidates.length < 30) candidates = pool; // relax if too few
+
+  // Shuffle + cap at 200 for GPT
+  const MAX = 200;
+  const sample = candidates.slice().sort(()=>Math.random()-0.5).slice(0, MAX);
+
+  // Build candidate list for GPT
+  const trackList = sample.map((t,i)=>{
+    const artist = (t.artists||[]).map(a=>a.name).join(', ');
+    return `${i+1}. ${artist} — ${t.name}`;
+  }).join('\n');
+
+  const energyDesc = energyLevel===1
+    ? 'רגועה ושקטה (BPM נמוך, אנרגיה מרוסנת — מתאים לשיחות, ישיבה, רקע)'
+    : 'מקפיצה ואנרגטית (BPM גבוה, אנרגיה גבוהה — מתאים לשיא הערב, ריקוד, פעילות)';
+  const heDesc = faders.hebrew>65 ? 'העדפה לעברית' : faders.hebrew<35 ? 'העדפה ללועזית' : 'תערובת עברית/לועזית';
+
+  const sys = `אתה אוצר מוזיקה לעסקים.
+תפקידך: לבחור שירים מהרשימה — לא להמציא שירים חדשים.
+כלל ברזל: כל שיר שתבחר חייב להופיע ברשימה שקיבלת. שירים שלא ברשימה — אסורים לחלוטין.
+החזר JSON בלבד: {"tracks":[{"n":1},{"n":5},...]} כאשר n הוא מספר השיר ברשימה.`;
+
+  const usr = `עסק: "${state.bizDesc}"
+סוג עסק: ${state.bizType||'עסק'}
+אווירות: ${moods.join(', ')||'כללי'}
+אנרגיה: ${energyDesc}
+שפה: ${heDesc}
+
+הרשימה (${sample.length} שירים) — בחר 30 מספרים:
+${trackList}
+
+החזר JSON עם 30 מספרים מהרשימה: {"tracks":[{"n":X},{"n":Y},...]}`;
+
+  const raw = await callOpenAI([
+    {role:'system',content:sys},{role:'user',content:usr}
+  ],{model:getMainModel(), max_tokens:800, temperature:0.55});
+
+  const parsed = safeJSON(raw);
+  const picks = (parsed.tracks||[]).map(p=>p.n).filter(n=>Number.isInteger(n)&&n>=1&&n<=sample.length);
+
+  // Map picks back to track objects
+  const result = [];
+  const usedIds = new Set();
+  for(const n of picks){
+    const t = sample[n-1];
+    if(!t||usedIds.has(t.id)) continue;
+    usedIds.add(t.id);
+    result.push({
+      artist: (t.artists||[]).map(a=>a.name).join(', '),
+      title:  t.name,
+      id:     t.id,
+      url:    t.external_urls?.spotify||'',
+      cover:  (t.album?.images?.length) ? t.album.images[t.album.images.length-1].url : '',
+      popularity: t.popularity||0,
+      duration:   t.duration_ms||0,
+      preview:'', reason:'data-box',
+    });
+  }
+
+  // Fill to 30 from remaining pool if GPT picked fewer
+  if(result.length < 30){
+    for(const t of sample){
+      if(result.length>=30) break;
+      if(usedIds.has(t.id)) continue;
+      usedIds.add(t.id);
+      result.push({
+        artist:(t.artists||[]).map(a=>a.name).join(', '),
+        title:t.name, id:t.id, url:t.external_urls?.spotify||'',
+        cover:(t.album?.images?.length)?t.album.images[t.album.images.length-1].url:'',
+        popularity:t.popularity||0, duration:t.duration_ms||0,
+        preview:'', reason:'data-box-fill',
+      });
+    }
+  }
+
+  return result.slice(0,30);
+}
+
 async function generateTracklist(energyLevel, attempt){
   attempt = attempt || 0;
   state.energyLevel = energyLevel;
-  await buildBrainContext();
+  const label  = energyLevel===1 ? '🌙 רגוע' : '🔥 מקפיץ';
   const faders = window.SB_V2_mcToFaders(state.mc);
   const moods  = Array.from(state.selectedMoods);
 
-  const label = energyLevel===1 ? '🌙 רגוע' : '🔥 מקפיץ';
-  const directTracks = (state.brainContext.l0?.dna?.directTracks || []);
-  const directIds    = new Set(directTracks.map(t=>t.id).filter(Boolean));
+  // ── L0: Match Data Box ──
+  const l0Match = state.useDataBox && window.SB_matchDataBox
+    ? window.SB_matchDataBox(state.bizDesc)
+    : null;
 
-  setLoadingStatus(`${label} — בונה רשימה…`, '');
-  const candidates = await generateCandidates(faders, moods, {
-    attempt, exclude: directTracks.map(t=>`${t.artist} — ${t.title}`)
-  });
-
-  setLoadingStatus(`${label} — מאמת ב-Spotify…`, `${candidates.length} שירים`);
-  const validated = await validateOnSpotify(candidates);
-
-  const PLAYLIST_SIZE = 30;
-  const directCount  = Math.min(directTracks.length, Math.round(PLAYLIST_SIZE * 0.30));
-  const gptTracks    = validated.filter(t=>t.id && !directIds.has(t.id));
-  const chosenDirect = directTracks.slice().sort(()=>Math.random()-0.5).slice(0, directCount);
-
-  let merged = [...gptTracks.slice(0, PLAYLIST_SIZE - directCount)];
-  chosenDirect.forEach((dt,i)=>{
-    const pos = Math.floor((i+1)*merged.length/(directCount+1));
-    merged.splice(pos, 0, dt);
-  });
-
-  if(merged.filter(t=>t.id).length < PLAYLIST_SIZE - 5){
-    setLoadingStatus(`${label} — משלים שירים…`, '');
-    merged = await fillUp(merged, faders);
+  // ── Step 1: Build track pool from Data Box playlists ──
+  let pool = [];
+  if(l0Match){
+    setLoadingStatus(`${label} — בונה בריכת שירים מהטבלה…`,'');
+    pool = await buildTrackPool(l0Match, energyLevel);
   }
 
+  // ── Step 2: GPT selects from pool ──
+  let tracks = [];
+  if(pool.length >= 20){
+    setLoadingStatus(`${label} — GPT בוחר מ-${pool.length} שירים…`,'');
+    tracks = await selectFromPool(pool, faders, moods, energyLevel);
+  }
+
+  // ── Fallback: if pool too small, use old generation as supplement ──
+  if(tracks.filter(t=>t.id).length < 20){
+    setLoadingStatus(`${label} — משלים עם ניתוח GPT…`,'');
+    // Also build brain context for the prompt
+    await buildBrainContext();
+    const candidates = await generateCandidates(faders, moods, {
+      attempt, exclude: tracks.map(t=>`${t.artist} — ${t.title}`)
+    });
+    setLoadingStatus(`${label} — מאמת ב-Spotify…`,`${candidates.length} מועמדים`);
+    const validated = await validateOnSpotify(candidates);
+    const usedIds = new Set(tracks.map(t=>t.id).filter(Boolean));
+    tracks = [...tracks, ...validated.filter(t=>t.id&&!usedIds.has(t.id))].slice(0,30);
+  }
+
+  // ── Diversity filter ──
   const disliked = new Set(
     Object.entries(state.feedback).filter(([,v])=>v==='down')
       .map(([k])=>k.split('|')[0].toLowerCase().trim())
   );
   const artistCnt = {};
-  const diverse = merged.filter(t=>{
+  const diverse = tracks.filter(t=>{
     const a=(t.artist||'').toLowerCase().trim();
     if(disliked.has(a)) return false;
     artistCnt[a]=(artistCnt[a]||0)+1;
     return artistCnt[a]<=2;
   });
 
-  if(diverse.filter(t=>t.id).length < PLAYLIST_SIZE-4 && state.brainContext.assembled){
-    const topped = await fillUp(diverse, faders);
-    return topped.slice(0, PLAYLIST_SIZE);
+  // Fill to 30 from pool if diversity filter reduced count
+  if(diverse.length < 28 && pool.length>0){
+    const usedIds = new Set(diverse.map(t=>t.id).filter(Boolean));
+    for(const t of pool.slice().sort(()=>Math.random()-0.5)){
+      if(diverse.length>=30) break;
+      if(usedIds.has(t.id)) continue;
+      const artist=(t.artists||[]).map(a=>a.name).join(', ');
+      const an=artist.toLowerCase().trim();
+      artistCnt[an]=(artistCnt[an]||0)+1;
+      if(artistCnt[an]<=2 && !disliked.has(an)){
+        usedIds.add(t.id);
+        diverse.push({artist,title:t.name,id:t.id,
+          url:t.external_urls?.spotify||'',
+          cover:(t.album?.images?.length)?t.album.images[t.album.images.length-1].url:'',
+          popularity:t.popularity||0,duration:t.duration_ms||0,preview:'',reason:'fill'});
+      }
+    }
   }
-  return diverse.slice(0, PLAYLIST_SIZE);
+
+  return diverse.slice(0,30);
 }
+
 
 async function startGeneration(){
   state.hours.open = '09:00';

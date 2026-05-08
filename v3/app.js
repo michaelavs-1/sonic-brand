@@ -79,20 +79,20 @@ function base64url(arr){
 
 /* ─────────── Spotify playlist picker (screen 3) ─────────── */
 async function fetchUserPlaylists(){
-  const tok = await refreshSpotifyTokenIfNeeded();
+  // Use existing token directly — avoid blocking refresh which can hang on iOS
+  const tok = state.spotifyToken || localStorage.getItem('sp3_access');
   if(!tok) return [];
   try{
     const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0', {
-      headers:{'Authorization':'Bearer '+tok}
+      headers:{'Authorization':'Bearer '+tok},
+      signal: AbortSignal.timeout(6000) // 6s hard timeout
     });
-    if(r.status === 403 || r.status === 401){
-      return 'needs-reauth';
-    }
+    if(r.status === 403 || r.status === 401) return [];
     if(!r.ok) return [];
     const j = await r.json();
     return (j.items||[]).filter(p=>p&&p.id&&p.name);
   }catch(e){
-    console.warn('[playlists]', e);
+    console.warn('[playlists]', e.name === 'TimeoutError' ? 'timeout' : e);
     return [];
   }
 }
@@ -191,6 +191,22 @@ function setStep(n){
   });
   window.scrollTo({top:0,behavior:'smooth'});
   if(n === 2) updateScreen2UI();
+  if(n === 3){
+    const tok = state.spotifyToken || localStorage.getItem('sp3_access');
+    const grid = $('playlistPickerGrid');
+    if(!grid) return;
+    if(!tok){
+      grid.innerHTML = '<div class="pl-loading">יש להתחבר לSpotify כדי לבחור פלייליסטים</div>';
+    } else if(state.userPlaylists && state.userPlaylists.length){
+      renderPlaylistPicker(state.userPlaylists);
+    } else {
+      grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
+      fetchUserPlaylists().then(result=>{
+        state.userPlaylists = Array.isArray(result) ? result : [];
+        renderPlaylistPicker(state.userPlaylists);
+      }).catch(()=>{ renderPlaylistPicker([]); });
+    }
+  }
 
 }
 function goNext(){ if(state.step < state.totalSteps) setStep(state.step+1); }

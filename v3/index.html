@@ -373,19 +373,19 @@ input,textarea{font-family:inherit;color:inherit}
           maxlength="1000"></textarea>
       </div>
 
-      <!-- Optional reference playlist URL -->
-      <div style="margin-top:8px">
-        <p style="font-size:13px;color:var(--muted);margin-bottom:8px">
-          🎵 פלייליסט השראה <span style="opacity:.6">(אופציונלי)</span>
-        </p>
-        <input type="url" id="refPlaylist" class="input-text"
-          style="font-size:14px;direction:ltr"
-          placeholder="https://open.spotify.com/playlist/..."
-          oninput="state.refPlaylist=this.value.trim()">
-        <p style="font-size:12px;color:var(--muted);margin-top:6px">
-          Robin ישתמש בו כהשראה בלבד — לא כהעדפה אישית.
-        </p>
+      <!-- Spotify Playlist Picker — loads when screen 3 is shown -->
+      <div id="playlistPickerSection" style="margin-top:4px">
+        <div class="pl-picker-head">
+          <span class="pl-picker-label">🎵 בחרו פלייליסטים שמייצגים את האווירה שאתם רוצים <span style="font-weight:400;opacity:.65">(עד 3)</span></span>
+          <span class="pl-picker-count" id="plPickerCount"></span>
+        </div>
+        <div class="pl-grid" id="playlistPickerGrid">
+          <div class="pl-loading">טוען פלייליסטים…</div>
+        </div>
       </div>
+
+      <!-- Fallback manual URL -->
+      <input type="hidden" id="refPlaylist" value="">
 
       <div class="row" style="margin-top:24px;justify-content:space-between">
         <button class="btn btn-ghost" onclick="goBack()">← חזרה</button>

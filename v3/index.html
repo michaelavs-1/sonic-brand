@@ -92,6 +92,19 @@ input,textarea{font-family:inherit;color:inherit}
 .input-textarea{min-height:130px;resize:vertical;font-family:inherit;line-height:1.55}
 .notice{background:rgba(167,139,250,.1);border:1px solid rgba(167,139,250,.3);border-radius:12px;padding:12px 14px;color:#cdb8ff;font-size:13px;font-weight:500;margin-bottom:18px;display:flex;gap:8px;align-items:center}
 
+/* MC faders — compact style */
+.mc-block{margin-top:16px}
+.mc-block h3{font-size:13px;font-weight:700;margin:0 0 8px;display:flex;align-items:center;gap:6px;color:var(--muted)}
+.mc-options{display:flex;flex-wrap:wrap;gap:6px}
+.mc-option{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--bg-2);border:1px solid var(--border-2);border-radius:10px;cursor:pointer;transition:all .15s;user-select:none;flex:1;min-width:calc(50% - 4px)}
+.mc-option:hover{border-color:var(--muted)}
+.mc-option.selected{background:rgba(29,185,84,.08);border-color:var(--accent)}
+.mc-checkbox{flex-shrink:0;width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border-2);background:transparent;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.mc-option.selected .mc-checkbox{background:var(--accent);border-color:var(--accent)}
+.mc-option.selected .mc-checkbox::after{content:"✓";color:#fff;font-weight:900;font-size:10px}
+.mc-label{font-size:12px;font-weight:700;color:var(--text);line-height:1.2}
+.mc-sub{font-size:11px;color:var(--muted);margin-top:1px;line-height:1.3}
+
 /* Mood weighting (Screen 4) */
 .detected-banner{background:linear-gradient(135deg,rgba(29,185,84,.12),rgba(167,139,250,.08));border:1px solid rgba(29,185,84,.3);border-radius:14px;padding:14px 16px;margin-bottom:20px;line-height:1.6}
 .detected-banner .biz-line{font-size:15px;font-weight:700;color:var(--text)}
@@ -366,7 +379,16 @@ input,textarea{font-family:inherit;color:inherit}
       <h2 style="font-size:22px;margin-bottom:6px">ספרו לי על העסק</h2>
       <p style="margin-bottom:14px;font-size:14px">מה אתם, מי הקהל, מה האווירה שאתם רוצים ליצור.</p>
 
+      <div class="input-wrap" style="margin-bottom:14px">
+        <label class="input-label">שם העסק</label>
+        <input type="text" class="input-text" id="bizName"
+          placeholder="לדוגמה: בר הכפר, קפה לואיז, מסעדת נוני..."
+          maxlength="80"
+          oninput="state.bizName=this.value.trim()">
+      </div>
+
       <div class="input-wrap" style="margin-bottom:18px">
+        <label class="input-label">ספרו לנו על העסק</label>
         <textarea class="input-textarea" id="bizDesc"
           style="min-height:200px;font-size:16px;border-width:2px;border-color:var(--accent)"
           placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח. אווירה אינטימית, לא רעשנית..."

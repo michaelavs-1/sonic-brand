@@ -16,6 +16,7 @@ const state = {
   totalSteps: 5,
   energyLevel: 1,   // always generate both; this is used internally
   useDataBox: true,   // toggle L0 Data Box on/off for A/B testing
+  bizName: '',
   bizDesc: '',
   refPlaylist: '',
   bizType: null,        // detected
@@ -1037,6 +1038,7 @@ async function submitBizInfo(){
     showToast('כתבו לפחות כמה מילים על העסק', true);
     return;
   }
+  state.bizName = ($('bizName')?.value||'').trim();
   state.bizDesc = desc;
   state.refPlaylist = $('refPlaylist').value.trim();
 
@@ -1120,7 +1122,7 @@ function toggleMood(m, el){
 
 function renderMC(){
   const c = $('mcContainer');
-  const order = ['familiarity','hebrew'];
+  const order = ['familiarity','hebrew']; // compact 2-column layout via CSS
   c.innerHTML = order.map(key=>{
     const q = window.SB_V2_MC[key];
     const opts = q.options.map(o=>{
@@ -1357,7 +1359,7 @@ ${trackList}
   return result.slice(0,30);
 }
 
-async function generateTracklist(energyLevel, attempt){
+async function generateTracklist(energyLevel, attempt, excludeIds){
   attempt = attempt || 0;
   state.energyLevel = energyLevel;
   const label  = energyLevel===1 ? '🌙 רגוע' : '🔥 מקפיץ';
@@ -1374,6 +1376,11 @@ async function generateTracklist(energyLevel, attempt){
   if(l0Match){
     setLoadingStatus(`${label} — בונה בריכת שירים מהטבלה…`,'');
     pool = await buildTrackPool(l0Match, energyLevel);
+  }
+
+  // ── Exclude tracks already in the other playlist (prevent duplicates) ──
+  if(excludeIds && excludeIds.size > 0){
+    pool = pool.filter(t => !excludeIds.has(t.id));
   }
 
   // ── Step 2: GPT selects from pool ──
@@ -1451,8 +1458,10 @@ async function startGeneration(){
 
   try{
     // Generate both energy levels sequentially
-    state.playlist1 = await generateTracklist(1, state.regenCount);
-    state.playlist2 = await generateTracklist(2, state.regenCount);
+    // Pass playlist1 IDs to playlist2 so no duplicates
+    state.playlist1 = await generateTracklist(1, state.regenCount, []);
+    const p1ids = new Set(state.playlist1.map(t=>t.id).filter(Boolean));
+    state.playlist2 = await generateTracklist(2, state.regenCount, p1ids);
 
     $('playlistLoading').style.display = 'none';
     $('playlistResult').style.display  = 'block';
@@ -2062,7 +2071,9 @@ function renderPlaylist(energyLevel){
 
   const titleEl = $('playlistTitle'+sfx);
   const metaEl  = $('playlistMeta'+sfx);
-  if(titleEl) titleEl.textContent = (state.bizType||'Robin Mix') + (energyLevel===1 ? ' · רגוע' : ' · מקפיץ');
+  const _baseName = state.bizName || state.bizType || 'Robin Mix';
+  const _runNum = String(state.regenCount || 1).padStart(2,'0');
+  if(titleEl) titleEl.textContent = `${_baseName} · ${energyLevel===1?'רגוע':'מקפיץ'} #${_runNum}`;
   if(metaEl)  metaEl.textContent  = `${tracks.length} שירים · ${validCount} מאומתים ב-Spotify · ${min} דקות`;
 
   const list = $('tracksList'+sfx);
@@ -2140,7 +2151,9 @@ async function saveToSpotify(energyLevel){
   if(btn) btn.textContent = 'יוצר פלייליסט…';
   try{
     const label = energyLevel===1 ? 'רגוע' : 'מקפיץ';
-    const playlistName = (state.bizType||'Robin Mix')+' · '+label+' · Robin';
+    const _bname = state.bizName || state.bizType || 'Robin Mix';
+    const _rnum  = String(state.regenCount || 1).padStart(2,'0');
+    const playlistName = `${_bname} · ${energyLevel===1?'רגוע':'מקפיץ'} #${_rnum}`;
     const meRes = await fetch('https://api.spotify.com/v1/me',{headers:{'Authorization':'Bearer '+tok}});
     if(meRes.status===403||meRes.status===401){ spotifyClearAll(); _showScopeFix(); return; }
     const me = await meRes.json();
@@ -2207,7 +2220,7 @@ async function regenerate(energyLevel){
   if(btn) btn.disabled = true;
   if(list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><div class="spinner" style="width:32px;height:32px;border-width:2px;margin:0 auto 12px"></div><div>מייצר מחדש…</div></div>';
   try{
-    const tracks = await generateTracklist(energyLevel, state.regenCount);
+    const tracks = await generateTracklist(energyLevel, state.regenCount, new Set());
     if(energyLevel===1) state.playlist1=tracks; else state.playlist2=tracks;
     renderPlaylist(energyLevel);
   }catch(e){ showToast('שגיאה: '+e.message,true); }

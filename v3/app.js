@@ -1274,9 +1274,11 @@ async function selectFromPool(pool, faders, moods, energyLevel){
   if(candidates.length < 30) candidates = pool; // relax if too few
 
   // Exclude recently generated tracks (session memory)
+  // Build exclusion set: session history + tracks already in other playlist
   const sessionExclude = state._generatedHistory || new Set();
-  const fresh = candidates.filter(t => !sessionExclude.has(t.id));
-  const finalPool = fresh.length >= 40 ? fresh : candidates; // fallback if too many excluded
+  // Never fall back to the full pool — always exclude session history
+  // (prevents same tracks appearing in both playlists)
+  const finalPool = candidates.filter(t => !sessionExclude.has(t.id));
 
   // Stratify by popularity for variety — all from Data Box
   const popular = finalPool.filter(t=>(t.popularity||0)>=60).sort(()=>Math.random()-0.5);
@@ -1475,6 +1477,10 @@ async function startGeneration(){
     state.playlist1 = await generateTracklist(1, state.regenCount, []);
     const p1ids = new Set(state.playlist1.map(t=>t.id).filter(Boolean));
     state.playlist2 = await generateTracklist(2, state.regenCount, p1ids);
+
+    // Hard guarantee: remove any track from playlist2 that appears in playlist1
+    const p1Set = new Set(state.playlist1.map(t=>t.id).filter(Boolean));
+    state.playlist2 = state.playlist2.filter(t => !t.id || !p1Set.has(t.id));
 
     $('playlistLoading').style.display = 'none';
     $('playlistResult').style.display  = 'block';

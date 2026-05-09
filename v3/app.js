@@ -1188,6 +1188,17 @@ const _origSetStep = setStep;
 document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goNext override
 
 /* ── Core generation loop — runs once per energy level ── */
+/* ── Pool source mixing rules — tweak these to change the playlist character ──
+   databox:        tracks directly from the Data Box playlists (most on-brand)
+   related:        tracks from Spotify-search-discovered related playlists (broader universe)
+   recommendation: Spotify algorithmic recommendations seeded from the pool (AI-suggested)
+── */
+const POOL_MIX = {
+  databox:        { share: 0.50, max: 100 }, // 50% of the GPT sample
+  related:        { share: 0.30, max: 80  }, // 30%
+  recommendation: { share: 0.20, max: 50  }, // 20%
+};
+
 /* ═══════════════════════════════════════════════════════════
    NEW ARCHITECTURE (v4-brain):
    Data Box = everything. GPT selects, never invents.
@@ -1259,7 +1270,8 @@ async function buildTrackPool(entry, energyLevel){
           neutral:true})});
       if(!r.ok) return;
       const j = await r.json();
-      const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id);
+      const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id)
+        .map(t=>({...t,_src:'databox'}));
       rawTracks.push(...tracks);
     }catch(e){}
   }));
@@ -1299,7 +1311,7 @@ async function buildTrackPool(entry, energyLevel){
         body:JSON.stringify({action:'fetch',url:`https://api.spotify.com/v1/recommendations?${rp}`,neutral:true})});
       if(r.ok){
         const j=await r.json();
-        (j.tracks||[]).filter(t=>t&&t.id&&!seen.has(t.id)&&energyPass(t)).forEach(t=>{seen.add(t.id);basePool.push(t);});
+        (j.tracks||[]).filter(t=>t&&t.id&&!seen.has(t.id)&&energyPass(t)).forEach(t=>{seen.add(t.id);basePool.push({...t,_src:'recommendation'});});
       }
     }catch(e){}
   }
@@ -1317,7 +1329,7 @@ async function buildTrackPool(entry, energyLevel){
         if(!r.ok) return;
         const j = await r.json();
         const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id&&!seen.has(t.id)&&energyPass(t));
-        tracks.forEach(t=>{seen.add(t.id);basePool.push(t);});
+        tracks.forEach(t=>{seen.add(t.id);basePool.push({...t,_src:'related'});});
       }catch(e){}
     }));
   }
@@ -1344,23 +1356,27 @@ async function selectFromPool(pool, faders, moods, energyLevel){
   const fresh = candidates.filter(t => !sessionExclude.has(t.id));
   const finalPool = fresh.length >= 40 ? fresh : candidates; // fallback if too many excluded
 
-  // Stratify by popularity for variety (not always top popular)
-  const popular = finalPool.filter(t=>(t.popularity||0)>=60).sort(()=>Math.random()-0.5);
-  const mid     = finalPool.filter(t=>(t.popularity||0)>=25&&(t.popularity||0)<60).sort(()=>Math.random()-0.5);
-  const niche   = finalPool.filter(t=>(t.popularity||0)<25).sort(()=>Math.random()-0.5);
+  // ── Apply POOL_MIX source ratios ──
+  // Split pool by source, shuffle each bucket
+  const bySource = {
+    databox:        finalPool.filter(t=>t._src==='databox').sort(()=>Math.random()-0.5),
+    related:        finalPool.filter(t=>t._src==='related').sort(()=>Math.random()-0.5),
+    recommendation: finalPool.filter(t=>t._src==='recommendation').sort(()=>Math.random()-0.5),
+  };
 
-  // Build stratified sample: ~35% popular, ~45% mid, ~20% niche (max 200 total)
   const MAX = 200;
-  const wantPop   = Math.round(MAX * 0.35);
-  const wantMid   = Math.round(MAX * 0.45);
-  const wantNiche = MAX - wantPop - wantMid;
-  const stratified = [
-    ...popular.slice(0, wantPop),
-    ...mid.slice(0, wantMid),
-    ...niche.slice(0, wantNiche),
-  ].sort(()=>Math.random()-0.5); // final shuffle so GPT can't use position as signal
+  const mixed = [];
+  for(const [src, cfg] of Object.entries(POOL_MIX)){
+    const want = Math.min(Math.round(MAX * cfg.share), cfg.max, bySource[src].length);
+    mixed.push(...bySource[src].slice(0, want));
+  }
+  // If any bucket was underfilled, top up from remaining pool (any source)
+  if(mixed.length < 40){
+    const usedIds = new Set(mixed.map(t=>t.id));
+    finalPool.filter(t=>!usedIds.has(t.id)).slice(0,40-mixed.length).forEach(t=>mixed.push(t));
+  }
 
-  const sample = stratified.length >= 30 ? stratified : finalPool.slice().sort(()=>Math.random()-0.5).slice(0, MAX);
+  const sample = mixed.sort(()=>Math.random()-0.5).slice(0, MAX);
 
   // Build candidate list for GPT
   const trackList = sample.map((t,i)=>{
@@ -1469,7 +1485,10 @@ async function generateTracklist(energyLevel, attempt, excludeIds){
   // ── Step 2: GPT selects from pool ──
   let tracks = [];
   if(pool.length >= 20){
-    setLoadingStatus(`${label} — GPT בוחר מ-${pool.length} שירים…`,'');
+    const _dbCount  = pool.filter(t=>t._src==='databox').length;
+  const _relCount = pool.filter(t=>t._src==='related').length;
+  const _recCount = pool.filter(t=>t._src==='recommendation').length;
+  setLoadingStatus(`${label} — GPT בוחר מ-${pool.length} שירים`,`${_dbCount} מהטבלה · ${_relCount} קשורים · ${_recCount} המלצות`);
     tracks = await selectFromPool(pool, faders, moods, energyLevel);
   }
 

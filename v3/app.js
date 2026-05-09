@@ -33,6 +33,7 @@ const state = {
   generatedTracks: [],
   playlist1: [],
   playlist2: [],
+  _generatedHistory: new Set(), // IDs of all generated tracks (session)
   regenCount: 0,
   userPlaylists: [],          // loaded from /v1/me/playlists
   selectedUserPlaylists: [],  // IDs the user picked (max 3)       // how many times "צרו שוב" was pressed
@@ -1219,7 +1220,7 @@ async function buildTrackPool(entry, energyLevel){
     try{
       const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'fetch',
-          url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(name),popularity,duration_ms,album(images,release_date)))&limit=50`,
+          url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(name),popularity,duration_ms,album(images,release_date)))&limit=50&offset=${Math.floor(Math.random()*60)}`,
           neutral:true})});
       if(!r.ok) return;
       const j = await r.json();
@@ -1281,13 +1282,32 @@ async function selectFromPool(pool, faders, moods, energyLevel){
   // Pre-filter by familiarity preference
   const fl = faders.familiarity;
   let candidates = pool;
-  if(fl<25)       candidates = pool.filter(t=>(t.popularity||0)<=50);
-  else if(fl>75)  candidates = pool.filter(t=>(t.popularity||0)>=40);
+  if(fl<25)       candidates = pool.filter(t=>(t.popularity||0)<=55);
+  else if(fl>75)  candidates = pool.filter(t=>(t.popularity||0)>=35);
   if(candidates.length < 30) candidates = pool; // relax if too few
 
-  // Shuffle + cap at 200 for GPT
+  // Exclude recently generated tracks (session memory)
+  const sessionExclude = state._generatedHistory || new Set();
+  const fresh = candidates.filter(t => !sessionExclude.has(t.id));
+  const finalPool = fresh.length >= 40 ? fresh : candidates; // fallback if too many excluded
+
+  // Stratify by popularity for variety (not always top popular)
+  const popular = finalPool.filter(t=>(t.popularity||0)>=60).sort(()=>Math.random()-0.5);
+  const mid     = finalPool.filter(t=>(t.popularity||0)>=25&&(t.popularity||0)<60).sort(()=>Math.random()-0.5);
+  const niche   = finalPool.filter(t=>(t.popularity||0)<25).sort(()=>Math.random()-0.5);
+
+  // Build stratified sample: ~35% popular, ~45% mid, ~20% niche (max 200 total)
   const MAX = 200;
-  const sample = candidates.slice().sort(()=>Math.random()-0.5).slice(0, MAX);
+  const wantPop   = Math.round(MAX * 0.35);
+  const wantMid   = Math.round(MAX * 0.45);
+  const wantNiche = MAX - wantPop - wantMid;
+  const stratified = [
+    ...popular.slice(0, wantPop),
+    ...mid.slice(0, wantMid),
+    ...niche.slice(0, wantNiche),
+  ].sort(()=>Math.random()-0.5); // final shuffle so GPT can't use position as signal
+
+  const sample = stratified.length >= 30 ? stratified : finalPool.slice().sort(()=>Math.random()-0.5).slice(0, MAX);
 
   // Build candidate list for GPT
   const trackList = sample.map((t,i)=>{
@@ -1303,6 +1323,11 @@ async function selectFromPool(pool, faders, moods, energyLevel){
   const sys = `אתה אוצר מוזיקה לעסקים.
 תפקידך: לבחור שירים מהרשימה — לא להמציא שירים חדשים.
 כלל ברזל: כל שיר שתבחר חייב להופיע ברשימה שקיבלת. שירים שלא ברשימה — אסורים לחלוטין.
+חוקי גיוון חובה:
+- אסור לבחור יותר מ-2 שירים מאותו אמן.
+- חייב לפזר בחירות על פני הרשימה כולה — לא רק מהחלק הראשון.
+- שלב שירים מוכרים עם שירים פחות מוכרים — לא רק את השמות הגדולים.
+- כל בחירה צריכה להתאים לאווירה ולעסק, לא להיות "ברירת מחדל" של הז'אנר.
 החזר JSON בלבד: {"tracks":[{"n":1},{"n":5},...]} כאשר n הוא מספר השיר ברשימה.`;
 
   const usr = `עסק: "${state.bizDesc}"
@@ -1318,7 +1343,7 @@ ${trackList}
 
   const raw = await callOpenAI([
     {role:'system',content:sys},{role:'user',content:usr}
-  ],{model:getMainModel(), max_tokens:800, temperature:0.55});
+  ],{model:getMainModel(), max_tokens:800, temperature:0.82});
 
   const parsed = safeJSON(raw);
   const picks = (parsed.tracks||[]).map(p=>p.n).filter(n=>Number.isInteger(n)&&n>=1&&n<=sample.length);
@@ -1357,6 +1382,9 @@ ${trackList}
       });
     }
   }
+
+  // Update session history to avoid repeats in future runs
+  result.forEach(t=>{ if(t.id) (state._generatedHistory||(state._generatedHistory=new Set())).add(t.id); });
 
   return result.slice(0,30);
 }

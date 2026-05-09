@@ -527,6 +527,7 @@ async function fetchL0_DNA(entry, selectedMoods, energyLevel){
   let playlistIds = [];
 
   // Priority 1: live Data Box energy-specific playlists (from Google Sheet)
+  // entry.liveEnergy = from live API, entry.energy = from static energy map (data-box-energy.js)
   const liveEnergy = entry.liveEnergy || entry.energy || {};
   const lvData = liveEnergy[energyLevel] || liveEnergy[1] || liveEnergy[2] || null;
   if(lvData && Array.isArray(lvData.playlists) && lvData.playlists.length){
@@ -1197,6 +1198,7 @@ document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goN
    Returns: array of Spotify track objects (with id, artists, album, etc.)
 ── */
 async function buildTrackPool(entry, energyLevel){
+  // entry.liveEnergy = from live API, entry.energy = from static energy map (data-box-energy.js)
   const liveEnergy = entry.liveEnergy || entry.energy || {};
   const lvData = liveEnergy[energyLevel] || liveEnergy[1] || liveEnergy[2] || null;
   let playlistIds = lvData?.playlists || [];

@@ -1188,17 +1188,6 @@ const _origSetStep = setStep;
 document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goNext override
 
 /* ── Core generation loop — runs once per energy level ── */
-/* ── Pool source mixing rules — tweak these to change the playlist character ──
-   databox:        tracks directly from the Data Box playlists (most on-brand)
-   related:        tracks from Spotify-search-discovered related playlists (broader universe)
-   recommendation: Spotify algorithmic recommendations seeded from the pool (AI-suggested)
-── */
-const POOL_MIX = {
-  databox:        { share: 0.50, max: 100 }, // 50% of the GPT sample
-  related:        { share: 0.30, max: 80  }, // 30%
-  recommendation: { share: 0.20, max: 50  }, // 20%
-};
-
 /* ═══════════════════════════════════════════════════════════
    NEW ARCHITECTURE (v4-brain):
    Data Box = everything. GPT selects, never invents.
@@ -1209,80 +1198,47 @@ const POOL_MIX = {
    Also gets Spotify Recommendations from those tracks.
    Returns: array of Spotify track objects (with id, artists, album, etc.)
 ── */
-/* ── Discover related playlists from Spotify search (the "you might also like") ──
-   Searches Spotify for public playlists matching the entry's genre keywords.
-   Returns playlist IDs not already in the Data Box.
-── */
-async function discoverRelatedPlaylists(entry, energyLevel, existingPids){
-  const lvData = ((entry.liveEnergy||entry.energy||{})[energyLevel]) || {};
-  const genresStr = lvData.genres || entry.genres || '';
-  if(!genresStr) return [];
-
-  // Parse genre keywords (split on / and ,)
-  const keywords = genresStr.split(/[\/,]/).map(g=>g.trim()).filter(Boolean).slice(0,4);
-  const existingSet = new Set(existingPids||[]);
-  const found = [];
-
-  await Promise.allSettled(keywords.map(async kw=>{
-    try{
-      const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'fetch',
-          url:`https://api.spotify.com/v1/search?q=${encodeURIComponent(kw)}&type=playlist&limit=10&market=IL`,
-          neutral:true})});
-      if(!r.ok) return;
-      const j = await r.json();
-      (j.playlists?.items||[]).forEach(p=>{
-        if(p&&p.id&&!existingSet.has(p.id)&&p.tracks?.total>15){
-          existingSet.add(p.id);
-          found.push(p.id);
-        }
-      });
-    }catch(e){}
-  }));
-
-  // Return shuffled subset (max 6 related playlists)
-  return found.sort(()=>Math.random()-0.5).slice(0,6);
-}
 
 async function buildTrackPool(entry, energyLevel){
-  // entry.liveEnergy = from live API, entry.energy = from static energy map (data-box-energy.js)
   const liveEnergy = entry.liveEnergy || entry.energy || {};
   const lvData = liveEnergy[energyLevel] || liveEnergy[1] || liveEnergy[2] || null;
   let playlistIds = lvData?.playlists || [];
 
-  // Fallback to old format
   if(!playlistIds.length && Array.isArray(entry.playlists)){
     playlistIds = entry.playlists.map(p=>p.id||p).filter(Boolean);
   }
   if(!playlistIds.length) return [];
 
-  // Shuffle for variety — different playlists get sampled each run
+  // Shuffle playlist order — different order each run
   const shuffled = playlistIds.slice().sort(()=>Math.random()-0.5);
-  const toFetch  = shuffled.slice(0, Math.min(shuffled.length, 10)); // up to 10 playlists
 
-  // Phase 1: fetch tracks from each playlist in parallel
+  // Fetch ALL playlists with a random offset per playlist
+  // → different 50 tracks sampled from each playlist every run
   const rawTracks = [];
-  await Promise.allSettled(toFetch.map(async pid=>{
+  await Promise.allSettled(shuffled.map(async pid=>{
+    const offset = Math.floor(Math.random() * 80); // random start position
     try{
       const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'fetch',
-          url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(name),popularity,duration_ms,album(images,release_date)))&limit=50&offset=${Math.floor(Math.random()*60)}`,
+          url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(name),popularity,duration_ms,album(images,release_date)))&limit=50&offset=${offset}`,
           neutral:true})});
       if(!r.ok) return;
       const j = await r.json();
       const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id)
-        .map(t=>({...t,_src:'databox'}));
+        .map(t=>({...t, _src:'databox', _pid:pid}));
       rawTracks.push(...tracks);
     }catch(e){}
   }));
 
   // Deduplicate
   const seen = new Set();
-  const unique = rawTracks.filter(t=>{ if(seen.has(t.id)) return false; seen.add(t.id); return true; });
+  const unique = rawTracks.filter(t=>{
+    if(seen.has(t.id)) return false; seen.add(t.id); return true;
+  });
 
-  // Phase 2: audio features for BPM/energy filter
-  let featureMap = {};
+  // BPM / energy filter
   const idBatch = unique.slice(0,100).map(t=>t.id);
+  let featureMap = {};
   if(idBatch.length){
     try{
       const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1291,51 +1247,17 @@ async function buildTrackPool(entry, energyLevel){
     }catch(e){}
   }
 
-  // Energy filter
   const energyPass = t=>{
     const f=featureMap[t.id]; if(!f) return true;
     if(energyLevel===1) return f.energy<0.72 && f.tempo<138;
     if(energyLevel===2) return f.energy>0.35 && f.tempo>85;
     return true;
   };
-  const basePool = unique.filter(energyPass);
 
-  // Phase 3: Spotify Recommendations from pool seeds ("you might also like")
-  const seedIds = basePool.slice().sort(()=>Math.random()-0.5).slice(0,5).map(t=>t.id);
-  if(seedIds.length>=2){
-    const rp = new URLSearchParams({seed_tracks:seedIds.join(','),limit:'100',market:'IL'});
-    if(energyLevel===1){rp.set('max_energy','0.72');rp.set('target_energy','0.42');rp.set('max_tempo','135');}
-    else{rp.set('min_energy','0.42');rp.set('target_energy','0.72');rp.set('min_tempo','90');}
-    try{
-      const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'fetch',url:`https://api.spotify.com/v1/recommendations?${rp}`,neutral:true})});
-      if(r.ok){
-        const j=await r.json();
-        (j.tracks||[]).filter(t=>t&&t.id&&!seen.has(t.id)&&energyPass(t)).forEach(t=>{seen.add(t.id);basePool.push({...t,_src:'recommendation'});});
-      }
-    }catch(e){}
-  }
-
-  // Phase 4: Discover related playlists from Spotify search ("you might also like")
-  // This expands the musical universe beyond the explicitly listed Data Box playlists
-  const relatedPids = await discoverRelatedPlaylists(entry, energyLevel, toFetch);
-  if(relatedPids.length){
-    await Promise.allSettled(relatedPids.map(async pid=>{
-      try{
-        const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({action:'fetch',
-            url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(name),popularity,duration_ms,album(images,release_date)))&limit=30&offset=${Math.floor(Math.random()*40)}`,
-            neutral:true})});
-        if(!r.ok) return;
-        const j = await r.json();
-        const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id&&!seen.has(t.id)&&energyPass(t));
-        tracks.forEach(t=>{seen.add(t.id);basePool.push({...t,_src:'related'});});
-      }catch(e){}
-    }));
-  }
-
-  return basePool;
+  const pool = unique.filter(energyPass);
+  return pool.length >= 20 ? pool : unique; // relax filter if too few passed
 }
+
 
 /* ── Step 2: GPT selects from the pool (never invents) ──
    Sends up to 200 tracks to GPT. GPT picks the best 30 for this business.
@@ -1356,27 +1278,19 @@ async function selectFromPool(pool, faders, moods, energyLevel){
   const fresh = candidates.filter(t => !sessionExclude.has(t.id));
   const finalPool = fresh.length >= 40 ? fresh : candidates; // fallback if too many excluded
 
-  // ── Apply POOL_MIX source ratios ──
-  // Split pool by source, shuffle each bucket
-  const bySource = {
-    databox:        finalPool.filter(t=>t._src==='databox').sort(()=>Math.random()-0.5),
-    related:        finalPool.filter(t=>t._src==='related').sort(()=>Math.random()-0.5),
-    recommendation: finalPool.filter(t=>t._src==='recommendation').sort(()=>Math.random()-0.5),
-  };
+  // Stratify by popularity for variety — all from Data Box
+  const popular = finalPool.filter(t=>(t.popularity||0)>=60).sort(()=>Math.random()-0.5);
+  const mid     = finalPool.filter(t=>(t.popularity||0)>=25&&(t.popularity||0)<60).sort(()=>Math.random()-0.5);
+  const niche   = finalPool.filter(t=>(t.popularity||0)<25).sort(()=>Math.random()-0.5);
 
   const MAX = 200;
-  const mixed = [];
-  for(const [src, cfg] of Object.entries(POOL_MIX)){
-    const want = Math.min(Math.round(MAX * cfg.share), cfg.max, bySource[src].length);
-    mixed.push(...bySource[src].slice(0, want));
-  }
-  // If any bucket was underfilled, top up from remaining pool (any source)
-  if(mixed.length < 40){
-    const usedIds = new Set(mixed.map(t=>t.id));
-    finalPool.filter(t=>!usedIds.has(t.id)).slice(0,40-mixed.length).forEach(t=>mixed.push(t));
-  }
+  const stratified = [
+    ...popular.slice(0, Math.round(MAX*0.35)),
+    ...mid.slice(0,     Math.round(MAX*0.45)),
+    ...niche.slice(0,   MAX - Math.round(MAX*0.35) - Math.round(MAX*0.45)),
+  ].sort(()=>Math.random()-0.5);
 
-  const sample = mixed.sort(()=>Math.random()-0.5).slice(0, MAX);
+  const sample = stratified.length >= 30 ? stratified : finalPool.slice().sort(()=>Math.random()-0.5).slice(0,MAX);
 
   // Build candidate list for GPT
   const trackList = sample.map((t,i)=>{
@@ -1485,10 +1399,7 @@ async function generateTracklist(energyLevel, attempt, excludeIds){
   // ── Step 2: GPT selects from pool ──
   let tracks = [];
   if(pool.length >= 20){
-    const _dbCount  = pool.filter(t=>t._src==='databox').length;
-  const _relCount = pool.filter(t=>t._src==='related').length;
-  const _recCount = pool.filter(t=>t._src==='recommendation').length;
-  setLoadingStatus(`${label} — GPT בוחר מ-${pool.length} שירים`,`${_dbCount} מהטבלה · ${_relCount} קשורים · ${_recCount} המלצות`);
+    setLoadingStatus(`${label} — GPT בוחר מ-${pool.length} שירים…`,'');
     tracks = await selectFromPool(pool, faders, moods, energyLevel);
   }
 

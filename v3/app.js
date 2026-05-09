@@ -1198,6 +1198,41 @@ document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goN
    Also gets Spotify Recommendations from those tracks.
    Returns: array of Spotify track objects (with id, artists, album, etc.)
 ── */
+/* ── Discover related playlists from Spotify search (the "you might also like") ──
+   Searches Spotify for public playlists matching the entry's genre keywords.
+   Returns playlist IDs not already in the Data Box.
+── */
+async function discoverRelatedPlaylists(entry, energyLevel, existingPids){
+  const lvData = ((entry.liveEnergy||entry.energy||{})[energyLevel]) || {};
+  const genresStr = lvData.genres || entry.genres || '';
+  if(!genresStr) return [];
+
+  // Parse genre keywords (split on / and ,)
+  const keywords = genresStr.split(/[\/,]/).map(g=>g.trim()).filter(Boolean).slice(0,4);
+  const existingSet = new Set(existingPids||[]);
+  const found = [];
+
+  await Promise.allSettled(keywords.map(async kw=>{
+    try{
+      const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'fetch',
+          url:`https://api.spotify.com/v1/search?q=${encodeURIComponent(kw)}&type=playlist&limit=10&market=IL`,
+          neutral:true})});
+      if(!r.ok) return;
+      const j = await r.json();
+      (j.playlists?.items||[]).forEach(p=>{
+        if(p&&p.id&&!existingSet.has(p.id)&&p.tracks?.total>15){
+          existingSet.add(p.id);
+          found.push(p.id);
+        }
+      });
+    }catch(e){}
+  }));
+
+  // Return shuffled subset (max 6 related playlists)
+  return found.sort(()=>Math.random()-0.5).slice(0,6);
+}
+
 async function buildTrackPool(entry, energyLevel){
   // entry.liveEnergy = from live API, entry.energy = from static energy map (data-box-energy.js)
   const liveEnergy = entry.liveEnergy || entry.energy || {};
@@ -1267,6 +1302,24 @@ async function buildTrackPool(entry, energyLevel){
         (j.tracks||[]).filter(t=>t&&t.id&&!seen.has(t.id)&&energyPass(t)).forEach(t=>{seen.add(t.id);basePool.push(t);});
       }
     }catch(e){}
+  }
+
+  // Phase 4: Discover related playlists from Spotify search ("you might also like")
+  // This expands the musical universe beyond the explicitly listed Data Box playlists
+  const relatedPids = await discoverRelatedPlaylists(entry, energyLevel, toFetch);
+  if(relatedPids.length){
+    await Promise.allSettled(relatedPids.map(async pid=>{
+      try{
+        const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({action:'fetch',
+            url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(name),popularity,duration_ms,album(images,release_date)))&limit=30&offset=${Math.floor(Math.random()*40)}`,
+            neutral:true})});
+        if(!r.ok) return;
+        const j = await r.json();
+        const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id&&!seen.has(t.id)&&energyPass(t));
+        tracks.forEach(t=>{seen.add(t.id);basePool.push(t);});
+      }catch(e){}
+    }));
   }
 
   return basePool;

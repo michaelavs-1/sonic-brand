@@ -1,7 +1,7 @@
 const SUPABASE_URL = 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
-const CLIENT_ID = 'b6404b5ae1684143b79d9a86bb4b6cba';
-const CLIENT_SECRET = '158fe44d006a47209daa375898fd835e';
+const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
+const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 
 // User token cache (from refresh token)
 let cachedToken = null;

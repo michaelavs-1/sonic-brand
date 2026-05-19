@@ -235,7 +235,7 @@ iOS Spotify app intercepts OAuth and returns cached old scopes. Fix shown to use
 App is in Spotify Development Mode → max 25 users. Each user must be manually added at:
 `developer.spotify.com/dashboard → sonic-brand → User Management`
 
-Currently added: Michael Avshalom, Ami Nir. For production: request Extended Quota Mode.
+Currently allowlisted: Michael Avshalom and Ami Nir (added by Roni). The Spotify app is owned by a dedicated sonic-brand Spotify account managed by Roni — separate from Michael's personal Spotify Developer dashboard. For production (unlimited users), apply for Extended Quota Mode.
 
 ### Spotify API proxy (/api/spotify.js)
 All Spotify API calls from the frontend go through `/api/spotify` (POST):

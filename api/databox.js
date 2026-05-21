@@ -29,8 +29,14 @@ function parseCSVLine(line) {
 function parseCSV(text) {
   const lines = text.split('\n').filter(l => l.trim());
   if (!lines.length) return [];
-  const headers = parseCSVLine(lines[0]);
-  return lines.slice(1).map(line => {
+
+  // The sheet starts with a title row and atmosphere legend; the real
+  // column headers are on a later row that begins with "Type Of business".
+  const headerIdx = lines.findIndex(l => /^Type Of business\b/i.test(l));
+  if (headerIdx === -1) return [];
+
+  const headers = parseCSVLine(lines[headerIdx]);
+  return lines.slice(headerIdx + 1).map(line => {
     const vals = parseCSVLine(line);
     const row = {};
     headers.forEach((h, i) => { row[h.trim()] = (vals[i] || '').trim(); });

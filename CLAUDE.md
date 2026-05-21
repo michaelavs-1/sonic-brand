@@ -194,7 +194,7 @@ Structure: each business type has TWO rows:
 - Row with `Energy level = 2` → energetic playlists (Tropical House, Punk, Electronic, etc.)
 
 ### Static energy map (data-box-energy.js)
-Since `/api/databox` can't fetch the sheet (not public), `data-box-energy.js` provides hardcoded energy separation for 14 business types. Loaded as script before `app.js`. Structure:
+`data-box-energy.js` provides hardcoded energy separation for 14 business types as a fallback for when `/api/databox` hasn't returned yet (it loads in the background on boot) or if the live load fails. The sheet is public; once `/api/databox` resolves, `SB_LIVE_ENTRIES` is overwritten with the live entries (which carry richer keywords). Loaded as script before `app.js`. Structure:
 ```javascript
 window.SB_ENERGY_MAP = {
   'בר יין': {
@@ -397,7 +397,7 @@ Auto-deploys on push to `main`. Cache busting: update `?v=XXXXXXX` in index.html
 
 ## KNOWN ISSUES
 
-1. **`/api/databox` returns 0 entries** — Google Sheet needs to be publicly accessible. Currently using `data-box-energy.js` static fallback with 14 business types.
+1. **`data-box-energy.js` only covers 14 business types** — the live sheet has more, including some with only one energy level filled in or with empty `Energy level` cells (which `/api/databox` currently skips). When `/api/databox` resolves it overrides the static fallback with the richer live entries, but biz types with no Energy level on either row are still missing.
 
 2. **BPM filter only on first 100 tracks** — Spotify audio features API limited to 100 IDs per request. Tracks beyond index 100 in the pool pass without BPM filtering.
 

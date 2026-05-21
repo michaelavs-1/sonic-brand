@@ -10,6 +10,9 @@ const SPOTIFY_SCOPES = 'playlist-modify-public playlist-modify-private playlist-
 const SPOTIFY_REDIRECT = location.origin + location.pathname; // /v3 path
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
+const USE_NEW_GEN = false;
+const GEN = () => USE_NEW_GEN ? window.SB_GEN_NEW : window.SB_GEN;
+
 /* ─────────── State ─────────── */
 const state = {
   step: 1,
@@ -50,207 +53,174 @@ const state = {
 };
 
 /* ─────────── Helpers ─────────── */
-function $(id){ return document.getElementById(id); }
-function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-function escapeAttr(s){ return String(s||'').replace(/'/g,'&#39;').replace(/"/g,'&quot;'); }
-function showToast(msg, isError){
+function $(id) { return document.getElementById(id); }
+function escapeHtml(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+function escapeAttr(s) { return String(s || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
+function showToast(msg, isError) {
   const t = $('toast');
   t.textContent = msg;
   t.className = 'toast show' + (isError ? ' error' : '');
-  setTimeout(()=>{ t.className = 'toast'; }, 3500);
+  setTimeout(() => { t.className = 'toast'; }, 3500);
 }
-function genRandomString(len){
-  const chars='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const arr=new Uint8Array(len);crypto.getRandomValues(arr);
-  return Array.from(arr).map(b=>chars[b%chars.length]).join('');
+function genRandomString(len) {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const arr = new Uint8Array(len); crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => chars[b % chars.length]).join('');
 }
 /* ─── Hard refresh — bypasses all browser cache ─── */
-function hardRefresh(){
+function hardRefresh() {
   // Remove ?v= or ?refresh= params from current URL, add fresh timestamp
   const base = window.location.origin + window.location.pathname;
   window.location.replace(base + '?refresh=' + Date.now());
 }
 
-async function sha256(s){
-  const buf=new TextEncoder().encode(s);
-  const h=await crypto.subtle.digest('SHA-256', buf);
+async function sha256(s) {
+  const buf = new TextEncoder().encode(s);
+  const h = await crypto.subtle.digest('SHA-256', buf);
   return new Uint8Array(h);
 }
-function base64url(arr){
+function base64url(arr) {
   return btoa(String.fromCharCode.apply(null, arr))
-    .replace(/=/g,'').replace(/\+/g,'-').replace(/\//g,'_');
+    .replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 /* ─────────── Spotify playlist picker (screen 3) ─────────── */
-async function fetchUserPlaylists(){
+async function fetchUserPlaylists() {
   const tok = state.spotifyToken || localStorage.getItem('sp3_access');
-  if(!tok) return [];
+  if (!tok) return [];
 
   // Fetch with hard timeout — no dependency on refreshSpotifyTokenIfNeeded
   const doFetch = async (token) => {
     const ctrl = new AbortController();
-    const t = setTimeout(()=>ctrl.abort(), 7000);
-    try{
+    const t = setTimeout(() => ctrl.abort(), 7000);
+    try {
       const r = await fetch('https://api.spotify.com/v1/me/playlists?limit=50&offset=0',
-        {headers:{'Authorization':'Bearer '+token}, signal:ctrl.signal});
+        { headers: { 'Authorization': 'Bearer ' + token }, signal: ctrl.signal });
       clearTimeout(t);
-      if(r.status===401) return null;   // signal: needs fresh token
-      if(!r.ok) return [];
+      if (r.status === 401) return null;   // signal: needs fresh token
+      if (!r.ok) return [];
       const j = await r.json();
-      return (j.items||[]).filter(p=>p&&p.id&&p.name);
-    }catch(e){ clearTimeout(t); return []; }
+      return (j.items || []).filter(p => p && p.id && p.name);
+    } catch (e) { clearTimeout(t); return []; }
   };
 
   let result = await doFetch(tok);
 
   // If 401 — do a self-contained token refresh (own timeout, no external deps)
-  if(result === null){
+  if (result === null) {
     const refresh = localStorage.getItem('sp3_refresh');
-    if(!refresh) return [];
+    if (!refresh) return [];
     const ctrl2 = new AbortController();
-    const t2 = setTimeout(()=>ctrl2.abort(), 5000);
-    try{
-      const r2 = await fetch('https://accounts.spotify.com/api/token',{
-        method:'POST',
-        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({grant_type:'refresh_token',refresh_token:refresh,client_id:SPOTIFY_CLIENT_ID}),
+    const t2 = setTimeout(() => ctrl2.abort(), 5000);
+    try {
+      const r2 = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refresh, client_id: SPOTIFY_CLIENT_ID }),
         signal: ctrl2.signal
       });
       clearTimeout(t2);
-      if(!r2.ok) return [];
+      if (!r2.ok) return [];
       const d = await r2.json();
-      if(!d.access_token) return [];
+      if (!d.access_token) return [];
       state.spotifyToken = d.access_token;
       localStorage.setItem('sp3_access', d.access_token);
-      localStorage.setItem('sp3_expiry', String(Date.now()+(d.expires_in||3600)*1000-60000));
+      localStorage.setItem('sp3_expiry', String(Date.now() + (d.expires_in || 3600) * 1000 - 60000));
       result = await doFetch(d.access_token);
-    }catch(e){ clearTimeout(t2); return []; }
+    } catch (e) { clearTimeout(t2); return []; }
   }
 
   return Array.isArray(result) ? result : [];
 }
 
-function renderPlaylistPicker(playlists){
+function renderPlaylistPicker(playlists) {
   const grid = $('playlistPickerGrid');
-  if(!grid) return;
-  if(!playlists.length){
+  if (!grid) return;
+  if (!playlists.length) {
     grid.innerHTML = '<div class="pl-loading">לא נמצאו פלייליסטים — ממשיכים בלי בחירה 👍</div>';
     return;
   }
-  grid.innerHTML = playlists.map(p=>{
-    const img = p.images&&p.images[0] ? p.images[0].url : '';
+  grid.innerHTML = playlists.map(p => {
+    const img = p.images && p.images[0] ? p.images[0].url : '';
     const sel = state.selectedUserPlaylists.includes(p.id);
-    return `<div class="pl-card${sel?' selected':''}" onclick="toggleUserPlaylist('${escapeAttr(p.id)}')" data-id="${escapeAttr(p.id)}">
-      <div class="pl-cover"${img?` style="background-image:url('${img}')"`:''}></div>
+    return `<div class="pl-card${sel ? ' selected' : ''}" onclick="toggleUserPlaylist('${escapeAttr(p.id)}')" data-id="${escapeAttr(p.id)}">
+      <div class="pl-cover"${img ? ` style="background-image:url('${img}')"` : ''}></div>
       <div class="pl-name">${escapeHtml(p.name)}</div>
-      ${sel?'<div class="pl-check">✓</div>':''}
+      ${sel ? '<div class="pl-check">✓</div>' : ''}
     </div>`;
   }).join('');
 }
 
-function toggleUserPlaylist(id){
+function toggleUserPlaylist(id) {
   const idx = state.selectedUserPlaylists.indexOf(id);
-  if(idx >= 0){
-    state.selectedUserPlaylists.splice(idx,1);
+  if (idx >= 0) {
+    state.selectedUserPlaylists.splice(idx, 1);
   } else {
-    if(state.selectedUserPlaylists.length >= 3){
+    if (state.selectedUserPlaylists.length >= 3) {
       showToast('ניתן לבחור עד 3 פלייליסטים', true);
       return;
     }
     state.selectedUserPlaylists.push(id);
   }
   // Refresh only the clicked card + counter (avoid full re-render)
-  document.querySelectorAll('.pl-card').forEach(card=>{
+  document.querySelectorAll('.pl-card').forEach(card => {
     const isSel = state.selectedUserPlaylists.includes(card.dataset.id);
     card.classList.toggle('selected', isSel);
     let chk = card.querySelector('.pl-check');
-    if(isSel && !chk){
+    if (isSel && !chk) {
       chk = document.createElement('div');
-      chk.className='pl-check'; chk.textContent='✓';
+      chk.className = 'pl-check'; chk.textContent = '✓';
       card.appendChild(chk);
-    } else if(!isSel && chk){
+    } else if (!isSel && chk) {
       chk.remove();
     }
   });
   const cnt = $('plPickerCount');
-  if(cnt) cnt.textContent = state.selectedUserPlaylists.length
+  if (cnt) cnt.textContent = state.selectedUserPlaylists.length
     ? `${state.selectedUserPlaylists.length}/3 נבחרו`
     : '';
 }
 
-/* ─────────── Multi-playlist L1 DNA ─────────── */
-async function fetchMultiL1_DNA(playlistIds){
-  if(!playlistIds.length) return null;
-  const results = await Promise.allSettled(
-    playlistIds.map(id=>fetchL1_DNA('https://open.spotify.com/playlist/'+id))
-  );
-  const dnas = results.filter(r=>r.status==='fulfilled'&&r.value).map(r=>r.value);
-  if(!dnas.length) return null;
-  if(dnas.length===1) return dnas[0];
-
-  // Merge: combine artists, track IDs, vibe keywords; average audio stats
-  const topArtists = [...new Set(dnas.flatMap(d=>d.topArtists||[]))].slice(0,8);
-  const topTrackIds = [...new Set(dnas.flatMap(d=>d.topTrackIds||[]))].slice(0,5);
-  const vibeKeywords = [...new Set(dnas.flatMap(d=>d.vibeKeywords||[]))].slice(0,6);
-  const topTracksDisplay = dnas.flatMap(d=>d.topTracksDisplay||[]).slice(0,5);
-
-  // Average audio stats across all playlists
-  const statsKeys = ['energy','valence','dance','tempo','instr','hebrewRatio'];
-  const audioStats = {};
-  statsKeys.forEach(k=>{
-    const vals = dnas.map(d=>d.audioStats?.[k]).filter(v=>v!=null);
-    if(vals.length) audioStats[k] = vals.reduce((s,v)=>s+v,0)/vals.length;
-  });
-
-  return {
-    summary: `${dnas.length} פלייליסטים נבחרו`,
-    topArtists, topTrackIds, vibeKeywords, topTracksDisplay,
-    audioStats: Object.keys(audioStats).length ? audioStats : null,
-    faderHints: dnas[0].faderHints,
-    trackCount: dnas.reduce((s,d)=>s+(d.trackCount||0),0),
-  };
-}
-
 /* ─────────── Navigation ─────────── */
-function setStep(n){
+function setStep(n) {
   state.step = n;
-  document.querySelectorAll('.screen').forEach(el=>{
+  document.querySelectorAll('.screen').forEach(el => {
     el.classList.toggle('active', Number(el.dataset.screen) === n);
   });
   const dots = document.querySelectorAll('#progress .dot');
-  dots.forEach((d,i)=>{
-    d.classList.toggle('active', i+1 === n);
-    d.classList.toggle('done', i+1 < n);
+  dots.forEach((d, i) => {
+    d.classList.toggle('active', i + 1 === n);
+    d.classList.toggle('done', i + 1 < n);
   });
-  window.scrollTo({top:0,behavior:'smooth'});
-  if(n === 2) updateScreen2UI();
-  if(n === 3){
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (n === 2) updateScreen2UI();
+  if (n === 3) {
     const tok = state.spotifyToken || localStorage.getItem('sp3_access');
     const grid = $('playlistPickerGrid');
-    if(!grid) return;
-    if(!tok){
+    if (!grid) return;
+    if (!tok) {
       grid.innerHTML = '<div class="pl-loading">יש להתחבר לSpotify כדי לבחור פלייליסטים</div>';
-    } else if(state.userPlaylists && state.userPlaylists.length){
+    } else if (state.userPlaylists && state.userPlaylists.length) {
       renderPlaylistPicker(state.userPlaylists);
     } else {
       grid.innerHTML = '<div class="pl-loading">טוען פלייליסטים…</div>';
-      fetchUserPlaylists().then(result=>{
+      fetchUserPlaylists().then(result => {
         state.userPlaylists = Array.isArray(result) ? result : [];
         renderPlaylistPicker(state.userPlaylists);
-      }).catch(()=>{ renderPlaylistPicker([]); });
+      }).catch(() => { renderPlaylistPicker([]); });
     }
   }
 
 }
-function goNext(){ if(state.step < state.totalSteps) setStep(state.step+1); }
-function goBack(){ if(state.step > 1) setStep(state.step-1); }
+function goNext() { if (state.step < state.totalSteps) setStep(state.step + 1); }
+function goBack() { if (state.step > 1) setStep(state.step - 1); }
 
 /* ─────────── Info tooltip ─────────── */
-function toggleInfoTip(e){
+function toggleInfoTip(e) {
   e.stopPropagation();
-  $('infoTip').classList.toggle('show');
+  $('infoTip')?.classList.toggle('show');
 }
-document.addEventListener('click', ()=>$('infoTip').classList.remove('show'));
+document.addEventListener('click', () => $('infoTip')?.classList.remove('show'));
 
 /* ═══════════════════════════════════════════
    SPOTIFY SSO v3 — BULLETPROOF IMPLEMENTATION
@@ -264,78 +234,78 @@ document.addEventListener('click', ()=>$('infoTip').classList.remove('show'));
    6. Single spotifyShowUser() for all UI
 ═══════════════════════════════════════════ */
 
-const SP_KEYS = ['sp3_access','sp3_refresh','sp3_expiry','sp3_verifier','sp3_user','sb_v3_state','spotify_id'];
+const SP_KEYS = ['sp3_access', 'sp3_refresh', 'sp3_expiry', 'sp3_verifier', 'sp3_user', 'sb_v3_state', 'spotify_id'];
 
-function spotifyClearAll(){
-  SP_KEYS.forEach(k=>{
+function spotifyClearAll() {
+  SP_KEYS.forEach(k => {
     localStorage.removeItem(k);
-    try{ sessionStorage.removeItem(k); }catch(e){}
+    try { sessionStorage.removeItem(k); } catch (e) { }
   });
   document.cookie = 'sp_verifier=; path=/; max-age=0; SameSite=Lax';
   state.spotifyToken = null;
-  state.spotifyUser  = null;
+  state.spotifyUser = null;
   state.userPlaylists = [];
   state.selectedUserPlaylists = [];
   state._scopeFixed = false;
 }
 
-function spotifyShowUser(user){
+function spotifyShowUser(user) {
   const name = (user && (user.display_name || user.id)) || null;
-  const img  = user?.images?.[0]?.url || '';
-  ['spotifyBadgeName','spotifyStripName','s3AccountName'].forEach(id=>{
-    const el=$(id); if(el) el.textContent = name||'';
+  const img = user?.images?.[0]?.url || '';
+  ['spotifyBadgeName', 'spotifyStripName', 's3AccountName'].forEach(id => {
+    const el = $(id); if (el) el.textContent = name || '';
   });
-  ['spotifyBadgeImg','spotifyStripImg','s3AccountImg'].forEach(id=>{
-    const el=$(id); if(!el) return;
-    if(img){ el.src=img; el.style.display='block'; }
-    else { el.style.display='none'; }
+  ['spotifyBadgeImg', 'spotifyStripImg', 's3AccountImg'].forEach(id => {
+    const el = $(id); if (!el) return;
+    if (img) { el.src = img; el.style.display = 'block'; }
+    else { el.style.display = 'none'; }
   });
   const show = !!name;
-  const elMap = {spotifyBadge:'block', spotifyStrip:'flex', s3AccountLine:'flex'};
-  Object.entries(elMap).forEach(([id,d])=>{ const el=$(id); if(el) el.style.display = show?d:'none'; });
-  if(state.step===2) updateScreen2UI();
+  const elMap = { spotifyBadge: 'block', spotifyStrip: 'flex', s3AccountLine: 'flex' };
+  Object.entries(elMap).forEach(([id, d]) => { const el = $(id); if (el) el.style.display = show ? d : 'none'; });
+  if (state.step === 2) updateScreen2UI();
 }
 
-function updateScreen2UI(){
-  const has=$('s2HasSession'), no=$('s2NoSession');
-  if(!has||!no) return;
-  const user=state.spotifyUser;
-  if(user){
-    const name=user.display_name||user.id||'';
-    const img=user.images?.[0]?.url||'';
-    const n=$('s2Name'),av=$('s2Avatar');
-    if(n) n.textContent=name;
-    if(av){ if(img){av.src=img;av.style.display='block';}else{av.style.display='none';} }
-    has.style.display='block'; no.style.display='none';
+function updateScreen2UI() {
+  const has = $('s2HasSession'), no = $('s2NoSession');
+  if (!has || !no) return;
+  const user = state.spotifyUser;
+  if (user) {
+    const name = user.display_name || user.id || '';
+    const img = user.images?.[0]?.url || '';
+    const n = $('s2Name'), av = $('s2Avatar');
+    if (n) n.textContent = name;
+    if (av) { if (img) { av.src = img; av.style.display = 'block'; } else { av.style.display = 'none'; } }
+    has.style.display = 'block'; no.style.display = 'none';
   } else {
-    has.style.display='none'; no.style.display='block';
+    has.style.display = 'none'; no.style.display = 'block';
   }
 }
 
-function continueWithSession(){ setStep(3); }
+function continueWithSession() { setStep(3); }
 
-function switchSpotifyAccount(){
+function switchSpotifyAccount() {
   spotifyClearAll(); spotifyShowUser(null); updateScreen2UI();
   spotifyLogin();
 }
 
-function disconnectSpotify(){
+function disconnectSpotify() {
   spotifyClearAll(); spotifyShowUser(null); updateScreen2UI();
   closeSettingsModal(); setStep(2); showToast('Spotify נותק');
 }
 
 // Legacy aliases
-function _clearAll(){ spotifyClearAll(); }
-function renderSpotifyBadge(){ spotifyShowUser(state.spotifyUser); }
-function clearSpotifyBadge(){ spotifyShowUser(null); }
+function _clearAll() { spotifyClearAll(); }
+function renderSpotifyBadge() { spotifyShowUser(state.spotifyUser); }
+function clearSpotifyBadge() { spotifyShowUser(null); }
 
 /* ─── Connect: PKCE with 3-storage verifier ─── */
-async function spotifyLogin(){
+async function spotifyLogin() {
   const verifier = genRandomString(64);
   const challenge = base64url(await sha256(verifier));
   // 3-storage: localStorage + sessionStorage + cookie
   localStorage.setItem('sp3_verifier', verifier);
-  try{ sessionStorage.setItem('sp_verifier', verifier); }catch(e){}
+  try { sessionStorage.setItem('sp_verifier', verifier); } catch (e) { }
   document.cookie = `sp_verifier=${verifier}; path=/; max-age=600; SameSite=Lax`;
 
   window.location.href = 'https://accounts.spotify.com/authorize?' + new URLSearchParams({
@@ -351,36 +321,38 @@ async function spotifyLogin(){
 }
 
 /* ─── Callback: exchange + validate ─── */
-async function handleSpotifyCallback(){
+async function handleSpotifyCallback() {
   const code = new URLSearchParams(window.location.search).get('code');
-  if(!code) return false;
-  history.replaceState(null,'',location.pathname);
+  if (!code) return false;
+  history.replaceState(null, '', location.pathname);
 
   const verifier =
     localStorage.getItem('sp3_verifier') ||
-    (()=>{ try{return sessionStorage.getItem('sp_verifier');}catch(e){return null;} })() ||
+    (() => { try { return sessionStorage.getItem('sp_verifier'); } catch (e) { return null; } })() ||
     (document.cookie.match(/(?:^|;\s*)sp_verifier=([^;]*)/) || [])[1] || null;
 
   // Clean up verifier
-  ['sp_verifier'].forEach(k=>{ localStorage.removeItem(k); try{sessionStorage.removeItem(k);}catch(e){} });
+  ['sp_verifier'].forEach(k => { localStorage.removeItem(k); try { sessionStorage.removeItem(k); } catch (e) { } });
   document.cookie = 'sp_verifier=; path=/; max-age=0; SameSite=Lax';
 
-  if(!verifier){
+  if (!verifier) {
     showToast('שגיאת חיבור — נסה שוב', true); setStep(2); return false;
   }
 
-  try{
+  try {
     const r = await fetch('https://accounts.spotify.com/api/token', {
-      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body: new URLSearchParams({ grant_type:'authorization_code', code,
-        redirect_uri:SPOTIFY_REDIRECT, client_id:SPOTIFY_CLIENT_ID, code_verifier:verifier })
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code', code,
+        redirect_uri: SPOTIFY_REDIRECT, client_id: SPOTIFY_CLIENT_ID, code_verifier: verifier
+      })
     });
     const tokens = await r.json();
-    if(tokens.error) throw new Error(tokens.error_description||tokens.error);
+    if (tokens.error) throw new Error(tokens.error_description || tokens.error);
 
     localStorage.setItem('sp3_access', tokens.access_token);
     localStorage.setItem('sp3_refresh', tokens.refresh_token);
-    localStorage.setItem('sp3_expiry', String(Date.now()+tokens.expires_in*1000));
+    localStorage.setItem('sp3_expiry', String(Date.now() + tokens.expires_in * 1000));
     state.spotifyToken = tokens.access_token;
 
     // Check granted scopes — iOS Spotify app sometimes auto-approves with old scopes
@@ -392,15 +364,15 @@ async function handleSpotifyCallback(){
       'playlist-modify-private'
     ].filter(s => !grantedScope.includes(s));
 
-    if(missingScopes.length > 0){
+    if (missingScopes.length > 0) {
       // Scope missing — re-auth ONCE using cookie (survives iOS redirects, sessionStorage does NOT)
       const alreadyRetried = document.cookie.includes('sp3_scope_retry=1');
-      if(!alreadyRetried){
+      if (!alreadyRetried) {
         // Set cookie for 90 seconds — enough time for auth round-trip
         document.cookie = 'sp3_scope_retry=1; path=/; max-age=90; SameSite=Lax';
         spotifyClearAll();
         showToast('מעדכן הרשאות — נא לאשר שוב ב-Spotify', false);
-        await new Promise(res=>setTimeout(res,1200));
+        await new Promise(res => setTimeout(res, 1200));
         spotifyLogin();
         return false;
       }
@@ -412,7 +384,7 @@ async function handleSpotifyCallback(){
     // Load user profile — wait for it
     await loadSpotifyUser();
     // Ensure badge shows something even if profile load failed
-    if(!state.spotifyUser || state.spotifyUser._pending){
+    if (!state.spotifyUser || state.spotifyUser._pending) {
       state.spotifyUser = { display_name: null, id: null, images: [] };
       spotifyShowUser({ display_name: '✓ Spotify', id: null, images: [] });
     }
@@ -421,58 +393,58 @@ async function handleSpotifyCallback(){
     showToast(name ? `✓ מחובר כ: ${name}` : '✓ מחובר ל-Spotify');
     setStep(3);
     return true;
-  } catch(err){
-    showToast('שגיאת Spotify: '+(err.message||'נסה שוב'), true);
+  } catch (err) {
+    showToast('שגיאת Spotify: ' + (err.message || 'נסה שוב'), true);
     setStep(2); return false;
   }
 }
 
 /* ─── Refresh token ─── */
-async function refreshSpotifyTokenIfNeeded(){
-  const exp=Number(localStorage.getItem('sp3_expiry')||0);
-  if(exp>Date.now()+30000){ state.spotifyToken=localStorage.getItem('sp3_access'); return state.spotifyToken; }
-  const rt=localStorage.getItem('sp3_refresh');
-  if(!rt) return null;
-  try{
-    const r=await fetch('https://accounts.spotify.com/api/token',{
-      method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-      body:new URLSearchParams({grant_type:'refresh_token',refresh_token:rt,client_id:SPOTIFY_CLIENT_ID})
+async function refreshSpotifyTokenIfNeeded() {
+  const exp = Number(localStorage.getItem('sp3_expiry') || 0);
+  if (exp > Date.now() + 30000) { state.spotifyToken = localStorage.getItem('sp3_access'); return state.spotifyToken; }
+  const rt = localStorage.getItem('sp3_refresh');
+  if (!rt) return null;
+  try {
+    const r = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: rt, client_id: SPOTIFY_CLIENT_ID })
     });
-    const j=await r.json();
-    if(j.error) throw new Error(j.error);
-    localStorage.setItem('sp3_access',j.access_token);
-    if(j.refresh_token) localStorage.setItem('sp3_refresh',j.refresh_token);
-    localStorage.setItem('sp3_expiry',String(Date.now()+j.expires_in*1000));
-    state.spotifyToken=j.access_token;
+    const j = await r.json();
+    if (j.error) throw new Error(j.error);
+    localStorage.setItem('sp3_access', j.access_token);
+    if (j.refresh_token) localStorage.setItem('sp3_refresh', j.refresh_token);
+    localStorage.setItem('sp3_expiry', String(Date.now() + j.expires_in * 1000));
+    state.spotifyToken = j.access_token;
     return j.access_token;
-  }catch(e){ return null; }
+  } catch (e) { return null; }
 }
 
 /* ─── Load user profile from Spotify ─── */
-async function loadSpotifyUser(){
-  if(!state.spotifyToken) return;
-  try{
-    const r=await fetch('https://api.spotify.com/v1/me',{
-      headers:{'Authorization':'Bearer '+state.spotifyToken}
+async function loadSpotifyUser() {
+  if (!state.spotifyToken) return;
+  try {
+    const r = await fetch('https://api.spotify.com/v1/me', {
+      headers: { 'Authorization': 'Bearer ' + state.spotifyToken }
     });
-    if(r.ok){
+    if (r.ok) {
       const user = await r.json();
       state.spotifyUser = user; // clear _pending flag
-      try{localStorage.setItem('sp3_user',JSON.stringify(user));}catch(e){}
+      try { localStorage.setItem('sp3_user', JSON.stringify(user)); } catch (e) { }
       spotifyShowUser(user);
     }
     // On any error: badge stays with "✓ Spotify" fallback already shown
-  }catch(e){}
+  } catch (e) { }
 }
 
 /* ─── Account menu ─── */
-function toggleAccountMenu(e){
+function toggleAccountMenu(e) {
   e.stopPropagation();
-  const m=$('accountMenu');
-  if(m) m.style.display=m.style.display!=='none'?'none':'block';
+  const m = $('accountMenu');
+  if (m) m.style.display = m.style.display !== 'none' ? 'none' : 'block';
 }
-function closeAccountMenu(){ const m=$('accountMenu');if(m)m.style.display='none'; }
-document.addEventListener('click',closeAccountMenu);
+function closeAccountMenu() { const m = $('accountMenu'); if (m) m.style.display = 'none'; }
+document.addEventListener('click', closeAccountMenu);
 
 /* ═══════════════════════════════════════════════════════════════
    ROBIN BRAIN — Layered Context (L1-L4)
@@ -482,581 +454,118 @@ document.addEventListener('click',closeAccountMenu);
    L4: Feedback Reranker (track_feedback by biz_category)
    ═══════════════════════════════════════════════════════════════ */
 
-async function buildBrainContext(){
+async function buildBrainContext() {
   state.brainContext.assembled = false;
-
-  // L0 — match Data Box entry (synchronous keyword match)
-  // L0 can be disabled for A/B testing — toggle via the 📋 button in brand bar
-  const l0Match = state.useDataBox
-    ? ((window.SB_matchDataBox && window.SB_matchDataBox(state.bizDesc)) || null)
-    : null;
-
-  // Pure AI mode: skip L0/L2/L3/L4 — only L1 (user's own ref playlist) may run
-  const pureAI = !state.useDataBox;
-
-  const [l0Res, l1Res, l2Res, l3Res, l4Res] = await Promise.allSettled([
-    l0Match ? fetchL0_DNA(l0Match, state.selectedMoods, state.energyLevel||1) : Promise.resolve(null),
-    // L1: user-picked playlists (visual picker) → multi-DNA merge
-    //     fallback: manual ref playlist URL → single DNA
-    state.selectedUserPlaylists.length > 0
-      ? fetchMultiL1_DNA(state.selectedUserPlaylists)
-      : (state.refPlaylist ? fetchL1_DNA(state.refPlaylist) : Promise.resolve(null)),
-    pureAI ? Promise.resolve(null) : fetchL2_Cohort(state.bizType),
-    pureAI ? Promise.resolve(null) : fetchL3_GenreArchive(Array.from(state.selectedMoods)),
-    pureAI ? Promise.resolve(null) : fetchL4_Feedback(state.bizType),
-  ]);
-
-  const l0DNA = l0Res.status==='fulfilled' ? l0Res.value : null;
-  state.brainContext.l0 = l0Match ? { ...l0Match, dna: l0DNA } : null;
-  state.brainContext.l1 = l1Res.status==='fulfilled' ? l1Res.value : null;
-  state.brainContext.l2 = l2Res.status==='fulfilled' ? l2Res.value : null;
-  state.brainContext.l3 = l3Res.status==='fulfilled' ? l3Res.value : null;
-  state.brainContext.l4 = l4Res.status==='fulfilled' ? l4Res.value : null;
+  const result = await GEN().brain.buildBrainContext({
+    bizDesc: state.bizDesc,
+    bizType: state.bizType,
+    energyLevel: state.energyLevel || 1,
+    selectedMoods: state.selectedMoods,
+    selectedUserPlaylists: state.selectedUserPlaylists,
+    refPlaylist: state.refPlaylist,
+    useDataBox: state.useDataBox,
+  }, {
+    sb,
+    apiKey: await getOpenAIKey(),
+    model: getMiniModel(),
+    getSpotifyToken: refreshSpotifyTokenIfNeeded,
+    matchDataBox: window.SB_matchDataBox,
+  });
+  state.brainContext.l0 = result.l0;
+  state.brainContext.l1 = result.l1;
+  state.brainContext.l2 = result.l2;
+  state.brainContext.l3 = result.l3;
+  state.brainContext.l4 = result.l4;
   state.brainContext.assembled = true;
+  const l0DNA = state.brainContext.l0 && state.brainContext.l0.dna;
   console.log('[brain]', {
     l0: state.brainContext.l0 ? `databox(${state.brainContext.l0.label}, artists=${l0DNA ? l0DNA.topArtists.length : 0})` : '-',
-    l1: state.brainContext.l1 ? 'DNA('+state.brainContext.l1.trackCount+')' : '-',
-    l2: state.brainContext.l2 ? 'cohort('+state.brainContext.l2.cohort_size+')' : '-',
-    l3: state.brainContext.l3 ? 'archive('+state.brainContext.l3.archive_size+')' : '-',
-    l4: state.brainContext.l4 ? 'feedback('+state.brainContext.l4.feedback_count+')' : '-',
+    l1: state.brainContext.l1 ? 'DNA(' + state.brainContext.l1.trackCount + ')' : '-',
+    l2: state.brainContext.l2 ? 'cohort(' + state.brainContext.l2.cohort_size + ')' : '-',
+    l3: state.brainContext.l3 ? 'archive(' + state.brainContext.l3.archive_size + ')' : '-',
+    l4: state.brainContext.l4 ? 'feedback(' + state.brainContext.l4.feedback_count + ')' : '-',
   });
 }
 
-/* ─── L0: Data Box Playlist DNA — mood-filtered playlists, extracts artists + seeds ─── */
-async function fetchL0_DNA(entry, selectedMoods, energyLevel){
-  /* ── Resolve playlist pool for this energy level ── */
-  let playlistIds = [];
-
-  // Priority 1: live Data Box energy-specific playlists (from Google Sheet)
-  // entry.liveEnergy = from live API, entry.energy = from static energy map (data-box-energy.js)
-  const liveEnergy = entry.liveEnergy || entry.energy || {};
-  const lvData = liveEnergy[energyLevel] || liveEnergy[1] || liveEnergy[2] || null;
-  if(lvData && Array.isArray(lvData.playlists) && lvData.playlists.length){
-    playlistIds = lvData.playlists;
-  } else {
-    // Priority 2: old format with mood-tagged playlists
-    let pool = Array.isArray(entry.playlists) ? entry.playlists : [];
-    if(selectedMoods && selectedMoods.size > 0){
-      const matched = pool.filter(p => Array.isArray(p.moods) && p.moods.some(m => selectedMoods.has(m)));
-      if(matched.length >= 2) pool = matched;
-    }
-    playlistIds = pool.map(p => p.id || p).filter(Boolean);
-  }
-  if(!playlistIds.length) return null;
-
-  /* ── Sample playlists randomly (different each run) ── */
-  const shuffledPids = playlistIds.slice().sort(() => Math.random() - 0.5);
-  const samplePids   = shuffledPids.slice(0, Math.min(4, shuffledPids.length));
-
-  /* ── Fetch tracks from sampled playlists ── */
-  const rawTracks = [];
-  await Promise.allSettled(samplePids.map(async pid => {
-    try{
-      const r = await fetch('/api/spotify', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action:'fetch',
-          url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(id,name),popularity,album(release_date,images)))&limit=50`,
-          neutral:true})
-      });
-      if(!r.ok) return;
-      const j = await r.json();
-      const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id);
-      // Random sample from each playlist
-      rawTracks.push(...tracks.sort(()=>Math.random()-0.5).slice(0, 20));
-    }catch(e){}
-  }));
-
-  if(rawTracks.length < 3) return null;
-
-  // Deduplicate
-  const seen = new Set();
-  const unique = rawTracks.filter(t=>{ if(seen.has(t.id)) return false; seen.add(t.id); return true; });
-
-  /* ── Fetch audio features for BPM / energy filtering ── */
-  const ids100 = unique.slice(0, 100).map(t => t.id);
-  let featureMap = {};
-  try{
-    const afRes = await fetch('/api/spotify', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action:'fetch',
-        url:`https://api.spotify.com/v1/audio-features?ids=${ids100.join(',')}`, neutral:true})
-    });
-    if(afRes.ok){
-      const afJson = await afRes.json();
-      (afJson.audio_features||[]).filter(f=>f).forEach(f=>{ featureMap[f.id]=f; });
-    }
-  }catch(e){}
-
-  /* ── BPM / energy filter ──
-     energy 1 (רגוע):   Spotify energy < 0.68, tempo < 130 BPM
-     energy 2 (מקפיץ):  Spotify energy > 0.40, tempo > 90  BPM
-     No features → pass through (don't drop tracks we can't analyse)
-  ── */
-  const energyPass = (t) => {
-    const f = featureMap[t.id];
-    if(!f) return true;
-    if(energyLevel === 1) return f.energy < 0.70 && f.tempo < 135;
-    if(energyLevel === 2) return f.energy > 0.38 && f.tempo > 88;
-    return true;
-  };
-  const filtered = unique.filter(energyPass);
-  const pool = filtered.length >= 5 ? filtered : unique; // graceful fallback
-
-  /* ── Artist analysis ── */
-  const artistCount = {};
-  pool.forEach(t=>(t.artists||[]).forEach(a=>{
-    artistCount[a.name] = (artistCount[a.name]||0) + 1;
-  }));
-  const sorted = Object.entries(artistCount).sort((a,b)=>b[1]-a[1]);
-  const topArtists   = sorted.slice(0, 6).map(([n])=>n);
-  const nicheArtists = sorted.filter(([,c])=>c===1)
-    .sort(()=>Math.random()-0.5).slice(0, 12).map(([n])=>n);
-
-  /* ── Audio stats ── */
-  const features = Object.values(featureMap).filter(f=>f);
-  const audioStats = features.length ? analyzeAudioStats(features, pool) : null;
-
-  /* ── Diverse seed selection (by popularity tier) ── */
-  const rnd = pool.slice().sort(()=>Math.random()-0.5);
-  const diverseSeeds = [
-    ...rnd.filter(t=>(t.popularity||0)>=60).slice(0,1).map(t=>t.id),
-    ...rnd.filter(t=>(t.popularity||0)>=30&&(t.popularity||0)<60).slice(0,2).map(t=>t.id),
-    ...rnd.filter(t=>(t.popularity||0)<30).slice(0,2).map(t=>t.id),
-  ].filter(Boolean).slice(0,5);
-
-  const allTrackIds = pool.slice().sort(()=>Math.random()-0.5).map(t=>t.id).filter(Boolean);
-
-  /* ── Spotify Recommendations seeded from playlist tracks ──
-     This is the "inspiration" step: tracks that aren't in the playlists
-     but live in the same musical neighbourhood.
-  ── */
-  let recTracks = [];
-  if(diverseSeeds.length >= 2){
-    try{
-      const recParams = new URLSearchParams({ seed_tracks: diverseSeeds.join(','), limit: '60', market: 'IL' });
-      if(energyLevel === 1){ recParams.set('max_energy','0.68'); recParams.set('target_energy','0.40'); recParams.set('max_tempo','130'); recParams.set('target_tempo','90'); }
-      if(energyLevel === 2){ recParams.set('min_energy','0.45'); recParams.set('target_energy','0.72'); recParams.set('min_tempo','95'); recParams.set('target_tempo','120'); }
-      // Popularity targets based on known/unknown level
-      const kl = entry.knownLevel || 3;
-      if(kl <= 2){ recParams.set('max_popularity','55'); recParams.set('target_popularity','35'); }
-      else if(kl >= 4){ recParams.set('min_popularity','50'); recParams.set('target_popularity','70'); }
-
-      const recRes = await fetch('/api/spotify', {
-        method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({action:'fetch', url:`https://api.spotify.com/v1/recommendations?${recParams}`, neutral:true})
-      });
-      if(recRes.ok){
-        const recJson = await recRes.json();
-        recTracks = (recJson.tracks||[]).filter(t=>t&&t.id&&energyPass(t));
-      }
-    }catch(e){}
-  }
-
-  /* ── Direct tracks: 30% from playlists, 70% from recommendations ── */
-  const directPool = pool
-    .filter(t => t.id && (t.popularity||0) >= 15 && (t.popularity||0) <= 75)
-    .sort(()=>Math.random()-0.5);
-  const anchorTracks = directPool.slice(0, 9);
-
-  // Merge rec tracks (deduplicated against anchors)
-  const anchorSet = new Set(anchorTracks.map(t=>t.id));
-  const recUnique  = recTracks.filter(t=>!anchorSet.has(t.id)).slice(0, 20);
-
-  const directTracks = [...anchorTracks, ...recUnique].slice(0, 20).map(t=>({
-    artist:    (t.artists||[]).map(a=>a.name).join(', '),
-    title:     t.name||''  ,
-    id:        t.id,
-    cover:     (t.album?.images?.length) ? t.album.images[t.album.images.length-1].url : '',
-    popularity: t.popularity||0,
-    duration:   t.duration_ms||0,
-    preview: '', url: '',
-    reason: anchorSet.has(t.id) ? 'data-box' : 'inspired',
-  }));
-
-  return {
-    topTrackIds: diverseSeeds,
-    allTrackIds: [...allTrackIds, ...recUnique.map(t=>t.id)],
-    topArtists,
-    nicheArtists,
-    audioStats,
-    trackCount: pool.length + recTracks.length,
-    playlistCount: samplePids.length,
-    directTracks,
-    energyLevel,
-    genres: lvData?.genres || entry.genres || '',
-  };
-}
-
-/* ─── L1: Reference Playlist DNA ─── */
-function parsePlaylistId(url){
-  if(!url) return null;
-  const m = String(url).match(/playlist\/([A-Za-z0-9]+)/);
-  return m ? m[1] : null;
-}
-
-async function fetchL1_DNA(url){
-  const id = parsePlaylistId(url);
-  if(!id) return null;
-  const tok = await refreshSpotifyTokenIfNeeded();
-  if(!tok) return null;
-  try{
-    const tr = await fetch(`https://api.spotify.com/v1/playlists/${id}/tracks?fields=items(track(id,name,artists(id,name),album(release_date,images),popularity,duration_ms))&limit=100`, {
-      headers:{'Authorization':'Bearer '+tok}
-    });
-    if(!tr.ok) return null;
-    const trJson = await tr.json();
-    const tracks = (trJson.items||[]).map(it=>it.track).filter(t=>t && t.id);
-    if(tracks.length < 5) return null;
-    const ids = tracks.map(t=>t.id);
-    const af = await fetch(`https://api.spotify.com/v1/audio-features?ids=${ids.slice(0,100).join(',')}`, {
-      headers:{'Authorization':'Bearer '+tok}
-    });
-    const afJson = af.ok ? await af.json() : {audio_features:[]};
-    const features = (afJson.audio_features||[]).filter(f=>f);
-
-    const stats = analyzeAudioStats(features, tracks);
-    const faderHints = mapDNAToFaders(stats);
-    const narration = await narrateDNA(stats, tracks).catch(()=>({summary:'', vibe_keywords:[]}));
-
-    const topByPop = tracks.slice().sort((a,b)=>(b.popularity||0)-(a.popularity||0)).slice(0,5);
-    const artistCount = {};
-    tracks.forEach(t=>(t.artists||[]).forEach(a=>{ artistCount[a.name]=(artistCount[a.name]||0)+1; }));
-    const topArtists = Object.entries(artistCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n])=>n);
-
-    return {
-      summary: narration.summary || '',
-      vibeKeywords: Array.isArray(narration.vibe_keywords) ? narration.vibe_keywords : [],
-      faderHints,
-      topTrackIds: topByPop.map(t=>t.id),
-      topTracksDisplay: topByPop.map(t=>`${t.artists.map(a=>a.name).join(', ')} — ${t.name}`),
-      topArtists,
-      audioStats: stats,
-      trackCount: tracks.length,
-    };
-  } catch(e){
-    console.warn('[brain L1] failed:', e);
-    return null;
-  }
-}
-
-function analyzeAudioStats(features, tracks){
-  const mean = arr => arr.length ? arr.reduce((s,x)=>s+x,0)/arr.length : 0;
-  const energy = mean(features.map(f=>f.energy||0));
-  const valence = mean(features.map(f=>f.valence||0));
-  const dance = mean(features.map(f=>f.danceability||0));
-  const tempo = mean(features.map(f=>f.tempo||0));
-  const instr = mean(features.map(f=>f.instrumentalness||0));
-  const acoust = mean(features.map(f=>f.acousticness||0));
-  const popularity = mean(tracks.map(t=>t.popularity||0));
-
-  const hebRe = /[\u0590-\u05FF]/;
-  const hebrewTracks = tracks.filter(t=>hebRe.test(t.name||'') || (t.artists||[]).some(a=>hebRe.test(a.name||''))).length;
-  const hebrewRatio = tracks.length ? hebrewTracks/tracks.length : 0;
-
-  const years = tracks.map(t=>{
-    const d = (t.album && t.album.release_date) || '';
-    return Number(d.slice(0,4)) || 0;
-  }).filter(y=>y > 1950);
-  const yearMean = mean(years);
-  const currentYear = new Date().getFullYear();
-  let eraScore = 50;
-  if(yearMean){
-    const age = currentYear - yearMean;
-    if(age <= 3) eraScore = 90;
-    else if(age <= 8) eraScore = 70;
-    else if(age <= 15) eraScore = 50;
-    else if(age <= 25) eraScore = 25;
-    else eraScore = 10;
-  }
-
-  return {energy, valence, dance, tempo, instr, acoust, popularity, hebrewRatio, yearMean, eraScore};
-}
-
-function mapDNAToFaders(stats){
-  return {
-    familiarity: Math.round(Math.min(100, stats.popularity)),
-    hebrew: Math.round(stats.hebrewRatio * 100),
-    vocal: Math.round((1 - stats.instr) * 100),
-    energy: Math.round(stats.energy * 100),
-    era: Math.round(stats.eraScore),
-  };
-}
-
-async function narrateDNA(stats, tracks){
-  const sample = tracks.slice(0,8).map(t=>`${t.artists.map(a=>a.name).join(', ')} — ${t.name}`).join('\n');
-  const sys = 'אתה מנתח DNA של פלייליסט. החזר JSON: {"summary":"משפט אחד 12-20 מילים בעברית","vibe_keywords":["3-5 מילות מפתח אווירה בעברית"]}';
-  const usr = `סטטיסטיקות:
-energy=${stats.energy.toFixed(2)} valence=${stats.valence.toFixed(2)} dance=${stats.dance.toFixed(2)}
-instrumentalness=${stats.instr.toFixed(2)} acoustic=${stats.acoust.toFixed(2)}
-popularity_avg=${stats.popularity.toFixed(0)} hebrew=${(stats.hebrewRatio*100).toFixed(0)}% year_avg=${stats.yearMean.toFixed(0)}
-
-8 דוגמיות:
-${sample}
-
-נתח: סגנון/ז'אנר עיקרי, אווירה דומיננטית, טווח עידן.`;
-  const raw = await callOpenAI([{role:'system',content:sys},{role:'user',content:usr}], {model:getMiniModel(), max_tokens:300, temperature:0.5});
-  return safeJSON(raw);
-}
-
-/* ─── L2: Historical Cohort Memory ─── */
-async function fetchL2_Cohort(bizCategory){
-  if(!bizCategory) return null;
-  try{
-    let { data, error } = await sb.from('analyses').select('id,description,faders,tracks,track_count,brain_version').eq('biz_category', bizCategory).gte('track_count', 10).order('created_at', {ascending:false}).limit(20);
-    if(error) throw error;
-    let cohortSize = data ? data.length : 0;
-    let usedFallback = false;
-    if(cohortSize < 3){
-      const r2 = await sb.from('analyses').select('id,description,faders,tracks,track_count,brain_version').eq('biz_category', 'general').gte('track_count', 10).order('created_at', {ascending:false}).limit(20);
-      if(!r2.error && r2.data){
-        data = (data||[]).concat(r2.data);
-        cohortSize = data.length;
-        usedFallback = true;
-      }
-    }
-    if(!data || !data.length) return null;
-
-    const trackFreq = {};
-    const artistFreq = {};
-    let totalTracks = 0;
-    for(const row of data){
-      let tracks = row.tracks;
-      try { if(typeof tracks === 'string') tracks = JSON.parse(tracks); } catch(e){}
-      if(!Array.isArray(tracks)) continue;
-      for(const t of tracks){
-        if(!t || !t.artist || !t.title) continue;
-        totalTracks++;
-        const key = `${t.artist}|${t.title}`;
-        if(!trackFreq[key]) trackFreq[key] = {count:0, id:t.id||null, artist:t.artist, title:t.title, reason:t.reason||''};
-        trackFreq[key].count++;
-        if(!trackFreq[key].id && t.id) trackFreq[key].id = t.id;
-        artistFreq[t.artist] = (artistFreq[t.artist]||0) + 1;
-      }
-    }
-    const sortedTracks = Object.values(trackFreq).sort((a,b)=>b.count-a.count);
-    const topWithIds = sortedTracks.filter(t=>t.id).slice(0,10);
-    const topArtists = Object.entries(artistFreq).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([n,c])=>({name:n,count:c}));
-
-    return {
-      cohort_size: cohortSize,
-      used_fallback: usedFallback,
-      cohort_top_ids: topWithIds.map(t=>t.id),
-      cohort_top_tracks: topWithIds.map(t=>({artist:t.artist, title:t.title, id:t.id, reason:t.reason, count:t.count})),
-      cohort_top_artists: topArtists,
-      total_tracks_seen: totalTracks,
-    };
-  } catch(e){
-    console.warn('[brain L2] failed:', e);
-    return null;
-  }
-}
-
-/* ─── L3: Genre-Tag Priors ─── */
-async function fetchL3_GenreArchive(moods){
-  if(!moods || !moods.length) return null;
-  try{
-    const moodLowers = moods.map(m=>String(m).toLowerCase().trim()).filter(Boolean);
-    const { data, error } = await sb.from('analyses').select('id,description,genres,tracks,track_count').gte('track_count', 5).limit(50);
-    if(error || !data) return null;
-
-    const matching = [];
-    for(const row of data){
-      let genres = row.genres;
-      try { if(typeof genres === 'string') genres = JSON.parse(genres); } catch(e){}
-      if(!Array.isArray(genres) || !genres.length) continue;
-      const genreLowers = genres.map(g=>String(g).toLowerCase());
-      const hit = moodLowers.some(m=>genreLowers.some(g=>g===m || g.includes(m) || m.includes(g)));
-      if(hit) matching.push(row);
-    }
-    if(!matching.length) return null;
-
-    const trackFreq = {};
-    for(const row of matching){
-      let tracks = row.tracks;
-      try { if(typeof tracks === 'string') tracks = JSON.parse(tracks); } catch(e){}
-      if(!Array.isArray(tracks)) continue;
-      for(const t of tracks){
-        if(!t || !t.artist || !t.title) continue;
-        const key = `${t.artist}|${t.title}`;
-        if(!trackFreq[key]) trackFreq[key] = {count:0, id:t.id||null, artist:t.artist, title:t.title};
-        trackFreq[key].count++;
-        if(!trackFreq[key].id && t.id) trackFreq[key].id = t.id;
-      }
-    }
-    const top = Object.values(trackFreq).filter(t=>t.id).sort((a,b)=>b.count-a.count).slice(0,10);
-    return {
-      archive_size: matching.length,
-      genre_top_ids: top.map(t=>t.id),
-      genre_top_tracks: top.map(t=>({artist:t.artist, title:t.title, count:t.count})),
-    };
-  } catch(e){
-    console.warn('[brain L3] failed:', e);
-    return null;
-  }
-}
-
-/* ─── L4: Feedback Reranker (placeholder, ready for future) ─── */
-async function fetchL4_Feedback(bizCategory){
-  if(!bizCategory) return null;
-  try{
-    const { data, error } = await sb.from('track_feedback').select('track_artist,track_title,feedback_type').eq('biz_category', bizCategory).limit(500);
-    if(error || !data || !data.length) return null;
-    const score = {};
-    for(const row of data){
-      const key = `${row.track_artist}|${row.track_title}`;
-      if(!score[key]) score[key] = {artist:row.track_artist, title:row.track_title, up:0, down:0};
-      if(row.feedback_type === 'up') score[key].up++;
-      else if(row.feedback_type === 'down') score[key].down++;
-    }
-    const arr = Object.values(score).map(s=>({...s, score: s.up - s.down}));
-    const boost = arr.filter(s=>s.score >= 2).map(s=>`${s.artist} — ${s.title}`);
-    const block = arr.filter(s=>s.score <= -2).map(s=>`${s.artist} — ${s.title}`);
-    return {
-      feedback_count: data.length,
-      boost_list: boost.slice(0,10),
-      block_list: block.slice(0,10),
-    };
-  } catch(e){
-    console.warn('[brain L4] failed:', e);
-    return null;
-  }
-}
-
-/* ─── Prompt block assembly ─── */
-function assembleBrainBlocks(){
-  const ctx = state.brainContext;
-  const blocks = [];
-
-  // L0 — Data Box: HARD GENRE RULES — mandatory, overrides all other suggestions
-  if(ctx.l0){
-    const lines = ['[L0 — DATA BOX: כלל ברזל — חובה לציית]'];
-    lines.push(`סוג עסק: ${ctx.l0.label}`);
-    lines.push(`✅ ז'אנרים מותרים בלבד: ${ctx.l0.genres}`);
-    lines.push(`❌ אסור לחלוטין: פופ ישראלי מיינסטרים, מזרחית, שירים ידועים מהרדיו הישראלי, Hip Hop מסחרי, EDM — אלא אם הם מופיעים מפורשות ברשימת המותרים לעיל`);
-    if(ctx.l0.dna){
-      if(ctx.l0.dna.topArtists && ctx.l0.dna.topArtists.length){
-        lines.push(`🚫 אמנים שמופיעים יתר על המידה בז'אנר (אסור לבחור אותם — כבר ידועים מדי): ${ctx.l0.dna.topArtists.join(', ')}`);
-      }
-      if(ctx.l0.dna.nicheArtists && ctx.l0.dna.nicheArtists.length){
-        lines.push(`✨ אמנים פחות ידועים מאותו עולם (העדיפו לבחור מתוך אלו ודומים להם): ${ctx.l0.dna.nicheArtists.join(', ')}`);
-      } else {
-        lines.push(`→ מצא אמנים פחות ידועים מאותו עולם מוזיקלי — לא הכוכבים הגדולים.`);
-      }
-    }
-    if(ctx.l0.dna && ctx.l0.dna.audioStats){
-      const st = ctx.l0.dna.audioStats;
-      lines.push(`🎚️ אנרגיה=${st.energy.toFixed(2)}, טמפו≈${Math.round(st.tempo)} BPM`);
-    }
-    lines.push(`🎯 מטרת המוזיקה: ${ctx.l0.purpose}`);
-    lines.push(`⚠️ L0 הוא הכלל העליון — שאר השכבות (L1-L4) משלימות ומדייקות, לא עוקפות.`);
-    blocks.push(lines.join('\n'));
-  }
-
-  if(ctx.l1){
-    const lines = ['[L1 — REFERENCE PLAYLIST DNA]'];
-    if(ctx.l1.summary) lines.push(`DNA: ${ctx.l1.summary}`);
-    if(ctx.l1.topTracksDisplay && ctx.l1.topTracksDisplay.length) lines.push(`שירי דגל: ${ctx.l1.topTracksDisplay.slice(0,5).join(' | ')}`);
-    if(ctx.l1.topArtists && ctx.l1.topArtists.length) lines.push(`אמנים מרכזיים: ${ctx.l1.topArtists.join(', ')}`);
-    blocks.push(lines.join('\n'));
-  }
-  if(ctx.l2 && ctx.l2.cohort_top_tracks && ctx.l2.cohort_top_tracks.length >= 3){
-    const lines = ['[L2 — COHORT MEMORY (Robin זוכרת מעסקים דומים)]'];
-    lines.push(`מעבודות קודמות עם "${state.bizType}"${ctx.l2.used_fallback?' (כולל general)':''}, ${ctx.l2.cohort_size} פלייליסטים:`);
-    ctx.l2.cohort_top_tracks.slice(0,8).forEach(t=>{
-      lines.push(`- ${t.artist} — ${t.title}${t.reason?` (${String(t.reason).slice(0,50)})`:''}`);
-    });
-    lines.push('שאף לרוח דומה — לא חזרה מילולית.');
-    blocks.push(lines.join('\n'));
-  }
-  if(ctx.l3 && ctx.l3.genre_top_tracks && ctx.l3.genre_top_tracks.length >= 3){
-    const lines = ['[L3 — GENRE ARCHIVE]'];
-    lines.push("מארכיון לפי-ז'אנרים שמתאים לאווירות שבחרת:");
-    ctx.l3.genre_top_tracks.slice(0,6).forEach(t=>lines.push(`- ${t.artist} — ${t.title}`));
-    blocks.push(lines.join('\n'));
-  }
-  if(ctx.l4 && (ctx.l4.boost_list.length || ctx.l4.block_list.length)){
-    const lines = ['[L4 — FEEDBACK SIGNALS]'];
-    if(ctx.l4.boost_list.length) lines.push(`חובה לכלול אם זמין: ${ctx.l4.boost_list.slice(0,5).join(', ')}`);
-    if(ctx.l4.block_list.length) lines.push(`הימנע מ: ${ctx.l4.block_list.slice(0,5).join(', ')}`);
-    blocks.push(lines.join('\n'));
-  }
-  return blocks.join('\n\n');
+/* ─── Brain layer fetchers (L0-L4) + prompt assembly → window.SB_GEN.brain ─── */
+function assembleBrainBlocks() {
+  return window.SB_GEN.brain.assembleBrainBlocks(state.brainContext, { bizType: state.bizType });
 }
 
 /* ─── Apply L1 fader hints to MC state ─── */
-function applyFaderHints(faderHints){
-  if(!window.SB_V2_MC || !faderHints) return;
-  const findClosest = (val, options)=>{
+function applyFaderHints(faderHints) {
+  if (!window.SB_V2_MC || !faderHints) return;
+  const findClosest = (val, options) => {
     let bestId = 3, bestDiff = Infinity;
-    for(const opt of options){
+    for (const opt of options) {
       const diff = Math.abs(val - opt.value);
-      if(diff < bestDiff){ bestDiff = diff; bestId = opt.id; }
+      if (diff < bestDiff) { bestDiff = diff; bestId = opt.id; }
     }
     return bestId;
   };
-  for(const key of ['familiarity','hebrew','vocal','energy','era']){
+  for (const key of ['familiarity', 'hebrew', 'vocal', 'energy', 'era']) {
     const val = faderHints[key];
-    if(val == null) continue;
+    if (val == null) continue;
     const q = window.SB_V2_MC[key];
-    if(!q || !q.options) continue;
+    if (!q || !q.options) continue;
     state.mc[key] = findClosest(val, q.options);
   }
 }
 
 /* ─── Banner rendering on Screen 4 — L0-L4 ─── */
-function renderBrainBanner(){
+function renderBrainBanner() {
   const ctx = state.brainContext;
   const el = document.getElementById('brainBanner');
-  if(!el) return;
-  if(!ctx.l0 && !ctx.l1 && !ctx.l2 && !ctx.l3 && !ctx.l4) {
+  if (!el) return;
+  if (!ctx.l0 && !ctx.l1 && !ctx.l2 && !ctx.l3 && !ctx.l4) {
     el.style.display = 'none';
     return;
   }
   const parts = [];
-  if(ctx.l0){
+  if (ctx.l0) {
     const dnaInfo = ctx.l0.dna
-      ? ` · נותח ${ctx.l0.dna.trackCount} שירים · אמנים: ${ctx.l0.dna.topArtists.slice(0,4).map(escapeHtml).join(', ')}`
+      ? ` · נותח ${ctx.l0.dna.trackCount} שירים · אמנים: ${ctx.l0.dna.topArtists.slice(0, 4).map(escapeHtml).join(', ')}`
       : '';
     parts.push(`📋 <strong>Data Box:</strong> ${escapeHtml(ctx.l0.label)}${dnaInfo}`);
   }
-  if(ctx.l1 && ctx.l1.summary){
+  if (ctx.l1 && ctx.l1.summary) {
     const l1Label = state.selectedUserPlaylists.length > 1
       ? `${state.selectedUserPlaylists.length} פלייליסטים שנבחרו`
       : 'פלייליסט שלך';
     parts.push(`🧬 <strong>${l1Label}:</strong> ${escapeHtml(ctx.l1.summary)}`);
   }
-  if(ctx.l2 && ctx.l2.cohort_size >= 3) parts.push(`📚 <strong>Robin זוכרת:</strong> ${ctx.l2.cohort_size} פלייליסטים${ctx.l2.used_fallback?' (כולל general)':''}`);
-  if(ctx.l3 && ctx.l3.archive_size >= 1) parts.push(`🏷️ <strong>ארכיון ז'אנרים:</strong> ${ctx.l3.archive_size} רשומות`);
-  if(ctx.l4 && ctx.l4.feedback_count > 0) parts.push(`👍 <strong>משוב:</strong> ${ctx.l4.feedback_count} הצבעות`);
-  if(!parts.length){ el.style.display = 'none'; return; }
+  if (ctx.l2 && ctx.l2.cohort_size >= 3) parts.push(`📚 <strong>Robin זוכרת:</strong> ${ctx.l2.cohort_size} פלייליסטים${ctx.l2.used_fallback ? ' (כולל general)' : ''}`);
+  if (ctx.l3 && ctx.l3.archive_size >= 1) parts.push(`🏷️ <strong>ארכיון ז'אנרים:</strong> ${ctx.l3.archive_size} רשומות`);
+  if (ctx.l4 && ctx.l4.feedback_count > 0) parts.push(`👍 <strong>משוב:</strong> ${ctx.l4.feedback_count} הצבעות`);
+  if (!parts.length) { el.style.display = 'none'; return; }
   el.innerHTML = parts.join(' · ');
   el.style.display = 'block';
 }
 
 /* ─────────── Screen 3: Business info — analyze in background, then jump to 4 ─────────── */
-async function submitBizInfo(){
+async function submitBizInfo() {
   const desc = $('bizDesc').value.trim();
-  if(desc.length < 8){
+  if (desc.length < 8) {
     showToast('כתבו לפחות כמה מילים על העסק', true);
     return;
   }
-  state.bizName = ($('bizName')?.value||'').trim();
+  state.bizName = ($('bizName')?.value || '').trim();
   state.bizDesc = desc;
   state.refPlaylist = $('refPlaylist').value.trim();
 
   // Show loading state on the button — stay on screen 3 while analyzing
   const btn = document.querySelector('[data-screen="3"] .btn-primary');
-  if(btn){ btn.disabled = true; btn.textContent = 'מנתח את העסק…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'מנתח את העסק…'; }
 
-  try{
+  try {
     // Run detection + brain context in parallel, completely in the background
     await detectBusinessType();
     await buildBrainContext();
 
     // Apply L0/L1 hints before rendering
-    if(state.brainContext.l1){
-      if(state.brainContext.l1.faderHints) applyFaderHints(state.brainContext.l1.faderHints);
-      if(state.brainContext.l1.vibeKeywords) state.brainContext.l1.vibeKeywords.forEach(k=>state.selectedMoods.add(k));
+    if (state.brainContext.l1) {
+      if (state.brainContext.l1.faderHints) applyFaderHints(state.brainContext.l1.faderHints);
+      if (state.brainContext.l1.vibeKeywords) state.brainContext.l1.vibeKeywords.forEach(k => state.selectedMoods.add(k));
     }
 
     // Everything ready — now transition
@@ -1065,34 +574,34 @@ async function submitBizInfo(){
     renderBrainBanner();
     setStep(4);
   } finally {
-    if(btn){ btn.disabled = false; btn.textContent = 'המשך ←'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'המשך ←'; }
   }
 }
 
-async function detectBusinessType(){
+async function detectBusinessType() {
   $('bizTypeName').textContent = 'מנתח...';
   $('bizFunc').textContent = '— טוען המלצות…';
 
-  try{
+  try {
     const sys = 'אתה רובין, מומחה אווירה מוזיקלית לעסקים. בהינתן תיאור עסק, החזר JSON: {"biz_type":"סוג העסק — 1-3 מילים בעברית (לדוגמה: בר יין, מסעדת שף, בית קפה שכונתי)","music_function":"משפט אחד, חכם וישיר (עד 18 מילים), שמסביר מה תפקיד המוזיקה בעסק הזה ספציפית. ללא פתיח כמו מניסיוני או סוגי עסקים. רק משפט אחד שנוגע בלב העסק.","recommended_moods":["3-6 אווירות בעברית קצרות המתאימות לעסק"]}';
     const usr = 'תיאור עסק: ' + state.bizDesc;
     const j = await callOpenAI([
-      {role:'system', content: sys},
-      {role:'user', content: usr},
-    ], {model:getMiniModel(), max_tokens:600, temperature:0.65});
+      { role: 'system', content: sys },
+      { role: 'user', content: usr },
+    ], { model: getMiniModel(), max_tokens: 600, temperature: 0.65 });
     const parsed = safeJSON(j);
     state.bizType = parsed.biz_type || 'עסק';
     state.bizFunc = parsed.music_function || '';
-    state.recommendedMoods = Array.isArray(parsed.recommended_moods) ? parsed.recommended_moods.slice(0,7) : [];
-    parsed.recommended_moods && parsed.recommended_moods.forEach(m=>state.selectedMoods.add(m));
+    state.recommendedMoods = Array.isArray(parsed.recommended_moods) ? parsed.recommended_moods.slice(0, 7) : [];
+    parsed.recommended_moods && parsed.recommended_moods.forEach(m => state.selectedMoods.add(m));
 
     $('bizTypeName').textContent = state.bizType;
     $('bizFunc').textContent = state.bizFunc;
-  } catch(e){
+  } catch (e) {
     $('bizTypeName').textContent = 'עסק';
     $('bizFunc').textContent = 'מוזיקה תעצב את האווירה ואת חוויית הקהל.';
-    state.recommendedMoods = ['חמים','מאוזן','אינטימי','לא רעשני'];
-    state.recommendedMoods.forEach(m=>state.selectedMoods.add(m));
+    state.recommendedMoods = ['חמים', 'מאוזן', 'אינטימי', 'לא רעשני'];
+    state.recommendedMoods.forEach(m => state.selectedMoods.add(m));
     console.warn('Business detect failed:', e);
   }
 }
@@ -1100,36 +609,36 @@ async function detectBusinessType(){
 /* ─────────── Screen 4: Moods + MC ─────────── */
 // Data Box atmospheres — from Google Sheet columns b-i, rows 1-3
 const MOOD_LIBRARY = [
-  'חמים','רגוע','חברותי','קלאסי','צעיר','שקט','יוקרתי','סקסי',
-  'משפחתי','אנרגטי','קליל','מודרני','אורבני','הומה','מחוספס','חפלה',
-  'שמח','אינטימי','אלגנטי','מינימליסטי','כפרי','מסיבתי','אפל','לא מחייב',
+  'חמים', 'רגוע', 'חברותי', 'קלאסי', 'צעיר', 'שקט', 'יוקרתי', 'סקסי',
+  'משפחתי', 'אנרגטי', 'קליל', 'מודרני', 'אורבני', 'הומה', 'מחוספס', 'חפלה',
+  'שמח', 'אינטימי', 'אלגנטי', 'מינימליסטי', 'כפרי', 'מסיבתי', 'אפל', 'לא מחייב',
 ];
 
-function renderMoods(){
+function renderMoods() {
   const grid = $('moodsGrid');
   // Combine recommended + library, dedup
   // Show recommended moods first, then all Data Box atmospheres
   const all = Array.from(new Set([...state.recommendedMoods, ...MOOD_LIBRARY]));
-  grid.innerHTML = all.map(m=>{
+  grid.innerHTML = all.map(m => {
     const sel = state.selectedMoods.has(m);
-    return `<div class="mood-chip${sel?' selected':''}" data-mood="${m}" onclick="toggleMood('${m.replace(/'/g,"\\'")}',this)">${m}</div>`;
+    return `<div class="mood-chip${sel ? ' selected' : ''}" data-mood="${m}" onclick="toggleMood('${m.replace(/'/g, "\\'")}',this)">${m}</div>`;
   }).join('');
 }
 
-function toggleMood(m, el){
-  if(state.selectedMoods.has(m)) state.selectedMoods.delete(m);
+function toggleMood(m, el) {
+  if (state.selectedMoods.has(m)) state.selectedMoods.delete(m);
   else state.selectedMoods.add(m);
   el.classList.toggle('selected');
 }
 
-function renderMC(){
+function renderMC() {
   const c = $('mcContainer');
-  const order = ['familiarity','hebrew']; // compact 2-column layout via CSS
-  c.innerHTML = order.map(key=>{
+  const order = ['familiarity', 'hebrew']; // compact 2-column layout via CSS
+  c.innerHTML = order.map(key => {
     const q = window.SB_V2_MC[key];
-    const opts = q.options.map(o=>{
+    const opts = q.options.map(o => {
       const sel = state.mc[key] === o.id;
-      return `<div class="mc-option${sel?' selected':''}" data-key="${key}" data-id="${o.id}" onclick="selectMC('${key}',${o.id})">
+      return `<div class="mc-option${sel ? ' selected' : ''}" data-key="${key}" data-id="${o.id}" onclick="selectMC('${key}',${o.id})">
         <div class="mc-checkbox"></div>
         <div class="mc-content">
           <div class="mc-label">${o.label}</div>
@@ -1144,21 +653,21 @@ function renderMC(){
   }).join('');
 }
 
-function selectMC(key, id){
+function selectMC(key, id) {
   state.mc[key] = id;
-  document.querySelectorAll(`.mc-option[data-key="${key}"]`).forEach(el=>{
+  document.querySelectorAll(`.mc-option[data-key="${key}"]`).forEach(el => {
     el.classList.toggle('selected', Number(el.dataset.id) === id);
   });
 }
 
 /* ─────────── Screen 5: Generation pipeline ─────────── */
 /* ─────────── Screen 5: Energy choice ─────────── */
-function renderEnergyScreen(){
+function renderEnergyScreen() {
   const el = $('energyOptions');
-  if(!el) return;
+  if (!el) return;
   const entry = state.brainContext && state.brainContext.l0;
-  const low  = (entry && entry.energyLow)  || { label:'רגוע וקליל',       description:'פלייליסט לשעות השקטות — מוזיקה שמאפשרת שיחה ואווירה נינוחה.' };
-  const high = (entry && entry.energyHigh) || { label:'קצבי ואנרגטי',     description:'פלייליסט לשעות הסוערות — קצב שמרים ומניע.' };
+  const low = (entry && entry.energyLow) || { label: 'רגוע וקליל', description: 'פלייליסט לשעות השקטות — מוזיקה שמאפשרת שיחה ואווירה נינוחה.' };
+  const high = (entry && entry.energyHigh) || { label: 'קצבי ואנרגטי', description: 'פלייליסט לשעות הסוערות — קצב שמרים ומניע.' };
 
   el.innerHTML = `
     <button class="energy-card low" onclick="chooseEnergy(1)">
@@ -1177,7 +686,7 @@ function renderEnergyScreen(){
     </button>`;
 }
 
-function chooseEnergy(level){
+function chooseEnergy(level) {
   state.energyLevel = level;
   startGeneration();
 }
@@ -1185,7 +694,7 @@ function chooseEnergy(level){
 // Override setStep to render energy screen when entering step 5
 const _origSetStep = setStep;
 // Patch goNext on screen 4 → show energy screen
-document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goNext override
+document.addEventListener('DOMContentLoaded', () => { });  // no-op, handled in goNext override
 
 /* ── Core generation loop — runs once per energy level ── */
 /* ═══════════════════════════════════════════════════════════
@@ -1199,63 +708,8 @@ document.addEventListener('DOMContentLoaded', ()=>{});  // no-op, handled in goN
    Returns: array of Spotify track objects (with id, artists, album, etc.)
 ── */
 
-async function buildTrackPool(entry, energyLevel){
-  const liveEnergy = entry.liveEnergy || entry.energy || {};
-  const lvData = liveEnergy[energyLevel] || liveEnergy[1] || liveEnergy[2] || null;
-  let playlistIds = lvData?.playlists || [];
-
-  if(!playlistIds.length && Array.isArray(entry.playlists)){
-    playlistIds = entry.playlists.map(p=>p.id||p).filter(Boolean);
-  }
-  if(!playlistIds.length) return [];
-
-  // Shuffle playlist order — different order each run
-  const shuffled = playlistIds.slice().sort(()=>Math.random()-0.5);
-
-  // Fetch ALL playlists with a random offset per playlist
-  // → different 50 tracks sampled from each playlist every run
-  const rawTracks = [];
-  await Promise.allSettled(shuffled.map(async pid=>{
-    const offset = Math.floor(Math.random() * 80); // random start position
-    try{
-      const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'fetch',
-          url:`https://api.spotify.com/v1/playlists/${pid}/tracks?fields=items(track(id,name,artists(name),popularity,duration_ms,album(images,release_date)))&limit=50&offset=${offset}`,
-          neutral:true})});
-      if(!r.ok) return;
-      const j = await r.json();
-      const tracks = (j.items||[]).map(it=>it.track).filter(t=>t&&t.id)
-        .map(t=>({...t, _src:'databox', _pid:pid}));
-      rawTracks.push(...tracks);
-    }catch(e){}
-  }));
-
-  // Deduplicate
-  const seen = new Set();
-  const unique = rawTracks.filter(t=>{
-    if(seen.has(t.id)) return false; seen.add(t.id); return true;
-  });
-
-  // BPM / energy filter
-  const idBatch = unique.slice(0,100).map(t=>t.id);
-  let featureMap = {};
-  if(idBatch.length){
-    try{
-      const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'fetch',url:`https://api.spotify.com/v1/audio-features?ids=${idBatch.join(',')}`,neutral:true})});
-      if(r.ok){ const j=await r.json(); (j.audio_features||[]).filter(f=>f).forEach(f=>{featureMap[f.id]=f;}); }
-    }catch(e){}
-  }
-
-  const energyPass = t=>{
-    const f=featureMap[t.id]; if(!f) return true;
-    if(energyLevel===1) return f.energy<0.72 && f.tempo<138;
-    if(energyLevel===2) return f.energy>0.35 && f.tempo>85;
-    return true;
-  };
-
-  const pool = unique.filter(energyPass);
-  return pool.length >= 20 ? pool : unique; // relax filter if too few passed
+async function buildTrackPool(entry, energyLevel) {
+  return window.SB_GEN.pool.buildTrackPool(entry, energyLevel);
 }
 
 
@@ -1263,491 +717,251 @@ async function buildTrackPool(entry, energyLevel){
    Sends up to 200 tracks to GPT. GPT picks the best 30 for this business.
    Matches picks back to pool to get Spotify IDs.
 ── */
-async function selectFromPool(pool, faders, moods, energyLevel){
-  if(!pool.length) return [];
-
-  // Pre-filter by familiarity preference
-  const fl = faders.familiarity;
-  let candidates = pool;
-  if(fl<25)       candidates = pool.filter(t=>(t.popularity||0)<=55);
-  else if(fl>75)  candidates = pool.filter(t=>(t.popularity||0)>=35);
-  if(candidates.length < 30) candidates = pool; // relax if too few
-
-  // Exclude recently generated tracks (session memory)
-  // Build exclusion set: session history + tracks already in other playlist
-  const sessionExclude = state._generatedHistory || new Set();
-  // Never fall back to the full pool — always exclude session history
-  // (prevents same tracks appearing in both playlists)
-  const finalPool = candidates.filter(t => !sessionExclude.has(t.id));
-
-  // Stratify by popularity for variety — all from Data Box
-  const popular = finalPool.filter(t=>(t.popularity||0)>=60).sort(()=>Math.random()-0.5);
-  const mid     = finalPool.filter(t=>(t.popularity||0)>=25&&(t.popularity||0)<60).sort(()=>Math.random()-0.5);
-  const niche   = finalPool.filter(t=>(t.popularity||0)<25).sort(()=>Math.random()-0.5);
-
-  const MAX = 200;
-  const stratified = [
-    ...popular.slice(0, Math.round(MAX*0.35)),
-    ...mid.slice(0,     Math.round(MAX*0.45)),
-    ...niche.slice(0,   MAX - Math.round(MAX*0.35) - Math.round(MAX*0.45)),
-  ].sort(()=>Math.random()-0.5);
-
-  const sample = stratified.length >= 30 ? stratified : finalPool.slice().sort(()=>Math.random()-0.5).slice(0,MAX);
-
-  // Build candidate list for GPT
-  const trackList = sample.map((t,i)=>{
-    const artist = (t.artists||[]).map(a=>a.name).join(', ');
-    return `${i+1}. ${artist} — ${t.name}`;
-  }).join('\n');
-
-  const energyDesc = energyLevel===1
-    ? 'רגועה ושקטה (BPM נמוך, אנרגיה מרוסנת — מתאים לשיחות, ישיבה, רקע)'
-    : 'מקפיצה ואנרגטית (BPM גבוה, אנרגיה גבוהה — מתאים לשיא הערב, ריקוד, פעילות)';
-  const heDesc = faders.hebrew>65 ? 'העדפה לעברית' : faders.hebrew<35 ? 'העדפה ללועזית' : 'תערובת עברית/לועזית';
-
-  const sys = `אתה אוצר מוזיקה לעסקים.
-תפקידך: לבחור שירים מהרשימה — לא להמציא שירים חדשים.
-כלל ברזל: כל שיר שתבחר חייב להופיע ברשימה שקיבלת. שירים שלא ברשימה — אסורים לחלוטין.
-חוקי גיוון חובה:
-- אסור לבחור יותר מ-2 שירים מאותו אמן.
-- חייב לפזר בחירות על פני הרשימה כולה — לא רק מהחלק הראשון.
-- שלב שירים מוכרים עם שירים פחות מוכרים — לא רק את השמות הגדולים.
-- כל בחירה צריכה להתאים לאווירה ולעסק, לא להיות "ברירת מחדל" של הז'אנר.
-החזר JSON בלבד: {"tracks":[{"n":1},{"n":5},...]} כאשר n הוא מספר השיר ברשימה.`;
-
-  const usr = `עסק: "${state.bizDesc}"
-סוג עסק: ${state.bizType||'עסק'}
-אווירות: ${moods.join(', ')||'כללי'}
-אנרגיה: ${energyDesc}
-שפה: ${heDesc}
-
-הרשימה (${sample.length} שירים) — בחר 30 מספרים:
-${trackList}
-
-החזר JSON עם 30 מספרים מהרשימה: {"tracks":[{"n":X},{"n":Y},...]}`;
-
-  const raw = await callOpenAI([
-    {role:'system',content:sys},{role:'user',content:usr}
-  ],{model:getMainModel(), max_tokens:800, temperature:0.82});
-
-  const parsed = safeJSON(raw);
-  const picks = (parsed.tracks||[]).map(p=>p.n).filter(n=>Number.isInteger(n)&&n>=1&&n<=sample.length);
-
-  // Map picks back to track objects
-  const result = [];
-  const usedIds = new Set();
-  for(const n of picks){
-    const t = sample[n-1];
-    if(!t||usedIds.has(t.id)) continue;
-    usedIds.add(t.id);
-    result.push({
-      artist: (t.artists||[]).map(a=>a.name).join(', '),
-      title:  t.name,
-      id:     t.id,
-      url:    t.external_urls?.spotify||'',
-      cover:  (t.album?.images?.length) ? t.album.images[t.album.images.length-1].url : '',
-      popularity: t.popularity||0,
-      duration:   t.duration_ms||0,
-      preview:'', reason:'data-box',
-    });
-  }
-
-  // Fill to 30 from remaining pool if GPT picked fewer
-  if(result.length < 30){
-    for(const t of sample){
-      if(result.length>=30) break;
-      if(usedIds.has(t.id)) continue;
-      usedIds.add(t.id);
-      result.push({
-        artist:(t.artists||[]).map(a=>a.name).join(', '),
-        title:t.name, id:t.id, url:t.external_urls?.spotify||'',
-        cover:(t.album?.images?.length)?t.album.images[t.album.images.length-1].url:'',
-        popularity:t.popularity||0, duration:t.duration_ms||0,
-        preview:'', reason:'data-box-fill',
-      });
-    }
-  }
-
-  // Update session history to avoid repeats in future runs
-  result.forEach(t=>{ if(t.id) (state._generatedHistory||(state._generatedHistory=new Set())).add(t.id); });
-
-  return result.slice(0,30);
-}
-
-async function generateTracklist(energyLevel, attempt, excludeIds){
-  attempt = attempt || 0;
-  state.energyLevel = energyLevel;
-  const label  = energyLevel===1 ? '🌙 רגוע' : '🔥 מקפיץ';
-  const faders = window.SB_V2_mcToFaders(state.mc);
-  const moods  = Array.from(state.selectedMoods);
-
-  // ── L0: Match Data Box ──
-  const l0Match = state.useDataBox && window.SB_matchDataBox
-    ? window.SB_matchDataBox(state.bizDesc)
-    : null;
-
-  // ── Step 1: Build track pool from Data Box playlists ──
-  let pool = [];
-  if(l0Match){
-    setLoadingStatus(`${label} — בונה בריכת שירים מהטבלה…`,'');
-    pool = await buildTrackPool(l0Match, energyLevel);
-  }
-
-  // ── Exclude tracks already in the other playlist (prevent duplicates) ──
-  if(excludeIds && excludeIds.size > 0){
-    pool = pool.filter(t => !excludeIds.has(t.id));
-  }
-
-  // ── Step 2: GPT selects from pool ──
-  let tracks = [];
-  if(pool.length >= 20){
-    setLoadingStatus(`${label} — GPT בוחר מ-${pool.length} שירים…`,'');
-    tracks = await selectFromPool(pool, faders, moods, energyLevel);
-  }
-
-  // ── Fallback: if pool too small, use old generation as supplement ──
-  if(tracks.filter(t=>t.id).length < 20){
-    setLoadingStatus(`${label} — משלים עם ניתוח GPT…`,'');
-    // Also build brain context for the prompt
-    await buildBrainContext();
-    const candidates = await generateCandidates(faders, moods, {
-      attempt, exclude: tracks.map(t=>`${t.artist} — ${t.title}`)
-    });
-    setLoadingStatus(`${label} — מאמת ב-Spotify…`,`${candidates.length} מועמדים`);
-    const validated = await validateOnSpotify(candidates);
-    const usedIds = new Set(tracks.map(t=>t.id).filter(Boolean));
-    tracks = [...tracks, ...validated.filter(t=>t.id&&!usedIds.has(t.id))].slice(0,30);
-  }
-
-  // ── Diversity filter ──
-  const disliked = new Set(
-    Object.entries(state.feedback).filter(([,v])=>v==='down')
-      .map(([k])=>k.split('|')[0].toLowerCase().trim())
-  );
-  const artistCnt = {};
-  const diverse = tracks.filter(t=>{
-    const a=(t.artist||'').toLowerCase().trim();
-    if(disliked.has(a)) return false;
-    artistCnt[a]=(artistCnt[a]||0)+1;
-    return artistCnt[a]<=2;
+async function selectFromPool(pool, faders, moods, energyLevel) {
+  const result = await window.SB_GEN.selector.selectFromPool(pool, faders, moods, energyLevel, {
+    bizDesc: state.bizDesc,
+    bizType: state.bizType,
+    generatedHistory: state._generatedHistory,
+  }, {
+    apiKey: await getOpenAIKey(),
+    model: getMainModel(),
   });
-
-  // Fill to 30 from pool if diversity filter reduced count
-  if(diverse.length < 28 && pool.length>0){
-    const usedIds = new Set(diverse.map(t=>t.id).filter(Boolean));
-    for(const t of pool.slice().sort(()=>Math.random()-0.5)){
-      if(diverse.length>=30) break;
-      if(usedIds.has(t.id)) continue;
-      const artist=(t.artists||[]).map(a=>a.name).join(', ');
-      const an=artist.toLowerCase().trim();
-      artistCnt[an]=(artistCnt[an]||0)+1;
-      if(artistCnt[an]<=2 && !disliked.has(an)){
-        usedIds.add(t.id);
-        diverse.push({artist,title:t.name,id:t.id,
-          url:t.external_urls?.spotify||'',
-          cover:(t.album?.images?.length)?t.album.images[t.album.images.length-1].url:'',
-          popularity:t.popularity||0,duration:t.duration_ms||0,preview:'',reason:'fill'});
-      }
-    }
-  }
-
-  return diverse.slice(0,30);
+  result.forEach(t => { if (t.id) (state._generatedHistory || (state._generatedHistory = new Set())).add(t.id); });
+  return result;
 }
 
+async function buildGenerationPayload(tok) {
+  const faders = window.SB_V2_mcToFaders(state.mc);
+  const input = {
+    bizDesc: state.bizDesc,
+    bizType: state.bizType,
+    mc: state.mc,
+    faders,
+    faderDescriptions: {
+      familiarity: describeFamiliarity(faders.familiarity),
+      hebrew: describeHebrew(faders.hebrew),
+      vocal: describeVocal(faders.vocal),
+      energy: describeEnergy(faders.energy),
+      era: describeEra(faders.era),
+    },
+    selectedMoods: state.selectedMoods,
+    selectedUserPlaylists: state.selectedUserPlaylists,
+    feedback: state.feedback,
+    hours: state.hours,
+    refPlaylist: state.refPlaylist,
+    useDataBox: state.useDataBox,
+    brainContext: state.brainContext,
+    generatedHistory: state._generatedHistory || (state._generatedHistory = new Set()),
+    regenCount: state.regenCount || 0,
+  };
+  const deps = {
+    apiKey: await getOpenAIKey(),
+    model: getMainModel(),
+    modelIsNew: /^gpt-5/.test(getMainModel()),
+    sb,
+    spotifyToken: tok,
+    getSpotifyToken: refreshSpotifyTokenIfNeeded,
+    matchDataBox: window.SB_matchDataBox,
+  };
+  return { input, deps };
+}
 
-async function startGeneration(){
+async function generateTracklist(energyLevel, attempt, excludeIds) {
+  state.energyLevel = energyLevel;
+  const tok = await refreshSpotifyTokenIfNeeded();
+  const { input, deps } = await buildGenerationPayload(tok);
+  return GEN().tracklist.generateTracklist(energyLevel, input, {
+    attempt: attempt || 0,
+    excludeIds: excludeIds || new Set(),
+    onProgress: setLoadingStatus,
+  }, deps);
+}
+
+async function startGeneration() {
   state.hours.open = '09:00';
   state.hours.close = '23:00';
   setStep(5);
   $('playlistLoading').style.display = 'block';
-  $('playlistResult').style.display  = 'none';
+  $('playlistResult').style.display = 'none';
 
-  setLoadingStatus('בודק חיבור Spotify…','');
+  setLoadingStatus('בודק חיבור Spotify…', '');
   const tok = await refreshSpotifyTokenIfNeeded();
-  if(!tok){
-    setLoadingStatus('Spotify לא מחובר','חזור למסך 2 ולחץ "התחברות עם Spotify"');
+  if (!tok) {
+    setLoadingStatus('Spotify לא מחובר', 'חזור למסך 2 ולחץ "התחברות עם Spotify"');
     showToast('נדרש חיבור Spotify', true);
-    setTimeout(()=>setStep(2), 1500);
+    setTimeout(() => setStep(2), 1500);
     return;
   }
 
-  try{
-    // Generate both energy levels sequentially
-    // Pass playlist1 IDs to playlist2 so no duplicates
-    state.playlist1 = await generateTracklist(1, state.regenCount, []);
-    const p1ids = new Set(state.playlist1.map(t=>t.id).filter(Boolean));
-    state.playlist2 = await generateTracklist(2, state.regenCount, p1ids);
-
-    // Hard guarantee: remove any track from playlist2 that appears in playlist1
-    const p1Set = new Set(state.playlist1.map(t=>t.id).filter(Boolean));
-    state.playlist2 = state.playlist2.filter(t => !t.id || !p1Set.has(t.id));
+  try {
+    const { input, deps } = await buildGenerationPayload(tok);
+    const { playlist1, playlist2 } = await GEN().generatePlaylists(input, {
+      ...deps,
+      onProgress: setLoadingStatus,
+    });
+    state.playlist1 = playlist1;
+    state.playlist2 = playlist2;
 
     $('playlistLoading').style.display = 'none';
-    $('playlistResult').style.display  = 'block';
+    $('playlistResult').style.display = 'block';
     renderPlaylist(1);
     renderPlaylist(2);
     await saveAnalysis();
-  } catch(e){
+  } catch (e) {
     console.error(e);
-    setLoadingStatus('שגיאה', e.message||'נסה שוב');
-    showToast('שגיאה: '+(e.message||'unknown'), true);
+    setLoadingStatus('שגיאה', e.message || 'נסה שוב');
+    showToast('שגיאה: ' + (e.message || 'unknown'), true);
   }
 }
 
-function setLoadingStatus(step, detail){
+function setLoadingStatus(step, detail) {
   $('loadingStep').textContent = step;
   $('loadingDetail').textContent = detail || '';
 }
 
-async function generateCandidates(faders, moods, opts){
-  opts = opts || {};
-  const attempt  = opts.attempt || 0;            // 0 = first time, 1+ = regen
-  const exclude  = opts.exclude || [];            // "artist — title" strings to avoid
-
-  const fmDesc = describeFamiliarity(faders.familiarity);
-  const heDesc = describeHebrew(faders.hebrew);
-  const voDesc = describeVocal(faders.vocal);
-  const enDesc = describeEnergy(faders.energy);
-  const erDesc = describeEra(faders.era);
-
-  // Newer models are slower — request fewer candidates to stay within timeout
-  const isNewModel = /^gpt-5/.test(getMainModel());
-  const candidateCount = isNewModel ? 40 : 60;
-
-  const regenNote = attempt > 0
-    ? `\n⚠️ זוהי יצירה מחדש מספר ${attempt}. חובה להציג בחירה שונה לחלוטין מהפעם הקודמת — אמנים שונים, שירים שונים, זוויות שונות של הסגנון. אל תחזור על אף שיר מהרשימה הבאה.`
-    : '';
-
-  const energyNote = state.energyLevel === 1
-    ? '🎵 אנרגיית הפלייליסט: רגועה ושקטה — BPM נמוך (60-110), אנרגיה מרוסנת. מתאים לשעות שקטות, שיחות, רקע נינוח.'
-    : state.energyLevel === 2
-    ? '🎵 אנרגיית הפלייליסט: מקפיצה ואנרגטית — BPM גבוה (100-170), Spotify energy > 0.5. מתאים לשעות עמוסות, ריקוד, עומס.'
-    : '';
-  // In-session feedback
-  const likedKeys    = Object.entries(state.feedback).filter(([,v])=>v==='up').map(([k])=>k);
-  const dislikedKeys = Object.entries(state.feedback).filter(([,v])=>v==='down').map(([k])=>k);
-  const sessionFeedback = [
-    likedKeys.length    ? `\n✅ אהב סגנון אלו — חפש דומים:\n${likedKeys.slice(0,8).map(k=>k.replace('|',' — ')).join('\n')}` : '',
-    dislikedKeys.length ? `\n❌ לא אהב אלו — הימנע לחלוטין:\n${dislikedKeys.slice(0,8).map(k=>k.replace('|',' — ')).join('\n')}` : '',
-  ].join('');
-
-  const brainBlocks = state.brainContext.assembled ? assembleBrainBlocks() : '';
-
-  // Build exclusion block (cap at 40 to keep prompt lean)
-  const excludeBlock = exclude.length
-    ? `\nשירים שכבר הוצגו — אסור לכלול אף אחד מהם:\n${exclude.slice(0, 40).join('\n')}`
-    : '';
-
-  const sys = `אתה רובין, מומחה ליצירת פלייליסטים מותאמי-עסק.
-המטרה: לייצר ${candidateCount} מועמדים אמיתיים מ-Spotify לפלייליסט עסקי.
-חוקים קשיחים:
-- כל שיר חייב להיות קיים באמת ב-Spotify, אמן ושם מדויקים.
-- אל תמציא שירים. אם אתה לא בטוח — אל תכלול.
-- שמור על הסגנונות והאווירות שביקש העסק.
-- גיוון חובה: ~40% מוכרים, ~40% פחות מוכרים, ~20% נישה. אמנים פחות מוכרים אבל איכותיים הם נכס.
-- אל תחזור על אמן יותר מ-2 פעמים.${regenNote}${energyNote}${sessionFeedback}
-${fmDesc}
-${heDesc}
-${voDesc}
-${enDesc}
-${erDesc}
-החזר JSON: {"tracks":[{"artist":"...","title":"...","reason":"5 מילים בעברית"}]}`;
-
-  const usr = `תיאור העסק: "${state.bizDesc}"
-סוג: ${state.bizType||'עסק'}
-אווירות נבחרות: ${moods.join(', ')||'(ברירת מחדל)'}
-שעות פעילות: ${state.hours.open}-${state.hours.close}
-${state.refPlaylist?'פלייליסט ייחוס URL: '+state.refPlaylist:''}
-
-${brainBlocks}
-${excludeBlock}
-
-צור ${candidateCount} מועמדים מגוונים שמתאימים לכל החוקים והמידע למעלה.
-אם ניתנו DNA / קוהורט / ארכיון — שלב את כולם לאיזון מדויק שמתאים לעסק הזה.`;
-
-  // Base temperature 0.85 → more creative from the first run. Higher on each regen.
-  const temperature = Math.min(0.97, 0.85 + attempt * 0.04);
-
-  const raw = await callOpenAI([
-    {role:'system', content:sys},
-    {role:'user', content:usr},
-  ], {model: getMainModel(), max_tokens: isNewModel ? 4000 : 6000, temperature});
-  const parsed = safeJSON(raw);
-  const tracks = (parsed.tracks||[]).filter(t=>t.artist && t.title);
-  return tracks.slice(0, candidateCount);
+async function generateCandidates(faders, moods, opts) {
+  return window.SB_GEN.fallback.generateCandidates(faders, moods, {
+    bizDesc: state.bizDesc,
+    bizType: state.bizType,
+    energyLevel: state.energyLevel,
+    hours: state.hours,
+    refPlaylist: state.refPlaylist,
+    feedback: state.feedback,
+    brainBlocks: state.brainContext.assembled ? assembleBrainBlocks() : '',
+    faderDescriptions: {
+      familiarity: describeFamiliarity(faders.familiarity),
+      hebrew: describeHebrew(faders.hebrew),
+      vocal: describeVocal(faders.vocal),
+      energy: describeEnergy(faders.energy),
+      era: describeEra(faders.era),
+    },
+    modelIsNew: /^gpt-5/.test(getMainModel()),
+  }, opts, {
+    apiKey: await getOpenAIKey(),
+    model: getMainModel(),
+  });
 }
 
-async function validateOnSpotify(candidates){
-  const out = [];
-  for(let i=0; i<candidates.length; i+=8){
-    const batch = candidates.slice(i, i+8);
-    setLoadingStatus('מאמת ב-Spotify…',`${i+batch.length}/${candidates.length}`);
-    const results = await Promise.allSettled(
-      batch.map(t=>spotifySearch(t.artist, t.title))
-    );
-    results.forEach((r, ri)=>{
-      const orig = batch[ri];
-      if(r.status==='fulfilled' && r.value){
-        const sp = r.value;
-        out.push({
-          artist: sp.artists.map(a=>a.name).join(', '),
-          title: sp.name,
-          id: sp.id,
-          url: sp.external_urls && sp.external_urls.spotify,
-          cover: sp.album && sp.album.images && sp.album.images.length ? sp.album.images[sp.album.images.length-1].url : '',
-          preview: sp.preview_url||'',
-          popularity: sp.popularity||0,
-          duration: sp.duration_ms||0,
-          reason: orig.reason||'',
-        });
-      } else {
-        out.push({ artist: orig.artist, title: orig.title, reason: orig.reason||'' });
-      }
-    });
-  }
-  return out;
-}
-
-async function spotifySearch(artist, title){
-  // Try /api/spotify proxy first (uses CC token, doesn't need user auth)
-  try{
-    const r = await fetch('/api/spotify', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({action:'search', query:`${artist} ${title}`, neutral:true})
-    });
-    if(r.ok){
-      const j = await r.json();
-      if(j.tracks && j.tracks.items && j.tracks.items.length){
-        return j.tracks.items[0];
-      }
-    }
-  } catch(e){}
-  // Fallback to direct
-  if(state.spotifyToken){
-    try{
-      const r = await fetch('https://api.spotify.com/v1/search?'+new URLSearchParams({
-        q:`${artist} ${title}`, type:'track', limit:'1', market:'IL'
-      }), {headers:{'Authorization':'Bearer '+state.spotifyToken}});
-      if(r.ok){
-        const j = await r.json();
-        if(j.tracks && j.tracks.items && j.tracks.items.length) return j.tracks.items[0];
-      }
-    } catch(e){}
-  }
-  return null;
+async function validateOnSpotify(candidates) {
+  return window.SB_GEN.fallback.validateOnSpotify(candidates, {
+    onProgress: setLoadingStatus,
+  }, {
+    fallbackToken: state.spotifyToken,
+  });
 }
 
 /* ─── Approach G: resolve artist names → Spotify IDs ─── */
 const _artistIdCache = {}; // session-level cache: name → spotifyId
 
-async function resolveArtistIds(artistNames, tok){
+async function resolveArtistIds(artistNames, tok) {
   const ids = [];
-  await Promise.allSettled(artistNames.slice(0,4).map(async name=>{
+  await Promise.allSettled(artistNames.slice(0, 4).map(async name => {
     // Return from cache if available (avoids repeated Spotify searches)
-    if(_artistIdCache[name]){ ids.push(_artistIdCache[name]); return; }
-    try{
-      const r = await fetch('https://api.spotify.com/v1/search?'+new URLSearchParams({
-        q:name, type:'artist', limit:'1'
-      }), {headers:{'Authorization':'Bearer '+tok}});
-      if(!r.ok) return;
+    if (_artistIdCache[name]) { ids.push(_artistIdCache[name]); return; }
+    try {
+      const r = await fetch('https://api.spotify.com/v1/search?' + new URLSearchParams({
+        q: name, type: 'artist', limit: '1'
+      }), { headers: { 'Authorization': 'Bearer ' + tok } });
+      if (!r.ok) return;
       const j = await r.json();
       const a = j.artists?.items?.[0];
-      if(a?.id){ _artistIdCache[name] = a.id; ids.push(a.id); }
-    }catch(e){}
+      if (a?.id) { _artistIdCache[name] = a.id; ids.push(a.id); }
+    } catch (e) { }
   }));
   return ids;
 }
 
 /* ─── Approach G: get top tracks directly from artists ─── */
-async function fetchArtistTopTracks(artistIds, tok, market='IL'){
+async function fetchArtistTopTracks(artistIds, tok, market = 'IL') {
   const tracks = [];
-  await Promise.allSettled(artistIds.map(async id=>{
-    try{
+  await Promise.allSettled(artistIds.map(async id => {
+    try {
       const r = await fetch(`https://api.spotify.com/v1/artists/${id}/top-tracks?market=${market}`,
-        {headers:{'Authorization':'Bearer '+tok}});
-      if(!r.ok) return;
+        { headers: { 'Authorization': 'Bearer ' + tok } });
+      if (!r.ok) return;
       const j = await r.json();
       // Shuffle + pick 3 per artist to vary results
-      const picked = (j.tracks||[]).sort(()=>Math.random()-0.5).slice(0,3);
+      const picked = (j.tracks || []).sort(() => Math.random() - 0.5).slice(0, 3);
       tracks.push(...picked);
-    }catch(e){}
+    } catch (e) { }
   }));
   return tracks;
 }
 
-async function fillUp(existing, faders){
+async function fillUp(existing, faders) {
   const ctx = state.brainContext || {};
   const tok = await refreshSpotifyTokenIfNeeded();
-  if(!tok) return existing;
+  if (!tok) return existing;
 
-  const known = new Set(existing.filter(t=>t.id).map(t=>t.id));
+  const known = new Set(existing.filter(t => t.id).map(t => t.id));
   const blockHebrew = faders.hebrew < 20;
-  const blockIntl   = faders.hebrew > 80;
-  const need = 30 - existing.filter(t=>t.id).length;
-  if(need <= 0) return existing;
+  const blockIntl = faders.hebrew > 80;
+  const need = 30 - existing.filter(t => t.id).length;
+  if (need <= 0) return existing;
 
   const out = existing.slice();
 
   // Skip artists the user explicitly disliked in this session
   const dislikedFillArtists = new Set(
-    Object.entries(state.feedback).filter(([,v])=>v==='down')
-      .map(([k])=>k.split('|')[0].toLowerCase().trim())
+    Object.entries(state.feedback).filter(([, v]) => v === 'down')
+      .map(([k]) => k.split('|')[0].toLowerCase().trim())
   );
 
-  const addTrack = (t, reason='fill-up') => {
-    if(known.has(t.id) || out.filter(x=>x.id).length >= 30) return;
-    const artistName = (t.artists||[]).map(a=>a.name).join(', ').toLowerCase().trim();
-    if(dislikedFillArtists.has(artistName)) return;  // skip disliked artists
-    const isHe = /[\u0590-\u05FF]/.test(t.name+' '+(t.artists||[]).map(a=>a.name).join(' '));
-    if(blockHebrew && isHe) return;
-    if(blockIntl && !isHe) return;
+  const addTrack = (t, reason = 'fill-up') => {
+    if (known.has(t.id) || out.filter(x => x.id).length >= 30) return;
+    const artistName = (t.artists || []).map(a => a.name).join(', ').toLowerCase().trim();
+    if (dislikedFillArtists.has(artistName)) return;  // skip disliked artists
+    const isHe = /[\u0590-\u05FF]/.test(t.name + ' ' + (t.artists || []).map(a => a.name).join(' '));
+    if (blockHebrew && isHe) return;
+    if (blockIntl && !isHe) return;
     out.push({
-      artist:(t.artists||[]).map(a=>a.name).join(', '), title:t.name, id:t.id,
-      url:t.external_urls?.spotify||'', cover:(t.album?.images||[]).at(-1)?.url||'',
-      preview:t.preview_url||'', popularity:t.popularity||0, duration:t.duration_ms||0, reason,
+      artist: (t.artists || []).map(a => a.name).join(', '), title: t.name, id: t.id,
+      url: t.external_urls?.spotify || '', cover: (t.album?.images || []).at(-1)?.url || '',
+      preview: t.preview_url || '', popularity: t.popularity || 0, duration: t.duration_ms || 0, reason,
     });
     known.add(t.id);
   };
 
   /* ── Path G: Artist-based (breaks Spotify recommendations determinism) ── */
   const nicheArtists = ctx.l0?.dna?.nicheArtists || [];
-  if(nicheArtists.length >= 2){
+  if (nicheArtists.length >= 2) {
     // Shuffle niche artists → different IDs every run
-    const shuffled = nicheArtists.slice().sort(()=>Math.random()-0.5);
+    const shuffled = nicheArtists.slice().sort(() => Math.random() - 0.5);
     const artistIds = await resolveArtistIds(shuffled, tok);
 
-    if(artistIds.length >= 1){
+    if (artistIds.length >= 1) {
       // 1. Direct top tracks from niche artists (always fresh)
       const topTracks = await fetchArtistTopTracks(artistIds, tok);
-      topTracks.sort(()=>Math.random()-0.5).forEach(t=>addTrack(t,'artist-top'));
+      topTracks.sort(() => Math.random() - 0.5).forEach(t => addTrack(t, 'artist-top'));
 
       // 2. Spotify recommendations with artist seeds (varied vs track seeds)
-      if(out.filter(x=>x.id).length < 30){
+      if (out.filter(x => x.id).length < 30) {
         const trackSeeds = [];
-        if(ctx.l1?.topTrackIds?.length) trackSeeds.push(...ctx.l1.topTrackIds.slice(0,1));
+        if (ctx.l1?.topTrackIds?.length) trackSeeds.push(...ctx.l1.topTrackIds.slice(0, 1));
 
         const params = {
-          seed_artists: artistIds.slice(0,Math.min(3,5-trackSeeds.length)).join(','),
-          limit: Math.min(100, need*3),
+          seed_artists: artistIds.slice(0, Math.min(3, 5 - trackSeeds.length)).join(','),
+          limit: Math.min(100, need * 3),
           market: 'IL',
         };
-        if(trackSeeds.length) params.seed_tracks = trackSeeds.join(',');
+        if (trackSeeds.length) params.seed_tracks = trackSeeds.join(',');
 
         // Energy params
         const el = state.energyLevel;
-        if(el===1){ params.target_energy=0.28+Math.random()*0.12; params.max_energy=0.50; params.target_tempo=75+Math.floor(Math.random()*20); }
-        else if(el===2){ params.target_energy=0.68+Math.random()*0.15; params.min_energy=0.55; params.target_tempo=110+Math.floor(Math.random()*30); }
-        params.max_popularity = 60 + Math.floor(Math.random()*20);
-        params.min_popularity = 15 + Math.floor(Math.random()*20);
+        if (el === 1) { params.target_energy = 0.28 + Math.random() * 0.12; params.max_energy = 0.50; params.target_tempo = 75 + Math.floor(Math.random() * 20); }
+        else if (el === 2) { params.target_energy = 0.68 + Math.random() * 0.15; params.min_energy = 0.55; params.target_tempo = 110 + Math.floor(Math.random() * 30); }
+        params.max_popularity = 60 + Math.floor(Math.random() * 20);
+        params.min_popularity = 15 + Math.floor(Math.random() * 20);
 
-        try{
+        try {
           const qs = new URLSearchParams();
-          Object.entries(params).forEach(([k,v])=>{ if(v!=null) qs.set(k,String(v)); });
-          const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({action:'fetch',url:'https://api.spotify.com/v1/recommendations?'+qs,neutral:true})});
-          if(r.ok){ const j=await r.json(); (j.tracks||[]).forEach(t=>addTrack(t,'artist-rec')); }
-        }catch(e){}
+          Object.entries(params).forEach(([k, v]) => { if (v != null) qs.set(k, String(v)); });
+          const r = await fetch('/api/spotify', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'fetch', url: 'https://api.spotify.com/v1/recommendations?' + qs, neutral: true })
+          });
+          if (r.ok) { const j = await r.json(); (j.tracks || []).forEach(t => addTrack(t, 'artist-rec')); }
+        } catch (e) { }
       }
       return out;
     }
@@ -1755,45 +969,47 @@ async function fillUp(existing, faders){
 
   /* ── Fallback: original track-seed recommendations ── */
   let seeds = [];
-  if(ctx.l1?.topTrackIds?.length) seeds.push(...ctx.l1.topTrackIds.slice(0,2));
-  if(ctx.l2?.cohort_top_ids?.length) seeds.push(...ctx.l2.cohort_top_ids.slice(0,2));
-  if(seeds.length < 3 && ctx.l0?.dna?.allTrackIds?.length){
-    seeds.push(...ctx.l0.dna.allTrackIds.slice().sort(()=>Math.random()-0.5).slice(0,3));
+  if (ctx.l1?.topTrackIds?.length) seeds.push(...ctx.l1.topTrackIds.slice(0, 2));
+  if (ctx.l2?.cohort_top_ids?.length) seeds.push(...ctx.l2.cohort_top_ids.slice(0, 2));
+  if (seeds.length < 3 && ctx.l0?.dna?.allTrackIds?.length) {
+    seeds.push(...ctx.l0.dna.allTrackIds.slice().sort(() => Math.random() - 0.5).slice(0, 3));
   }
-  seeds = Array.from(new Set(seeds.filter(Boolean))).slice(0,5);
-  if(!seeds.length) return out.length > existing.length ? out : existing;
-  const needFallback = 30 - out.filter(t=>t.id).length;
-  if(needFallback <= 0) return out;
+  seeds = Array.from(new Set(seeds.filter(Boolean))).slice(0, 5);
+  if (!seeds.length) return out.length > existing.length ? out : existing;
+  const needFallback = 30 - out.filter(t => t.id).length;
+  if (needFallback <= 0) return out;
 
   const params2 = {
     seed_tracks: seeds.join(','),
-    limit: Math.min(100, needFallback*4),
+    limit: Math.min(100, needFallback * 4),
     market: 'IL',
   };
   const el2 = state.energyLevel;
-  if(el2===1){ params2.target_energy=0.28+Math.random()*0.12; params2.max_energy=0.50; }
-  else if(el2===2){ params2.target_energy=0.68+Math.random()*0.15; params2.min_energy=0.55; }
-  else if(faders.energy<30){ params2.target_energy=0.25; params2.max_energy=0.45; }
-  else if(faders.energy>70){ params2.target_energy=0.8; params2.min_energy=0.6; }
-  else { params2.target_energy=faders.energy/100; }
-  params2.max_popularity = 60+Math.floor(Math.random()*20);
-  params2.min_popularity = 20+Math.floor(Math.random()*20);
+  if (el2 === 1) { params2.target_energy = 0.28 + Math.random() * 0.12; params2.max_energy = 0.50; }
+  else if (el2 === 2) { params2.target_energy = 0.68 + Math.random() * 0.15; params2.min_energy = 0.55; }
+  else if (faders.energy < 30) { params2.target_energy = 0.25; params2.max_energy = 0.45; }
+  else if (faders.energy > 70) { params2.target_energy = 0.8; params2.min_energy = 0.6; }
+  else { params2.target_energy = faders.energy / 100; }
+  params2.max_popularity = 60 + Math.floor(Math.random() * 20);
+  params2.min_popularity = 20 + Math.floor(Math.random() * 20);
 
-  try{
+  try {
     const qs = new URLSearchParams();
-    Object.entries(params2).forEach(([k,v])=>{ if(v!=null) qs.set(k,String(v)); });
-    const r = await fetch('/api/spotify',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({action:'fetch',url:'https://api.spotify.com/v1/recommendations?'+qs,neutral:true})});
-    if(r.ok){ const j=await r.json(); (j.tracks||[]).forEach(t=>addTrack(t,'fallback-rec')); }
-  }catch(e){}
+    Object.entries(params2).forEach(([k, v]) => { if (v != null) qs.set(k, String(v)); });
+    const r = await fetch('/api/spotify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'fetch', url: 'https://api.spotify.com/v1/recommendations?' + qs, neutral: true })
+    });
+    if (r.ok) { const j = await r.json(); (j.tracks || []).forEach(t => addTrack(t, 'fallback-rec')); }
+  } catch (e) { }
   return out;
 }
 
 /* ─────────── Data Box toggle ─────────── */
-function toggleDataBox(){
+function toggleDataBox() {
   state.useDataBox = !state.useDataBox;
   const btn = $('dataBoxToggle');
-  if(btn){
+  if (btn) {
     btn.textContent = state.useDataBox ? '📋' : '🚫';
     btn.title = state.useDataBox
       ? 'Data Box פעיל — לחץ לכיבוי (מצב AI טהור)'
@@ -1803,7 +1019,7 @@ function toggleDataBox(){
 
   // When switching to Pure AI — wipe ALL brain layers immediately
   // (banner shows stale data from previous build otherwise)
-  if(!state.useDataBox){
+  if (!state.useDataBox) {
     state.brainContext.l0 = null;
     state.brainContext.l2 = null;
     state.brainContext.l3 = null;
@@ -1817,59 +1033,59 @@ function toggleDataBox(){
 
 /* ─────────── Model selector ─────────── */
 const MODELS = [
-  { id:'gpt-4o',   label:'4o',   title:'GPT-4o — יציב, מהיר' },
-  { id:'gpt-5.4',  label:'5.4',  title:'GPT-5.4 — חכם יותר, קצת איטי יותר' },
-  { id:'gpt-5.5',  label:'5.5',  title:'GPT-5.5 — הכי חזק, הכי איטי' },
+  { id: 'gpt-4o', label: '4o', title: 'GPT-4o — יציב, מהיר' },
+  { id: 'gpt-5.4', label: '5.4', title: 'GPT-5.4 — חכם יותר, קצת איטי יותר' },
+  { id: 'gpt-5.5', label: '5.5', title: 'GPT-5.5 — הכי חזק, הכי איטי' },
 ];
 
-function selectModel(id){
+function selectModel(id) {
   state.selectedModel = id;
   localStorage.setItem('sb_model', id);
-  document.querySelectorAll('.model-pill').forEach(el=>{
+  document.querySelectorAll('.model-pill').forEach(el => {
     el.classList.toggle('active', el.dataset.model === id);
   });
 }
 
 // Main model: whichever the user selected
-function getMainModel(){ return state.selectedModel || 'gpt-4o'; }
+function getMainModel() { return state.selectedModel || 'gpt-4o'; }
 
 // Mini model: auto-mapped based on selected main model
-function getMiniModel(){
+function getMiniModel() {
   const m = getMainModel();
-  if(m === 'gpt-5.5' || m === 'gpt-5.4') return 'gpt-5.4-mini';
+  if (m === 'gpt-5.5' || m === 'gpt-5.4') return 'gpt-5.4-mini';
   return 'gpt-4o-mini';
 }
 
 /* ─────────── OpenAI key management ─────────── */
 
 // Fetch key from Supabase (cross-device), fallback to localStorage
-async function getOpenAIKey(){
+async function getOpenAIKey() {
   try {
-    const { data } = await sb.from('app_settings').select('value').eq('key','openai_key').single();
-    if(data?.value) return data.value;
-  } catch(e){}
-  try { return localStorage.getItem('openai_key') || ''; } catch(e){ return ''; }
+    const { data } = await sb.from('app_settings').select('value').eq('key', 'openai_key').single();
+    if (data?.value) return data.value;
+  } catch (e) { }
+  try { return localStorage.getItem('openai_key') || ''; } catch (e) { return ''; }
 }
 
 // Save key to Supabase (cross-device) + localStorage backup
-async function saveOpenAIKey(value){
+async function saveOpenAIKey(value) {
   try {
     const { error } = await sb.from('app_settings')
-      .upsert({ key:'openai_key', value, updated_at:new Date().toISOString() }, { onConflict:'key' });
-    if(error) throw error;
-    try{ localStorage.setItem('openai_key', value); }catch(e){}
+      .upsert({ key: 'openai_key', value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (error) throw error;
+    try { localStorage.setItem('openai_key', value); } catch (e) { }
     return true;
-  } catch(e){
+  } catch (e) {
     console.warn('saveOpenAIKey failed:', e);
     return false;
   }
 }
 
 /* ─────────── Settings modal ─────────── */
-async function openSettingsModal(){
+async function openSettingsModal() {
   const key = await getOpenAIKey();
   const inp = $('apiKeyInput'), st = $('keyStatus');
-  if(key){
+  if (key) {
     inp.value = key;
     st.textContent = '✓ מפתח שמור';
     st.className = 'key-status ok';
@@ -1881,11 +1097,11 @@ async function openSettingsModal(){
 
   // Show Spotify connection status
   const info = $('spotifySessionInfo');
-  if(info){
-    if(state.spotifyUser){
+  if (info) {
+    if (state.spotifyUser) {
       const name = state.spotifyUser.display_name || state.spotifyUser.id || 'לא ידוע';
       info.innerHTML = `מחובר כ: <strong style="color:var(--accent)">${escapeHtml(name)}</strong>`;
-    } else if(localStorage.getItem('sp3_access')){
+    } else if (localStorage.getItem('sp3_access')) {
       info.textContent = 'מחובר (טוקן שמור)';
     } else {
       info.textContent = 'לא מחובר';
@@ -1894,23 +1110,23 @@ async function openSettingsModal(){
   }
 
   $('settingsOverlay').classList.add('open');
-  setTimeout(()=> inp.focus(), 120);
+  setTimeout(() => inp.focus(), 120);
 }
 
 // disconnectSpotify defined earlier in auth section
 
-function closeSettingsModal(){
+function closeSettingsModal() {
   $('settingsOverlay').classList.remove('open');
 }
 
-function overlayClick(e){
-  if(e.target === $('settingsOverlay')) closeSettingsModal();
+function overlayClick(e) {
+  if (e.target === $('settingsOverlay')) closeSettingsModal();
 }
 
-async function saveKeyAndClose(){
+async function saveKeyAndClose() {
   const value = $('apiKeyInput').value.trim();
   const st = $('keyStatus'), btn = $('saveKeyBtn');
-  if(!value){
+  if (!value) {
     st.textContent = 'אנא הכנס מפתח תקין';
     st.className = 'key-status err';
     return;
@@ -1918,10 +1134,10 @@ async function saveKeyAndClose(){
   btn.disabled = true;
   btn.textContent = 'שומר…';
   const ok = await saveOpenAIKey(value);
-  if(ok){
+  if (ok) {
     st.textContent = '✓ נשמר בהצלחה!';
     st.className = 'key-status ok';
-    setTimeout(()=>{ closeSettingsModal(); btn.disabled=false; btn.textContent='שמור מפתח'; }, 1200);
+    setTimeout(() => { closeSettingsModal(); btn.disabled = false; btn.textContent = 'שמור מפתח'; }, 1200);
   } else {
     st.textContent = '⚠️ שגיאה בשמירה — בדוק חיבור';
     st.className = 'key-status err';
@@ -1931,122 +1147,103 @@ async function saveKeyAndClose(){
 }
 
 /* ─────────── OpenAI proxy ─────────── */
-async function callOpenAI(messages, opts){
+async function callOpenAI(messages, opts) {
   opts = opts || {};
-  const body = {
-    apiKey: await getOpenAIKey(), // Supabase → localStorage → server fallback
+  return window.SB_GEN.api.callOpenAI(messages, {
+    ...opts,
+    apiKey: await getOpenAIKey(),
     model: opts.model || getMiniModel(),
-    temperature: opts.temperature || 0.6,
-    messages,
-    max_tokens: opts.max_tokens || 2500,
-    response_format: opts.noJson ? undefined : {type:'json_object'},
-  };
-  // Ensure JSON keyword
-  const hasJ = messages.some(m=>(m.content||'').toLowerCase().includes('json'));
-  if(!hasJ){
-    messages.push({role:'system', content:'Return JSON only.'});
-  }
-  const r = await fetch('/api/openai', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify(body),
   });
-  if(!r.ok){
-    const txt = await r.text();
-    throw new Error('OpenAI HTTP '+r.status+': '+txt.slice(0,200));
-  }
-  const j = await r.json();
-  if(j.error) throw new Error(j.error.message||JSON.stringify(j.error));
-  return j.choices[0].message.content;
 }
 
-function safeJSON(str){
-  if(!str) return {};
-  try { return JSON.parse(str); } catch {}
+function safeJSON(str) {
+  if (!str) return {};
+  try { return JSON.parse(str); } catch { }
   // Try to extract JSON block
   const m = str.match(/\{[\s\S]*\}/);
-  if(m){
-    try { return JSON.parse(m[0]); } catch {}
+  if (m) {
+    try { return JSON.parse(m[0]); } catch { }
   }
   return {};
 }
 
 /* ─────────── Fader description helpers ─────────── */
-function describeFamiliarity(v){
-  if(v >= 80) return '🎯 פופולריות: מיינסטרים — להיטים ידועים שכולם מזהים מהרדיו ומשמיעות גבוהות.';
-  if(v >= 60) return '🎯 פופולריות: בעיקר ידוע, עם נגיעות פחות מוכרות.';
-  if(v >= 40) return '🎯 פופולריות: מעורב — חצי ידוע חצי גילוי.';
-  if(v >= 20) return '🎯 פופולריות: בעיקר נישה — מבחר עם טעם, פחות רדיו.';
+function describeFamiliarity(v) {
+  if (v >= 80) return '🎯 פופולריות: מיינסטרים — להיטים ידועים שכולם מזהים מהרדיו ומשמיעות גבוהות.';
+  if (v >= 60) return '🎯 פופולריות: בעיקר ידוע, עם נגיעות פחות מוכרות.';
+  if (v >= 40) return '🎯 פופולריות: מעורב — חצי ידוע חצי גילוי.';
+  if (v >= 20) return '🎯 פופולריות: בעיקר נישה — מבחר עם טעם, פחות רדיו.';
   return '🎯 פופולריות: נישה עמוקה — אמני אנדרגראונד עם פחות מ-100K מאזינים חודשיים. ללא להיטים. גילויים בלבד.';
 }
-function describeHebrew(v){
-  if(v >= 90) return '🇮🇱 שפה: עברית בלבד.';
-  if(v >= 60) return '🇮🇱 שפה: רוב השירים בעברית, מעט בינלאומי.';
-  if(v >= 40) return '🇮🇱 שפה: מאוזן עברית/אנגלית.';
-  if(v >= 10) return '🇮🇱 שפה: בעיקר בינלאומי, מעט ישראלי.';
+function describeHebrew(v) {
+  if (v >= 90) return '🇮🇱 שפה: עברית בלבד.';
+  if (v >= 60) return '🇮🇱 שפה: רוב השירים בעברית, מעט בינלאומי.';
+  if (v >= 40) return '🇮🇱 שפה: מאוזן עברית/אנגלית.';
+  if (v >= 10) return '🇮🇱 שפה: בעיקר בינלאומי, מעט ישראלי.';
   return '🇮🇱 שפה: בינלאומי בלבד. ללא שירים בעברית.';
 }
-function describeVocal(v){
-  if(v >= 80) return '🎙️ ווקאל: שירה דומיננטית — כל שיר עם שירה.';
-  if(v >= 60) return '🎙️ ווקאל: בעיקר עם שירה.';
-  if(v >= 40) return '🎙️ ווקאל: ערבוב בין שירה לאינסטרומנטלי.';
-  if(v >= 20) return '🎙️ ווקאל: בעיקר אינסטרומנטלי, נגיעות ווקאליות.';
+function describeVocal(v) {
+  if (v >= 80) return '🎙️ ווקאל: שירה דומיננטית — כל שיר עם שירה.';
+  if (v >= 60) return '🎙️ ווקאל: בעיקר עם שירה.';
+  if (v >= 40) return '🎙️ ווקאל: ערבוב בין שירה לאינסטרומנטלי.';
+  if (v >= 20) return '🎙️ ווקאל: בעיקר אינסטרומנטלי, נגיעות ווקאליות.';
   return '🎙️ ווקאל: אינסטרומנטלי בלבד / אווירה — אסור שירה דומיננטית.';
 }
-function describeEnergy(v){
-  if(v >= 80) return '⚡ אנרגיה: מסיבתי — קצב גבוה, אנרגיה רבה (energy 0.8+).';
-  if(v >= 60) return '⚡ אנרגיה: תוסס — מלא חיים, עם קצב (energy 0.6-0.75).';
-  if(v >= 40) return '⚡ אנרגיה: מאוזן (energy 0.45-0.6).';
-  if(v >= 20) return '⚡ אנרגיה: נינוח (energy 0.3-0.45).';
+function describeEnergy(v) {
+  if (v >= 80) return '⚡ אנרגיה: מסיבתי — קצב גבוה, אנרגיה רבה (energy 0.8+).';
+  if (v >= 60) return '⚡ אנרגיה: תוסס — מלא חיים, עם קצב (energy 0.6-0.75).';
+  if (v >= 40) return '⚡ אנרגיה: מאוזן (energy 0.45-0.6).';
+  if (v >= 20) return '⚡ אנרגיה: נינוח (energy 0.3-0.45).';
   return '⚡ אנרגיה: רגוע ועדין — צ׳יל, אווירה (energy 0.15-0.3).';
 }
-function describeEra(v){
-  if(v >= 80) return '📅 שנים: 3 שנים אחרונות בלבד.';
-  if(v >= 60) return '📅 שנים: עכשווי, 2010 והלאה.';
-  if(v >= 40) return '📅 שנים: מקלאסי לעכשווי, מגוון.';
-  if(v >= 20) return '📅 שנים: שנות ה-90 ושנות ה-2000.';
+function describeEra(v) {
+  if (v >= 80) return '📅 שנים: 3 שנים אחרונות בלבד.';
+  if (v >= 60) return '📅 שנים: עכשווי, 2010 והלאה.';
+  if (v >= 40) return '📅 שנים: מקלאסי לעכשווי, מגוון.';
+  if (v >= 20) return '📅 שנים: שנות ה-90 ושנות ה-2000.';
   return '📅 שנים: רטרו וקלאסי — לפני 2000.';
 }
 
 /* ─────────── Fetch preview URLs for tracks that are missing them ─────────── */
-async function enrichPreviews(tracks){
+async function enrichPreviews(tracks) {
   const tok = await refreshSpotifyTokenIfNeeded();
-  if(!tok) return tracks;
-  const missing = tracks.filter(t=>t.id && !t.preview);
-  if(!missing.length) return tracks;
+  if (!tok) return tracks;
+  const missing = tracks.filter(t => t.id && !t.preview);
+  if (!missing.length) return tracks;
   // Batch: up to 50 IDs per call
-  for(let i=0; i<missing.length; i+=50){
-    const batch = missing.slice(i,i+50);
-    try{
+  for (let i = 0; i < missing.length; i += 50) {
+    const batch = missing.slice(i, i + 50);
+    try {
       // No market param — previews are less restricted without market filter
       const r = await fetch(
-        `https://api.spotify.com/v1/tracks?ids=${batch.map(t=>t.id).join(',')}`,
-        {headers:{'Authorization':'Bearer '+tok}}
+        `https://api.spotify.com/v1/tracks?ids=${batch.map(t => t.id).join(',')}`,
+        { headers: { 'Authorization': 'Bearer ' + tok } }
       );
-      if(!r.ok) continue;
+      if (!r.ok) continue;
       const j = await r.json();
-      (j.tracks||[]).forEach((sp,idx)=>{
-        if(sp && sp.preview_url) batch[idx].preview = sp.preview_url;
+      (j.tracks || []).forEach((sp, idx) => {
+        if (sp && sp.preview_url) batch[idx].preview = sp.preview_url;
       });
-    } catch(e){}
+    } catch (e) { }
   }
   return tracks;
 }
 
 /* ─────────── Audio preview player ─────────── */
 let _previewAudio = null;
-let _previewBtn   = null;
+let _previewBtn = null;
 
 /* ─── Spotify iframe embed preview (replaces deprecated preview_url) ─── */
 let _currentEmbedId = null;
 
-function toggleEmbed(trackId, btn){
+function toggleEmbed(trackId, btn) {
   const wrap = btn.closest('.track-wrap');
   const embedEl = wrap ? wrap.querySelector('.track-embed') : null;
   const trackItem = wrap ? wrap.querySelector('.track-item') : null;
-  if(!embedEl) return;
+  if (!embedEl) return;
 
   // Same track → close
-  if(_currentEmbedId === trackId){
+  if (_currentEmbedId === trackId) {
     embedEl.classList.remove('open');
     embedEl.innerHTML = '';
     trackItem && trackItem.classList.remove('embed-open');
@@ -2057,12 +1254,12 @@ function toggleEmbed(trackId, btn){
   }
 
   // Close previous
-  if(_currentEmbedId){
-    document.querySelectorAll('.track-embed.open').forEach(el=>{
+  if (_currentEmbedId) {
+    document.querySelectorAll('.track-embed.open').forEach(el => {
       el.classList.remove('open'); el.innerHTML = '';
     });
-    document.querySelectorAll('.track-item.embed-open').forEach(el=>el.classList.remove('embed-open'));
-    document.querySelectorAll('.play-btn.playing').forEach(b=>{ b.classList.remove('playing'); b.innerHTML='▶'; });
+    document.querySelectorAll('.track-item.embed-open').forEach(el => el.classList.remove('embed-open'));
+    document.querySelectorAll('.play-btn.playing').forEach(b => { b.classList.remove('playing'); b.innerHTML = '▶'; });
   }
 
   // Open new embed
@@ -2079,39 +1276,39 @@ function toggleEmbed(trackId, btn){
 }
 
 /* ─────────── Render playlist ─────────── */
-function renderPlaylist(energyLevel){
-  const tracks = energyLevel===1 ? state.playlist1 : state.playlist2;
+function renderPlaylist(energyLevel) {
+  const tracks = energyLevel === 1 ? state.playlist1 : state.playlist2;
   const sfx = String(energyLevel);
-  if(!tracks || !tracks.length) return;
+  if (!tracks || !tracks.length) return;
 
-  const validCount = tracks.filter(t=>t.id).length;
-  const totalDur   = tracks.reduce((s,t)=>s+(t.duration||0),0);
-  const min        = Math.round(totalDur/60000);
+  const validCount = tracks.filter(t => t.id).length;
+  const totalDur = tracks.reduce((s, t) => s + (t.duration || 0), 0);
+  const min = Math.round(totalDur / 60000);
 
-  const titleEl = $('playlistTitle'+sfx);
-  const metaEl  = $('playlistMeta'+sfx);
+  const titleEl = $('playlistTitle' + sfx);
+  const metaEl = $('playlistMeta' + sfx);
   const _baseName = state.bizName || state.bizType || 'Robin Mix';
-  const _runNum = String(state.regenCount || 1).padStart(2,'0');
-  if(titleEl) titleEl.textContent = `${_baseName} · ${energyLevel===1?'רגוע':'מקפיץ'} #${_runNum}`;
-  if(metaEl)  metaEl.textContent  = `${tracks.length} שירים · ${validCount} מאומתים ב-Spotify · ${min} דקות`;
+  const _runNum = String(state.regenCount || 1).padStart(2, '0');
+  if (titleEl) titleEl.textContent = `${_baseName} · ${energyLevel === 1 ? 'רגוע' : 'מקפיץ'} #${_runNum}`;
+  if (metaEl) metaEl.textContent = `${tracks.length} שירים · ${validCount} מאומתים ב-Spotify · ${min} דקות`;
 
-  const list = $('tracksList'+sfx);
-  if(!list) return;
-  list.innerHTML = tracks.map((t,i)=>{
+  const list = $('tracksList' + sfx);
+  if (!list) return;
+  list.innerHTML = tracks.map((t, i) => {
     const cover = t.cover ? `background-image:url('${t.cover}')` : '';
     const voteKey = `${t.artist}|${t.title}`;
-    const vUp  = state.feedback[voteKey]==='up'   ? ' active' : '';
-    const vDn  = state.feedback[voteKey]==='down' ? ' active' : '';
+    const vUp = state.feedback[voteKey] === 'up' ? ' active' : '';
+    const vDn = state.feedback[voteKey] === 'down' ? ' active' : '';
     const hasId = !!t.id;
     const embedId = `embed_${sfx}_${i}`;
-    const itemId  = `item_${sfx}_${i}`;
+    const itemId = `item_${sfx}_${i}`;
     return `<div class="track-wrap">
       <div class="track-item" id="${itemId}">
-        <div class="track-num">${i+1}</div>
+        <div class="track-num">${i + 1}</div>
         <div class="track-cover" style="${cover}"></div>
         <div class="track-meta">
-          <div class="track-title">${escapeHtml(t.title||'—')}</div>
-          <div class="track-artist">${escapeHtml(t.artist||'—')}</div>
+          <div class="track-title">${escapeHtml(t.title || '—')}</div>
+          <div class="track-artist">${escapeHtml(t.artist || '—')}</div>
         </div>
         ${hasId ? `<button class="play-btn" id="play_${sfx}_${i}" onclick="toggleEmbed(${energyLevel},${i},'${t.id}')" title="האזן">▶</button>` : ''}
         <div class="track-vote">
@@ -2124,14 +1321,14 @@ function renderPlaylist(energyLevel){
   }).join('');
 }
 
-function toggleEmbed(energyLevel, idx, spotifyId){
+function toggleEmbed(energyLevel, idx, spotifyId) {
   const sfx = String(energyLevel);
-  const embedDiv = $('embed_'+sfx+'_'+idx);
-  const itemDiv  = $('item_'+sfx+'_'+idx);
-  const btn      = $('play_'+sfx+'_'+idx);
-  if(!embedDiv) return;
+  const embedDiv = $('embed_' + sfx + '_' + idx);
+  const itemDiv = $('item_' + sfx + '_' + idx);
+  const btn = $('play_' + sfx + '_' + idx);
+  if (!embedDiv) return;
   const isOpen = embedDiv.classList.contains('open');
-  if(isOpen){
+  if (isOpen) {
     embedDiv.classList.remove('open');
     embedDiv.innerHTML = '';
     itemDiv && itemDiv.classList.remove('embed-open');
@@ -2144,64 +1341,64 @@ function toggleEmbed(energyLevel, idx, spotifyId){
   }
 }
 
-function vote(energyLevel, idx, dir){
-  const tracks = energyLevel===1 ? state.playlist1 : state.playlist2;
-  const t = tracks[idx]; if(!t) return;
+function vote(energyLevel, idx, dir) {
+  const tracks = energyLevel === 1 ? state.playlist1 : state.playlist2;
+  const t = tracks[idx]; if (!t) return;
   const key = `${t.artist}|${t.title}`;
-  state.feedback[key] = state.feedback[key]===dir ? undefined : dir;
+  state.feedback[key] = state.feedback[key] === dir ? undefined : dir;
   renderPlaylist(energyLevel); // re-render just this playlist
 }
 
 
-async function saveToSpotify(energyLevel){
+async function saveToSpotify(energyLevel) {
   energyLevel = energyLevel || 1;
-  const tracks = energyLevel===1 ? state.playlist1 : state.playlist2;
-  const btnId  = 'saveSpotifyBtn'+energyLevel;
-  const btn    = $(btnId);
-  const trackUris = (tracks||[]).filter(t=>t.id).map(t=>'spotify:track:'+t.id);
-  if(!trackUris.length){ showToast('אין שירים מאומתים להוספה', true); return; }
+  const tracks = energyLevel === 1 ? state.playlist1 : state.playlist2;
+  const btnId = 'saveSpotifyBtn' + energyLevel;
+  const btn = $(btnId);
+  const trackUris = (tracks || []).filter(t => t.id).map(t => 'spotify:track:' + t.id);
+  if (!trackUris.length) { showToast('אין שירים מאומתים להוספה', true); return; }
 
   let tok = await refreshSpotifyTokenIfNeeded();
-  if(!tok){
+  if (!tok) {
     sessionStorage.setItem('sp3_pending_save', String(energyLevel));
     await spotifyLogin(); return;
   }
-  if(btn) btn.disabled = true;
-  if(btn) btn.textContent = 'יוצר פלייליסט…';
-  try{
-    const label = energyLevel===1 ? 'רגוע' : 'מקפיץ';
+  if (btn) btn.disabled = true;
+  if (btn) btn.textContent = 'יוצר פלייליסט…';
+  try {
+    const label = energyLevel === 1 ? 'רגוע' : 'מקפיץ';
     const _bname = state.bizName || state.bizType || 'Robin Mix';
-    const _rnum  = String(state.regenCount || 1).padStart(2,'0');
-    const playlistName = `${_bname} · ${energyLevel===1?'רגוע':'מקפיץ'} #${_rnum}`;
-    const meRes = await fetch('https://api.spotify.com/v1/me',{headers:{'Authorization':'Bearer '+tok}});
-    if(meRes.status===403||meRes.status===401){ spotifyClearAll(); _showScopeFix(); return; }
+    const _rnum = String(state.regenCount || 1).padStart(2, '0');
+    const playlistName = `${_bname} · ${energyLevel === 1 ? 'רגוע' : 'מקפיץ'} #${_rnum}`;
+    const meRes = await fetch('https://api.spotify.com/v1/me', { headers: { 'Authorization': 'Bearer ' + tok } });
+    if (meRes.status === 403 || meRes.status === 401) { spotifyClearAll(); _showScopeFix(); return; }
     const me = await meRes.json();
-    if(!me.id) throw new Error('לא ניתן לזהות משתמש Spotify');
-    const cr = await fetch(`https://api.spotify.com/v1/users/${me.id}/playlists`,{
-      method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
-      body:JSON.stringify({name:playlistName,public:true,description:'Created by Robin · SonicBrand'})
+    if (!me.id) throw new Error('לא ניתן לזהות משתמש Spotify');
+    const cr = await fetch(`https://api.spotify.com/v1/users/${me.id}/playlists`, {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: playlistName, public: true, description: 'Created by Robin · SonicBrand' })
     });
-    if(!cr.ok) throw new Error('יצירה נכשלה: '+cr.status);
+    if (!cr.ok) throw new Error('יצירה נכשלה: ' + cr.status);
     const pl = await cr.json();
-    if(!pl.id) throw new Error(pl.error||'שגיאה ביצירת פלייליסט');
-    for(let i=0;i<trackUris.length;i+=100){
-      await fetch(`https://api.spotify.com/v1/playlists/${pl.id}/tracks`,{
-        method:'POST',headers:{'Authorization':'Bearer '+tok,'Content-Type':'application/json'},
-        body:JSON.stringify({uris:trackUris.slice(i,i+100)})
+    if (!pl.id) throw new Error(pl.error || 'שגיאה ביצירת פלייליסט');
+    for (let i = 0; i < trackUris.length; i += 100) {
+      await fetch(`https://api.spotify.com/v1/playlists/${pl.id}/tracks`, {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uris: trackUris.slice(i, i + 100) })
       });
     }
     showToast('פלייליסט נשמר ב-Spotify ✓');
-    if(pl.external_urls?.spotify) window.open(pl.external_urls.spotify,'_blank');
-  }catch(e){ showToast('שגיאה: '+e.message,true); }
-  finally{ if(btn){btn.disabled=false;btn.textContent='💾 שמור ב-Spotify';} }
+    if (pl.external_urls?.spotify) window.open(pl.external_urls.spotify, '_blank');
+  } catch (e) { showToast('שגיאה: ' + e.message, true); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '💾 שמור ב-Spotify'; } }
 }
 
 /* ─────────── Save analysis ─────────── */
-async function saveAnalysis(){
-  try{
+async function saveAnalysis() {
+  try {
     await sb.from('analyses').insert({
       user_name: state.spotifyUser ? state.spotifyUser.id : 'guest',
-      description: state.bizDesc.slice(0,500),
+      description: state.bizDesc.slice(0, 500),
       biz_category: state.bizType || 'general',
       brain_version: 'v2-robin',
       faders: JSON.stringify(window.SB_V2_mcToFaders(state.mc)),
@@ -2209,77 +1406,77 @@ async function saveAnalysis(){
       refs: JSON.stringify(state.refPlaylist ? [state.refPlaylist] : []),
       energy_curve: JSON.stringify({}),
       track_count: state.generatedTracks.length,
-      tracks: JSON.stringify(state.generatedTracks.slice(0,60).map(t=>({
-        artist:(t.artist||'').slice(0,100),
-        title:(t.title||'').slice(0,100),
-        id:t.id||'',
-        reason:(t.reason||'').slice(0,200),
+      tracks: JSON.stringify(state.generatedTracks.slice(0, 60).map(t => ({
+        artist: (t.artist || '').slice(0, 100),
+        title: (t.title || '').slice(0, 100),
+        id: t.id || '',
+        reason: (t.reason || '').slice(0, 200),
       }))),
       business_name: state.bizType || 'Robin User',
       brain_logs: JSON.stringify([
-        {e:'🤖',t:'v2',d:'Robin v2 generation',time:new Date().toLocaleTimeString('he-IL')},
-        {e:'📋',t:'L0',d: state.brainContext.l0 ? ('data-box: '+state.brainContext.l0.label+' | '+state.brainContext.l0.genres.slice(0,60)) : 'no data-box match'},
-        {e:'🧬',t:'L1',d: state.brainContext.l1 ? ('DNA: '+(state.brainContext.l1.summary||'').slice(0,80)+' tracks='+state.brainContext.l1.trackCount) : 'no ref playlist'},
-        {e:'📚',t:'L2',d: state.brainContext.l2 ? ('cohort='+state.brainContext.l2.cohort_size+(state.brainContext.l2.used_fallback?' (fallback general)':'')) : 'no cohort'},
-        {e:'🏷️',t:'L3',d: state.brainContext.l3 ? ('archive='+state.brainContext.l3.archive_size) : 'no genre archive'},
-        {e:'👍',t:'L4',d: state.brainContext.l4 ? ('feedback='+state.brainContext.l4.feedback_count) : 'no feedback'},
+        { e: '🤖', t: 'v2', d: 'Robin v2 generation', time: new Date().toLocaleTimeString('he-IL') },
+        { e: '📋', t: 'L0', d: state.brainContext.l0 ? ('data-box: ' + state.brainContext.l0.label + ' | ' + state.brainContext.l0.genres.slice(0, 60)) : 'no data-box match' },
+        { e: '🧬', t: 'L1', d: state.brainContext.l1 ? ('DNA: ' + (state.brainContext.l1.summary || '').slice(0, 80) + ' tracks=' + state.brainContext.l1.trackCount) : 'no ref playlist' },
+        { e: '📚', t: 'L2', d: state.brainContext.l2 ? ('cohort=' + state.brainContext.l2.cohort_size + (state.brainContext.l2.used_fallback ? ' (fallback general)' : '')) : 'no cohort' },
+        { e: '🏷️', t: 'L3', d: state.brainContext.l3 ? ('archive=' + state.brainContext.l3.archive_size) : 'no genre archive' },
+        { e: '👍', t: 'L4', d: state.brainContext.l4 ? ('feedback=' + state.brainContext.l4.feedback_count) : 'no feedback' },
       ]),
       created_at: new Date().toISOString(),
     });
-  } catch(e){ console.warn('saveAnalysis failed:', e); }
+  } catch (e) { console.warn('saveAnalysis failed:', e); }
 }
 
 /* ─────────── Regenerate ─────────── */
-async function regenerate(energyLevel){
+async function regenerate(energyLevel) {
   energyLevel = energyLevel || 1;
-  state.regenCount = (state.regenCount||0)+1;
-  const sfx  = String(energyLevel);
-  const btn  = $('regenBtn'+sfx);
-  const list = $('tracksList'+sfx);
-  if(btn) btn.disabled = true;
-  if(list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><div class="spinner" style="width:32px;height:32px;border-width:2px;margin:0 auto 12px"></div><div>מייצר מחדש…</div></div>';
-  try{
+  state.regenCount = (state.regenCount || 0) + 1;
+  const sfx = String(energyLevel);
+  const btn = $('regenBtn' + sfx);
+  const list = $('tracksList' + sfx);
+  if (btn) btn.disabled = true;
+  if (list) list.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted)"><div class="spinner" style="width:32px;height:32px;border-width:2px;margin:0 auto 12px"></div><div>מייצר מחדש…</div></div>';
+  try {
     const tracks = await generateTracklist(energyLevel, state.regenCount, new Set());
-    if(energyLevel===1) state.playlist1=tracks; else state.playlist2=tracks;
+    if (energyLevel === 1) state.playlist1 = tracks; else state.playlist2 = tracks;
     renderPlaylist(energyLevel);
-  }catch(e){ showToast('שגיאה: '+e.message,true); }
-  finally{ if(btn){ btn.disabled=false; btn.textContent='🔄 צרו שוב'; } }
+  } catch (e) { showToast('שגיאה: ' + e.message, true); }
+  finally { if (btn) { btn.disabled = false; btn.textContent = '🔄 צרו שוב'; } }
 }
 
 /* ─── Accordion: toggle playlist track list ─── */
-function toggleAccordion(n){
-  const head = $('accordionHead'+n);
-  const body = $('accordionBody'+n);
-  if(!head || !body) return;
+function toggleAccordion(n) {
+  const head = $('accordionHead' + n);
+  const body = $('accordionBody' + n);
+  if (!head || !body) return;
   const isOpen = body.classList.contains('open');
   head.classList.toggle('open', !isOpen);
   body.classList.toggle('open', !isOpen);
 }
 
-(async function boot(){
+(async function boot() {
   selectModel(state.selectedModel);
   // Load live Data Box from Google Sheet in background
-  if(window.SB_loadLiveDataBox) window.SB_loadLiveDataBox();
+  if (window.SB_loadLiveDataBox) window.SB_loadLiveDataBox();
 
   // 1. OAuth callback — highest priority
-  if(new URLSearchParams(location.search).get('code')){
+  if (new URLSearchParams(location.search).get('code')) {
     await handleSpotifyCallback(); return;
   }
 
   // 2. Restore from cache instantly (sync)
-  const cachedUser=(()=>{try{return JSON.parse(localStorage.getItem('sp3_user')||'null');}catch(e){return null;}})();
-  if(cachedUser && localStorage.getItem('sp3_access')){
-    state.spotifyUser=cachedUser;
-    state.spotifyToken=localStorage.getItem('sp3_access'); // make token immediately available
+  const cachedUser = (() => { try { return JSON.parse(localStorage.getItem('sp3_user') || 'null'); } catch (e) { return null; } })();
+  if (cachedUser && localStorage.getItem('sp3_access')) {
+    state.spotifyUser = cachedUser;
+    state.spotifyToken = localStorage.getItem('sp3_access'); // make token immediately available
     spotifyShowUser(cachedUser);
   }
 
   // 3. Verify token in background — do NOT clear tokens on failure (race condition fix)
-  if(localStorage.getItem('sp3_access')){
-    refreshSpotifyTokenIfNeeded().then(tok=>{
-      if(tok){ loadSpotifyUser(); }
+  if (localStorage.getItem('sp3_access')) {
+    refreshSpotifyTokenIfNeeded().then(tok => {
+      if (tok) { loadSpotifyUser(); }
       // On failure: leave tokens intact — fetchUserPlaylists will handle it with inline refresh
       // Clearing tokens here causes race condition: clears sp3_refresh before fetchUserPlaylists uses it
-    }).catch(()=>{});
+    }).catch(() => { });
   }
 })();

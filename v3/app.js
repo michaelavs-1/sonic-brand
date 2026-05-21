@@ -455,8 +455,9 @@ document.addEventListener('click', closeAccountMenu);
    ═══════════════════════════════════════════════════════════════ */
 
 async function buildBrainContext() {
+  if (USE_NEW_GEN) return;
   state.brainContext.assembled = false;
-  const result = await GEN().brain.buildBrainContext({
+  const result = await window.SB_GEN.brain.buildBrainContext({
     bizDesc: state.bizDesc,
     bizType: state.bizType,
     energyLevel: state.energyLevel || 1,

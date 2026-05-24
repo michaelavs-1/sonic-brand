@@ -120,6 +120,7 @@ globalThis.fetch = async (url, opts) => {
 };
 
 const { matchBusinessType } = await import('./v3/generation/new/matcher.js');
+const { assignEnergyRows } = await import('./v3/generation/new/row-energy-assignment.js');
 
 // Varied batch — each case probes a different concern. Comments mark expected behavior.
 const tests = [
@@ -149,6 +150,10 @@ for (const t of tests) {
   console.log(`"${t}"  (${ms}ms)`);
   if (res.matched) {
     console.log(`  → ${tag}: "${res.bizType}"  rows=${res.rows.length}  reasoning: ${res.reasoning}`);
+    const energy = assignEnergyRows(res.rows);
+    const calm = `row ${energy.calm.row}(energy="${energy.calm.energy || '-'}",pls=${energy.calm.playlists.length})`;
+    const enr  = `row ${energy.energetic.row}(energy="${energy.energetic.energy || '-'}",pls=${energy.energetic.playlists.length})`;
+    console.log(`     energy[sameRow=${energy.isCalmAndEnergeticFromSameRow}]  calm=${calm}  energetic=${enr}`);
   } else {
     console.log(`  → ${tag}  reasoning: ${res.reasoning}`);
   }

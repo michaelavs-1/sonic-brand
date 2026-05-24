@@ -1,10 +1,35 @@
-# Robin · SonicBrands — AI Context Document
+# Robin / Rubin · SonicBrands — AI Context Document
 > Optimized for Claude and other AI coding assistants.
 > Read this entire file before touching any code.
 
+## ⚠️ READ FIRST — MIGRATION + DEPRECATIONS STATUS
+
+**Mid-migration.** The project is being rewritten from a single legacy pipeline to a new one. Both coexist in the codebase right now, gated by `USE_NEW_GEN` in `v3/app.js`. Sections below are labeled **OLD** (legacy, partially broken — see deprecations) or **NEW** (active development). Don't conflate them.
+
+**Brand rename in progress.** Old name "Robin" still appears throughout existing code, comments, file names, and even some constants. New name is "Rubin". Existing references will be renamed in a future pass; new code should use "Rubin".
+
+**Spotify API deprecations** (late 2024 / early 2025) affect this project significantly:
+
+| Old endpoint / feature | Status | Replacement |
+|---|---|---|
+| `POST /v1/users/{id}/playlists` | **REMOVED** | `POST /v1/me/playlists` |
+| `POST /v1/playlists/{id}/tracks` | **REMOVED** | `POST /v1/playlists/{id}/items` |
+| `DELETE /v1/playlists/{id}/tracks` | **REMOVED** | `DELETE /v1/playlists/{id}/items` — body format also changed from `{tracks:[{uri}]}` to `{uris:[…]}` |
+| Audio Features | **DEAD for all apps**, including Michael's grandfathered one | External API (TBD) |
+| Audio Analysis | DEAD for all apps | External API |
+| Recommendations | DEAD for all apps | (none) |
+| Related Artists | DEAD for all apps | (none) |
+| 30-second `preview_url` | Removed for newer apps | (none) |
+
+The **one thing** Michael's app retains grandfathered access to: `GET /v1/playlists/{id}/tracks` (reading public playlist contents). This is why the NEW pipeline uses Michael's app credentials specifically for Client Credentials reads.
+
+The legacy `api/spotify.js` proxy's `create_playlist` and `add_tracks` actions still call the removed endpoints, so the OLD pipeline's "Save to Spotify" is silently broken. Not maintaining it (user direction).
+
+---
+
 ## WHAT IS THIS
 
-Robin is an AI-powered Spotify playlist builder for physical businesses (cafes, bars, restaurants, stores). A business owner describes their venue → Robin generates two playlists: one calm (🌙 רגוע) and one energetic (🔥 מקפיץ), sourced exclusively from curated Spotify playlists in a "Data Box" spreadsheet.
+AI-powered Spotify playlist builder for physical businesses (cafés, bars, restaurants, stores). A business owner describes their venue → the app generates two playlists, one calm (🌙 רגוע) and one energetic (🔥 מקפיץ / אנרגטי), sourced exclusively from curated Spotify playlists in a "Data Box" Google Sheet.
 
 **Live URL:** https://sonic-brand.vercel.app/v3
 **Repo:** https://github.com/michaelavs-1/sonic-brand
@@ -12,30 +37,58 @@ Robin is an AI-powered Spotify playlist builder for physical businesses (cafes, 
 
 ---
 
-## ARCHITECTURE OVERVIEW
+## ARCHITECTURE
+
+### NEW pipeline (active development)
+
+```
+User describes business (free-text + optional business name)
+        ↓
+matchBusinessType(input, rows)                          [v3/generation/new/matcher.js]
+  Pass 1 — GPT (gpt-5.4): semantic match against business-type names
+           + keywords across all live Data Box rows.
+  Pass 2 — only if Pass 1 returns null: GPT atmosphere fallback,
+           matching by vibe ("youthful", "intimate", etc.) against
+           the column-D atmospheres list of each business type.
+  → { matched, bizType, rows, reasoning, [fallback: 'atmosphere'] }
+        ↓
+assignEnergyRows(rows)                                  [v3/generation/new/row-energy-assignment.js]
+  Picks which row's playlists feed calm vs energetic:
+  - 2-row biz: row.energy="1" → calm, "2" → energetic
+  - 1-row biz with energy="1+2" or empty: same row for both
+  → { calm, energetic, isCalmAndEnergeticFromSameRow }
+        ↓
+buildPlaylists(assignment, bizType, bizName?)           [v3/generation/new/playlist-builder.js]
+  If isCalmAndEnergeticFromSameRow=true → returns { skipped: true } (audio-features-based
+  energy split not implemented yet — deferred until external API in place).
+  Otherwise:
+    - For each row, randomly pick ≤5 of its source playlists.
+    - For each picked playlist, GET /tracks with random offset (0–100), limit 50.
+    - Pool + dedupe + Fisher-Yates shuffle, take 30 unique IDs.
+    - Create a PRIVATE + COLLABORATIVE playlist on Rubin's Spotify account.
+    - Add the 30 tracks.
+  → { skipped: false, calm: {url, id, trackCount}, energetic: {…} }
+```
+
+Output: two Spotify playlist URLs ready to share. The end user opens the link in whichever browser session they're logged into Spotify with — no app-side OAuth is required for them in the new pipeline.
+
+### OLD pipeline (legacy, partially broken — kept until cutover)
 
 ```
 User describes business
         ↓
-SB_matchDataBox() → matches business type to Data Box entry
+SB_matchDataBox()  ← static keyword scoring, in v3/data-box.js
         ↓
-buildTrackPool(entry, energyLevel)
-  → fetches ALL playlists for business+energy from Data Box
-  → random offset per playlist (different tracks each run)
-  → BPM/energy filter (energy 1: <0.72 energy, <138 BPM | energy 2: >0.35 energy, >85 BPM)
-  → returns pool of 200-500 Spotify track objects
+buildTrackPool(entry, energyLevel)  ← uses audio-features API (DEAD endpoint)
         ↓
-selectFromPool(pool, faders, moods, energyLevel)
-  → filters session history (no repeats)
-  → stratifies: 35% popular / 45% mid / 20% niche
-  → sends up to 200 tracks to GPT with indices
-  → GPT returns {"tracks":[{"n":1},{"n":5},...]} — picks by NUMBER, never invents
-  → maps indices back to Spotify track objects with IDs
+selectFromPool(pool, faders, moods, energyLevel)  ← GPT picks by index
         ↓
-Two playlists generated sequentially (energy 1 first, then energy 2)
-Playlist 2 receives Set of playlist1 IDs → zero shared tracks guaranteed
-Hard post-dedup: any track in playlist1 is removed from playlist2
+generateTracklist for energy 1, then energy 2 (sequential)
+        ↓
+Save to Spotify  ← uses POST /v1/users/{id}/playlists (DEAD endpoint)
 ```
+
+The OLD pipeline still runs when `USE_NEW_GEN=false` in `v3/app.js`. Its BPM filter is broken (audio-features dead). Its save-to-Spotify is broken (endpoint removed). It's there because the migration isn't complete and the new UI hasn't been built yet.
 
 ---
 
@@ -44,450 +97,307 @@ Hard post-dedup: any track in playlist1 is removed from playlist2
 ```
 sonic-brand/
 ├── v3/
-│   ├── index.html          ← UI: 5 screens, all CSS/HTML, loads scripts at bottom
-│   ├── app.js              ← ALL logic: Robin brain, Spotify OAuth, generation pipeline
-│   ├── data-box.js         ← Static Data Box: keyword matching + old-format entries
-│   ├── data-box-energy.js  ← Energy separation map: label → {1:{playlists,genres}, 2:{playlists,genres}}
-│   └── mc-mappings.js      ← MC questions (familiarity, Hebrew/foreign) + fader conversion
+│   ├── index.html              ← UI: 5 screens. Loads 6 scripts at bottom (cache-busted with ?v=…)
+│   ├── app.js                  ← Legacy app shell + screen flow + OAuth + GEN()/USE_NEW_GEN flag
+│   ├── data-box.js             ← OLD: Static Data Box (keyword scoring + entries)
+│   ├── data-box-energy.js      ← OLD: Energy separation map for ~14 business types
+│   ├── mc-mappings.js          ← OLD: MC questions (familiarity, Hebrew/foreign) + fader conversion
+│   └── generation/             ← OLD pipeline (modular split of what used to live in app.js)
+│       ├── index.js            ← Exposes window.SB_GEN with old-pipeline functions
+│       ├── pipeline.js, tracklist.js, pool.js, selector.js, fallback.js, diversity.js
+│       ├── api.js, utils.js
+│       ├── brain/              ← OLD: L0–L4 context layers (largely dead even in old pipeline)
+│       │   └── index.js, l0.js, l1.js, l2.js, l3.js, l4.js, audio.js
+│       └── new/                ← NEW pipeline (the rewrite)
+│           ├── index.js                  ← Exposes window.SB_GEN_NEW.{matcher,rowEnergyAssignment,playlistBuilder}
+│           ├── matcher.js                ← matchBusinessType: GPT semantic + atmosphere fallback
+│           ├── row-energy-assignment.js  ← assignEnergyRows
+│           └── playlist-builder.js       ← buildPlaylists + Rubin playlist creation
 ├── api/
-│   ├── spotify.js          ← Spotify proxy (CC tokens + user tokens, all Spotify API calls)
-│   ├── openai.js           ← OpenAI proxy (GPT calls, manages API key from Supabase)
-│   └── databox.js          ← Fetches Google Sheet CSV, returns parsed entries (currently broken — sheet not public)
-├── vercel.json             ← Rewrites /v3→/v3/index.html, no-cache headers, function timeouts
-└── CLAUDE.md               ← This file
+│   ├── spotify.js              ← OLD Spotify proxy. Internally uses removed endpoints — broken
+│   ├── openai.js               ← OLD OpenAI proxy. Reads key from Supabase app_settings
+│   ├── databox.js              ← OLD: Pre-grouped Data Box JSON. Skips rows w/o energy level
+│   └── new/                    ← NEW proxies (lean, self-contained)
+│       ├── databox.js                    ← Returns raw rows 8–100, no grouping, no skipping
+│       ├── openai.js                     ← Reads OPENAI_API_KEY from env (no Supabase)
+│       ├── spotify.js                    ← get_playlist_tracks (Michael CC) + create_playlist & add_tracks (Rubin user)
+│       └── rubin-oauth-callback.js       ← One-time-use endpoint for seeding RUBIN_REFRESH_TOKEN
+├── .test-databox.mjs           ← Test: matcher + energy assignment (no Spotify side effects)
+├── .test-playlist-builder.mjs  ← Test: playlist builder with hardcoded rows (no matcher)
+├── .test-full-pipeline.mjs     ← Test: end-to-end (matcher → assignEnergyRows → buildPlaylists)
+├── .test-delete-playlist.mjs   ← Test: hardcoded playlist deletion via /items endpoint
+├── .env.example                ← Documents required env vars
+├── vercel.json                 ← Routing, headers, function timeouts
+└── CLAUDE.md                   ← This file
 ```
 
 ---
 
-## KEY CONSTANTS (v3/app.js top of file)
+## KEY CONSTANTS
 
+In `v3/app.js`:
 ```javascript
-const SUPABASE_URL    = 'https://xhkqrxljncazvbgkmqex.supabase.co';
-const SUPABASE_ANON   = 'eyJhbGci...'; // anon key, safe to keep in client
-const SPOTIFY_CLIENT_ID = 'b6404b5ae1684143b79d9a86bb4b6cba';
-const SPOTIFY_SCOPES  = 'playlist-modify-public playlist-modify-private playlist-read-private playlist-read-collaborative user-read-private user-read-email';
-const SPOTIFY_REDIRECT = location.origin + location.pathname; // https://sonic-brand.vercel.app/v3
+const SUPABASE_URL      = 'https://xhkqrxljncazvbgkmqex.supabase.co';
+const SUPABASE_ANON     = 'eyJhbGci…';      // anon key, safe to keep in client
+const SPOTIFY_CLIENT_ID = 'b6404b5ae1684143b79d9a86bb4b6cba';  // Michael's app
+const SPOTIFY_SCOPES    = 'playlist-modify-public playlist-modify-private playlist-read-private playlist-read-collaborative user-read-private user-read-email';
+const SPOTIFY_REDIRECT  = location.origin + location.pathname;
+
+const USE_NEW_GEN = false;                  // Feature flag: route generation through new pipeline
+const GEN = () => USE_NEW_GEN ? window.SB_GEN_NEW : window.SB_GEN;
 ```
+
+Rubin app's client_id (used by `api/new/spotify.js` and the OAuth callback): `431c55feb024444c979f2aa51e04426d`.
 
 ---
 
-## STATE OBJECT (v3/app.js)
+## SPOTIFY SETUP
 
-```javascript
-const state = {
-  step: 1,                    // current screen (1-5)
-  totalSteps: 5,
-  energyLevel: 1,             // 1=calm/רגוע, 2=energetic/מקפיץ (used internally during generation)
-  useDataBox: true,           // toggle L0 on/off (📋 button in header)
-  bizName: '',                // business name (new field, screen 3)
-  bizDesc: '',                // business description text
-  bizType: null,              // detected biz type (e.g., "בר יין")
-  bizFunc: '',                // GPT-generated music function sentence
-  selectedMoods: new Set(),   // selected mood chips
-  selectedUserPlaylists: [],  // IDs picked from playlist picker (screen 3, max 3)
-  mc: { familiarity: 3, hebrew: 3 }, // MC slider values (1-5)
-  refPlaylist: '',            // optional reference playlist URL
-  playlist1: [],              // final calm playlist (30 tracks)
-  playlist2: [],              // final energetic playlist (30 tracks)
-  _generatedHistory: new Set(), // IDs generated this session — excluded from next run
-  generatedTracks: [],        // legacy (still referenced in some places)
-  spotifyToken: null,         // current user access token
-  spotifyUser: null,          // {id, display_name, images}
-  userPlaylists: [],          // user's Spotify playlists (screen 3 picker)
-  feedback: {},               // trackKey → 'up'|'down'
-  brainContext: {             // assembled by buildBrainContext()
-    l0: null, l1: null, l2: null, l3: null, l4: null,
-    assembled: false,
-  },
-  regenCount: 0,
-  selectedModel: 'gpt-5.4',
-};
-```
+### Two-app architecture (NEW pipeline)
 
----
+- **Michael's app** (`SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`): used for **Client Credentials** reads of public-playlist tracks. The grandfathered access path. Doesn't represent any user.
+- **Rubin's app** (`RUBIN_SPOTIFY_CLIENT_ID` / `RUBIN_SPOTIFY_CLIENT_SECRET`): used for **user-context** writes (`create_playlist`, `add_tracks`). Acts as a dedicated **Rubin Spotify user account** via the long-lived `RUBIN_REFRESH_TOKEN`. Playlists are created on that account.
 
-## SCREEN FLOW
+Why split: Michael's app is grandfathered into the public playlist `/tracks` endpoint that newer apps no longer have. We can't move reads to Rubin's app or they'd break. But Rubin's app is what owns the dedicated Spotify user account where playlists land. So both apps have a distinct job.
 
-```
-Screen 1: Welcome → "בואו נתחיל"
-Screen 2: Spotify OAuth (PKCE) → connect account
-Screen 3: Business name + description + optional playlist picker (user's Spotify playlists)
-Screen 4: Detected business type banner + mood chips + MC faders (familiarity, Hebrew/foreign)
-          → "צרו פלייליסט" button calls startGeneration()
-Screen 5: Loading spinner → two accordion playlists (🌙 רגוע, 🔥 מקפיץ)
-          Each has: track list with Spotify embed, Save to Spotify, Regenerate
-```
+### Seeding `RUBIN_REFRESH_TOKEN`
 
-**Navigation:** `setStep(n)` handles all screen transitions.
-**Screen 3 special:** loads user's Spotify playlists asynchronously (fetchUserPlaylists).
-**Screen 5 special:** startGeneration() called from Screen 4 button.
+One-time setup:
+
+1. In the Rubin app's Spotify Developer Dashboard, register redirect URI `http://127.0.0.1:3000/api/new/rubin-oauth-callback`.
+2. Start `vercel dev`.
+3. In a browser signed into Spotify as the **Rubin user**, visit:
+   ```
+   https://accounts.spotify.com/authorize?client_id=431c55feb024444c979f2aa51e04426d&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fnew%2Frubin-oauth-callback&scope=playlist-modify-private&show_dialog=true
+   ```
+4. Approve consent. The callback page displays `access_token` (1 hour) and `refresh_token` (long-lived).
+5. Copy the refresh_token. Add it as `RUBIN_REFRESH_TOKEN` to the Vercel cloud project's Environment Variables. Restart `vercel dev` so it pulls the new value.
+
+Important: this project is linked to a Vercel cloud project, so `vercel dev` reads env vars from cloud, not from `.env.local`. Local additions to `.env.local` are ignored at function runtime. Always add env vars via the Vercel dashboard or `vercel env add`.
+
+For wider scopes later (e.g., reading Rubin's private playlists for the delete flow), include them in the auth URL's `scope=` param space-separated (URL-encoded as `%20`).
+
+### Legacy OAuth (OLD pipeline)
+
+`v3/index.html` screen 2 still runs an end-user OAuth via Michael's app. In the NEW pipeline this is purely cosmetic — it makes sure the end user is signed into Spotify in their browser session so the returned playlist URLs open cleanly. Tokens land in `localStorage` (`sp3_access`, `sp3_refresh`, etc.) and are NOT used by `api/new/spotify.js`.
+
+`handleSpotifyCallback` in `v3/app.js` does the code-exchange. It does NOT persist tokens to Supabase (a previous experiment added that, then reverted). The legacy `spotify_tokens` Supabase table still gets written by the root `/index.html`'s `saveUserSpotifyTokens` function for the legacy v1 app — not by `/v3`.
+
+### Spotify Development Mode
+
+Rubin's app is in Development Mode → max 25 users allowed via OAuth. Add users at:
+`developer.spotify.com/dashboard → <Rubin app> → User Management`
+
+Currently allowlisted (Rubin app): Michael Avshalom, Ami Nir, **Rubin (the dedicated user account)**.
+
+Note: during the audit we observed that the Rubin OAuth succeeded even before adding Rubin to the allowlist — Spotify's Dev Mode allowlist enforcement may be inconsistent or applies differently than docs imply. For production, apply for Extended Quota Mode.
+
+### iOS scope-caching known issue
+
+iOS Spotify app intercepts OAuth and returns cached old scopes, even with `show_dialog=true`. Fix shown to user:
+`Spotify → Settings → Privacy → Apps → <app> → Remove Access → Reconnect`
 
 ---
 
-## CORE FUNCTIONS — GENERATION PIPELINE
+## NEW PIPELINE — CORE FUNCTIONS
 
-### `startGeneration()` — entry point
-```
-1. setStep(5) + show loading
-2. verify Spotify token
-3. playlist1 = await generateTracklist(1, regenCount, [])
-4. p1ids = new Set(playlist1.map(t=>t.id))
-5. playlist2 = await generateTracklist(2, regenCount, p1ids)
-6. hard dedup: remove any playlist1 IDs from playlist2
-7. hide loading, show result, renderPlaylist(1), renderPlaylist(2)
-8. saveAnalysis()
-```
+All in `v3/generation/new/`, exposed via `window.SB_GEN_NEW.*` from `index.js`.
 
-### `generateTracklist(energyLevel, attempt, excludeIds)` — per-playlist generation
-```
-1. match business to Data Box (SB_matchDataBox)
-2. buildTrackPool(l0Match, energyLevel) → pool[]
-3. filter pool by excludeIds (cross-playlist dedup)
-4. selectFromPool(pool, faders, moods, energyLevel) → 30 tracks
-5. fallback: if <20 tracks, use old GPT generation + validateOnSpotify
-6. diversity filter: max 2 per artist, remove disliked artists
-7. fill to 30 from pool if diversity filter reduced count
-```
+### `matchBusinessType(userInput, rows)` — matcher.js
+Two-pass GPT classification. Pass 1 matches against business-type names + column-B keywords. If null, Pass 2 falls back to atmosphere (column D) matching. Both passes use gpt-5.4 via `/api/new/openai` with `response_format: json_object` and tight system prompts that explicitly tell the model when to return null. Returns the canonical `bizType` plus all rows for that type — downstream decides energy mapping.
 
-### `buildTrackPool(entry, energyLevel)` — builds track pool from Data Box
-```
-Priority: entry.liveEnergy[energyLevel] → entry.energy[energyLevel] → entry.playlists (fallback)
-1. get playlist IDs for this energy level
-2. shuffle playlist order (different each run)
-3. fetch 50 tracks per playlist at random offset (Math.floor(Math.random()*80))
-4. deduplicate
-5. get audio features for first 100 tracks
-6. filter by BPM/energy:
-   energy 1 (calm):     f.energy < 0.72 AND f.tempo < 138
-   energy 2 (energetic): f.energy > 0.35 AND f.tempo > 85
-7. return filtered pool (or unfiltered if too few pass)
-```
+### `assignEnergyRows(rows)` — row-energy-assignment.js
+Tiny pure function. Picks `row.energy === '1'` for calm, `'2'` for energetic. Falls back to `'1+2'` row if a specific energy isn't present, else first usable row. Output includes `isCalmAndEnergeticFromSameRow` so the next stage knows whether to do two-row or one-row handling.
 
-### `selectFromPool(pool, faders, moods, energyLevel)` — GPT selects from pool
-```
-1. filter session history (_generatedHistory)
-2. stratify: popular(≥60) 35%, mid(25-60) 45%, niche(<25) 20%
-3. final shuffle, cap at 200 tracks
-4. build numbered list: "1. Artist — Title\n2. ..."
-5. call GPT: returns {"tracks":[{"n":1},{"n":5},...]}
-6. map indices back to track objects from sample[]
-7. fill to 30 from pool if GPT picked fewer
-8. add all picked IDs to state._generatedHistory
-```
+### `buildPlaylists(assignment, bizType, bizName?)` — playlist-builder.js
+For 1-row biz types where the same row covers both energies (`isCalmAndEnergeticFromSameRow=true`), returns `{ skipped: true, reason: '…' }` because we'd need audio-features to split the single track pool by energy. For 2-row cases, the function:
+- For each row, randomly picks ≤5 source playlists, GETs ~50 tracks per playlist at a random offset.
+- Pools, dedupes, shuffles, takes 30 unique tracks per output playlist.
+- Creates a **private + collaborative** playlist on the Rubin Spotify user account.
+- Adds the 30 tracks.
+- Returns `{ calm: {url, id, trackCount}, energetic: {…} }`.
 
-**CRITICAL:** GPT receives numbers, not artist names. It picks by index. It CANNOT invent tracks — if it returns index 201 when we sent 200 tracks, it's ignored. This ensures 100% of tracks come from the Data Box musical universe.
+Playlist name format: `{bizName || bizType} · רגוע · DD.MM.YYYY` (and `אנרגטי` for energetic). The third parameter `bizName` is optional — when provided, it replaces `bizType` in the title. Description is just the display name.
+
+`buildPlaylists` accepts an internal escape-hatch: passing `_user_access_token` in any `/api/new/spotify` call's body lets you override the refresh-token flow with a directly-supplied Spotify access token (used by `.test-playlist-builder.mjs` via CLI arg).
+
+---
+
+## OLD PIPELINE — CORE FUNCTIONS (legacy)
+
+Documented here for reference. **(Legacy, partially broken.)**
+
+- `startGeneration()` — entry point in `v3/app.js`; sequentially generates playlist1 (energy 1) then playlist2 (energy 2), with cross-playlist dedup.
+- `generateTracklist(energyLevel, attempt, excludeIds)` — per-playlist; matches Data Box, builds pool, selects via GPT, falls back to GPT-invents-then-validates if pool too small.
+- `buildTrackPool(entry, energyLevel)` — was supposed to filter by BPM/energy via audio-features (dead). Currently it'd just return the unfiltered pool.
+- `selectFromPool(pool, faders, moods, energyLevel)` — stratifies popular/mid/niche 35/45/20, sends ≤200 tracks to GPT with numeric indices, maps response back.
+- "Brain" L0–L4 in `v3/generation/brain/` — historical cohort, genre archive, feedback reranker. Earlier audit showed these only run in the fallback branch, which rarely fires. Effectively dead even when the OLD pipeline runs.
 
 ---
 
 ## DATA BOX SYSTEM
 
-### Overview
-The Data Box (Google Sheets) is the foundation. Every track in the final playlist comes from a playlist listed in the Data Box. GPT only selects — it never invents.
-
 ### Google Sheet
 URL: `https://docs.google.com/spreadsheets/d/1b-0rsKBvTSqE0ju7EfGRnpOQiVESZR8hsJBsuITns_E`
 
-Columns: `Type Of business | Key Words | Energy level | Atmospheres | Known/Unknown | Hebrew/Foreign | Style/Genres | Example 1 ... Example 15 | Purpose`
+Columns: `Type Of business | Key Words | Energy level | Atmospheres | Known/Unknown | Hebrew/Foreign | Style/Genres | Example 1 … Example 15 | Purpose`
 
-Structure: each business type has TWO rows:
-- Row with `Energy level = 1` → calm playlists (Reggae, Jazz, LoFi, etc.)
-- Row with `Energy level = 2` → energetic playlists (Tropical House, Punk, Electronic, etc.)
+Row layout varies by business type:
+- Most common: two consecutive rows for the same biz type, `Energy level=1` (calm) and `=2` (energetic).
+- Some rows have `Energy level=1+2` (single row covers both).
+- Some have no energy level (single row, treated as 1+2 by the new pipeline).
 
-### Static energy map (data-box-energy.js)
-`data-box-energy.js` provides hardcoded energy separation for 14 business types as a fallback for when `/api/databox` hasn't returned yet (it loads in the background on boot) or if the live load fails. The sheet is public; once `/api/databox` resolves, `SB_LIVE_ENTRIES` is overwritten with the live entries (which carry richer keywords). Loaded as script before `app.js`. Structure:
-```javascript
-window.SB_ENERGY_MAP = {
-  'בר יין': {
-    1: { genres: 'Smooth Jazz / Bossa Nova', playlists: ['37i9dQZF1DWWgccrbg3zbJ', ...] },
-    2: { genres: 'LoFi Beats / RnB / Funk',  playlists: ['6bX6RfpkoRwqH3at702xja', ...] },
-  },
-  // ... 13 more business types
-};
-```
-On load, this enriches `SB_DATA_BOX.entries` with `entry.energy = {1:{...}, 2:{...}}`.
+### NEW pipeline data flow
+`api/new/databox.js` returns rows 8–100 raw, no grouping, no row-dropping. Atmospheres parsed as array. Playlists pre-extracted to `{url, id}` objects. Cached in-memory for 30 min per warm Vercel function instance.
 
-### Keyword matching
-`SB_matchDataBox(bizDesc)` scores each entry by keyword length (longer = more specific = more points). Minimum score 3 to match. Checks live entries first (`SB_LIVE_ENTRIES` from `/api/databox`), falls back to static.
+The matcher groups rows by exact column-A value, so multi-row business types are aggregated automatically.
 
-### Adding a new business type
-1. Add 2 rows to Google Sheet (energy 1 + energy 2) with playlists
-2. Update `data-box-energy.js` with the new label and playlists
-3. Update `data-box.js` with a new entry (id, label, keywords, genres, playlists, energyLow, energyHigh)
+### Adding a new business type (NEW pipeline)
+Add 1 or 2 rows to the Google Sheet. That's it. The new pipeline reads them live within 30 minutes (or instantly on a cold function start). No static files to update.
 
----
-
-## SPOTIFY INTEGRATION
-
-### OAuth flow (PKCE)
-```
-spotifyLogin() → generates verifier/challenge → stores in localStorage + sessionStorage + cookie
-              → redirects to accounts.spotify.com/authorize?show_dialog=true
-handleSpotifyCallback() → exchanges code for tokens → validates scopes
-                        → on missing scopes: shows iOS fix screen (revoke app access)
-                        → stores in localStorage: sp3_access, sp3_refresh, sp3_expiry, sp3_user
-```
-
-### iOS known issue
-iOS Spotify app intercepts OAuth and returns cached old scopes. Fix shown to user:
-`Spotify → Settings → Privacy → Apps → sonic-brand → Remove Access → Reconnect`
-
-### Development Mode limit
-App is in Spotify Development Mode → max 25 users. Each user must be manually added at:
-`developer.spotify.com/dashboard → sonic-brand → User Management`
-
-Currently allowlisted: Michael Avshalom and Ami Nir (added by Roni). The Spotify app is owned by a dedicated sonic-brand Spotify account managed by Roni — separate from Michael's personal Spotify Developer dashboard. For production (unlimited users), apply for Extended Quota Mode.
-
-### Spotify API proxy (/api/spotify.js)
-All Spotify API calls from the frontend go through `/api/spotify` (POST):
-```javascript
-// Actions:
-{ action: 'search', query: '...', neutral: true }      // track search
-{ action: 'fetch', url: 'https://api.spotify.com/...', neutral: true } // any GET
-{ action: 'save_token', access_token, refresh_token, expiry } // save to Supabase
-{ action: 'me' }                                        // get user profile
-{ action: 'create_playlist', name, description }        // create playlist
-{ action: 'add_tracks', playlist_id, uris }             // add tracks to playlist
-```
-`neutral: true` → uses Client Credentials (no user needed, for search/recommendations).
-Without neutral → uses user token from Supabase `spotify_tokens` table (admin/service token).
+### OLD pipeline (legacy, optional to maintain)
+The old workflow also required editing `data-box.js` (keyword scoring entry) and `data-box-energy.js` (energy split map). Not needed for the new pipeline.
 
 ---
 
 ## OPENAI INTEGRATION
 
-### Model
-`gpt-5.4` — specified in `state.selectedModel`. Uses `max_completion_tokens` (not `max_tokens`).
+### Default model
+`gpt-5.4` — used by both pipelines. The proxy(s) auto-translate to `max_completion_tokens` and omit `temperature` for gpt-5.x.
 
-### Two GPT calls per playlist generation
+### NEW pipeline OpenAI usage
+`/api/new/openai.js` reads `process.env.OPENAI_API_KEY`. No Supabase fallback (intentionally lean).
 
-**Call 1: Business analysis** (in `detectBusinessType()` + `submitBizInfo()`)
-- Model: mini (faster/cheaper)
-- Input: business description
-- Output: `{biz_type, music_function, recommended_moods}`
-- Also calls `buildBrainContext()` which runs L1-L4
+**Important env-var caveat**: `OPENAI_API_KEY` is currently NOT in `.env.local`. It lives in Vercel cloud env vars (project settings). `vercel dev` pulls cloud env at startup and exposes it to function processes, so the matcher works locally via `vercel dev` despite the key not being in any local file. If you ever need the key in `.env.local` (e.g., for non-Vercel tooling), pull it explicitly via `vercel env pull`.
 
-**Call 2: Track selection** (in `selectFromPool()`)
-- Model: main gpt-5.4
-- Temperature: 0.82
-- Input: numbered list of up to 200 tracks + business context
-- Output: `{"tracks":[{"n":1},{"n":5},...]}` — indices only
-- Max tokens: 800
+The matcher makes two GPT calls max per match (Pass 1 always; Pass 2 only if Pass 1 returns null). `response_format: { type: 'json_object' }` is required to keep responses parseable. The prompts explicitly tell GPT when to return null rather than force-match — see `matcher.js` for the wording.
 
-### Brain context (L0-L4)
-Built by `buildBrainContext()`, assembled into prompt by `assembleBrainBlocks()`:
-- L0: Data Box entry info (genres, top artists, energy description)
-- L1: Reference playlist DNA (if user provided URL — audio stats, top artists)
-- L2: Historical cohort from Supabase (similar businesses' past analyses)
-- L3: Genre archive from Supabase (past analyses matching selected moods)
-- L4: Feedback reranker from Supabase (thumbs up/down history)
+### OLD pipeline OpenAI usage
+`/api/openai.js` reads key from Supabase `app_settings` table (`key='openai_api_key'`), falling back to `process.env.OPENAI_API_KEY` (which, again, isn't in `.env.local`). The old `selectFromPool` makes one big GPT call per playlist with up to 200 numbered tracks; GPT returns indices.
 
-Currently: L0 drives track selection (the pool). L1-L4 inform the GPT context in `assembleBrainBlocks()` but since GPT now SELECTS (not generates), their influence is indirect.
+### Brain context L0–L4 (legacy, mostly dead)
+Was supposed to add Data Box DNA, reference playlist DNA, historical cohort, genre archive, and feedback reranker to the GPT prompt. Earlier audit showed it only runs inside the OLD pipeline's fallback branch, which rarely fires. NEW pipeline doesn't use any of this.
+
+---
+
+## TEST SCRIPTS
+
+All at repo root, designed to run via `node` against `vercel dev` on `localhost:3000`.
+
+| Script | Tests | Notes |
+|---|---|---|
+| `.test-databox.mjs` | Matcher + energy assignment, no Spotify side effects | Has 11 input strings exercising direct matches, atmosphere fallbacks, no-match honesty, robustness (empty, English, etc.) |
+| `.test-playlist-builder.mjs` | Playlist builder only, with hardcoded row data | Optional CLI arg = Spotify access token (overrides Rubin refresh flow). Without arg, uses proxy default |
+| `.test-full-pipeline.mjs` | End-to-end: matcher → assignEnergyRows → buildPlaylists | Creates real (private+collaborative) playlists on Rubin's account |
+| `.test-delete-playlist.mjs` | Minimal verification of `DELETE /v1/playlists/{id}/items` endpoint | Hardcoded playlist ID; pass an access_token as CLI arg |
+
+Tests use a fetch-shim that rewrites relative `/api/new/*` URLs to `http://localhost:3000/api/new/*` so `playlist-builder.js`'s `fetch('/api/new/spotify')` (which assumes browser-relative) works in Node.
 
 ---
 
 ## SUPABASE SCHEMA
 
 ```sql
--- analyses: every generation is logged
+-- analyses: every OLD-pipeline generation is logged
 analyses (id, user_name, description, biz_category, brain_version, faders, genres, refs,
           energy_curve, track_count, tracks, business_name, brain_logs, created_at)
 
--- track_feedback: thumbs up/down
+-- track_feedback: thumbs up/down on tracks (OLD pipeline)
 track_feedback (id, user_id, track_id, track_key, feedback, biz_category, created_at)
 
--- app_settings: OpenAI key
-app_settings (id, key, value, updated_at)
-  -- row: key='openai_api_key', value=encrypted_key
+-- app_settings: OLD pipeline OpenAI key storage
+app_settings (id, key, value, updated_at)  -- row: key='openai_api_key'
 
--- spotify_tokens: admin service token (not currently used for user playlists)
+-- spotify_tokens: OLD pipeline user-token storage (NEW pipeline doesn't read this table)
 spotify_tokens (id, access_token, refresh_token, expiry, updated_at)
 ```
 
----
-
-## MC FADERS (mc-mappings.js)
-
-Currently only 2 active questions (vocal, energy, era were removed):
-
-```javascript
-window.SB_V2_MC = {
-  familiarity: { /* 5 options: "שירה בציבור" (95) → "חוויה ייחודית" (12) */ },
-  hebrew:      { /* 5 options: "רק עברית" (100) → "רק לועזית" (0) */ },
-};
-
-window.SB_V2_mcToFaders = function(mc) {
-  return {
-    familiarity: /* 0-100 */,
-    hebrew:      /* 0-100 */,
-    vocal: 50,   // auto
-    energy: 50,  // auto (split into two playlists)
-    era: 50,     // auto
-  };
-};
-```
-
-Faders are passed to `generateCandidates()` (fallback GPT generation) and to `selectFromPool()` (familiarity used for popularity stratification).
+NEW pipeline doesn't touch any of these. Future plan: persist Rubin's rotated refresh tokens here so cold starts pick up the latest value automatically (currently logs to console on rotation; manual env-var update needed).
 
 ---
 
-## PLAYLIST RENDERING
+## ENVIRONMENT VARIABLES
 
-### `renderPlaylist(energyLevel)`
-Renders to `#tracksList1` or `#tracksList2`. Each track:
-```html
-<div class="track-wrap">
-  <div class="track-item" id="item_N_i">
-    <div class="track-num">i+1</div>
-    <div class="track-cover" style="background-image:url(...)"></div>
-    <div class="track-meta"><div class="track-title">...</div><div class="track-artist">...</div></div>
-    <button class="play-btn" onclick="toggleEmbed(energyLevel, i, spotifyId)">▶</button>
-    <div class="track-vote">
-      <button class="vote-btn up" onclick="vote(energyLevel, i, 'up')">👍</button>
-      <button class="vote-btn down" onclick="vote(energyLevel, i, 'down')">👎</button>
-    </div>
-  </div>
-  <div class="track-embed" id="embed_N_i">
-    <!-- Spotify iframe embed when play-btn clicked -->
-  </div>
-</div>
-```
+All set in Vercel cloud env (project settings → Environment Variables). `.env.local` is ignored for runtime by `vercel dev` when the project is cloud-linked.
 
-### Accordion
-Click header → `toggleAccordion(1|2)` → opens/closes track list.
-CSS: `.pl-accordion-body` with `max-height: 0 → 4000px` transition.
+| Variable | Used by | Notes |
+|---|---|---|
+| `SPOTIFY_CLIENT_ID` | OLD + NEW (Michael's app for CC reads) | Hardcoded copy in `v3/app.js` for OAuth |
+| `SPOTIFY_CLIENT_SECRET` | OLD + NEW (Michael's app for CC reads) | Server-side only |
+| `RUBIN_SPOTIFY_CLIENT_ID` | NEW (`api/new/spotify.js`, `api/new/rubin-oauth-callback.js`) | Value: `431c55feb024444c979f2aa51e04426d` |
+| `RUBIN_SPOTIFY_CLIENT_SECRET` | NEW (same files) | Used to refresh Rubin user tokens |
+| `RUBIN_REFRESH_TOKEN` | NEW (`api/new/spotify.js`) | Seeded once via `/api/new/rubin-oauth-callback` |
+| `OPENAI_API_KEY` | NEW (`api/new/openai.js`) | OLD pipeline reads from Supabase `app_settings` instead |
+| `VERCEL_OIDC_TOKEN` | Auto-injected by Vercel CLI | Don't set manually |
 
-### Playlist naming
-Format: `"[bizName] · רגוע #01"` / `"[bizName] · מקפיץ #01"`
-`#01` = regenCount padded to 2 digits.
-
----
-
-## SAVE TO SPOTIFY
-
-`saveToSpotify(energyLevel)`:
-1. get user token (refreshes if needed, triggers login if missing)
-2. `GET /v1/me` → get user ID (if 403/401: show scope fix screen)
-3. `POST /v1/users/{id}/playlists` → create public playlist with named format
-4. `POST /v1/playlists/{id}/tracks` → add tracks in chunks of 100
-5. open playlist URL in new tab
+Supabase URL and anon key are hardcoded (not env vars) in `v3/app.js`, legacy `api/spotify.js`, and `api/openai.js`. New `api/new/spotify.js` doesn't read Supabase. The anon key is safe to expose client-side.
 
 ---
 
 ## VERCEL DEPLOYMENT
 
-```json
-// vercel.json key settings:
-{
-  "rewrites": [
-    { "source": "/v3", "destination": "/v3/index.html" }
-  ],
-  "headers": [
-    { "source": "/v3/(.*)", "headers": [{"key":"Cache-Control","value":"no-cache,no-store,must-revalidate"}] }
-  ],
-  "functions": {
-    "api/openai.js": { "maxDuration": 60 },
-    "api/spotify.js": { "maxDuration": 30 }
-  }
-}
+`vercel.json` configures:
+- Rewrites: `/v3` → `/v3/index.html`, `/v2` → `/v2/index.html`
+- Cache headers: `no-cache, no-store, must-revalidate` for `/`, `/index.html`, `/v2/*`, `/v3/*`
+- Function timeouts: `api/openai.js` 60s, `api/spotify.js` 30s
+
+Auto-deploys on push to `main`. Vercel CLI is configured (the `.vercel/` directory contains the linked project metadata; project id `prj_l3ReTLDpDcHWvUpamXxYN39BEhp8`).
+
+### Cache busting
+`v3/index.html` loads **6 script tags**, each with a `?v=…` query string:
+```html
+<script src="/v3/mc-mappings.js?v=…"></script>
+<script src="/v3/data-box.js?v=…"></script>
+<script src="/v3/data-box-energy.js?v=…"></script>
+<script type="module" src="/v3/generation/index.js?v=…"></script>
+<script type="module" src="/v3/generation/new/index.js?v=…"></script>
+<script src="/v3/app.js?v=…"></script>
 ```
 
-Auto-deploys on push to `main`. Cache busting: update `?v=XXXXXXX` in index.html script tags.
-
----
-
-## KNOWN ISSUES
-
-1. **`data-box-energy.js` only covers 14 business types** — the live sheet has more, including some with only one energy level filled in or with empty `Energy level` cells (which `/api/databox` currently skips). When `/api/databox` resolves it overrides the static fallback with the richer live entries, but biz types with no Energy level on either row are still missing.
-
-2. **BPM filter only on first 100 tracks** — Spotify audio features API limited to 100 IDs per request. Tracks beyond index 100 in the pool pass without BPM filtering.
-
-3. **Spotify Development Mode** — max 25 users. Need Extended Quota Mode for production.
-
-4. **L2-L4 brain layers** — code exists but less impactful now that GPT selects from a fixed pool. May need rethinking.
-
-5. **iOS Spotify scope caching** — show_dialog:true doesn't always work on iOS. Fix: user must revoke app access in Spotify settings.
-
----
-
-## RANDOMIZATION MECHANISMS
-
-To ensure different playlists each run:
-1. Playlist order shuffled before fetching
-2. Random offset (0-80) per playlist fetch → different 50 tracks each time
-3. Session history (`_generatedHistory`) excludes all previously picked tracks
-4. Popularity stratification (35%/45%/20%) prevents always picking most famous
-5. GPT temperature 0.82
-6. GPT instructions: max 2 per artist, spread picks across full list
-7. Cross-playlist dedup: energy2 pool excludes all energy1 track IDs
+To force browser refresh of any of them, bump the `?v=` string (any unique value works). Current version pattern: `DDMMYYYY{letter}` e.g., `19052026a`.
 
 ---
 
 ## COMMON TASKS
 
-### Add a business type to Data Box
-1. Add 2 rows to Google Sheet
-2. Add entry to `data-box-energy.js`:
-```javascript
-'שם העסק': {
-  1: { genres: 'Genre1 / Genre2', playlists: ['spotifyId1', 'spotifyId2', ...] },
-  2: { genres: 'Genre3 / Genre4', playlists: ['spotifyId3', 'spotifyId4', ...] },
-},
-```
-3. Add entry to `data-box.js` (for keyword matching):
-```javascript
-{
-  id: 'entry_id',
-  label: 'שם העסק',
-  keywords: ['keyword1', 'keyword2'],
-  genres: 'Genre description',
-  playlists: [{ id: 'spotifyId', moods: ['אווירה1'] }],
-  energyLow:  { label: 'תיאור', description: '...' },
-  energyHigh: { label: 'תיאור', description: '...' },
-  category: 'category_name',
-}
-```
+### Run the new pipeline locally
+1. `vercel dev` in one terminal (loads cloud env vars including `RUBIN_REFRESH_TOKEN`, `OPENAI_API_KEY`).
+2. Either:
+   - `node .test-full-pipeline.mjs` to run the test harness, OR
+   - Open `http://127.0.0.1:3000/v3` and flip `USE_NEW_GEN = true` in `v3/app.js` (note: only the test currently exercises the full new pipeline; the v3 UI hasn't been rewired to feed the new pipeline yet).
+
+### Re-seed the Rubin refresh token
+1. Visit the auth URL (see "Seeding `RUBIN_REFRESH_TOKEN`" above) in a browser signed into the Rubin Spotify user account.
+2. Approve consent. Copy the new `refresh_token` from the callback page.
+3. Update `RUBIN_REFRESH_TOKEN` in Vercel cloud env (Dashboard → Project Settings → Environment Variables).
+4. Restart `vercel dev`.
 
 ### Push changes
-```bash
-git add v3/app.js v3/index.html  # or specific files
+```powershell
+git add <paths>
 git commit -m "feat/fix: description"
-git push origin main  # auto-deploys to Vercel
+git push origin main   # auto-deploys to Vercel
 ```
-No credentials needed if remote is configured with token.
 
-### Bump cache version (force browser reload)
-In `v3/index.html`, change `?v=08052026b` on all 4 script tags to a new string.
+### Bump cache version
+Replace all `?v=…` values in `v3/index.html`'s 6 script tags with a new unique string.
 
 ### Add user to Spotify Development Mode
-`developer.spotify.com/dashboard → sonic-brand → User Management → Add user`
-Requires their Spotify account email (not always the same as their regular email).
+`developer.spotify.com/dashboard → <app> → User Management → Add user`. Use the Spotify account email (not always the same as the user's primary email).
 
-### Change GPT selection ratio
-In `selectFromPool()`, modify the stratification percentages:
-```javascript
-...popular.slice(0, Math.round(MAX*0.35)),  // ← change 0.35
-...mid.slice(0, Math.round(MAX*0.45)),       // ← change 0.45
-...niche.slice(0, MAX - ...),               // remainder
-```
-
-### Adjust energy BPM thresholds
-In `buildTrackPool()`:
-```javascript
-if(energyLevel===1) return f.energy < 0.72 && f.tempo < 138;  // ← adjust
-if(energyLevel===2) return f.energy > 0.35 && f.tempo > 85;   // ← adjust
-```
+### Add a business type
+Add rows to the Google Sheet (see "Data Box System"). New pipeline picks them up live. OLD pipeline would also need `data-box.js` + `data-box-energy.js` updates — skip unless maintaining the OLD pipeline.
 
 ---
 
-## ENVIRONMENT VARIABLES (Vercel)
+## KNOWN ISSUES
 
-| Variable | Source |
-|----------|--------|
-| `SPOTIFY_CLIENT_ID` | Spotify Developer Dashboard |
-| `SPOTIFY_CLIENT_SECRET` | Spotify Developer Dashboard |
-
-OpenAI key is stored in Supabase `app_settings` table (not Vercel env var).
-Supabase URL and anon key are hardcoded in `app.js` (anon key is safe for client).
+1. **Most Spotify Web API features deprecated.** See top section. Affects OLD pipeline severely; NEW pipeline designed around remaining live endpoints.
+2. **OLD pipeline's "Save to Spotify" is broken** — uses removed `POST /v1/users/{id}/playlists`. Not maintained.
+3. **Spotify Development Mode 25-user limit** — applies to OAuth users. NEW pipeline doesn't OAuth end users so it's effectively unlimited there; legacy `/v3` screen 2 OAuth still hits this for users who go through the old flow.
+4. **iOS Spotify scope caching** — `show_dialog=true` doesn't always work on iOS. Workaround: revoke app access in Spotify Settings, reconnect.
+5. **One-row biz-type energy split is unimplemented.** When the matcher returns a business type whose single row covers both energies (e.g., `חומוסיה / שיפודיה / שווארמה`), `buildPlaylists` returns `{ skipped: true, … }`. We need an external audio-features API to split the single track pool by energy. Out of scope until that's set up.
+6. **`vercel dev` + cloud-linked project quirk.** Adding env vars to `.env.local` doesn't expose them to functions; they have to be in Vercel cloud env. Be careful when seeding new variables — always use the Vercel dashboard or `vercel env add`.
 
 ---
 
@@ -495,6 +405,8 @@ Supabase URL and anon key are hardcoded in `app.js` (anon key is safe for client
 
 - **Owner:** Michael Avshalom — avshalom.michael@gmail.com — GitHub: @michaelavs-1
 - **Developer:** Roni Mark — roni.mark@gmail.com — GitHub: @ronimark04
-- **Spotify App:** sonic-brand — developer.spotify.com/dashboard
+- **Michael's Spotify app:** sonic-brand — developer.spotify.com/dashboard (account: Michael's)
+- **Rubin's Spotify app:** the newer app for user-context writes (account: Rubin Sonic Brands)
+- **Rubin Spotify user account:** "Rubin - Sonic Brands" (id `316gotb2mutzdjmghprpgmxwq62i`)
 - **Supabase:** project xhkqrxljncazvbgkmqex
 - **Data Box:** Google Sheets (ask Michael for access)

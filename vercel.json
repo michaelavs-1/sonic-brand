@@ -5,6 +5,15 @@
     },
     "api/spotify.js": {
       "maxDuration": 30
+    },
+    "api/new/openai.js": {
+      "maxDuration": 60
+    },
+    "api/new/spotify.js": {
+      "maxDuration": 30
+    },
+    "api/new/track-analysis.js": {
+      "maxDuration": 30
     }
   },
   "headers": [

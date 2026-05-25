@@ -1,6 +1,7 @@
 import { matchBusinessType } from './matcher.js';
 import { assignEnergyRows } from './row-energy-assignment.js';
 import { buildPlaylists } from './playlist-builder.js';
+import { generateFromGPT, buildPlaylistsFromTrackIds, shouldFallback } from './gpt-fallback.js';
 
 const notImplemented = (name) => async () => {
   throw new Error(`SB_GEN_NEW.${name}: not implemented`);
@@ -19,5 +20,10 @@ window.SB_GEN_NEW = {
   },
   playlistBuilder: {
     buildPlaylists,
+  },
+  gptFallback: {
+    generateFromGPT,
+    buildPlaylistsFromTrackIds,
+    shouldFallback,
   },
 };

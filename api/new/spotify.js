@@ -171,6 +171,34 @@ export default async function handler(req, res) {
       return res.status(200).json({ results });
     }
 
+    if (action === 'search_track') {
+      const { title, artist } = req.body;
+      if (!title || !artist) return res.status(400).json({ error: 'title and artist required' });
+
+      const doSearch = async (q) => {
+        const qs = new URLSearchParams({ q, type: 'track', limit: '1' });
+        return spotifyCall(`https://api.spotify.com/v1/search?${qs}`, { method: 'GET' }, 'cc');
+      };
+
+      let r = await doSearch(`track:"${title}" artist:"${artist}"`);
+      let data = await r.json().catch(() => ({}));
+      let item = data?.tracks?.items?.[0];
+
+      if (!item) {
+        r = await doSearch(`${title} ${artist}`);
+        data = await r.json().catch(() => ({}));
+        item = data?.tracks?.items?.[0];
+      }
+
+      if (!item) return res.status(200).json({ found: false });
+      return res.status(200).json({
+        found: true,
+        id: item.id,
+        name: item.name,
+        artists: (item.artists || []).map(a => a.name),
+      });
+    }
+
     return res.status(400).json({ error: `Unknown action: ${action}` });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Server error' });

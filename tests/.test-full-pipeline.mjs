@@ -30,9 +30,9 @@ if (!dbox.ok) { console.error(`databox fetch failed: ${dbox.status}`); process.e
 const { rows } = await dbox.json();
 console.log(`got ${rows.length} rows\n`);
 
-const { matchBusinessType } = await import('./v3/generation/new/matcher.js');
-const { assignEnergyRows  } = await import('./v3/generation/new/row-energy-assignment.js');
-const { buildPlaylists    } = await import('./v3/generation/new/playlist-builder.js');
+const { matchBusinessType } = await import('../v3/generation/new/matcher.js');
+const { assignEnergyRows  } = await import('../v3/generation/new/row-energy-assignment.js');
+const { buildPlaylists    } = await import('../v3/generation/new/playlist-builder.js');
 
 const tests = [
   { input: 'אני פותח בר יין במרכז העיר',                     bizName: null,          note: 'direct match, 2-row biz (should create)' },

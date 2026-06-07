@@ -14,6 +14,15 @@
     },
     "api/new/track-analysis.js": {
       "maxDuration": 30
+    },
+    "api/v4/openai.js": {
+      "maxDuration": 60
+    },
+    "api/v4/spotify.js": {
+      "maxDuration": 30
+    },
+    "api/v4/track-analysis.js": {
+      "maxDuration": 30
     }
   },
   "headers": [
@@ -118,6 +127,40 @@
           "value": "0"
         }
       ]
+    },
+    {
+      "source": "/v4",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/v4/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
     }
   ],
   "rewrites": [
@@ -128,6 +171,14 @@
     {
       "source": "/v3",
       "destination": "/v3/index.html"
+    },
+    {
+      "source": "/v4",
+      "destination": "/v4/index.html"
+    },
+    {
+      "source": "/v4/track-analysis",
+      "destination": "/v4/track-analysis/index.html"
     }
   ]
 }

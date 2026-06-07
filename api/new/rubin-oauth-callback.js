@@ -46,7 +46,7 @@ function renderSuccess(tokens) {
   <h2>access_token (valid ~1 hour — for immediate Stage-1 verification)</h2>
   <pre>${esc(tokens.access_token || '')}</pre>
   <p>Use immediately to verify Rubin's app can create + add tracks:</p>
-  <pre>node .test-playlist-builder.mjs ${esc(tokens.access_token || '')}</pre>
+  <pre>node tests/.test-playlist-builder.mjs ${esc(tokens.access_token || '')}</pre>
 
   <h2>scope</h2>
   <pre>${esc(tokens.scope || '')}</pre>

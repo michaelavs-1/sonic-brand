@@ -58,7 +58,7 @@ if (!dbox.ok) {
 const { rows } = await dbox.json();
 console.log(`got ${rows.length} rows`);
 
-const { buildPlaylists } = await import('./v3/generation/new/playlist-builder.js');
+const { buildPlaylists } = await import('../v3/generation/new/playlist-builder.js');
 
 let pass = 0, fail = 0;
 

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rubin SonicBrands — Track Analysis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg-2: #10101a;
+      --card: #161623;
+      --border: rgba(255, 255, 255, .08);
+      --border-2: rgba(255, 255, 255, .16);
+      --text: #f5f5fa;
+      --muted: #9b9bb0;
+      --accent: #1DB954;
+      --error: #f87171;
+      --r-md: 14px;
+      --r-lg: 22px;
+      --shadow-glow: 0 0 30px rgba(29, 185, 84, .18);
+      --mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 18px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 720px;
+    }
+
+    .screen-card {
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 32px 28px;
+      box-shadow: var(--shadow-glow);
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      margin: 0 0 6px;
+      text-align: center;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 24px;
+      text-align: center;
+    }
+
+    .input-wrap {
+      margin-bottom: 18px;
+    }
+
+    .input-label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .input-text {
+      width: 100%;
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--text);
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .input-text:focus {
+      border-color: var(--accent);
+    }
+
+    .btn {
+      padding: 12px 22px;
+      border: none;
+      border-radius: 12px;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      transition: box-shadow .2s, transform .05s, border-color .2s, background .2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #16a34a);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(29, 185, 84, .35);
+      margin-top: 8px;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 6px 24px rgba(29, 185, 84, .5);
+    }
+
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border-2);
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .btn-ghost:hover {
+      color: var(--text);
+      border-color: var(--accent);
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--border);
+      margin: 8px 0 22px;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      margin: 18px 0 10px;
+      min-height: 18px;
+    }
+
+    .status-line {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .stop-btn {
+      display: none;
+      border-color: rgba(248, 113, 113, .4);
+      color: #f87171;
+    }
+
+    .stop-btn:hover {
+      border-color: #f87171;
+      color: #fca5a5;
+    }
+
+    .stop-btn.show {
+      display: inline-block;
+    }
+
+    .results {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .results:empty {
+      margin: 0;
+    }
+
+    .copy-all-wrap {
+      display: none;
+      justify-content: flex-end;
+      margin-top: 18px;
+    }
+
+    .copy-all-wrap.show {
+      display: flex;
+    }
+
+    .result-card {
+      position: relative;
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      padding: 14px 16px 16px;
+    }
+
+    .result-card.pending {
+      border-style: dashed;
+      opacity: .8;
+    }
+
+    .result-card.error {
+      border-color: rgba(248, 113, 113, .4);
+    }
+
+    .result-card.stopped {
+      border-style: dashed;
+      opacity: .55;
+    }
+
+    .result-stopped-body {
+      color: var(--muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    .result-header {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      padding-right: 80px;
+      margin-bottom: 8px;
+      user-select: text;
+    }
+
+    .result-header .muted {
+      color: var(--muted);
+      font-weight: 400;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+    }
+
+    .result-json {
+      font-family: var(--mono);
+      font-size: 13px;
+      line-height: 1.55;
+      color: var(--text);
+      background: transparent;
+      margin: 0;
+      white-space: pre;
+      overflow-x: auto;
+      user-select: text;
+    }
+
+    .result-json .key {
+      color: #93c5fd;
+    }
+
+    .result-json .str {
+      color: #86efac;
+    }
+
+    .result-json .num {
+      color: #fcd34d;
+    }
+
+    .result-pending-body {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .result-error-body {
+      color: var(--error);
+      font-size: 13px;
+    }
+
+    .sb-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, .25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: sb-spin .7s linear infinite;
+      vertical-align: middle;
+    }
+
+    .sb-spinner.btn-spinner {
+      width: 12px;
+      height: 12px;
+      margin-right: 6px;
+      border-top-color: #fff;
+    }
+
+    @keyframes sb-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 18px;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <div class="screen-card">
+      <h1>Track Analysis</h1>
+      <p class="subtitle">Spotify track or playlist → tempo, popularity, energy, danceability, happiness</p>
+
+      <div class="input-wrap">
+        <label class="input-label" for="trackInput">Spotify track ID or URL</label>
+        <input type="text" class="input-text" id="trackInput"
+          placeholder="3z8h0TU7ReDPLIbEnYhWZb  or  https://open.spotify.com/track/..."
+          autocomplete="off" spellcheck="false">
+        <button class="btn btn-primary" id="trackBtn">Analyze track</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="input-wrap">
+        <label class="input-label" for="playlistInput">Spotify playlist ID or URL</label>
+        <input type="text" class="input-text" id="playlistInput"
+          placeholder="37i9dQZF1DXcBWIGoYBM5M  or  https://open.spotify.com/playlist/..."
+          autocomplete="off" spellcheck="false">
+        <button class="btn btn-primary" id="playlistBtn">Analyze playlist</button>
+      </div>
+
+      <div class="status-row">
+        <div class="status-line" id="status"></div>
+        <button class="btn btn-ghost stop-btn" id="stopBtn" type="button">Stop</button>
+      </div>
+
+      <div class="copy-all-wrap" id="copyAllWrap">
+        <button class="btn btn-ghost" id="copyAllBtn">Copy all</button>
+      </div>
+
+      <div class="results" id="results"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/v4/track-analysis/app.js?v=07062026a"></script>
+</body>
+
+</html>

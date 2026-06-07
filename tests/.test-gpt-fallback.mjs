@@ -25,7 +25,7 @@ globalThis.fetch = async (url, opts) => {
   return realFetch(url, opts);
 };
 
-const { generateFromGPT, shouldFallback } = await import('./v3/generation/new/gpt-fallback.js');
+const { generateFromGPT, shouldFallback } = await import('../v3/generation/new/gpt-fallback.js');
 
 let pass = 0, fail = 0;
 const ok  = (label) => { pass++; console.log(`  PASS  ${label}`); };

@@ -122,10 +122,15 @@ sonic-brand/
 │       ├── openai.js                     ← Reads OPENAI_API_KEY from env (no Supabase)
 │       ├── spotify.js                    ← get_playlist_tracks (Michael CC) + create_playlist & add_tracks (Rubin user)
 │       └── rubin-oauth-callback.js       ← One-time-use endpoint for seeding RUBIN_REFRESH_TOKEN
-├── .test-databox.mjs           ← Test: matcher + energy assignment (no Spotify side effects)
-├── .test-playlist-builder.mjs  ← Test: playlist builder with hardcoded rows (no matcher)
-├── .test-full-pipeline.mjs     ← Test: end-to-end (matcher → assignEnergyRows → buildPlaylists)
-├── .test-delete-playlist.mjs   ← Test: hardcoded playlist deletion via /items endpoint
+├── tests/                      ← All test scripts live here (run as `node tests/.test-*.mjs`)
+│   ├── .test-databox.mjs           ← Matcher + energy assignment (no Spotify side effects)
+│   ├── .test-playlist-builder.mjs  ← Playlist builder with hardcoded rows (no matcher)
+│   ├── .test-full-pipeline.mjs     ← End-to-end (matcher → assignEnergyRows → buildPlaylists)
+│   ├── .test-gpt-fallback.mjs      ← GPT fallback flow (unit + live cases)
+│   ├── .test-new-pipeline.mjs      ← Single end-to-end run; inputs from .test-new-pipeline.json
+│   ├── .test-new-pipeline.json     ← Input config consumed by .test-new-pipeline.mjs
+│   ├── .test-playlist-analysis.mjs ← Pulls a playlist + runs every track through track-analysis
+│   └── .test-track-analysis-diagnose.mjs ← Diagnostic for the track-analysis RapidAPI proxy
 ├── .env.example                ← Documents required env vars
 ├── vercel.json                 ← Routing, headers, function timeouts
 └── CLAUDE.md                   ← This file
@@ -219,7 +224,7 @@ For 1-row biz types where the same row covers both energies (`isCalmAndEnergetic
 
 Playlist name format: `{bizName || bizType} · רגוע · DD.MM.YYYY` (and `אנרגטי` for energetic). The third parameter `bizName` is optional — when provided, it replaces `bizType` in the title. Description is just the display name.
 
-`buildPlaylists` accepts an internal escape-hatch: passing `_user_access_token` in any `/api/new/spotify` call's body lets you override the refresh-token flow with a directly-supplied Spotify access token (used by `.test-playlist-builder.mjs` via CLI arg).
+`buildPlaylists` accepts an internal escape-hatch: passing `_user_access_token` in any `/api/new/spotify` call's body lets you override the refresh-token flow with a directly-supplied Spotify access token (used by `tests/.test-playlist-builder.mjs` via CLI arg).
 
 ---
 
@@ -282,14 +287,17 @@ Was supposed to add Data Box DNA, reference playlist DNA, historical cohort, gen
 
 ## TEST SCRIPTS
 
-All at repo root, designed to run via `node` against `vercel dev` on `localhost:3000`.
+All under `tests/`, designed to run from the repo root via `node tests/.test-*.mjs` against `vercel dev` on `localhost:3000`. New tests should also go in `tests/`.
 
 | Script | Tests | Notes |
 |---|---|---|
-| `.test-databox.mjs` | Matcher + energy assignment, no Spotify side effects | Has 11 input strings exercising direct matches, atmosphere fallbacks, no-match honesty, robustness (empty, English, etc.) |
-| `.test-playlist-builder.mjs` | Playlist builder only, with hardcoded row data | Optional CLI arg = Spotify access token (overrides Rubin refresh flow). Without arg, uses proxy default |
-| `.test-full-pipeline.mjs` | End-to-end: matcher → assignEnergyRows → buildPlaylists | Creates real (private+collaborative) playlists on Rubin's account |
-| `.test-delete-playlist.mjs` | Minimal verification of `DELETE /v1/playlists/{id}/items` endpoint | Hardcoded playlist ID; pass an access_token as CLI arg |
+| `tests/.test-databox.mjs` | Matcher + energy assignment, no Spotify side effects | Has 11 input strings exercising direct matches, atmosphere fallbacks, no-match honesty, robustness (empty, English, etc.) |
+| `tests/.test-playlist-builder.mjs` | Playlist builder only, with hardcoded row data | Optional CLI arg = Spotify access token (overrides Rubin refresh flow). Without arg, uses proxy default |
+| `tests/.test-full-pipeline.mjs` | End-to-end: matcher → assignEnergyRows → buildPlaylists | Creates real (private+collaborative) playlists on Rubin's account |
+| `tests/.test-gpt-fallback.mjs` | GPT fallback flow | `--unit` (no API calls), `--smoke` (one cheap live case), or default (full live run) |
+| `tests/.test-new-pipeline.mjs` | Single end-to-end run with bizName + description from `tests/.test-new-pipeline.json` | Walks every stage incl. fallback branch |
+| `tests/.test-playlist-analysis.mjs` | Pulls every track from a playlist and runs each through track-analysis | `--playlist=<id_or_url>` and `--out=<path>` overrides |
+| `tests/.test-track-analysis-diagnose.mjs` | Diagnostic for track-analysis: direct RapidAPI + via our proxy | Pass key as CLI arg or via `TRACK_ANALYSIS_RAPIDAPI_KEY` |
 
 Tests use a fetch-shim that rewrites relative `/api/new/*` URLs to `http://localhost:3000/api/new/*` so `playlist-builder.js`'s `fetch('/api/new/spotify')` (which assumes browser-relative) works in Node.
 
@@ -363,7 +371,7 @@ To force browser refresh of any of them, bump the `?v=` string (any unique value
 ### Run the new pipeline locally
 1. `vercel dev` in one terminal (loads cloud env vars including `RUBIN_REFRESH_TOKEN`, `OPENAI_API_KEY`).
 2. Either:
-   - `node .test-full-pipeline.mjs` to run the test harness, OR
+   - `node tests/.test-full-pipeline.mjs` to run the test harness, OR
    - Open `http://127.0.0.1:3000/v3` and flip `USE_NEW_GEN = true` in `v3/app.js` (note: only the test currently exercises the full new pipeline; the v3 UI hasn't been rewired to feed the new pipeline yet).
 
 ### Re-seed the Rubin refresh token

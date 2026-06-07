@@ -119,8 +119,8 @@ globalThis.fetch = async (url, opts) => {
   return realFetch(url, opts);
 };
 
-const { matchBusinessType } = await import('./v3/generation/new/matcher.js');
-const { assignEnergyRows } = await import('./v3/generation/new/row-energy-assignment.js');
+const { matchBusinessType } = await import('../v3/generation/new/matcher.js');
+const { assignEnergyRows } = await import('../v3/generation/new/row-energy-assignment.js');
 
 // Varied batch — each case probes a different concern. Comments mark expected behavior.
 const tests = [

@@ -7,7 +7,7 @@
 // The IFrame API gives us a controller per embed; we use it to auto-pause the
 // other embeds when one starts playing.
 
-import { buildGenrePreviews } from '/v4/generation/preview-builder.js?v=04062026f';
+import { buildGenrePreviews } from '/v4/generation/preview-builder.js?v=14062026a';
 
 const HEADING = 'בחרו את השירים שאהבתם';
 

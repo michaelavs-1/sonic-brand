@@ -3,11 +3,12 @@
 // → derive screenParams → preview/selection flow → console.log the
 // desired-genres array.
 
-import { matchBusinessType }       from '/v4/generation/matcher.js?v=04062026f';
-import { matchByAtmosphere }       from '/v4/generation/fallback.js?v=04062026f';
-import { runAtmosphereSelection }  from '/v4/atmosphere.js?v=04062026f';
-import { deriveScreenParams }      from '/v4/generation/atmosphere-params.js?v=04062026f';
-import { runPreviewFlow }          from '/v4/preview.js?v=04062026f';
+import { matchBusinessType }       from '/v4/generation/matcher.js?v=14062026a';
+import { matchByAtmosphere }       from '/v4/generation/fallback.js?v=14062026a';
+import { runAtmosphereSelection }  from '/v4/atmosphere.js?v=14062026a';
+import { deriveScreenParams }      from '/v4/generation/atmosphere-params.js?v=14062026a';
+import { prewarmAnalysis }         from '/v4/generation/preview-builder.js?v=14062026a';
+import { runPreviewFlow }          from '/v4/preview.js?v=14062026a';
 
 const $ = (id) => document.getElementById(id);
 
@@ -90,6 +91,10 @@ async function onSubmit() {
       bizDescEl.value = '';
       return;
     }
+
+    // Warm RapidAPI / our Vercel function while the user picks atmospheres,
+    // so the first batch doesn't pay 20–30s cold-start latency per call.
+    prewarmAnalysis();
 
     // Atmosphere step: pre-check whatever the matched row's column-D atmospheres
     // happen to overlap with the 17 in the atmosphere sheet.

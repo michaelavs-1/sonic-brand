@@ -8,7 +8,7 @@
 //   POST /api/v4/spotify         (Client Credentials via Michael's app)
 //   POST /api/v4/track-analysis  (RapidAPI — only when screenParams is non-empty)
 
-import { evaluateTrack, activeParams, PARAMS } from './atmosphere-params.js?v=04062026f';
+import { evaluateTrack, activeParams, PARAMS } from './atmosphere-params.js?v=14062026a';
 
 const FIELDS = 'items(track(id,name,artists(name),album(name),is_playable))';
 const MARKET = 'IL';
@@ -22,15 +22,14 @@ const ANALYSIS_SAMPLE_SIZE = 20;
 // parallel just to throw 19 away is wasteful.
 const SCREEN_BATCH_SIZE = 3;
 
-// Global rate limit on RapidAPI track-analysis calls. The current plan allows
-// 5 starts per second; we pace request starts at exactly that to use the full
-// quota without ever crossing it (a plain concurrency cap could undershoot or
-// overshoot depending on call latency). Calls beyond the rate simply wait
-// their slot in a 200ms-spaced queue, no 429s.
-const ANALYSIS_RATE_PER_SEC = 5;
+// Global rate limit on RapidAPI track-analysis calls. The plan allows 5 starts
+// per second, but in prod we saw RapidAPI's sliding-second window return 429s
+// when 5 of our calls landed inside a rolling 1s. Pacing at 4/sec (250ms
+// intervals) stays comfortably under the limit and eliminates those spikes.
+const ANALYSIS_RATE_PER_SEC = 4;
 
 const _analysisRateLimiter = (() => {
-  const intervalMs = 1000 / ANALYSIS_RATE_PER_SEC; // 200ms
+  const intervalMs = 1000 / ANALYSIS_RATE_PER_SEC; // 250ms
   let nextSlot = 0;
   return {
     async wait() {
@@ -42,6 +41,19 @@ const _analysisRateLimiter = (() => {
     },
   };
 })();
+
+// Fire-and-forget warmup. Prod HARs showed the first wave of track-analysis
+// calls each taking 20–30s because RapidAPI's path was cold. Firing one call
+// right after the matcher returns (while the user is on the atmosphere screen)
+// warms our Vercel function and RapidAPI ahead of the real batch. Skips the
+// rate limiter so it doesn't push the first real batch back by 250ms.
+export function prewarmAnalysis() {
+  fetch('/api/v4/track-analysis', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'analyze_track', spotify_id: '4uLU6hMCjMI75M1A2tKUQC' }),
+  }).catch(() => {});
+}
 
 // How many playlists we try WITH the atmosphere screen before giving up on
 // screening. After this many fails we fall back to picking from an unscreened

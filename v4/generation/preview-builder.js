@@ -221,20 +221,31 @@ export async function buildGenrePreviews(genres, tab2Rows, screenParams = {}) {
     console.log('v4 preview: screening OFF (no atmosphere selected, or no constrained params)');
   }
 
+  const batchStart = Date.now();
+  console.log(`v4 preview: ${genres.length} genres starting in parallel at t=0`);
   const tasks = genres.map(async (genre) => {
+    const genreStart = Date.now();
     const row = idx.get(normalize(genre));
     if (!row) {
+      console.log(`v4 preview: [${genre}] dropped at ${Date.now() - batchStart}ms (not in Tab 2)`);
       return { genre, preview: null, reason: 'not in Tab 2' };
     }
     if (!row.playlists?.length) {
+      console.log(`v4 preview: [${genre}] dropped at ${Date.now() - batchStart}ms (no playlists)`);
       return { genre, preview: null, reason: 'Tab 2 row has no playlists' };
     }
     const preview = await resolveOneGenre(genre, row, screenParams);
-    if (preview) return { genre, preview };
+    const took = Date.now() - genreStart;
+    if (preview) {
+      console.log(`v4 preview: [${genre}] resolved at batch+${Date.now() - batchStart}ms (took ${took}ms)`);
+      return { genre, preview };
+    }
+    console.log(`v4 preview: [${genre}] FAILED at batch+${Date.now() - batchStart}ms (took ${took}ms)`);
     return { genre, preview: null, reason: `all ${row.playlists.length} Tab 2 playlists exhausted` };
   });
 
   const results = await Promise.all(tasks);
+  console.log(`v4 preview: batch complete at ${Date.now() - batchStart}ms`);
   const previews = results.filter(r => r.preview).map(r => r.preview);
   const dropped  = results.filter(r => !r.preview);
   if (dropped.length) {

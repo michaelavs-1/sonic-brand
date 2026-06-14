@@ -63,12 +63,21 @@ async function onSubmit() {
   btn.disabled = true;
   btn.innerHTML = '<span class="sb-spinner" aria-label="טוען"></span>';
   const t0 = Date.now();
+  const ts = (label) => console.log(`v4 timing [${Date.now() - t0}ms] ${label}`);
   try {
+    // Pre-fetch atmosphere rows and Tab 2 in parallel with the matcher's GPT
+    // call. The matcher takes ~5-10s; these fetches are ~300-500ms each. By
+    // the time the matcher returns, both are ready.
+    const atmospheresPromise = getAtmosphereRows();
+    const tab2Promise        = getTab2Rows();
+
     const rows = await getRows();
+    ts('Tab 1 fetched (matcher about to call GPT)');
     let result = await matchBusinessType(bizDesc, rows);
     if (!result.matched) {
       result = await matchByAtmosphere(bizDesc, rows);
     }
+    ts(`matcher done (matched=${result.matched}${result.matched ? `, bizType="${result.bizType}"` : ''})`);
     console.log('v4 match', {
       bizName,
       bizDesc,
@@ -84,22 +93,26 @@ async function onSubmit() {
 
     // Atmosphere step: pre-check whatever the matched row's column-D atmospheres
     // happen to overlap with the 17 in the atmosphere sheet.
-    const atmosphereRows = await getAtmosphereRows();
+    const atmosphereRows = await atmospheresPromise;
+    ts('atmosphere rows ready');
     const selectedAtmos  = await runAtmosphereSelection({
       atmosphereRows,
       prechecked: result.row?.atmospheres || [],
     });
+    ts(`atmosphere submit clicked (selected ${selectedAtmos.length})`);
     const screenParams = deriveScreenParams(selectedAtmos, atmosphereRows);
     console.log('v4 selected atmospheres:', selectedAtmos);
     console.log('v4 screenParams:', screenParams);
 
-    const tab2Rows = await getTab2Rows();
+    const tab2Rows = await tab2Promise;
+    ts('Tab 2 ready (preview flow starting)');
     const desiredGenres = await runPreviewFlow({
       genres1: result.genres1,
       genres2: result.genres2,
       tab2Rows,
       screenParams,
     });
+    ts('full flow complete');
     console.log('v4 desired genres:', desiredGenres);
   } catch (err) {
     console.error('v4 error:', err);

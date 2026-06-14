@@ -17,14 +17,12 @@
 //      midpoint, producing a window of width 60 that is biased to reflect where
 //      real tracks naturally cluster on that dimension. Clamp to [0, 100].
 
-// Active screening parameters. `danceability`, `speechiness`, and
-// `instrumentalness` are intentionally OMITTED — testing showed they reject
-// most real music because their atmosphere-sheet ranges and the actual
-// distributions of real tracks don't line up (instrumentalness ≈ 0 for vocal
-// music, speechiness ≈ 0 for everything but rap, and danceability naturally
-// peaks well below 70 for rock-leaning genres). Add them back here when those
-// sheet entries are tuned to real-track reference values.
-export const PARAMS = ['energy', 'happiness', 'popularity'];
+// Active screening parameters. `happiness`, `speechiness`, and
+// `instrumentalness` are intentionally OMITTED — the atmosphere sheet uses
+// `----` (wildcard) for happiness on every atmosphere right now, and the
+// other two have the same calibration-against-reality problem we hit before.
+// Add them back when the sheet entries are tuned against real-track values.
+export const PARAMS = ['energy', 'danceability', 'popularity'];
 
 // Per-parameter expansion rules. Width is 60; the BIAS reflects where real
 // tracks naturally live on that dimension:
@@ -32,9 +30,9 @@ export const PARAMS = ['energy', 'happiness', 'popularity'];
 //   'low'       – midpoint −40 / +20  (real tracks skew low; loosen the lower bound)
 //   'high'      – midpoint −20 / +40  (reserved; nothing currently skews high)
 const PARAM_RULES = {
-  energy:     'symmetric',
-  happiness:  'symmetric',
-  popularity: 'low',
+  energy:       'symmetric',
+  danceability: 'symmetric',
+  popularity:   'low',
 };
 
 function windowFor(skew, avg) {

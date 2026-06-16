@@ -221,6 +221,63 @@ async function resolveOneGenre(genre, tab2Row, screenParams) {
   return null;
 }
 
+// Cache-backed preview entry point. One POST to /api/v4/cached-preview returns
+// both column-G and column-H batches in one round trip. Each item is shaped
+// to match what the existing UI consumes (genre + trackId; name/artists/album
+// are empty since preview.js only uses trackId for the Spotify embed URI).
+//
+// Returns: { G: [previews...], H: [previews...] }
+//   - Each preview: { genre, trackId, name, artists, album, matched_screen, position }
+//   - Cards where matched_screen=false were picked despite no atmosphere match
+//     (the SQL relax fallback); the server logs that case.
+//   - Genres with zero tracks at all are absent from the array (batch may be <4).
+//   - Uncached biz type → { G: [], H: [] }.
+export async function buildCachedPreviews(bizType, screenParams = {}) {
+  if (!bizType) {
+    console.warn('v4 preview: buildCachedPreviews called without bizType');
+    return { G: [], H: [] };
+  }
+
+  const t0 = Date.now();
+  console.log(`v4 preview: cached-preview request for "${bizType}"`);
+
+  const r = await fetch('/api/v4/cached-preview', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ business_type: bizType, screen_params: screenParams }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    console.error(`v4 preview: cached-preview ${r.status}: ${data?.error || r.statusText}`);
+    return { G: [], H: [] };
+  }
+
+  const toCard = (row) => ({
+    genre:          row.genre,
+    trackId:        row.trackId,
+    name:           '',
+    artists:        [],
+    album:          '',
+    matched_screen: row.matched_screen,
+    position:       row.position,
+  });
+  const G = (data.G || []).map(toCard);
+  const H = (data.H || []).map(toCard);
+
+  const tookMs = Date.now() - t0;
+  const relaxedCount = [...G, ...H].filter((c) => c.matched_screen === false).length;
+  console.log(
+    `v4 preview: cached-preview returned G=${G.length} H=${H.length}` +
+    (relaxedCount ? ` (${relaxedCount} card${relaxedCount === 1 ? '' : 's'} via relax fallback)` : '') +
+    ` in ${tookMs}ms`
+  );
+  return { G, H };
+}
+
+// LEGACY: live-API preview path. No longer called by app.js after the
+// cached-preview integration, but kept in the file (along with its helpers
+// fetchOnePlaylistPage / screenTracks / analyzeTrack / the rate limiter /
+// prewarmAnalysis) as a reference in case live mode is ever revived.
 export async function buildGenrePreviews(genres, tab2Rows, screenParams = {}) {
   if (!Array.isArray(genres) || !genres.length) return [];
   const idx = buildGenreIndex(tab2Rows);

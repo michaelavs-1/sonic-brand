@@ -3,17 +3,15 @@
 // → derive screenParams → preview/selection flow → console.log the
 // desired-genres array.
 
-import { matchBusinessType }       from '/v4/generation/matcher.js?v=14062026a';
-import { matchByAtmosphere }       from '/v4/generation/fallback.js?v=14062026a';
-import { runAtmosphereSelection }  from '/v4/atmosphere.js?v=14062026a';
-import { deriveScreenParams }      from '/v4/generation/atmosphere-params.js?v=14062026a';
-import { prewarmAnalysis }         from '/v4/generation/preview-builder.js?v=14062026a';
-import { runPreviewFlow }          from '/v4/preview.js?v=14062026a';
+import { matchBusinessType }       from '/v4/generation/matcher.js?v=16062026a';
+import { matchByAtmosphere }       from '/v4/generation/fallback.js?v=16062026a';
+import { runAtmosphereSelection }  from '/v4/atmosphere.js?v=16062026a';
+import { deriveScreenParams }      from '/v4/generation/atmosphere-params.js?v=16062026a';
+import { runPreviewFlow }          from '/v4/preview.js?v=16062026a';
 
 const $ = (id) => document.getElementById(id);
 
 let cachedRows  = null;
-let cachedTab2  = null;
 let cachedAtmos = null;
 
 // Pass ?fresh=1 on the first hit per page load so every hard-refresh of /v4
@@ -25,15 +23,6 @@ async function getRows() {
   if (!r.ok) throw new Error(`databox ${r.status}: ${r.statusText}`);
   const { rows } = await r.json();
   cachedRows = rows;
-  return rows;
-}
-
-async function getTab2Rows() {
-  if (cachedTab2) return cachedTab2;
-  const r = await fetch('/api/v4/databox-genres?fresh=1');
-  if (!r.ok) throw new Error(`databox-genres ${r.status}: ${r.statusText}`);
-  const { rows } = await r.json();
-  cachedTab2 = rows;
   return rows;
 }
 
@@ -66,11 +55,11 @@ async function onSubmit() {
   const t0 = Date.now();
   const ts = (label) => console.log(`v4 timing [${Date.now() - t0}ms] ${label}`);
   try {
-    // Pre-fetch atmosphere rows and Tab 2 in parallel with the matcher's GPT
-    // call. The matcher takes ~5-10s; these fetches are ~300-500ms each. By
-    // the time the matcher returns, both are ready.
+    // Pre-fetch atmosphere rows in parallel with the matcher's GPT call. The
+    // matcher takes ~5-10s; the fetch is ~300-500ms. By the time the matcher
+    // returns, atmosphere rows are ready. (Tab 2 is no longer needed at the
+    // frontend — the cached-preview endpoint reads it server-side.)
     const atmospheresPromise = getAtmosphereRows();
-    const tab2Promise        = getTab2Rows();
 
     const rows = await getRows();
     ts('Tab 1 fetched (matcher about to call GPT)');
@@ -92,10 +81,6 @@ async function onSubmit() {
       return;
     }
 
-    // Warm RapidAPI / our Vercel function while the user picks atmospheres,
-    // so the first batch doesn't pay 20–30s cold-start latency per call.
-    prewarmAnalysis();
-
     // Atmosphere step: pre-check whatever the matched row's column-D atmospheres
     // happen to overlap with the 17 in the atmosphere sheet.
     const atmosphereRows = await atmospheresPromise;
@@ -109,16 +94,14 @@ async function onSubmit() {
     console.log('v4 selected atmospheres:', selectedAtmos);
     console.log('v4 screenParams:', screenParams);
 
-    const tab2Rows = await tab2Promise;
-    ts('Tab 2 ready (preview flow starting)');
+    ts('preview flow starting');
     const desiredGenres = await runPreviewFlow({
-      genres1: result.genres1,
-      genres2: result.genres2,
-      tab2Rows,
+      bizType: result.bizType,
       screenParams,
     });
     ts('full flow complete');
     console.log('v4 desired genres:', desiredGenres);
+    console.log('v4 screen params: ', screenParams);
   } catch (err) {
     console.error('v4 error:', err);
   } finally {

@@ -7,7 +7,7 @@
 // The IFrame API gives us a controller per embed; we use it to auto-pause the
 // other embeds when one starts playing.
 
-import { buildGenrePreviews } from '/v4/generation/preview-builder.js?v=14062026a';
+import { buildCachedPreviews } from '/v4/generation/preview-builder.js?v=16062026a';
 
 const HEADING = 'בחרו את השירים שאהבתם';
 
@@ -121,31 +121,28 @@ async function renderBatch(card, previews, submitLabel) {
   });
 }
 
-export async function runPreviewFlow({ genres1, genres2, tab2Rows, screenParams = {} }) {
+export async function runPreviewFlow({ bizType, screenParams = {} }) {
   const card = document.querySelector('.screen-card');
   if (!card) throw new Error('preview: .screen-card not found');
 
   showLoading(card);
 
-  // Build genres1 first. Once it's done, kick off genres2 in the background so
-  // it runs while the user listens / picks on screen 2. This avoids doubling
-  // RapidAPI load during the initial wait and matches the user's mental model:
-  // "get the first 4 to the screen ASAP, screen the next 4 while they listen."
-  const previews1 = await buildGenrePreviews(genres1 || [], tab2Rows, screenParams);
-  const p2 = buildGenrePreviews(genres2 || [], tab2Rows, screenParams);
+  // One cached-preview round trip returns BOTH column-G (screen 2) and
+  // column-H (screen 3) batches. No need to overlap network with the user's
+  // listening time anymore — the DB returns both batches in <1s.
+  const { G: previews1, H: previews2 } = await buildCachedPreviews(bizType, screenParams);
 
   let selected1 = [];
   if (!previews1.length) {
-    console.warn('v4 preview: no resolvable previews for genres1 — skipping screen 2');
+    console.warn('v4 preview: no cached previews for column G — skipping screen 2');
   } else {
     selected1 = await renderBatch(card, previews1, 'המשך ←');
   }
 
   showLoading(card);
-  const previews2 = await p2;
   let selected2 = [];
   if (!previews2.length) {
-    console.warn('v4 preview: no resolvable previews for genres2 — skipping screen 3');
+    console.warn('v4 preview: no cached previews for column H — skipping screen 3');
   } else {
     selected2 = await renderBatch(card, previews2, 'סיים ←');
   }

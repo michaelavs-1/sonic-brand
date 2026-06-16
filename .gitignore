@@ -1,3 +1,8 @@
 .vercel
 .env
 .env*.local
+
+# v4 precompute runtime state — local-only, not for version control.
+# (Scripts and committable artifacts live in v4/precompute/ next to this dir.)
+v4/precompute/state/
+.unique-track-ids.json

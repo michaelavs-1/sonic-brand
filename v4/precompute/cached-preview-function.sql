@@ -26,9 +26,19 @@ AS $$
             bg.column_letter,
             bg.position_in_column,
             ta.spotify_id,
-            (ta.energy       BETWEEN p_energy_lo AND p_energy_hi
-             AND ta.danceability BETWEEN p_dance_lo  AND p_dance_hi
-             AND ta.popularity   BETWEEN p_pop_lo    AND p_pop_hi) AS matched_screen
+            -- ~10% of ok rows have NULL energy/danceability/popularity (RapidAPI
+            -- didn't return those fields). Without COALESCE, BETWEEN over a NULL
+            -- column yields NULL, propagating through AND and producing
+            -- matched_screen=NULL. PostgreSQL's default ORDER BY DESC ranks
+            -- NULL above TRUE, so NULL-fielded tracks would be picked over
+            -- actually-matched ones. COALESCE clamps NULL to FALSE: "can't
+            -- verify this passes, treat as fallback material."
+            COALESCE(
+                (ta.energy       BETWEEN p_energy_lo AND p_energy_hi
+                 AND ta.danceability BETWEEN p_dance_lo  AND p_dance_hi
+                 AND ta.popularity   BETWEEN p_pop_lo    AND p_pop_hi),
+                FALSE
+            ) AS matched_screen
         FROM biztype_genres bg
         JOIN playlist_genres pg ON pg.genre       = bg.genre
         JOIN playlist_tracks pt ON pt.playlist_id = pg.playlist_id

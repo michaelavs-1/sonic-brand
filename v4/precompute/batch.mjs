@@ -218,6 +218,23 @@ async function callRapidApiOnce(spotifyId, apiKey) {
     }
     const data = await r.json().catch(() => null);
     if (!data) return { kind: 'server_error', status: 200, body: 'invalid JSON' };
+
+    // RapidAPI sometimes returns HTTP 200 with an explicit error payload like
+    // `{"error": "Failed to pull track data"}`. Treat as a server error so the
+    // retry loop gets a chance — these are often transient.
+    if (data.error) {
+        return { kind: 'server_error', status: 200, body: `error payload: ${String(data.error).slice(0, 200)}` };
+    }
+    // RapidAPI also sometimes returns a stub: `{"id": "<base64>"}` or
+    // `{"id": "...", "loudness": ""}` — the track exists but couldn't be
+    // analyzed. None of the atmospheric fields are present. Treat as not_found
+    // (terminal, no retry, no quota waste on repeated attempts).
+    const hasAtmosphericFields =
+        data.energy != null || data.danceability != null || data.popularity != null;
+    if (!hasAtmosphericFields) {
+        return { kind: 'not_found' };
+    }
+
     return { kind: 'ok', data };
 }
 
@@ -312,6 +329,13 @@ async function main() {
         fail(`--concurrency=${concurrency} exceeds MAX_CONCURRENCY=${MAX_CONCURRENCY}. Upstream RapidAPI degrades sharply under high concurrency; edit the source if you really mean this.`);
     }
 
+    // --- Retry-errors flag ---
+    // Default behavior: any row in track_analyses (ok/not_found/error) is treated
+    // as "done" and skipped. With --retry-errors, status='error' rows are NOT
+    // treated as done; the script re-attempts them. Useful after a batch where
+    // some calls returned transient error payloads (e.g. RapidAPI was unhealthy).
+    const retryErrors = !!args['retry-errors'];
+
     // --- Guard 4: execution plan must exist and be fresh ---
     if (!fs.existsSync(PLAN_PATH)) {
         fail(`No execution plan at ${PLAN_PATH}. Run tests/.test-precompute-dry-run.mjs first.`);
@@ -329,6 +353,7 @@ async function main() {
     log(`plan-time expected new calls: ${plan.expected_new_calls} (may be stale)`);
     log(`cap: ${cap}`);
     log(`concurrency: ${concurrency} workers (each does serial calls)`);
+    log(`retry-errors: ${retryErrors ? 'YES — status=error rows will be re-attempted' : 'no (default)'}`);
 
     // --- API key ---
     const apiKey = process.env.TRACK_ANALYSIS_RAPIDAPI_KEY;
@@ -337,11 +362,16 @@ async function main() {
     // --- Live cap math: ask Supabase how many IDs are already cached now,
     // then use that to compute actual remaining. Avoids tripping the cap on
     // a stale plan after partial-batch runs. ---
+    // When retryErrors is set we still fetch everything but filter out
+    // status='error' rows from the "already cached" set so they get re-attempted.
     log(`live-checking Supabase for already-cached IDs (for accurate cap math)...`);
-    const preExisting = await pgrSelectIn('track_analyses', 'spotify_id', plan.unique_track_ids, { select: 'spotify_id' });
-    const liveCachedCount = preExisting.length;
+    const preExisting = await pgrSelectIn('track_analyses', 'spotify_id', plan.unique_track_ids, { select: 'spotify_id,status' });
+    const cachedRows = retryErrors
+        ? preExisting.filter((r) => r.status !== 'error')
+        : preExisting;
+    const liveCachedCount = cachedRows.length;
     const actualRemaining = plan.unique_track_ids.length - liveCachedCount;
-    log(`  already cached (live): ${liveCachedCount}`);
+    log(`  already cached (live): ${liveCachedCount}${retryErrors ? ` (excluded ${preExisting.length - cachedRows.length} status=error rows for retry)` : ''}`);
     log(`  actual remaining:      ${actualRemaining}`);
 
     const monthSoFar = readCurrentMonthCount();
@@ -385,16 +415,22 @@ async function main() {
 
     // --- Phase 2: which IDs still need analysis? Reuse the live count we
     // already fetched above for the cap math.
-    const alreadyCachedSet = new Set(preExisting.map((r) => r.spotify_id));
+    const alreadyCachedSet = new Set(cachedRows.map((r) => r.spotify_id));
     log(`  already cached: ${alreadyCachedSet.size}`);
 
     const progress = readProgress();
     const doneSet = new Set(progress.done);
     const erroredSet = new Set(progress.errored.map((x) => x.id));
 
-    const toAnalyze = plan.unique_track_ids.filter((id) =>
-        !alreadyCachedSet.has(id) && !doneSet.has(id) && !erroredSet.has(id)
-    );
+    // When retrying errors, the progress.json `done` set still contains the
+    // IDs we want to re-attempt (they were successfully upserted as 'error',
+    // which counted as done). Bypass the progress checks and let the live
+    // alreadyCachedSet (which excludes status='error' in retry mode) decide.
+    const toAnalyze = retryErrors
+        ? plan.unique_track_ids.filter((id) => !alreadyCachedSet.has(id))
+        : plan.unique_track_ids.filter((id) =>
+              !alreadyCachedSet.has(id) && !doneSet.has(id) && !erroredSet.has(id)
+          );
     log(`  to analyze this run: ${toAnalyze.length}`);
 
     if (toAnalyze.length === 0) {

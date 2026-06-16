@@ -3,11 +3,13 @@
 // → derive screenParams → preview/selection flow → console.log the
 // desired-genres array.
 
-import { matchBusinessType }       from '/v4/generation/matcher.js?v=16062026a';
-import { matchByAtmosphere }       from '/v4/generation/fallback.js?v=16062026a';
-import { runAtmosphereSelection }  from '/v4/atmosphere.js?v=16062026a';
-import { deriveScreenParams }      from '/v4/generation/atmosphere-params.js?v=16062026a';
-import { runPreviewFlow }          from '/v4/preview.js?v=16062026a';
+import { matchBusinessType }       from '/v4/generation/matcher.js?v=16062026b';
+import { matchByAtmosphere }       from '/v4/generation/fallback.js?v=16062026b';
+import { runAtmosphereSelection }  from '/v4/atmosphere.js?v=16062026b';
+import { deriveScreenParams }      from '/v4/generation/atmosphere-params.js?v=16062026b';
+import { runPreviewFlow }          from '/v4/preview.js?v=16062026b';
+import { buildFinalPlaylist }      from '/v4/generation/playlist-builder.js?v=16062026b';
+import { showBuildingPlaylist, showPlaylistResult } from '/v4/result.js?v=16062026b';
 
 const $ = (id) => document.getElementById(id);
 
@@ -95,13 +97,29 @@ async function onSubmit() {
     console.log('v4 screenParams:', screenParams);
 
     ts('preview flow starting');
-    const desiredGenres = await runPreviewFlow({
+    const { strictGenres, relaxedGenres } = await runPreviewFlow({
       bizType: result.bizType,
       screenParams,
     });
-    ts('full flow complete');
-    console.log('v4 desired genres:', desiredGenres);
+    ts('preview flow complete');
+    console.log('v4 strict genres: ', strictGenres);
+    console.log('v4 relaxed genres:', relaxedGenres);
     console.log('v4 screen params: ', screenParams);
+
+    showBuildingPlaylist();
+    ts('playlist build starting');
+    const built = await buildFinalPlaylist({
+      bizType:       result.bizType,
+      bizName,
+      strictGenres,
+      relaxedGenres,
+      screenParams,
+    });
+    ts(`playlist build done (skipped=${!!built.skipped}, tracks=${built.trackCount || 0})`);
+    console.log('v4 built playlist:', built);
+
+    await showPlaylistResult(built);
+    ts('full flow complete');
   } catch (err) {
     console.error('v4 error:', err);
   } finally {

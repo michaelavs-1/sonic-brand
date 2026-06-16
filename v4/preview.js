@@ -48,13 +48,6 @@ function showLoading(card) {
   );
 }
 
-function showEmpty(card, message) {
-  card.replaceChildren(
-    el('h1', {}, HEADING),
-    el('p', { class: 'preview-empty' }, message),
-  );
-}
-
 // Renders one batch of previews, wires the IFrame API controllers so only one
 // embed plays at a time, and returns a Promise that resolves with the selected
 // genres on submit. Tears down the controllers before resolving.
@@ -64,8 +57,16 @@ async function renderBatch(card, previews, submitLabel) {
   for (const p of previews) {
     const mount = el('div', { class: 'preview-spotify-mount' });
     const checkbox = el('input', { type: 'checkbox', class: 'preview-checkbox' });
+    // matched_screen=false marks cards that were picked despite no track from
+    // that genre passing the atmosphere filter. If the user checks one of these
+    // we treat that genre as "relaxed" in the final playlist (no screen).
     const cardEl = el('div',
-      { class: 'preview-card', 'data-genre': p.genre, 'data-uri': `spotify:track:${p.trackId}` },
+      {
+        class:                 'preview-card',
+        'data-genre':          p.genre,
+        'data-uri':            `spotify:track:${p.trackId}`,
+        'data-matched-screen': p.matched_screen === false ? 'false' : 'true',
+      },
       el('label', { class: 'preview-check-wrap' }, checkbox),
       el('div', { class: 'preview-embed' }, mount),
     );
@@ -111,7 +112,12 @@ async function renderBatch(card, previews, submitLabel) {
       const selected = [];
       list.querySelectorAll('.preview-card').forEach((c) => {
         const cb = c.querySelector('.preview-checkbox');
-        if (cb && cb.checked) selected.push(c.dataset.genre);
+        if (cb && cb.checked) {
+          selected.push({
+            genre:          c.dataset.genre,
+            matched_screen: c.dataset.matchedScreen !== 'false',
+          });
+        }
       });
       for (const c of controllers) {
         try { c.destroy(); } catch { }
@@ -147,16 +153,24 @@ export async function runPreviewFlow({ bizType, screenParams = {} }) {
     selected2 = await renderBatch(card, previews2, 'סיים ←');
   }
 
-  const desired = [...new Set([...selected1, ...selected2])];
-
-  if (!previews1.length && !previews2.length) {
-    showEmpty(card, 'אין דוגמיות זמינות — רענן ונסה שוב');
-  } else {
-    card.replaceChildren(
-      el('h1', {}, HEADING),
-      el('p', { class: 'preview-empty' }, 'תודה! בדקו את ה-Console לתוצאה.'),
-    );
+  // Group selections by genre. A genre is STRICT if any of its picked cards
+  // passed the atmosphere screen. It's RELAXED only when every picked card
+  // for it was an unscreened pick (matched_screen=false) — i.e. the user
+  // clearly wants that genre even though no track from it fit the filter.
+  const matchedByGenre = new Map();
+  for (const sel of [...selected1, ...selected2]) {
+    if (!sel?.genre) continue;
+    const prev = matchedByGenre.get(sel.genre);
+    matchedByGenre.set(sel.genre, prev === true ? true : sel.matched_screen);
+  }
+  const strictGenres  = [];
+  const relaxedGenres = [];
+  for (const [genre, matched] of matchedByGenre) {
+    (matched ? strictGenres : relaxedGenres).push(genre);
   }
 
-  return desired;
+  // The caller immediately replaces .screen-card with the build/result UI,
+  // so there's nothing to render here.
+
+  return { strictGenres, relaxedGenres };
 }

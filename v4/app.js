@@ -3,13 +3,13 @@
 // → derive screenParams → preview/selection flow → console.log the
 // desired-genres array.
 
-import { matchBusinessType }       from '/v4/generation/matcher.js?v=16062026b';
-import { matchByAtmosphere }       from '/v4/generation/fallback.js?v=16062026b';
-import { runAtmosphereSelection }  from '/v4/atmosphere.js?v=16062026b';
-import { deriveScreenParams }      from '/v4/generation/atmosphere-params.js?v=16062026b';
-import { runPreviewFlow }          from '/v4/preview.js?v=16062026b';
-import { buildFinalPlaylist }      from '/v4/generation/playlist-builder.js?v=16062026b';
-import { showBuildingPlaylist, showPlaylistResult } from '/v4/result.js?v=16062026b';
+import { matchBusinessType }       from '/v4/generation/matcher.js?v=16062026f';
+import { matchByAtmosphere }       from '/v4/generation/fallback.js?v=16062026f';
+import { runAtmosphereSelection }  from '/v4/atmosphere.js?v=16062026f';
+import { deriveScreenParams }      from '/v4/generation/atmosphere-params.js?v=16062026f';
+import { runPreviewFlow }          from '/v4/preview.js?v=16062026f';
+import { buildFinalPlaylist }      from '/v4/generation/playlist-builder.js?v=16062026f';
+import { showBuildingPlaylist, showPlaylistResult } from '/v4/result.js?v=16062026f';
 
 const $ = (id) => document.getElementById(id);
 
@@ -106,19 +106,30 @@ async function onSubmit() {
     console.log('v4 relaxed genres:', relaxedGenres);
     console.log('v4 screen params: ', screenParams);
 
-    showBuildingPlaylist();
-    ts('playlist build starting');
-    const built = await buildFinalPlaylist({
+    const buildOnce = () => buildFinalPlaylist({
       bizType:       result.bizType,
       bizName,
       strictGenres,
       relaxedGenres,
       screenParams,
     });
+
+    // Recursive regenerate: each run wires itself back in as the next
+    // regenerate handler, so "צרו שוב" works any number of times.
+    const regenerate = async () => {
+      showBuildingPlaylist();
+      const fresh = await buildOnce();
+      console.log('v4 regenerated playlist:', fresh);
+      await showPlaylistResult(fresh, regenerate);
+    };
+
+    showBuildingPlaylist();
+    ts('playlist build starting');
+    const built = await buildOnce();
     ts(`playlist build done (skipped=${!!built.skipped}, tracks=${built.trackCount || 0})`);
     console.log('v4 built playlist:', built);
 
-    await showPlaylistResult(built);
+    await showPlaylistResult(built, regenerate);
     ts('full flow complete');
   } catch (err) {
     console.error('v4 error:', err);

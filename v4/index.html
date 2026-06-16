@@ -278,6 +278,66 @@
         transform: rotate(360deg);
       }
     }
+
+    .btn-secondary {
+      background: var(--bg-2);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+    }
+
+    .btn-secondary:hover {
+      background: var(--card);
+    }
+
+    .pl-accordion {
+      border: 1px solid var(--border-2);
+      border-radius: var(--r-md);
+      overflow: hidden;
+      margin-top: 18px;
+    }
+
+    .pl-accordion-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 18px;
+      background: var(--bg-2);
+      user-select: none;
+    }
+
+    .pl-accordion-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pl-accordion-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pl-accordion-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .pl-accordion-actions {
+      padding: 12px 18px 14px;
+      background: var(--bg-2);
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pl-accordion-actions .btn {
+      flex: 1 1 auto;
+      padding: 12px 18px;
+    }
   </style>
 </head>
 
@@ -304,7 +364,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v4/app.js?v=16062026b"></script>
+  <script type="module" src="/v4/app.js?v=16062026f"></script>
 </body>
 
 </html>

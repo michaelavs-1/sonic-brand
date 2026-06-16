@@ -1,7 +1,12 @@
 // v4 final result screen.
-// Replaces .screen-card with a Spotify IFrame embed of the freshly-built
-// playlist + a primary "open in Spotify" button. Uses the same IFrame API
-// pattern as v4/preview.js (script is already loaded by v4/index.html).
+// Replaces .screen-card with an accordion-style header (playlist name +
+// "40 שירים · Spotify" meta line) and an action footer (צרו שוב / שמור ב-Spotify).
+//
+// We deliberately do NOT render the Spotify embed iframe: the playlist is
+// private+collaborative, and in production browsers block third-party cookies
+// on the embed iframe, so Spotify shows it as anonymous → empty track list.
+// The "שמור ב-Spotify" button opens open.spotify.com as a first-party
+// navigation, where the user's cookies are visible and the playlist works.
 //
 // On build failure or skip (no tracks matched), shows a friendly message.
 
@@ -17,19 +22,6 @@ function el(tag, attrs = {}, ...children) {
     node.append(c instanceof Node ? c : document.createTextNode(String(c)));
   }
   return node;
-}
-
-let _apiPromise = null;
-function getSpotifyIframeApi() {
-  if (_apiPromise) return _apiPromise;
-  _apiPromise = new Promise((resolve) => {
-    if (window.__sbIframeApi) { resolve(window.__sbIframeApi); return; }
-    window.onSpotifyIframeApiReady = (IFrameAPI) => {
-      window.__sbIframeApi = IFrameAPI;
-      resolve(IFrameAPI);
-    };
-  });
-  return _apiPromise;
 }
 
 function getCard() {
@@ -49,7 +41,9 @@ export function showBuildingPlaylist() {
   );
 }
 
-export async function showPlaylistResult(result) {
+// Renders the result UI. `onRegenerate` is an async function that triggers
+// another buildFinalPlaylist run with the same inputs — wired up by app.js.
+export async function showPlaylistResult(result, onRegenerate) {
   const card = getCard();
 
   if (result?.skipped || !result?.url) {
@@ -63,33 +57,53 @@ export async function showPlaylistResult(result) {
     return;
   }
 
-  const trackLine = result.trackCount === result.requested
-    ? `${result.trackCount} שירים`
-    : `${result.trackCount} שירים (מתוך ${result.requested} מבוקשים)`;
+  const playlistName = result.name || 'הפלייליסט שלכם';
+  const metaLine     = `${result.trackCount} שירים · Spotify`;
 
-  const mount = el('div', { class: 'preview-spotify-mount', style: 'min-height:380px' });
-  const openBtn = el('a',
+  const saveBtn = el('a',
     {
-      class:  'btn btn-primary btn-block',
+      class:  'btn btn-primary',
       href:   result.url,
       target: '_blank',
       rel:    'noopener',
-      style:  'display:block;text-align:center;text-decoration:none;margin-top:16px',
+      style:  'text-decoration:none',
     },
-    'פתחו ב-Spotify ←',
+    'פתח ב-Spotify ▶',
   );
+
+  const regenBtn = el('button',
+    { class: 'btn btn-secondary', type: 'button' },
+    '🔄 צרו שוב',
+  );
+
+  if (typeof onRegenerate === 'function') {
+    regenBtn.addEventListener('click', async () => {
+      regenBtn.disabled = true;
+      saveBtn.style.pointerEvents = 'none';
+      saveBtn.style.opacity = '0.5';
+      try {
+        await onRegenerate();
+      } catch (err) {
+        console.error('v4 regenerate failed:', err);
+        regenBtn.disabled = false;
+        saveBtn.style.pointerEvents = '';
+        saveBtn.style.opacity = '';
+      }
+    });
+  } else {
+    regenBtn.disabled = true;
+  }
 
   card.replaceChildren(
     el('h1', {}, 'הפלייליסט מוכן'),
-    el('p', { class: 'subtitle', style: 'text-align:center' }, trackLine),
-    el('div', { class: 'preview-embed', style: 'margin-top:18px' }, mount),
-    openBtn,
-  );
-
-  const api = await getSpotifyIframeApi();
-  api.createController(
-    mount,
-    { uri: `spotify:playlist:${result.id}`, width: '100%', height: 380 },
-    () => { /* nothing to wire — single embed */ },
+    el('div', { class: 'pl-accordion' },
+      el('div', { class: 'pl-accordion-head' },
+        el('div', { class: 'pl-accordion-info' },
+          el('div', { class: 'pl-accordion-title' }, playlistName),
+          el('div', { class: 'pl-accordion-meta' }, metaLine),
+        ),
+      ),
+      el('div', { class: 'pl-accordion-actions' }, saveBtn, regenBtn),
+    ),
   );
 }

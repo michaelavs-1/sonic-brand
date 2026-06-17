@@ -338,14 +338,76 @@
       flex: 1 1 auto;
       padding: 12px 18px;
     }
+    /* ===== landing brand header (UI only) ===== */
+    .brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .brand-eq {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 30px;
+    }
+
+    .brand-eq span {
+      width: 5px;
+      border-radius: 3px;
+      background: var(--accent);
+      transform-origin: bottom;
+      animation: brand-bounce 1s ease-in-out infinite;
+    }
+
+    .brand-eq span:nth-child(1) { height: 42%; animation-delay: 0s;  }
+    .brand-eq span:nth-child(2) { height: 80%; animation-delay: .2s; }
+    .brand-eq span:nth-child(3) { height: 55%; animation-delay: .4s; }
+    .brand-eq span:nth-child(4) { height: 96%; animation-delay: .1s; }
+    .brand-eq span:nth-child(5) { height: 66%; animation-delay: .3s; }
+
+    @keyframes brand-bounce {
+      0%, 100% { transform: scaleY(.35); }
+      50%      { transform: scaleY(1); }
+    }
+
+    .subtitle { text-align: center; }
+
+    /* ===== responsive: small screens (UI only) ===== */
+    @media (max-width: 480px) {
+      body { padding: 18px 12px; }
+      .screen-card { padding: 24px 18px; border-radius: var(--r-md); }
+      h1 { font-size: 22px; }
+      .input-textarea { min-height: 150px; }
+    }
+
+    /* ===== accessibility: keyboard focus + reduced motion (UI only) ===== */
+    .input-text:focus-visible,
+    .input-textarea:focus-visible,
+    .btn:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .brand-eq span { animation: none; }
+    }
+
   </style>
 </head>
 
 <body>
   <div class="app">
     <div class="screen-card">
-      <h1>Rubin SonicBrands — v4</h1>
-      <p class="subtitle">בדיקת התאמת סוג עסק</p>
+      <div class="brand">
+        <div class="brand-eq" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <h1>SonicBrands</h1>
+      </div>
+      <p class="subtitle">פלייליסט מותאם לאישיות העסק שלכם, תוך דקה</p>
 
       <div class="input-wrap">
         <label class="input-label" for="bizName">שם העסק</label>

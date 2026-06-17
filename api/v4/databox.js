@@ -12,7 +12,7 @@ let cache = null;
 let cacheTime = 0;
 const CACHE_MS = 30 * 60 * 1000;
 
-const SHEET_ID = '1b-0rsKBvTSqE0ju7EfGRnpOQiVESZR8hsJBsuITns_E';
+const SHEET_ID = '1AkMEsptNZFavFDpjbWnbAomhND9Ub004MFD7cICeXr8';
 const CSV_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
 
 const START_ROW = 8;     // 1-based spreadsheet row

@@ -54,7 +54,7 @@ if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
 const { pgrSelectIn, pgrUpsert } = await import('../../api/v4/supabase-client.js');
 
 // ---------- constants ----------
-const HARDCODED_CEILING   = 30000;    // absolute max for --max-rapidapi-calls
+const HARDCODED_CEILING   = 50000;    // absolute max for --max-rapidapi-calls (== PRO tier monthly quota)
 const FRESHNESS_HOURS     = 24;       // execution plan must be no older than this
 const DEFAULT_CONCURRENCY = 3;        // overridable via --concurrency=N
 const MAX_CONCURRENCY     = 8;        // refuse anything higher (upstream degrades fast)

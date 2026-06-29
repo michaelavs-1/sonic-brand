@@ -6,18 +6,20 @@ Everything related to populating and maintaining the Supabase-backed track-analy
 
 ```
 v4/precompute/
-├── dry-run.mjs              # discovery + counting; writes execution plan
-├── batch.mjs                # the RapidAPI batch with iron-clad cost cap
-├── snapshot-databox.mjs     # one-shot Data Box snapshot (for change tracking)
-├── schema.sql               # Supabase DDL — already applied; here for reference
-├── README.md                # you are here
-├── databox-snapshots/       # committed JSON snapshots (diffable in git)
+├── dry-run.mjs                  # discovery + counting; writes execution plan
+├── batch.mjs                    # the RapidAPI batch with iron-clad cost cap
+├── populate-biztype-genres.mjs  # cheap, no-API refresh of biztype_genres only
+├── deepen-genres.mjs            # round-robin: pull the 3rd, 4th… playlist per genre
+├── snapshot-databox.mjs         # one-shot Data Box snapshot (for change tracking)
+├── schema.sql                   # Supabase DDL — already applied; here for reference
+├── README.md                    # you are here
+├── databox-snapshots/           # committed JSON snapshots (diffable in git)
 │   └── snapshot-*.json
-└── state/                   # gitignored runtime artifacts
-    ├── dry-run.json         # execution plan output by dry-run.mjs
-    ├── progress.json        # per-id done/errored sets (crash-safe, resumable)
-    ├── batch.log            # append-only per-call log
-    └── rapidapi-call-count.json  # month-keyed call counter for the cost cap
+└── state/                       # gitignored runtime artifacts
+    ├── dry-run.json             # execution plan output by dry-run.mjs
+    ├── progress.json            # per-id done/errored sets (crash-safe, resumable)
+    ├── batch.log                # append-only per-call log
+    └── rapidapi-call-count.json # month-keyed call counter for the cost cap
 ```
 
 The shared Supabase REST wrapper lives in `api/v4/supabase-client.js` (one level up from this folder) — it's deliberately outside `precompute/` because the runtime proxies will use it too.
@@ -48,9 +50,9 @@ Writes a timestamped JSON to `databox-snapshots/`. Commit it. Later, `git diff d
 node v4/precompute/dry-run.mjs
 ```
 
-Walks the locked sample (`בית קפה` + `פיצריה`, H-populated rows only, G ∪ H tokens after `/`-and-`,` splitting, first 2 playlists per Tab-2 row). Live-checks Supabase to see how many IDs are already cached. Writes `state/dry-run.json` (the execution plan the batch consumes). NO RapidAPI calls, NO database writes.
+Walks EVERY biz type in Tab 1 that has column H populated (G ∪ H tokens after `/`-and-`,` splitting, first 2 playlists per Tab-2 row). Live-checks Supabase to see how many IDs are already cached. Writes `state/dry-run.json` (the execution plan the batch consumes). NO RapidAPI calls, NO database writes.
 
-Expected for current sheet: 16 wanted tokens, 15 matching Tab-2 rows, 30 unique playlists, ~9,966 unique track IDs.
+To add coverage for a new biz type: add its row(s) to Tab 1 (with column H populated), then re-run dry-run → batch. The script picks it up automatically.
 
 ### 3. Batch
 
@@ -59,7 +61,7 @@ node v4/precompute/batch.mjs --max-rapidapi-calls=15000 --concurrency=3
 ```
 
 Iron-clad cost cap — script refuses to start unless:
-- `--max-rapidapi-calls=N` is provided, N ≤ HARDCODED_CEILING (30,000)
+- `--max-rapidapi-calls=N` is provided, N ≤ HARDCODED_CEILING (50,000)
 - `state/dry-run.json` exists and is ≤ 24h old
 - Live `monthCounter + actualRemaining ≤ N` (uses live Supabase count, not the plan's possibly-stale number)
 
@@ -69,7 +71,7 @@ Resumable: re-running picks up where it left off via the live cache check + `sta
 
 ## Cost discipline
 
-PRO tier = 50,000 RapidAPI calls / month. The trial sample is ~10,000 calls. Sensible caps:
+PRO tier = 50,000 RapidAPI calls / month. Run `dry-run.mjs` first and read its `Expected new RapidAPI` figure before picking a cap. Sensible defaults:
 - `--max-rapidapi-calls=15000` → 30% of monthly quota, comfortable retry buffer.
 - Going above 20,000 should require a deliberate reason — that's >40% of the monthly budget.
 
@@ -91,3 +93,12 @@ Deleting a playlist from the cache: `DELETE FROM playlist_tracks WHERE playlist_
 ## Genre delimiter rule
 
 Every genre cell — both Tab 1's `genres1`/`genres2` and Tab 2's `genre` field — may contain multiple genres separated by `/` or `,` with any whitespace pattern. Both `dry-run.mjs` and the runtime proxies must split on `/\s*[\/,]\s*/` and dedupe case-insensitively. Tab 2's `"Heavy Rock/Metal"` therefore covers two tokens (`heavy rock` and `metal`) — its playlists are reused for either token.
+
+## Adding a new biz type
+
+1. Add row(s) to Tab 1 in the Data Box (column H must be populated).
+2. Make sure the genre tokens it references have rows in Tab 2 with at least the first 2 playlists filled in. Any genre cell missing from Tab 2 will be reported as "Uncovered tokens" in the dry-run output.
+3. `node v4/precompute/dry-run.mjs` — see the expected RapidAPI cost.
+4. `node v4/precompute/batch.mjs --max-rapidapi-calls=N` — populate.
+
+`populate-biztype-genres.mjs` is a faster shortcut when you only changed Tab 1's column G or H ordering and don't need fresh playlists/analyses — it just rewrites `biztype_genres` to match the sheet.

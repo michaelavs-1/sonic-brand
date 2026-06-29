@@ -1,6 +1,6 @@
 /* /api/v4/databox.js
    Fetches the live Data Box Google Sheet Tab 1 and returns RAW rows for the v4 pipeline.
-   No grouping, no row-dropping. Rows 8–100 in spreadsheet order.
+   No grouping, no row-dropping. All rows from START_ROW to end-of-CSV in spreadsheet order.
    Cached in memory for 30 minutes between warm Vercel invocations.
 
    v4 does not consume Tab 1 playlists — the Example 1…15 columns are intentionally
@@ -16,7 +16,6 @@ const SHEET_ID = '1AkMEsptNZFavFDpjbWnbAomhND9Ub004MFD7cICeXr8';
 const CSV_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv`;
 
 const START_ROW = 8;     // 1-based spreadsheet row
-const END_ROW   = 100;   // 1-based inclusive
 
 function parseCSVLine(line) {
   const result = [];
@@ -72,7 +71,7 @@ export default async function handler(req, res) {
     const lines = text.split('\n');
 
     const rows = [];
-    for (let lineIdx = START_ROW - 1; lineIdx <= END_ROW - 1 && lineIdx < lines.length; lineIdx++) {
+    for (let lineIdx = START_ROW - 1; lineIdx < lines.length; lineIdx++) {
       const cells = parseCSVLine(lines[lineIdx]);
       rows.push(parseRow(cells, lineIdx + 1));
     }

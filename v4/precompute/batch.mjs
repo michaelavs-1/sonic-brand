@@ -60,6 +60,13 @@ const DEFAULT_CONCURRENCY = 3;        // overridable via --concurrency=N
 const MAX_CONCURRENCY     = 8;        // refuse anything higher (upstream degrades fast)
 const RAPIDAPI_HOST       = 'track-analysis.p.rapidapi.com';
 
+// Auto-abort safeties — keep the script from grinding through a broken upstream
+// and burning quota on doomed retries. All four conditions set `aborted=true`
+// and let workers drain; resume later with --retry-errors if appropriate.
+const HTML_RETRY_LIMIT          = 2;   // 2 HTML responses in one track's retry loop → gateway down → abort
+const TERMINAL_STORM_WINDOW     = 10;  // size of rolling window of recent outcomes
+const TERMINAL_STORM_THRESHOLD  = 8;   // 8/10 must be terminal failures to trigger storm abort
+
 const PLAN_PATH      = path.join(STATE_DIR, 'dry-run.json');
 const COUNTER_PATH   = path.join(STATE_DIR, 'rapidapi-call-count.json');
 const PROGRESS_PATH  = path.join(STATE_DIR, 'progress.json');
@@ -198,6 +205,16 @@ function queueProgressWrite(progress) {
 const RETRY_429_BACKOFF_MS = [10000, 30000, 60000, 120000, 300000];
 const RETRY_5XX_BACKOFF_MS = [5000, 15000, 45000, 120000, 300000, 600000];
 
+// Heuristic: response body is an HTML page (likely Cloudflare/gateway error).
+// We treat persistent HTML as a fatal "gateway down" signal and never dump
+// raw HTML into the log.
+function looksLikeHtml(s) {
+    if (!s || typeof s !== 'string') return false;
+    const head = s.trimStart().slice(0, 500).toLowerCase();
+    if (!head.startsWith('<')) return false;
+    return head.includes('<html') || head.includes('<!doctype') || head.includes('<head') || head.includes('<title>');
+}
+
 async function callRapidApiOnce(spotifyId, apiKey) {
     const r = await fetch(`https://${RAPIDAPI_HOST}/pktx/spotify/${encodeURIComponent(spotifyId)}`, {
         method:  'GET',
@@ -212,11 +229,26 @@ async function callRapidApiOnce(spotifyId, apiKey) {
         const retryAfter = parseInt(r.headers.get('retry-after') || '0', 10);
         return { kind: 'rate_limited', retryAfter };
     }
-    if (!r.ok) {
+    // 401/403 = auth/subscription issue. NEVER transient — surface as fatal so
+    // callWithRetries short-circuits out instead of grinding the retry schedule.
+    if (r.status === 401 || r.status === 403) {
         const text = await r.text().catch(() => '');
+        return { kind: 'fatal_auth', status: r.status, body: text.slice(0, 300) };
+    }
+    // Pull body once so we can both inspect (HTML?) and try JSON parse, regardless
+    // of HTTP status. RapidAPI sometimes returns HTML on 200 (rare gateway weirdness).
+    const text = await r.text().catch(() => '');
+    if (!r.ok) {
+        if (looksLikeHtml(text)) {
+            return { kind: 'gateway_html', status: r.status, bodyLen: text.length };
+        }
         return { kind: 'server_error', status: r.status, body: text.slice(0, 300) };
     }
-    const data = await r.json().catch(() => null);
+    if (looksLikeHtml(text)) {
+        return { kind: 'gateway_html', status: 200, bodyLen: text.length };
+    }
+    let data = null;
+    try { data = JSON.parse(text); } catch {}
     if (!data) return { kind: 'server_error', status: 200, body: 'invalid JSON' };
 
     // RapidAPI sometimes returns HTTP 200 with an explicit error payload like
@@ -241,6 +273,7 @@ async function callRapidApiOnce(spotifyId, apiKey) {
 async function callWithRetries(spotifyId, apiKey, cap) {
     let rate429Idx = 0;
     let serr5xxIdx = 0;
+    let htmlSeen   = 0;
 
     while (true) {
         // Per-call counter pre-check. Hard stop — better to abort the
@@ -259,6 +292,25 @@ async function callWithRetries(spotifyId, apiKey, cap) {
         }
 
         if (result.kind === 'ok' || result.kind === 'not_found') return result;
+
+        // 401/403 — surface fatal_auth as a batch-level abort signal. No retry.
+        if (result.kind === 'fatal_auth') {
+            return { kind: 'aborted_by_auth', status: result.status, body: result.body };
+        }
+
+        // HTML body (gateway down). Allow up to HTML_RETRY_LIMIT before declaring
+        // the gateway is genuinely broken and abort the batch.
+        if (result.kind === 'gateway_html') {
+            htmlSeen++;
+            if (htmlSeen >= HTML_RETRY_LIMIT) {
+                return { kind: 'aborted_by_gateway', status: result.status, bodyLen: result.bodyLen };
+            }
+            const wait = RETRY_5XX_BACKOFF_MS[serr5xxIdx] || RETRY_5XX_BACKOFF_MS[RETRY_5XX_BACKOFF_MS.length - 1];
+            warn(`gateway_html on ${spotifyId}: status=${result.status} <HTML response len=${result.bodyLen}>; backoff ${wait}ms (html ${htmlSeen}/${HTML_RETRY_LIMIT})`);
+            await sleep(wait);
+            serr5xxIdx++;
+            continue;
+        }
 
         if (result.kind === 'rate_limited') {
             if (rate429Idx >= RETRY_429_BACKOFF_MS.length) {
@@ -463,6 +515,24 @@ async function main() {
         }
     }
 
+    // Rolling window of recent per-track outcomes. Used to detect "upstream is
+    // broken for a stretch of the queue" — e.g., Modern Pop's 6-tracks-in-a-row
+    // terminal-fail pattern. When 8 of last 10 are terminal, abort.
+    const recentOutcomes = [];
+    function recordOutcome(outcome) {
+        recentOutcomes.push(outcome);
+        if (recentOutcomes.length > TERMINAL_STORM_WINDOW) recentOutcomes.shift();
+        if (aborted) return;
+        if (recentOutcomes.length === TERMINAL_STORM_WINDOW) {
+            const terminals = recentOutcomes.filter((o) => o === 'terminal').length;
+            if (terminals >= TERMINAL_STORM_THRESHOLD) {
+                aborted = true;
+                log(`ABORT: ${terminals}/${TERMINAL_STORM_WINDOW} recent tracks terminal-failed. Upstream appears broken — aborting to save quota. Resume later with --retry-errors once healthy.`);
+                queueProgressWrite(progress);
+            }
+        }
+    }
+
     async function processOne(spotifyId) {
         const t1 = Date.now();
         const result = await callWithRetries(spotifyId, apiKey, cap);
@@ -474,6 +544,19 @@ async function main() {
             queueProgressWrite(progress);  // force a write on abort
             return;
         }
+        if (result.kind === 'aborted_by_auth') {
+            aborted = true;
+            log(`ABORT: RapidAPI auth/subscription failure (HTTP ${result.status}) on ${spotifyId}: ${result.body}`);
+            log(`This is non-transient (subscription expired, wrong key, or billing issue). Fix on RapidAPI dashboard, then resume.`);
+            queueProgressWrite(progress);
+            return;
+        }
+        if (result.kind === 'aborted_by_gateway') {
+            aborted = true;
+            log(`ABORT: RapidAPI gateway returned HTML on ${HTML_RETRY_LIMIT} consecutive attempts on ${spotifyId} (status=${result.status}, len=${result.bodyLen}). Upstream is likely down — try again later.`);
+            queueProgressWrite(progress);
+            return;
+        }
         if (result.kind === 'ok') {
             const row = buildAnalysisRow(spotifyId, result.data);
             try {
@@ -483,11 +566,13 @@ async function main() {
                 dirtyDoneSinceLastWrite++;
                 log(`ok ${spotifyId} ${ms}ms (analyzed=${analyzed})`);
                 maybeWriteProgress();
+                recordOutcome('ok');
             } catch (err) {
                 errored++;
                 progress.errored.push({ id: spotifyId, reason: 'upsert: ' + err.message });
                 warn(`upsert failed ${spotifyId} after retries: ${err.message}`);
                 maybeWriteProgress({ force: true });
+                recordOutcome('terminal');
             }
         } else if (result.kind === 'not_found') {
             try {
@@ -502,11 +587,13 @@ async function main() {
                 dirtyDoneSinceLastWrite++;
                 log(`not_found ${spotifyId} ${ms}ms`);
                 maybeWriteProgress();
+                recordOutcome('not_found');
             } catch (err) {
                 errored++;
                 progress.errored.push({ id: spotifyId, reason: 'upsert not_found: ' + err.message });
                 warn(`upsert (not_found) failed ${spotifyId} after retries: ${err.message}`);
                 maybeWriteProgress({ force: true });
+                recordOutcome('terminal');
             }
         } else {
             errored++;
@@ -524,6 +611,7 @@ async function main() {
             }
             warn(`terminal ${spotifyId}: ${reason}`);
             maybeWriteProgress({ force: true });
+            recordOutcome('terminal');
         }
     }
 

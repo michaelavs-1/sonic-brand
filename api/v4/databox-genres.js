@@ -17,7 +17,6 @@ const GID      = '1199564828';
 const CSV_URL  = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
 
 const START_ROW = 7;
-const END_ROW   = 50;
 
 function parseCSVLine(line) {
   const result = [];
@@ -74,7 +73,7 @@ export default async function handler(req, res) {
     const lines = text.split('\n');
 
     const rows = [];
-    for (let lineIdx = START_ROW - 1; lineIdx <= END_ROW - 1 && lineIdx < lines.length; lineIdx++) {
+    for (let lineIdx = START_ROW - 1; lineIdx < lines.length; lineIdx++) {
       const cells = parseCSVLine(lines[lineIdx]);
       const parsed = parseRow(cells, lineIdx + 1);
       if (parsed) rows.push(parsed);

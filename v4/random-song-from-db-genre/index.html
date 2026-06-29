@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rubin SonicBrands — Random Song from DB Genre</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg-2: #10101a;
+      --card: #161623;
+      --border: rgba(255, 255, 255, .08);
+      --border-2: rgba(255, 255, 255, .16);
+      --text: #f5f5fa;
+      --muted: #9b9bb0;
+      --accent: #1DB954;
+      --error: #f87171;
+      --r-md: 14px;
+      --r-lg: 22px;
+      --shadow-glow: 0 0 30px rgba(29, 185, 84, .18);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 32px 18px;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .screen-card {
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 32px 28px;
+      box-shadow: var(--shadow-glow);
+    }
+
+    h1 {
+      font-size: 26px;
+      font-weight: 800;
+      margin: 0 0 6px;
+      text-align: center;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 24px;
+      text-align: center;
+    }
+
+    .input-wrap { margin-bottom: 18px; }
+
+    .input-label {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .input-select {
+      width: 100%;
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 12px;
+      padding: 14px 16px;
+      font-family: inherit;
+      font-size: 15px;
+      color: var(--text);
+      outline: none;
+      transition: border-color .2s;
+      appearance: none;
+      cursor: pointer;
+    }
+
+    .input-select:focus { border-color: var(--accent); }
+
+    .input-select:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+    }
+
+    .btn {
+      padding: 14px 28px;
+      border: none;
+      border-radius: 14px;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      transition: box-shadow .2s, transform .05s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), #16a34a);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(29, 185, 84, .35);
+    }
+
+    .btn-primary:hover { box-shadow: 0 6px 24px rgba(29, 185, 84, .5); }
+    .btn-primary:active { transform: translateY(1px); }
+    .btn-primary:disabled { opacity: .55; cursor: not-allowed; box-shadow: none; }
+
+    .btn-block { width: 100%; margin-top: 6px; }
+
+    .status-line {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      min-height: 18px;
+      margin: 14px 0 6px;
+    }
+
+    .status-line.error { color: var(--error); }
+
+    .embed-wrap {
+      margin-top: 20px;
+      min-height: 0;
+    }
+
+    .embed-wrap iframe {
+      display: block;
+      width: 100%;
+      border-radius: 12px;
+      border: 0;
+    }
+
+    .sb-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, .25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: sb-spin .7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes sb-spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <div class="screen-card">
+      <h1>Random Song from DB</h1>
+      <p class="subtitle">Pick a genre, get a random cached track.</p>
+
+      <div class="input-wrap">
+        <label class="input-label" for="genreSelect">Genre</label>
+        <select class="input-select" id="genreSelect" disabled>
+          <option value="">Loading genres…</option>
+        </select>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="randomBtn" disabled>Random song</button>
+
+      <div class="status-line" id="status"></div>
+
+      <div class="embed-wrap" id="embed"></div>
+    </div>
+  </div>
+
+  <script src="/v4/random-song-from-db-genre/app.js?v=24062026a"></script>
+</body>
+
+</html>

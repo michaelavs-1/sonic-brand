@@ -179,6 +179,10 @@
     {
       "source": "/v4/track-analysis",
       "destination": "/v4/track-analysis/index.html"
+    },
+    {
+      "source": "/v4/random-song-from-db-genre",
+      "destination": "/v4/random-song-from-db-genre/index.html"
     }
   ]
 }

@@ -1,8 +1,8 @@
 // v4/precompute/dry-run.mjs
 //
 // Pre-flight cost helper for the v4 Supabase precompute batch.
-// Walks the locked trial sample (בית קפה + פיצריה, H-populated rows only,
-// G ∪ H tokens after /-and-, splitting, first 2 playlists per Tab-2 row),
+// Walks EVERY biz type in Tab 1 that has column H populated (G ∪ H tokens
+// after /-and-, splitting, first PLAYLISTS_PER_GENRE playlists per Tab-2 row),
 // counts unique playable tracks, checks Supabase for which IDs are already
 // cached, and writes an execution plan to state/dry-run.json.
 //
@@ -46,7 +46,6 @@ const { pgrSelectIn } = await import('../../api/v4/supabase-client.js');
 const BASE     = process.env.DEV_BASE || 'http://localhost:3000';
 const OUT_PATH = path.join(STATE_DIR, 'dry-run.json');
 
-const TARGET_BIZ_TYPES = ['בית קפה', 'פיצריה'];
 const PLAYLISTS_PER_GENRE = 2;
 
 const norm = (s) => String(s || '').trim().toLowerCase();
@@ -117,21 +116,23 @@ async function pool(items, concurrency, worker) {
 
 async function main() {
     console.log(`Base: ${BASE}`);
-    console.log(`Targets: ${TARGET_BIZ_TYPES.join(', ')}`);
     console.log(`Playlists per matched Tab-2 row: ${PLAYLISTS_PER_GENRE}\n`);
 
-    // ----- Step 1: choose the H-populated row per biz type -----
+    // ----- Step 1: pick the H-populated row for every biz type in Tab 1 -----
     const tab1 = await getJSON(`${BASE}/api/v4/databox?fresh=1`);
     const rows = tab1.rows || [];
 
     const chosenRows = [];
-    for (const bt of TARGET_BIZ_TYPES) {
-        const candidates = rows.filter((r) => r.bizType === bt);
-        const withH = candidates.find((r) => Array.isArray(r.genres2) && r.genres2.length > 0);
-        if (!withH) throw new Error(`No row with column H populated for "${bt}"`);
+    const seenBizType = new Set();
+    for (const r of rows) {
+        if (!r.bizType || seenBizType.has(r.bizType)) continue;
+        const withH = rows.find((x) => x.bizType === r.bizType && Array.isArray(x.genres2) && x.genres2.length > 0);
+        if (!withH) continue;
+        seenBizType.add(r.bizType);
         chosenRows.push(withH);
     }
-    console.log('Chosen rows (H-populated only):');
+    if (!chosenRows.length) throw new Error('No biz types with column H populated found in Tab 1');
+    console.log(`Chosen rows (H-populated only): ${chosenRows.length} biz types`);
     for (const r of chosenRows) {
         console.log(`  row=${r.row}  "${r.bizType}"  raw G=${(r.genres1||[]).length}cells  raw H=${(r.genres2||[]).length}cells`);
     }
@@ -146,20 +147,18 @@ async function main() {
             genre:              g,
             column_letter:      'G',
             position_in_column: i + 1,
-            in_sample:          true,
         }));
         hTokens.forEach((g, i) => biztypeGenresRows.push({
             business_type:      r.bizType,
             genre:              g,
             column_letter:      'H',
             position_in_column: i + 1,
-            in_sample:          true,
         }));
     }
     console.log('\nbiztype_genres rows to be written:');
-    for (const bt of TARGET_BIZ_TYPES) {
-        const own = biztypeGenresRows.filter((x) => x.business_type === bt);
-        console.log(`  ${bt}:`);
+    for (const r of chosenRows) {
+        const own = biztypeGenresRows.filter((x) => x.business_type === r.bizType);
+        console.log(`  ${r.bizType}:`);
         for (const x of own) console.log(`    column ${x.column_letter} pos ${x.position_in_column}: ${x.genre}`);
     }
 
@@ -240,9 +239,10 @@ async function main() {
     const expectedNewCalls = allUniqueIds.length - alreadyCachedCount;
 
     // ----- Step 7: build the execution-plan JSON and write -----
+    const targetBizTypes = chosenRows.map((r) => r.bizType);
     const plan = {
         generated_at:          new Date().toISOString(),
-        target_biz_types:      TARGET_BIZ_TYPES,
+        target_biz_types:      targetBizTypes,
         playlists_per_genre:   PLAYLISTS_PER_GENRE,
         biztype_genres:        biztypeGenresRows,
         playlist_genres:       playlistGenresRows,
@@ -257,7 +257,7 @@ async function main() {
     const sizeKb = (fs.statSync(OUT_PATH).size / 1024).toFixed(1);
 
     console.log('\n=== EXECUTION PLAN ===');
-    console.log(`  Target biz types:         ${TARGET_BIZ_TYPES.join(', ')}`);
+    console.log(`  Target biz types (${targetBizTypes.length}): ${targetBizTypes.join(', ')}`);
     console.log(`  biztype_genres rows:      ${biztypeGenresRows.length}`);
     console.log(`  Unique wanted tokens:     ${wantedTokens.size}`);
     console.log(`  Matching Tab-2 rows:      ${matchedTab2Rows.length}`);

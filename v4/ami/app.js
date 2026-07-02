@@ -275,13 +275,10 @@ async function refreshStatus() {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
         renderUsage(data.monthlyRapidapi);
-        // Show the queue if EITHER the user clicked Scan in this session, OR
-        // there's a batch currently running / mid-flight. The second condition
-        // ensures a page refresh mid-batch doesn't hide progress.
-        const shouldRender = hasScannedThisSession
-            || data.batchActive === true
-            || (data.counts?.activeCount || 0) > 0;
-        if (shouldRender) {
+        // Only render the queue after the user has clicked Scan in this
+        // session — a fresh page load should never surface persisted rows,
+        // even if a batch happens to be running server-side.
+        if (hasScannedThisSession) {
             queueSection.style.display = 'block';
             renderQueue(data);
             renderBatchProgress(data);
@@ -714,6 +711,10 @@ function startLogPolling() {
     refreshLogs();
     logTimer = setInterval(refreshLogs, LOG_POLL_MS);
 }
+
+// Render the empty summary grid on load so Ami sees the "0 changes detected"
+// layout immediately, rather than nothing at all.
+renderSummary({});
 
 startPolling();
 startLogPolling();

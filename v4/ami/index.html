@@ -62,6 +62,10 @@
     }
     .usage-fill.amber { background: var(--amber); }
     .usage-fill.red   { background: var(--red); }
+    .usage-label {
+      font-size: 12px; color: var(--muted); font-weight: 500;
+      white-space: nowrap;
+    }
     .usage-text { font-family: var(--mono); font-size: 12px; min-width: 128px; }
     .sync-btn {
       background: transparent; color: var(--muted); border: 1px solid var(--border);
@@ -362,6 +366,7 @@
     <header class="top">
       <h1>SonicBrands · Data Box Dashboard</h1>
       <div class="usage-bar">
+        <span class="usage-label">Total monthly RapidAPI calls</span>
         <div class="usage-text" id="usageText">— / —</div>
         <div class="usage-track"><div class="usage-fill" id="usageFill" style="width: 0%"></div></div>
         <button class="sync-btn" id="syncBtn" title="Sync usage from RapidAPI (costs 1 call)">↻</button>
@@ -412,6 +417,6 @@
     </div>
   </div>
 
-  <script src="/v4/ami/app.js?v=02072026t"></script>
+  <script src="/v4/ami/app.js?v=02072026u"></script>
 </body>
 </html>

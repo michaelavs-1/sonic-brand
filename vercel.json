@@ -23,8 +23,17 @@
     },
     "api/v4/track-analysis.js": {
       "maxDuration": 30
+    },
+    "api/v4/ami-scan.js": {
+      "maxDuration": 60
+    },
+    "api/v4/ami-cron-tick.js": {
+      "maxDuration": 300
     }
   },
+  "crons": [
+    { "path": "/api/v4/ami-cron-tick", "schedule": "* * * * *" }
+  ],
   "headers": [
     {
       "source": "/",
@@ -183,6 +192,10 @@
     {
       "source": "/v4/random-song-from-db-genre",
       "destination": "/v4/random-song-from-db-genre/index.html"
+    },
+    {
+      "source": "/v4/ami",
+      "destination": "/v4/ami/index.html"
     }
   ]
 }

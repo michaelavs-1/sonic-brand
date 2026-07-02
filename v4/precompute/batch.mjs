@@ -133,16 +133,31 @@ function readCounter() {
     try { return JSON.parse(fs.readFileSync(COUNTER_PATH, 'utf-8')); }
     catch { return {}; }
 }
-function currentYearMonth() {
+// RapidAPI bills on a fixed day of the month (e.g. the 24th for our PRO sub).
+// Set RAPIDAPI_BILLING_CYCLE_DAY in .env.local to match your subscription's
+// renewal day. Default is 1 = calendar month (also useful for testing).
+const BILLING_CYCLE_DAY = (() => {
+    const v = parseInt(process.env.RAPIDAPI_BILLING_CYCLE_DAY || '1', 10);
+    return (Number.isFinite(v) && v >= 1 && v <= 28) ? v : 1;
+})();
+
+// Returns the cycle-start date as a key like "2026-06-24" — used to key the
+// persisted counter so that resets line up with RapidAPI's billing renewal,
+// not the calendar month.
+function currentBillingCycleKey() {
     const d = new Date();
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+    const day = d.getUTCDate();
+    const cycleStart = day >= BILLING_CYCLE_DAY
+        ? new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(),     BILLING_CYCLE_DAY))
+        : new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, BILLING_CYCLE_DAY));
+    return `${cycleStart.getUTCFullYear()}-${String(cycleStart.getUTCMonth() + 1).padStart(2, '0')}-${String(BILLING_CYCLE_DAY).padStart(2, '0')}`;
 }
 // Sync counter increment. Direct writeFileSync (no rename) to avoid Windows
 // EPERM quirks during high-frequency writes. With a brief retry loop for
 // transient file locks (antivirus, IDE watcher).
 function bumpCounter(by = 1) {
     const counter = readCounter();
-    const key = currentYearMonth();
+    const key = currentBillingCycleKey();
     counter[key] = (counter[key] || 0) + by;
     const payload = JSON.stringify(counter);
     let lastErr;
@@ -163,8 +178,8 @@ function bumpCounter(by = 1) {
     warn(`bumpCounter write failed after retries: ${lastErr?.code || ''} ${lastErr?.message || ''}`);
     return counter[key];
 }
-function readCurrentMonthCount() {
-    return readCounter()[currentYearMonth()] || 0;
+function readCurrentCycleCount() {
+    return readCounter()[currentBillingCycleKey()] || 0;
 }
 
 // ---------- persisted per-id progress ----------
@@ -278,7 +293,7 @@ async function callWithRetries(spotifyId, apiKey, cap) {
     while (true) {
         // Per-call counter pre-check. Hard stop — better to abort the
         // batch than to nudge over the cap on a retry.
-        const projected = readCurrentMonthCount() + 1;
+        const projected = readCurrentCycleCount() + 1;
         if (projected > cap) {
             return { kind: 'aborted_by_cap', projected, cap };
         }
@@ -426,10 +441,18 @@ async function main() {
     log(`  already cached (live): ${liveCachedCount}${retryErrors ? ` (excluded ${preExisting.length - cachedRows.length} status=error rows for retry)` : ''}`);
     log(`  actual remaining:      ${actualRemaining}`);
 
-    const monthSoFar = readCurrentMonthCount();
-    log(`  current month counter: ${monthSoFar}`);
-    if (monthSoFar + actualRemaining > cap) {
-        fail(`Current month already has ${monthSoFar} RapidAPI calls; ${actualRemaining} remaining would exceed --max-rapidapi-calls=${cap}. Raise the cap (within hardcoded ceiling ${HARDCODED_CEILING}) or wait until next month.`);
+    const cycleKey  = currentBillingCycleKey();
+    const cycleSoFar = readCurrentCycleCount();
+    log(`  billing cycle key: ${cycleKey} (renewal day = ${BILLING_CYCLE_DAY})`);
+    log(`  current cycle counter: ${cycleSoFar}`);
+    const remainingInCap = Math.max(0, cap - cycleSoFar);
+    if (remainingInCap <= 0) {
+        fail(`Current billing cycle (${cycleKey}) already used ${cycleSoFar} RapidAPI calls — at or above --max-rapidapi-calls=${cap}. Nothing can run this batch. Raise the cap (within hardcoded ceiling ${HARDCODED_CEILING}) or wait until next cycle.`);
+    }
+    if (actualRemaining > remainingInCap) {
+        const willProcess = remainingInCap;
+        const willDefer   = actualRemaining - remainingInCap;
+        warn(`Plan has ${actualRemaining} remaining calls but only ${remainingInCap} fit under --max-rapidapi-calls=${cap}. Will process ~${willProcess} this run and abort cleanly at the cap; ${willDefer} tracks will remain unprocessed for a future batch.`);
     }
 
     // --- Phase 1: upsert provenance tables (cheap, no API) ---
@@ -626,7 +649,7 @@ async function main() {
     await progressWriteQueue;
 
     const elapsedMin = ((Date.now() - t0) / 60_000).toFixed(1);
-    const monthAfter = readCurrentMonthCount();
+    const monthAfter = readCurrentCycleCount();
     log(`=== batch end ===`);
     log(`analyzed=${analyzed}  not_found=${notFound}  errored=${errored}`);
     log(`monthly counter after run: ${monthAfter} (cap=${cap})`);

@@ -76,6 +76,15 @@ export default async function handler(req, res) {
       return res.status(r.status).json(data);
     }
 
+    if (action === 'get_playlist') {
+      const { playlist_id } = req.body;
+      if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
+      const url = `https://api.spotify.com/v1/playlists/${playlist_id}?fields=name,tracks(total),owner(display_name)`;
+      const r = await spotifyCall(url, { method: 'GET' });
+      const data = await r.json().catch(() => ({}));
+      return res.status(r.status).json(data);
+    }
+
     if (action === 'get_track') {
       const { track_id, market } = req.body;
       if (!track_id) return res.status(400).json({ error: 'track_id required' });

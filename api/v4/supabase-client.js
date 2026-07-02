@@ -90,6 +90,15 @@ export async function pgrSelectIn(table, col, values, { select = '*', useService
     return out;
 }
 
+// Plain INSERT (no ON CONFLICT). Use for append-only tables like scan_logs
+// where we never expect a conflict and don't want merge-duplicate semantics.
+export function pgrInsert(table, rows, { returnRows = false } = {}) {
+    const body = Array.isArray(rows) ? rows : [rows];
+    if (body.length === 0) return Promise.resolve([]);
+    const prefer = returnRows ? 'return=representation' : 'return=minimal';
+    return pgrRequest('POST', table, { useService: true, body, prefer });
+}
+
 // Upsert one or many rows. PostgREST treats POST with merge-duplicates as upsert
 // on the table's PK or a specified onConflict column list.
 export function pgrUpsert(table, rows, { onConflict, returnRows = false } = {}) {
@@ -101,6 +110,21 @@ export function pgrUpsert(table, rows, { onConflict, returnRows = false } = {}) 
     ].join(',');
     const query = onConflict ? { on_conflict: onConflict } : undefined;
     return pgrRequest('POST', table, { useService: true, body, prefer, query });
+}
+
+// PATCH (partial UPDATE) by filter expressions. Never inserts — safe for
+// updating a row that may or may not exist without tripping NOT NULL
+// constraints on unsupplied columns.
+export function pgrPatch(table, filters, body, { useService = true } = {}) {
+    if (!filters || Object.keys(filters).length === 0) {
+        throw new Error('pgrPatch refuses unfiltered UPDATE');
+    }
+    return pgrRequest('PATCH', table, {
+        useService,
+        body,
+        query:  filters,
+        prefer: 'return=minimal',
+    });
 }
 
 // DELETE by filter expressions.

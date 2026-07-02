@@ -37,7 +37,7 @@ import {
     computeBiztypeGenresFromSheet,
     diffBiztypeGenres,
     applyBiztypeGenresDiff,
-} from '../../lib/apply-biztype-genres.mjs';
+} from '../../lib/apply-biztype-genres.js';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 

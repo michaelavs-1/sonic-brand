@@ -95,6 +95,13 @@ scanBtn.addEventListener('click', async () => {
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
 
         renderSummary(data.applied);
+        // Surface partial-tab-rename warnings as an amber banner. These are
+        // NOT errors — the scan still succeeded — they're heads-ups that Ami
+        // needs to also update the OTHER tab in the sheet for the rename to
+        // take full effect.
+        if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+            showBanner(data.warnings.map((w) => w.message).join('  |  '), 'error');
+        }
         scanHint.innerText = renderScanHint(data);
         // Reveal the queue for this session and refresh immediately so
         // newly-enqueued rows appear.
@@ -114,7 +121,9 @@ scanBtn.addEventListener('click', async () => {
 function renderScanHint(data) {
     const p = data.pending?.length || 0;
     const a = data.applied;
+    const renameCount = (a.bizTypeRenamed ? 1 : 0) + (a.genresRenamed?.length || 0);
     const totalApplied =
+        renameCount +
         (a.bizTypesAdded?.length || 0) +
         (a.bizTypesRemoved?.length || 0) +
         (a.genresAddedToBiz?.length || 0) +
@@ -126,8 +135,8 @@ function renderScanHint(data) {
     if (totalApplied === 0 && p === 0) return 'No changes detected.';
     const parts = [];
     if (totalApplied) parts.push(`${totalApplied} change${totalApplied === 1 ? '' : 's'} applied`);
+    if (renameCount) parts.push(`${renameCount} rename${renameCount === 1 ? '' : 's'}`);
     if (p) parts.push(`${p} playlist${p === 1 ? '' : 's'} queued for scanning`);
-    if (a.stoppedJobsResumed?.length) parts.push(`${a.stoppedJobsResumed.length} resumed`);
     return parts.join(' · ');
 }
 
@@ -139,7 +148,18 @@ function renderSummary(applied) {
     summaryGrid.innerHTML = '';
     summaryGrid.style.display = 'grid';
 
+    // Renames are normalized into a uniform list-of-strings shape for the card
+    // renderer (e.g. `"אשכנזית → ישראלי כללי"`).
+    const renameItems = [];
+    if (applied.bizTypeRenamed) {
+        renameItems.push(`(biz type) ${applied.bizTypeRenamed.old} → ${applied.bizTypeRenamed.new}`);
+    }
+    for (const g of (applied.genresRenamed || [])) {
+        renameItems.push(`(genre) ${g.old} → ${g.new}`);
+    }
+
     const cards = [
+        { title: 'Renames applied',          items: renameItems, isString: true },
         { title: 'Biz types added',          items: applied.bizTypesAdded, isString: true },
         { title: 'Biz types removed',        items: applied.bizTypesRemoved, isString: true },
         { title: 'Genres added to biz type', items: applied.genresAddedToBiz, kind: 'bizGenres' },
@@ -381,13 +401,16 @@ function renderQueue({ jobs, counts, batchActive }) {
     startBtn.classList.toggle('show', !batchActive && hasRunnableWork);
     stopBtn .classList.toggle('show',  batchActive);
 
+    // TEMP: batching disabled for this deployment. Delete this line to re-enable.
+    startBtn.classList.remove('show');
+
     // Bulk Skip all / Queue all button:
-    //   - If any pending rows exist → show "🗑 Skip all" (skips all pending).
+    //   - If any pending rows exist → show "🚫 Skip all" (skips all pending).
     //   - Else if any skipped rows exist → show "↻ Queue all" (revives skipped).
     //   - Otherwise hide.
     if (counts.pendingCount > 0) {
         bulkToggleBtn.dataset.action = 'skip';
-        bulkToggleBtn.textContent = `🗑 Skip all (${counts.pendingCount})`;
+        bulkToggleBtn.textContent = `🚫 Skip all (${counts.pendingCount})`;
         bulkToggleRow.classList.add('show');
     } else if (counts.skippedCount > 0) {
         bulkToggleBtn.dataset.action = 'unskip';
@@ -548,7 +571,7 @@ function applyRowStatusInline(li, btn, status) {
         btn.innerText = '↻';
         btn.title     = 'Include this playlist in the batch again';
     } else {
-        btn.innerText = '🗑';
+        btn.innerText = '🚫';
         btn.title     = 'Exclude this playlist from the batch';
     }
 }
@@ -565,7 +588,7 @@ function updateQueueItem(li, job) {
     // other status the icon is still rendered but disabled — so it doesn't
     // wobble the row layout as jobs progress.
     const canToggle = job.status === 'pending' || job.status === 'skipped';
-    const trashLabel = job.status === 'skipped' ? '↻' : '🗑';
+    const trashLabel = job.status === 'skipped' ? '↻' : '🚫';
     const trashTitle = job.status === 'skipped'
         ? 'Include this playlist in the batch again'
         : 'Exclude this playlist from the batch';

@@ -317,6 +317,89 @@ BEGIN
 END;
 $$;
 
+-- ============================================================================
+-- Rename RPCs. Called by ami-scan when it detects a rename in the Data Box
+-- (a specific cell renamed the same way in both Tab 1 and Tab 2, or a biz
+-- type renamed with identical genre set). Pure UPDATE — never INSERT — so we
+-- never touch track_analyses cache and can preserve all playlist data.
+--
+-- PK conflict handling: if renaming would collide with an existing row (rare,
+-- would mean e.g. two rows with (biz1, new_name) after the update), we DELETE
+-- the losing row first, then UPDATE. Result: the target row wins.
+-- ============================================================================
+
+-- Rename a biz type across biztype_genres and scan_jobs.
+CREATE OR REPLACE FUNCTION rename_biztype(p_old text, p_new text)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    biztype_updated int := 0;
+    jobs_updated    int := 0;
+BEGIN
+    -- Preempt any (business_type=p_new, genre=X) rows that would clash with
+    -- our rename. Extremely unlikely — assumes user made both entries — but
+    -- ensures the UPDATE below can't hit a PK violation.
+    DELETE FROM biztype_genres a
+    USING biztype_genres b
+    WHERE a.business_type = p_old
+      AND b.business_type = p_new
+      AND a.genre = b.genre;
+
+    UPDATE biztype_genres
+       SET business_type = p_new
+     WHERE business_type = p_old;
+    GET DIAGNOSTICS biztype_updated = ROW_COUNT;
+
+    -- Replace the old name inside scan_jobs.business_types (text[] column).
+    UPDATE scan_jobs
+       SET business_types = array_replace(business_types, p_old, p_new),
+           updated_at     = now()
+     WHERE p_old = ANY(business_types);
+    GET DIAGNOSTICS jobs_updated = ROW_COUNT;
+
+    RETURN jsonb_build_object(
+        'biztypeGenresUpdated', biztype_updated,
+        'scanJobsUpdated',      jobs_updated
+    );
+END;
+$$;
+
+-- Rename a genre globally across biztype_genres and playlist_genres. Called
+-- only when ami-scan confirms the rename is present in BOTH tabs of the sheet.
+CREATE OR REPLACE FUNCTION rename_genre_globally(p_old text, p_new text)
+RETURNS jsonb
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    biztype_updated  int := 0;
+    playlist_updated int := 0;
+BEGIN
+    -- Preempt biztype_genres PK conflicts on (business_type, genre).
+    DELETE FROM biztype_genres a
+    USING biztype_genres b
+    WHERE a.genre = p_old
+      AND b.genre = p_new
+      AND a.business_type = b.business_type;
+    UPDATE biztype_genres SET genre = p_new WHERE genre = p_old;
+    GET DIAGNOSTICS biztype_updated = ROW_COUNT;
+
+    -- Preempt playlist_genres PK conflicts on (playlist_id, genre).
+    DELETE FROM playlist_genres a
+    USING playlist_genres b
+    WHERE a.genre = p_old
+      AND b.genre = p_new
+      AND a.playlist_id = b.playlist_id;
+    UPDATE playlist_genres SET genre = p_new WHERE genre = p_old;
+    GET DIAGNOSTICS playlist_updated = ROW_COUNT;
+
+    RETURN jsonb_build_object(
+        'biztypeGenresUpdated',  biztype_updated,
+        'playlistGenresUpdated', playlist_updated
+    );
+END;
+$$;
+
 -- Bulk toggle: flip every 'pending' row to 'skipped' (p_skip=true) or every
 -- 'skipped' row to 'pending' (p_skip=false). Used by the dashboard's
 -- "Skip all" / "Queue all" button. Returns the number of rows affected.

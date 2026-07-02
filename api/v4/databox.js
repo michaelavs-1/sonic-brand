@@ -78,7 +78,13 @@ export default async function handler(req, res) {
 
     cache = { rows, fetchedAt: new Date().toISOString() };
     cacheTime = Date.now();
-    res.setHeader('Cache-Control', 'public, max-age=1800');
+    // fresh=1 must NOT be cached at Vercel's edge — otherwise a stale sheet
+    // response persists for 30 min and ami-scan misses subsequent edits.
+    if (fresh) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    } else {
+      res.setHeader('Cache-Control', 'public, max-age=1800');
+    }
     return res.status(200).json(cache);
 
   } catch (e) {

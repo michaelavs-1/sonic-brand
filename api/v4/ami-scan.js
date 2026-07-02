@@ -53,15 +53,18 @@ function sameOriginUrl(req, pathname) {
     return `${proto}://${host}${pathname}`;
 }
 
+// Each scan call uses a unique `_t` cache-buster in addition to fresh=1 so
+// Vercel's edge cache CAN'T serve a stale sheet response even if the
+// databox endpoint ever accidentally re-adds a Cache-Control header.
 async function fetchTab1(req) {
-    const r = await fetch(sameOriginUrl(req, '/api/v4/databox?fresh=1'));
+    const r = await fetch(sameOriginUrl(req, `/api/v4/databox?fresh=1&_t=${Date.now()}`));
     if (!r.ok) throw new Error(`databox fetch failed: ${r.status}`);
     const d = await r.json();
     return d.rows || [];
 }
 
 async function fetchTab2(req) {
-    const r = await fetch(sameOriginUrl(req, '/api/v4/databox-genres?fresh=1'));
+    const r = await fetch(sameOriginUrl(req, `/api/v4/databox-genres?fresh=1&_t=${Date.now()}`));
     if (!r.ok) throw new Error(`databox-genres fetch failed: ${r.status}`);
     const d = await r.json();
     return d.rows || [];

@@ -97,6 +97,69 @@ ALTER TABLE playlist_genres ENABLE ROW LEVEL SECURITY;
 ALTER TABLE biztype_genres  ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
+-- atmospheres: mirror of the atmosphere-parameter Google Sheet
+-- (1Ujk7Mb-i1i1LCfQZ31W27pDF66CGobrt9jifRqc0d28).
+--
+-- Each row is one atmosphere (e.g. מרים, חפלה, בועט) with its parameter
+-- ranges stored as JSONB. Keys: energy, danceability, happiness, popularity,
+-- speechiness, instrumentalness, bpm. Values: [lo, hi] tuple, or null when
+-- the sheet cell is dashed / blank / "all" (meaning no constraint).
+--
+-- The runtime pipeline only consumes energy, danceability, popularity today.
+-- bpm is stored but not yet wired into the screening SQL — deliberate
+-- deferral so we can capture Ami's edits now without changing screening.
+--
+-- Populated by /api/v4/ami-atmospheres-scan (mirrors the Data Box scan
+-- pattern). Read at runtime by /api/v4/databox-atmospheres — DB is the
+-- source of truth; sheet is only Ami's editing surface.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS atmospheres (
+    name          text        PRIMARY KEY,
+    ranges        jsonb       NOT NULL DEFAULT '{}'::jsonb,
+    row_in_sheet  int,
+    updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE atmospheres ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS atmospheres_anon_read ON atmospheres;
+CREATE POLICY atmospheres_anon_read ON atmospheres
+    FOR SELECT TO anon USING (true);
+
+-- ============================================================================
+-- deleted_tracks: archive of tracks Ami has removed from the DB via the
+-- dashboard's "Track cleanup" feature. Preserves the full pre-delete state
+-- (the track_analyses row, if it existed, and every playlist_tracks row)
+-- as JSONB so a track can be restored exactly as it was.
+--
+-- Delete flow (see /api/v4/ami-track-delete):
+--   1. Snapshot the row from track_analyses + all rows from playlist_tracks
+--   2. Upsert into deleted_tracks
+--   3. DELETE from playlist_tracks + track_analyses
+--
+-- Restore flow (see /api/v4/ami-track-restore, invoked either by the UI's
+-- Undo button or manually by Roni later):
+--   1. Read the archive row
+--   2. Re-insert into track_analyses + playlist_tracks
+--   3. Delete the archive row (restore is one-shot; no double-restore)
+--
+-- No anon-read policy — the dashboard hits this table only via service_role
+-- endpoints. Ami never needs to SELECT it from the browser directly.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS deleted_tracks (
+    spotify_id           text        PRIMARY KEY,
+    title                text,
+    artist               text,
+    track_analyses_row   jsonb,
+    playlist_tracks_rows jsonb       NOT NULL DEFAULT '[]'::jsonb,
+    deleted_at           timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE deleted_tracks ENABLE ROW LEVEL SECURITY;
+
+-- ============================================================================
 -- Ami-dashboard tables (added for /v4/ami/).
 --
 -- scan_jobs: queue of playlists newly added to the Data Box that need to be

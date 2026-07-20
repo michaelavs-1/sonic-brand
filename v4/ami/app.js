@@ -18,6 +18,7 @@ const POLL_INTERVAL_MS = 5000;
 const $ = (id) => document.getElementById(id);
 
 const scanBtn      = $('scanBtn');
+const scanAtmoBtn  = $('scanAtmoBtn');
 const startBtn     = $('startBtn');
 const stopBtn      = $('stopBtn');
 const scanHint     = $('scanHint');
@@ -118,6 +119,33 @@ scanBtn.addEventListener('click', async () => {
     }
 });
 
+// Atmospheres scan — mirrors the databox scan but hits a different endpoint
+// and only surfaces atmosphere-related summary cards. Uses the same shared
+// hint + spinner + summary grid so the layout stays coherent.
+scanAtmoBtn.addEventListener('click', async () => {
+    scanAtmoBtn.disabled  = true;
+    scanAtmoBtn.innerText = 'Scanning...';
+    scanHint.innerText = 'Fetching atmospheres sheet, diffing, applying changes...';
+    scanSpinner.classList.add('show');
+    banner.classList.remove('show');
+
+    try {
+        const r = await fetch('/api/v4/ami-atmospheres-scan', { method: 'POST' });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+
+        renderSummary(data.applied);
+        scanHint.innerText = renderScanHint(data);
+    } catch (err) {
+        showBanner(`Atmospheres scan failed: ${err.message}`);
+        scanHint.innerText = 'Click either button to detect what changed in the Google Sheet since the last scan.';
+    } finally {
+        scanAtmoBtn.disabled  = false;
+        scanAtmoBtn.innerText = 'Scan atmospheres and update DB';
+        scanSpinner.classList.remove('show');
+    }
+});
+
 function renderScanHint(data) {
     const p = data.pending?.length || 0;
     const a = data.applied;
@@ -131,7 +159,10 @@ function renderScanHint(data) {
         (a.playlistsRemoved?.length || 0) +
         (a.playlistsAddedToKnownGenres?.length || 0) +
         (a.playlistsFullyRemoved?.length || 0) +
-        (a.stoppedJobsResumed?.length || 0);
+        (a.stoppedJobsResumed?.length || 0) +
+        (a.atmospheresAdded?.length || 0) +
+        (a.atmospheresRemoved?.length || 0) +
+        (a.atmosphereParamsChanged?.length || 0);
     if (totalApplied === 0 && p === 0) return 'No changes detected.';
     const parts = [];
     if (totalApplied) parts.push(`${totalApplied} change${totalApplied === 1 ? '' : 's'} applied`);
@@ -164,6 +195,9 @@ function renderSummary(applied) {
         { title: 'Biz types removed',        items: applied.bizTypesRemoved, isString: true },
         { title: 'Genres added to biz type', items: applied.genresAddedToBiz, kind: 'bizGenres' },
         { title: 'Genres removed from biz',  items: applied.genresRemovedFromBiz, kind: 'bizGenres' },
+        { title: 'Atmospheres added',        items: applied.atmospheresAdded, isString: true },
+        { title: 'Atmospheres removed',      items: applied.atmospheresRemoved, isString: true },
+        { title: 'Atmosphere params changed', items: applied.atmosphereParamsChanged, kind: 'atmoParams' },
     ];
 
     for (const c of cards) {
@@ -183,6 +217,12 @@ function renderSummary(applied) {
                     li.innerHTML = `${escapeHtml(it.bizType)} <span class="genres">${it.genres.map(escapeHtml).join(', ')}</span>`;
                 } else if (c.kind === 'playlistGenre') {
                     li.innerHTML = `${escapeHtml(it.playlistId)} <span class="genres">→ ${escapeHtml(it.genre)}</span>`;
+                } else if (c.kind === 'atmoParams') {
+                    // { name, changes: [{ param, from, to }] }
+                    const changes = (it.changes || []).map((ch) =>
+                        `${escapeHtml(ch.param)}: ${fmtRange(ch.from)} → ${fmtRange(ch.to)}`
+                    ).join(', ');
+                    li.innerHTML = `${escapeHtml(it.name)} <span class="genres">${changes}</span>`;
                 }
                 ul.appendChild(li);
             }
@@ -190,6 +230,13 @@ function renderSummary(applied) {
         }
         summaryGrid.appendChild(card);
     }
+}
+
+// Format a range tuple for display. null → "any" (no constraint).
+function fmtRange(r) {
+    if (r === null || r === undefined) return 'any';
+    if (Array.isArray(r) && r.length === 2) return `[${r[0]},${r[1]}]`;
+    return String(r);
 }
 
 // -----------------------------------------------------------------------------
@@ -729,6 +776,151 @@ document.addEventListener('visibilitychange', () => {
         startLogPolling();
     }
 });
+
+// -----------------------------------------------------------------------------
+// Track cleanup — search a track by Spotify ID/URL, then delete it (with Undo)
+// -----------------------------------------------------------------------------
+
+const trackLookupInput  = $('trackLookupInput');
+const trackLookupBtn    = $('trackLookupBtn');
+const trackLookupResult = $('trackLookupResult');
+
+// Populated after Find song → user can then delete. Cleared on next search.
+let currentTrack = null;
+// Populated after a successful delete → the Undo button reads this. Cleared
+// on next search OR after Undo. Not persisted anywhere (page refresh loses it).
+let deletedTrackForUndo = null;
+
+trackLookupBtn.addEventListener('click', () => runTrackLookup());
+trackLookupInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') runTrackLookup();
+});
+
+async function runTrackLookup() {
+    const input = trackLookupInput.value.trim();
+    if (!input) return;
+    // A new search invalidates any pending Undo — per spec.
+    deletedTrackForUndo = null;
+
+    trackLookupBtn.disabled = true;
+    trackLookupBtn.innerHTML = '<span class="btn-spinner"></span>Searching...';
+    try {
+        const r = await fetch('/api/v4/ami-track-lookup', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ input }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        currentTrack = data;
+        renderTrackLookupResult({ mode: 'found', track: data });
+    } catch (err) {
+        currentTrack = null;
+        renderTrackLookupResult({ mode: 'error', message: err.message });
+    } finally {
+        trackLookupBtn.disabled = false;
+        trackLookupBtn.textContent = 'Find song';
+    }
+}
+
+async function runTrackDelete() {
+    if (!currentTrack) return;
+    const track = currentTrack;
+    const deleteBtn = trackLookupResult.querySelector('.track-delete-btn');
+    if (deleteBtn) { deleteBtn.disabled = true; deleteBtn.innerText = 'Deleting...'; }
+    try {
+        const r = await fetch('/api/v4/ami-track-delete', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ spotifyId: track.spotifyId }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        deletedTrackForUndo = {
+            spotifyId: data.spotifyId,
+            title:     data.title,
+            artists:   data.artists,
+            playlistTracksDeleted: data.playlistTracksDeleted,
+            trackAnalysesDeleted:  data.trackAnalysesDeleted,
+        };
+        renderTrackLookupResult({ mode: 'deleted', track: deletedTrackForUndo });
+        showBanner(`Deleted "${data.title}" — Undo available until you search again.`, 'success');
+    } catch (err) {
+        showBanner(`Delete failed: ${err.message}`);
+        if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.innerText = 'Delete track'; }
+    }
+}
+
+async function runTrackUndo() {
+    if (!deletedTrackForUndo) return;
+    const track = deletedTrackForUndo;
+    const undoBtn = trackLookupResult.querySelector('.track-undo-btn');
+    if (undoBtn) { undoBtn.disabled = true; undoBtn.innerText = 'Restoring...'; }
+    try {
+        const r = await fetch('/api/v4/ami-track-restore', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ spotifyId: track.spotifyId }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        deletedTrackForUndo = null;
+        // Refresh the lookup so the counts reflect the restored state.
+        showBanner(`Restored "${data.title || track.title}".`, 'success');
+        // Re-lookup to refresh counts (in playlist / has analysis).
+        await runTrackLookup();
+    } catch (err) {
+        showBanner(`Restore failed: ${err.message}`);
+        if (undoBtn) { undoBtn.disabled = false; undoBtn.innerText = 'Undo delete'; }
+    }
+}
+
+function renderTrackLookupResult({ mode, track, message }) {
+    trackLookupResult.classList.add('show');
+    if (mode === 'error') {
+        trackLookupResult.innerHTML =
+            `<div class="track-card"><div class="track-title">Lookup failed</div>` +
+            `<div class="track-artist">${escapeHtml(message || 'Unknown error')}</div></div>`;
+        return;
+    }
+
+    const t = track;
+    const artistsStr = (t.artists || []).join(', ');
+    const inPlaylist = mode === 'deleted' ? '(archived)' : `${t.inPlaylistCount ?? '?'} playlist${t.inPlaylistCount === 1 ? '' : 's'}`;
+    const analysisTag = mode === 'deleted'
+        ? '(archived)'
+        : (t.hasAnalysis ? 'analysis: yes' : 'analysis: no');
+    const cannotDelete = mode === 'found' && (t.inPlaylistCount || 0) === 0 && !t.hasAnalysis;
+
+    const buttonsHtml = mode === 'deleted'
+        ? `<button class="track-delete-btn" disabled>Delete track</button>
+           <button class="track-undo-btn">Undo delete</button>`
+        : `<button class="track-delete-btn" ${cannotDelete ? 'disabled' : ''}>Delete track</button>
+           <button class="track-undo-btn" disabled>Undo delete</button>`;
+
+    const notFoundBadge = cannotDelete
+        ? `<span class="track-badge warn">Not in DB — nothing to delete</span>`
+        : '';
+
+    trackLookupResult.innerHTML = `
+        <div class="track-card ${mode === 'deleted' ? 'deleted' : ''}">
+            <div class="track-title">${escapeHtml(t.title || '(unknown)')}</div>
+            <div class="track-artist">${escapeHtml(artistsStr || '(unknown artist)')}</div>
+            <div class="track-meta">
+                ${notFoundBadge}
+                <span class="track-badge">${escapeHtml(inPlaylist)}</span>
+                <span class="track-badge">${escapeHtml(analysisTag)}</span>
+                <span class="track-badge">${escapeHtml(t.spotifyId)}</span>
+            </div>
+            <div class="track-actions">${buttonsHtml}</div>
+        </div>
+    `;
+
+    const deleteBtn = trackLookupResult.querySelector('.track-delete-btn');
+    const undoBtn   = trackLookupResult.querySelector('.track-undo-btn');
+    if (deleteBtn) deleteBtn.addEventListener('click', runTrackDelete);
+    if (undoBtn)   undoBtn.addEventListener('click',   runTrackUndo);
+}
 
 // -----------------------------------------------------------------------------
 // Utils

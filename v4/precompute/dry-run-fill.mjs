@@ -11,7 +11,11 @@
 // genre got some new coverage rather than a few being fully expanded.
 //
 // CLI:
-//   --target-playlists=N    default 5
+//   --target-playlists=N    default 5. Use "max" to fill each targeted genre
+//                           up to the number of playlists it has in the sheet.
+//   --genres="a,b,c"        optional comma-separated allowlist (normalized
+//                           case-insensitive). When absent, ALL Tab-2 genres
+//                           are considered.
 //
 // Prereqs:
 //   1) vercel dev running on :3000 (calls /api/v4/databox-genres + /api/v4/spotify)
@@ -24,6 +28,7 @@
 // Run (from anywhere):
 //   node v4/precompute/dry-run-fill.mjs
 //   node v4/precompute/dry-run-fill.mjs --target-playlists=7
+//   node v4/precompute/dry-run-fill.mjs --target-playlists=max --genres="downtempo,cha cha cha,easy listening"
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -60,13 +65,22 @@ function parseArgs() {
     return args;
 }
 const args = parseArgs();
-const TARGET_PLAYLISTS = parseInt(args['target-playlists'] ?? '5', 10);
-if (!Number.isFinite(TARGET_PLAYLISTS) || TARGET_PLAYLISTS < 1) {
-    console.error('--target-playlists must be a positive integer');
+// --target-playlists=N (default 5) OR --target-playlists=max to fill each
+// targeted genre up to whatever number of playlists the sheet has for it.
+const TARGET_RAW = args['target-playlists'] ?? '5';
+const TARGET_IS_MAX = TARGET_RAW === 'max';
+const TARGET_PLAYLISTS = TARGET_IS_MAX ? Infinity : parseInt(TARGET_RAW, 10);
+if (!TARGET_IS_MAX && (!Number.isFinite(TARGET_PLAYLISTS) || TARGET_PLAYLISTS < 1)) {
+    console.error('--target-playlists must be a positive integer or "max"');
     process.exit(1);
 }
 
+// --genres="downtempo, cha cha cha, easy listening" — optional allowlist.
+// Case-insensitive, trimmed. When absent, all Tab-2 genres are considered.
 const norm = (s) => String(s || '').trim().toLowerCase();
+const GENRE_FILTER = args['genres']
+    ? new Set(String(args['genres']).split(',').map(norm).filter(Boolean))
+    : null;
 
 async function getJSON(url) {
     const r = await fetch(url);
@@ -119,12 +133,23 @@ async function pool(items, concurrency, worker) {
 
 async function main() {
     console.log(`Base: ${BASE}`);
-    console.log(`Mode: fill each Tab-2 genre to ${TARGET_PLAYLISTS} playlists (round-robin order)\n`);
+    const targetLabel = TARGET_IS_MAX ? 'sheet-max' : String(TARGET_PLAYLISTS);
+    console.log(`Mode: fill each targeted Tab-2 genre to ${targetLabel} playlists (round-robin order)`);
+    if (GENRE_FILTER) console.log(`Genre filter: ${[...GENRE_FILTER].join(', ')}`);
+    console.log('');
 
     // 1. Tab 2 from sheet
     const tab2 = await getJSON(`${BASE}/api/v4/databox-genres?fresh=1`);
     const tab2Rows = tab2.rows || [];
     console.log(`Tab 2 rows: ${tab2Rows.length}`);
+
+    // Validate filter: warn if any name is missing from sheet
+    if (GENRE_FILTER) {
+        const sheetSet = new Set(tab2Rows.map((r) => norm(r.genre)));
+        for (const g of GENRE_FILTER) {
+            if (!sheetSet.has(g)) console.warn(`  ! genre "${g}" not in Tab 2; will be skipped`);
+        }
+    }
 
     // 2. Existing playlist_genres → set per genre
     console.log('Fetching existing playlist_genres from Supabase...');
@@ -137,14 +162,18 @@ async function main() {
     console.log(`  existing playlist_genres rows: ${existing.length}`);
 
     // 3. For each genre, compute which sheet playlists to add (in sheet order,
-    //    skipping any already in DB) until reaching TARGET_PLAYLISTS.
+    //    skipping any already in DB) until reaching TARGET_PLAYLISTS (or sheet-max).
     const perGenreNew = []; // [{ genre, newPlaylists: [{pid, position}] }]
     let skippedAlreadyAtTarget = 0;
     let skippedSheetShortage   = 0;
     for (const row of tab2Rows) {
         const genreNorm = norm(row.genre);
+        if (GENRE_FILTER && !GENRE_FILTER.has(genreNorm)) continue;
         const existingPids = existingByGenre.get(genreNorm) || new Set();
-        const needCount = Math.max(0, TARGET_PLAYLISTS - existingPids.size);
+        // Effective target: TARGET_PLAYLISTS or, for --target-playlists=max,
+        // however many playlists this genre has in the sheet.
+        const effectiveTarget = TARGET_IS_MAX ? (row.playlists || []).length : TARGET_PLAYLISTS;
+        const needCount = Math.max(0, effectiveTarget - existingPids.size);
         if (needCount === 0) { skippedAlreadyAtTarget++; continue; }
         const newOnes = [];
         for (let i = 0; i < (row.playlists || []).length && newOnes.length < needCount; i++) {
@@ -255,7 +284,7 @@ async function main() {
     const sizeKb = (fs.statSync(OUT_PATH).size / 1024).toFixed(1);
 
     console.log('\n=== EXECUTION PLAN ===');
-    console.log(`  Mode:                      fill-to-${TARGET_PLAYLISTS} (round-robin)`);
+    console.log(`  Mode:                      fill-to-${TARGET_IS_MAX ? 'max' : TARGET_PLAYLISTS} (round-robin)`);
     console.log(`  Genres updated:            ${perGenreNew.length}`);
     console.log(`  New playlist_genres rows:  ${newPlaylistGenresRows.length}`);
     console.log(`  Brand-new playlists:       ${orderedPlaylists.length}`);

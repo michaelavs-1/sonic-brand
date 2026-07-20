@@ -1,12 +1,14 @@
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SonicBrands · Data Box Dashboard</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <style>
     :root {
@@ -34,209 +36,659 @@
       --r-lg: 18px;
       --mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
     }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
     body {
       font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
       min-height: 100vh;
       padding: 24px 18px 80px;
     }
-    .container { max-width: 960px; margin: 0 auto; }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+    }
 
     header.top {
-      display: flex; align-items: center; gap: 20px; margin-bottom: 20px;
-      padding: 16px 20px; background: var(--card); border: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+      padding: 16px 20px;
+      background: var(--card);
+      border: 1px solid var(--border);
       border-radius: var(--r-lg);
     }
-    header.top h1 { font-size: 22px; font-weight: 800; margin: 0; flex: 1; }
+
+    header.top h1 {
+      font-size: 22px;
+      font-weight: 800;
+      margin: 0;
+      flex: 1;
+    }
+
     .usage-bar {
-      display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
     }
+
     .usage-track {
-      width: 220px; height: 10px; background: var(--bg-2); border-radius: 6px;
-      overflow: hidden; border: 1px solid var(--border);
+      width: 220px;
+      height: 10px;
+      background: var(--bg-2);
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border);
     }
+
     .usage-fill {
-      height: 100%; background: var(--accent);
+      height: 100%;
+      background: var(--accent);
       transition: width .3s, background .3s;
     }
-    .usage-fill.amber { background: var(--amber); }
-    .usage-fill.red   { background: var(--red); }
+
+    .usage-fill.amber {
+      background: var(--amber);
+    }
+
+    .usage-fill.red {
+      background: var(--red);
+    }
+
     .usage-label {
-      font-size: 12px; color: var(--muted); font-weight: 500;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 500;
       white-space: nowrap;
     }
-    .usage-text { font-family: var(--mono); font-size: 12px; min-width: 128px; }
+
+    .usage-text {
+      font-family: var(--mono);
+      font-size: 12px;
+      min-width: 128px;
+    }
+
     .sync-btn {
-      background: transparent; color: var(--muted); border: 1px solid var(--border);
-      border-radius: 6px; width: 28px; height: 28px; cursor: pointer;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 14px; font-family: inherit;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-family: inherit;
       transition: color .15s, border-color .15s, transform .3s;
     }
-    .sync-btn:hover:not(:disabled) { color: var(--text); border-color: var(--border-2); }
-    .sync-btn:disabled { opacity: .5; cursor: not-allowed; }
-    .sync-btn.spinning { animation: spin 1s linear infinite; }
+
+    .sync-btn:hover:not(:disabled) {
+      color: var(--text);
+      border-color: var(--border-2);
+    }
+
+    .sync-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .sync-btn.spinning {
+      animation: spin 1s linear infinite;
+    }
 
     .scan-block {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--r-lg); padding: 24px; margin-bottom: 20px;
-      display: flex; flex-direction: column; align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 24px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
+
+    .scan-btn-row {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
     .scan-btn {
-      padding: 14px 40px; font-size: 16px; font-weight: 700;
-      background: var(--accent); color: #0a0a0f; border: none;
-      border-radius: var(--r-md); cursor: pointer;
+      padding: 14px 40px;
+      font-size: 16px;
+      font-weight: 700;
+      background: var(--accent);
+      color: #0a0a0f;
+      border: none;
+      border-radius: var(--r-md);
+      cursor: pointer;
       transition: transform .15s, box-shadow .15s;
       font-family: inherit;
     }
-    .scan-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(29, 185, 84, .3); }
-    .scan-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-    .stop-btn, .start-btn {
-      padding: 8px 18px; font-size: 13px; font-weight: 600;
-      color: #0a0a0f; border: none;
-      border-radius: var(--r-md); cursor: pointer;
+    .scan-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(29, 185, 84, .3);
+    }
+
+    .scan-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .stop-btn,
+    .start-btn {
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      color: #0a0a0f;
+      border: none;
+      border-radius: var(--r-md);
+      cursor: pointer;
       transition: transform .15s, box-shadow .15s;
       font-family: inherit;
       display: none;
     }
-    .stop-btn.show, .start-btn.show { display: inline-block; }
-    .stop-btn:disabled, .start-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-    .stop-btn { background: var(--red); }
-    .stop-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(248, 113, 113, .3); }
+    .stop-btn.show,
+    .start-btn.show {
+      display: inline-block;
+    }
 
-    .start-btn { background: var(--accent); }
-    .start-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(29, 185, 84, .3); }
+    .stop-btn:disabled,
+    .start-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .stop-btn {
+      background: var(--red);
+    }
+
+    .stop-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(248, 113, 113, .3);
+    }
+
+    .start-btn {
+      background: var(--accent);
+    }
+
+    .start-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(29, 185, 84, .3);
+    }
 
     .scan-hint {
-      margin-top: 12px; color: var(--muted); font-size: 13px; text-align: center;
-      display: flex; align-items: center; justify-content: center; gap: 10px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
     }
 
     .banner {
-      padding: 12px 18px; margin-bottom: 20px;
-      border-radius: var(--r-md); font-weight: 500;
+      padding: 12px 18px;
+      margin-bottom: 20px;
+      border-radius: var(--r-md);
+      font-weight: 500;
       display: none;
-      background: var(--red-dim); border: 1px solid var(--red); color: var(--red);
+      background: var(--red-dim);
+      border: 1px solid var(--red);
+      color: var(--red);
     }
-    .banner.show { display: block; }
+
+    .banner.show {
+      display: block;
+    }
+
     .banner.success {
-      background: var(--green-dim); border-color: var(--green); color: var(--green);
+      background: var(--green-dim);
+      border-color: var(--green);
+      color: var(--green);
     }
 
     .summary-grid {
-      display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 12px; margin-bottom: 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
     }
+
     .summary-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--r-md); padding: 14px 16px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
     }
-    .summary-card.empty { opacity: .5; }
+
+    .summary-card.empty {
+      opacity: .5;
+    }
+
     .summary-card h3 {
-      margin: 0 0 8px; font-size: 13px; font-weight: 600;
-      color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
-      display: flex; align-items: center; gap: 8px;
+      margin: 0 0 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
+
     .summary-card .count {
-      font-family: var(--mono); font-size: 11px;
-      background: var(--bg-2); padding: 2px 8px; border-radius: 10px;
+      font-family: var(--mono);
+      font-size: 11px;
+      background: var(--bg-2);
+      padding: 2px 8px;
+      border-radius: 10px;
       color: var(--text);
     }
-    .summary-card ul { margin: 0; padding: 0; list-style: none; font-size: 14px; }
-    .summary-card li { padding: 3px 0; color: var(--text); border-bottom: 1px dashed var(--border); }
-    .summary-card li:last-child { border-bottom: none; }
-    .summary-card li .genres { color: var(--muted); font-size: 12px; margin-left: 4px; }
+
+    .summary-card ul {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 14px;
+    }
+
+    .summary-card li {
+      padding: 3px 0;
+      color: var(--text);
+      border-bottom: 1px dashed var(--border);
+    }
+
+    .summary-card li:last-child {
+      border-bottom: none;
+    }
+
+    .summary-card li .genres {
+      color: var(--muted);
+      font-size: 12px;
+      margin-left: 4px;
+    }
 
     .queue-header {
-      display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
     }
+
     .queue-section h2 {
-      font-size: 16px; font-weight: 700; margin: 0;
-      display: flex; align-items: center; gap: 10px; flex: 1;
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
     }
+
     .queue-section .queue-counts {
-      font-family: var(--mono); font-size: 12px; color: var(--muted);
-      background: var(--bg-2); padding: 3px 10px; border-radius: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      background: var(--bg-2);
+      padding: 3px 10px;
+      border-radius: 10px;
       border: 1px solid var(--border);
     }
-    .queue-hint { color: var(--muted); font-size: 12px; margin: 0 0 12px; }
+
+    .queue-hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 12px;
+    }
 
     .bulk-toggle-row {
       display: none;
       margin: 8px 0 12px;
     }
-    .bulk-toggle-row.show { display: flex; align-items: center; }
+
+    .bulk-toggle-row.show {
+      display: flex;
+      align-items: center;
+    }
+
     .bulk-toggle-btn {
-      background: transparent; color: var(--muted);
+      background: transparent;
+      color: var(--muted);
       border: 1px solid var(--border);
       border-radius: 6px;
       padding: 6px 12px;
-      font-size: 13px; font-family: inherit;
+      font-size: 13px;
+      font-family: inherit;
       cursor: pointer;
-      display: inline-flex; align-items: center; gap: 8px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
       transition: color .15s, border-color .15s, background .15s;
     }
+
     .bulk-toggle-btn:hover:not(:disabled) {
-      color: var(--text); border-color: var(--border-2);
+      color: var(--text);
+      border-color: var(--border-2);
       background: var(--bg-2);
     }
-    .bulk-toggle-btn:disabled { opacity: .5; cursor: not-allowed; }
-    .bulk-toggle-btn[data-action="unskip"] {
-      color: var(--accent); border-color: var(--accent);
+
+    .bulk-toggle-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
     }
+
+    .bulk-toggle-btn[data-action="unskip"] {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
     .bulk-toggle-btn[data-action="unskip"]:hover:not(:disabled) {
       background: var(--accent-dim);
     }
 
     .batch-progress {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--r-md); padding: 12px 16px; margin-bottom: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 12px 16px;
+      margin-bottom: 12px;
       display: none;
     }
-    .batch-progress.show { display: block; }
+
+    .batch-progress.show {
+      display: block;
+    }
+
     .batch-progress-row {
-      display: flex; align-items: center; gap: 12px; margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
     }
+
     .batch-progress-label {
-      font-size: 13px; font-weight: 600; color: var(--text); flex-shrink: 0;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      flex-shrink: 0;
     }
+
     .batch-progress-bar {
-      flex: 1; height: 10px; background: var(--bg-2); border-radius: 5px;
-      border: 1px solid var(--border); overflow: hidden;
+      flex: 1;
+      height: 10px;
+      background: var(--bg-2);
+      border-radius: 5px;
+      border: 1px solid var(--border);
+      overflow: hidden;
     }
+
     .batch-progress-fill {
-      height: 100%; background: var(--accent);
+      height: 100%;
+      background: var(--accent);
       transition: width .3s, background .3s;
       width: 0%;
     }
-    .batch-progress.done   .batch-progress-fill { background: var(--green); }
-    .batch-progress.errors .batch-progress-fill { background: var(--red); }
+
+    .batch-progress.done .batch-progress-fill {
+      background: var(--green);
+    }
+
+    .batch-progress.errors .batch-progress-fill {
+      background: var(--red);
+    }
+
     .batch-progress-pct {
-      font-family: var(--mono); font-size: 12px; color: var(--muted);
-      min-width: 42px; text-align: right;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      min-width: 42px;
+      text-align: right;
     }
+
     .batch-progress-detail {
-      font-size: 12px; color: var(--muted); font-family: var(--mono);
-      display: flex; flex-wrap: wrap; gap: 4px 12px;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: var(--mono);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 12px;
     }
+
     .batch-progress-detail .current {
-      color: var(--blue); flex-basis: 100%;
+      color: var(--blue);
+      flex-basis: 100%;
+    }
+
+    .track-cleanup-section {
+      margin-top: 24px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 20px;
+    }
+
+    .track-cleanup-section h2 {
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 4px;
+    }
+
+    .track-cleanup-section .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 12px;
+    }
+
+    .track-cleanup-input-row {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .track-cleanup-input-row input[type="text"] {
+      flex: 1;
+      background: var(--bg-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 10px 12px;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .track-cleanup-input-row input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .track-cleanup-input-row button {
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      background: var(--accent);
+      color: #0a0a0f;
+      border: none;
+      border-radius: var(--r-md);
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform .15s, box-shadow .15s;
+    }
+
+    .track-cleanup-input-row button:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(29, 185, 84, .3);
+    }
+
+    .track-cleanup-input-row button:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    /* Small dark-on-accent spinner rendered inside a button while a request
+       is in flight. Reuses the existing `spin` keyframes. */
+    .btn-spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(10, 10, 15, 0.3);
+      border-top-color: #0a0a0f;
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin-right: 8px;
+      vertical-align: -2px;
+    }
+
+    .track-cleanup-result {
+      margin-top: 14px;
+      display: none;
+    }
+
+    .track-cleanup-result.show {
+      display: block;
+    }
+
+    .track-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 14px 16px;
+    }
+
+    .track-card.deleted .track-title,
+    .track-card.deleted .track-artist {
+      text-decoration: line-through;
+      opacity: .55;
+    }
+
+    .track-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .track-artist {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .track-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 8px;
+      font-family: var(--mono);
+    }
+
+    .track-badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      margin-right: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .track-badge.warn {
+      background: var(--red-dim);
+      border-color: var(--red);
+      color: var(--red);
+    }
+
+    .track-actions {
+      margin-top: 12px;
+      display: flex;
+      gap: 10px;
+    }
+
+    .track-delete-btn,
+    .track-undo-btn {
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--r-md);
+      cursor: pointer;
+      font-family: inherit;
+      transition: transform .15s, box-shadow .15s;
+    }
+
+    .track-delete-btn {
+      background: var(--red);
+      color: #0a0a0f;
+    }
+
+    .track-delete-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(248, 113, 113, .3);
+    }
+
+    .track-delete-btn:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+    }
+
+    .track-undo-btn {
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent);
+    }
+
+    .track-undo-btn:hover:not(:disabled) {
+      background: var(--accent-dim);
+    }
+
+    .track-undo-btn:disabled {
+      opacity: .3;
+      cursor: not-allowed;
+      border-color: var(--border);
+      color: var(--muted);
     }
 
     .log-section {
       margin-top: 24px;
     }
+
     .log-section h2 {
-      font-size: 16px; font-weight: 700; margin: 0 0 8px;
-      display: flex; align-items: center; gap: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      margin: 0 0 8px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
+
     .log-section .log-hint {
-      color: var(--muted); font-size: 12px; margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      margin: 0 0 8px;
       font-family: inherit;
     }
+
     .log-terminal {
       background: #050508;
       border: 1px solid var(--border);
@@ -250,117 +702,303 @@
       color: var(--muted);
       white-space: nowrap;
     }
+
     .log-terminal:empty::before {
       content: "Waiting for cron to run...";
       color: var(--muted);
       opacity: .5;
     }
-    .log-line { padding: 1px 0; }
-    .log-line .time { color: rgba(155, 155, 176, .5); margin-right: 8px; }
-    .log-line.level-info    { color: var(--text); }
-    .log-line.level-warn    { color: var(--amber); }
-    .log-line.level-error   { color: var(--red); }
-    .log-line.level-success { color: var(--green); }
-    .queue-empty {
-      background: var(--card); border: 1px dashed var(--border);
-      border-radius: var(--r-md); padding: 32px; text-align: center; color: var(--muted);
+
+    .log-line {
+      padding: 1px 0;
     }
 
-    #queue { list-style: none; padding: 0; margin: 0; }
+    .log-line .time {
+      color: rgba(155, 155, 176, .5);
+      margin-right: 8px;
+    }
+
+    .log-line.level-info {
+      color: var(--text);
+    }
+
+    .log-line.level-warn {
+      color: var(--amber);
+    }
+
+    .log-line.level-error {
+      color: var(--red);
+    }
+
+    .log-line.level-success {
+      color: var(--green);
+    }
+
+    .queue-empty {
+      background: var(--card);
+      border: 1px dashed var(--border);
+      border-radius: var(--r-md);
+      padding: 32px;
+      text-align: center;
+      color: var(--muted);
+    }
+
+    #queue {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
     .queue-item {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--r-md); padding: 12px 14px; margin-bottom: 8px;
-      display: flex; align-items: center; gap: 14px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      padding: 12px 14px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
       cursor: grab;
       transition: border-color .15s, background .15s;
     }
-    .queue-item:hover { border-color: var(--border-2); }
-    .queue-item.sortable-ghost { opacity: .35; }
-    .queue-item.sortable-chosen { cursor: grabbing; }
-    .queue-item.status-analyzing, .queue-item.status-fetching_tracks {
-      cursor: default; background: var(--blue-dim);
-    }
-    .queue-item.status-done { cursor: default; opacity: .65; }
-    .queue-item.status-error   { cursor: default; background: var(--red-dim); }
-    .queue-item.status-paused  { cursor: default; background: var(--amber-dim); }
-    .queue-item.status-stopped { cursor: default; background: var(--gray-dim); }
-    .queue-item.status-skipped {
-      cursor: default; opacity: .5;
-      background: repeating-linear-gradient(
-        45deg, var(--card), var(--card) 8px, var(--bg-2) 8px, var(--bg-2) 16px);
-    }
-    .queue-item.status-skipped .item-title,
-    .queue-item.status-skipped .item-meta { text-decoration: line-through; text-decoration-thickness: 1px; }
 
-    .drag-handle { color: var(--muted); user-select: none; font-size: 16px; }
+    .queue-item:hover {
+      border-color: var(--border-2);
+    }
+
+    .queue-item.sortable-ghost {
+      opacity: .35;
+    }
+
+    .queue-item.sortable-chosen {
+      cursor: grabbing;
+    }
+
+    .queue-item.status-analyzing,
+    .queue-item.status-fetching_tracks {
+      cursor: default;
+      background: var(--blue-dim);
+    }
+
+    .queue-item.status-done {
+      cursor: default;
+      opacity: .65;
+    }
+
+    .queue-item.status-error {
+      cursor: default;
+      background: var(--red-dim);
+    }
+
+    .queue-item.status-paused {
+      cursor: default;
+      background: var(--amber-dim);
+    }
+
+    .queue-item.status-stopped {
+      cursor: default;
+      background: var(--gray-dim);
+    }
+
+    .queue-item.status-skipped {
+      cursor: default;
+      opacity: .5;
+      background: repeating-linear-gradient(45deg, var(--card), var(--card) 8px, var(--bg-2) 8px, var(--bg-2) 16px);
+    }
+
+    .queue-item.status-skipped .item-title,
+    .queue-item.status-skipped .item-meta {
+      text-decoration: line-through;
+      text-decoration-thickness: 1px;
+    }
+
+    .drag-handle {
+      color: var(--muted);
+      user-select: none;
+      font-size: 16px;
+    }
+
     .queue-item.status-analyzing .drag-handle,
     .queue-item.status-fetching_tracks .drag-handle,
-    .queue-item.status-done      .drag-handle,
-    .queue-item.status-error     .drag-handle,
-    .queue-item.status-paused    .drag-handle,
-    .queue-item.status-stopped   .drag-handle,
-    .queue-item.status-skipped   .drag-handle { visibility: hidden; }
+    .queue-item.status-done .drag-handle,
+    .queue-item.status-error .drag-handle,
+    .queue-item.status-paused .drag-handle,
+    .queue-item.status-stopped .drag-handle,
+    .queue-item.status-skipped .drag-handle {
+      visibility: hidden;
+    }
 
     .skip-btn {
-      background: transparent; border: 1px solid var(--border);
-      color: var(--muted); border-radius: 6px;
-      width: 30px; height: 30px; cursor: pointer;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 14px; padding: 0; flex-shrink: 0; font-family: inherit;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      padding: 0;
+      flex-shrink: 0;
+      font-family: inherit;
       transition: color .15s, border-color .15s, background .15s;
     }
-    .skip-btn:hover:not(:disabled) { color: var(--red); border-color: var(--red); }
-    .skip-btn:disabled { opacity: .3; cursor: not-allowed; }
-    .queue-item.status-skipped .skip-btn { color: var(--accent); border-color: var(--accent); }
-    .queue-item.status-skipped .skip-btn:hover:not(:disabled) { background: var(--accent-dim); }
 
-    .item-main { flex: 1; min-width: 0; }
+    .skip-btn:hover:not(:disabled) {
+      color: var(--red);
+      border-color: var(--red);
+    }
+
+    .skip-btn:disabled {
+      opacity: .3;
+      cursor: not-allowed;
+    }
+
+    .queue-item.status-skipped .skip-btn {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .queue-item.status-skipped .skip-btn:hover:not(:disabled) {
+      background: var(--accent-dim);
+    }
+
+    .item-main {
+      flex: 1;
+      min-width: 0;
+    }
+
     .item-title {
-      font-size: 15px; font-weight: 600; color: var(--text);
-      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .item-title a { color: inherit; text-decoration: none; }
-    .item-title a:hover { text-decoration: underline; }
-    .item-meta {
-      font-size: 12px; color: var(--muted); margin-top: 2px;
-      display: flex; flex-wrap: wrap; gap: 4px 8px;
-    }
-    .badge {
-      display: inline-block; padding: 1px 8px; border-radius: 8px;
-      font-size: 11px; font-weight: 500;
-      background: var(--bg-2); color: var(--text); border: 1px solid var(--border);
-    }
-    .badge.genre { background: var(--accent-dim); border-color: var(--accent); }
-    .badge.biz   { background: var(--gray-dim); border-color: var(--gray); }
 
-    .item-progress { min-width: 160px; text-align: right; }
-    .progress-bar {
-      height: 6px; background: var(--bg-2); border-radius: 3px; overflow: hidden;
+    .item-title a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    .item-title a:hover {
+      text-decoration: underline;
+    }
+
+    .item-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 2px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 8px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 1px 8px;
+      border-radius: 8px;
+      font-size: 11px;
+      font-weight: 500;
+      background: var(--bg-2);
+      color: var(--text);
       border: 1px solid var(--border);
     }
-    .progress-fill { height: 100%; background: var(--gray); transition: width .3s, background .3s; }
-    .status-pending          .progress-fill { background: var(--gray); }
-    .status-fetching_tracks  .progress-fill { background: var(--blue); }
-    .status-analyzing        .progress-fill { background: var(--blue); }
-    .status-done             .progress-fill { background: var(--green); }
-    .status-error            .progress-fill { background: var(--red); }
-    .status-paused           .progress-fill { background: var(--amber); }
-    .status-stopped          .progress-fill { background: var(--gray); }
-    .status-skipped          .progress-fill { background: var(--gray); }
+
+    .badge.genre {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+    }
+
+    .badge.biz {
+      background: var(--gray-dim);
+      border-color: var(--gray);
+    }
+
+    .item-progress {
+      min-width: 160px;
+      text-align: right;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: var(--bg-2);
+      border-radius: 3px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--gray);
+      transition: width .3s, background .3s;
+    }
+
+    .status-pending .progress-fill {
+      background: var(--gray);
+    }
+
+    .status-fetching_tracks .progress-fill {
+      background: var(--blue);
+    }
+
+    .status-analyzing .progress-fill {
+      background: var(--blue);
+    }
+
+    .status-done .progress-fill {
+      background: var(--green);
+    }
+
+    .status-error .progress-fill {
+      background: var(--red);
+    }
+
+    .status-paused .progress-fill {
+      background: var(--amber);
+    }
+
+    .status-stopped .progress-fill {
+      background: var(--gray);
+    }
+
+    .status-skipped .progress-fill {
+      background: var(--gray);
+    }
+
     .progress-text {
-      font-family: var(--mono); font-size: 11px; color: var(--muted); margin-top: 4px;
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 4px;
     }
 
     .loading-spinner {
-      display: none; width: 16px; height: 16px;
-      border: 2px solid var(--border); border-top-color: var(--accent);
-      border-radius: 50%; animation: spin .8s linear infinite;
+      display: none;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
       flex-shrink: 0;
     }
-    .loading-spinner.show { display: inline-block; }
-    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-spinner.show {
+      display: inline-block;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
   </style>
 </head>
+
 <body>
   <div class="container">
     <header class="top">
@@ -368,7 +1006,9 @@
       <div class="usage-bar">
         <span class="usage-label">Total monthly RapidAPI calls</span>
         <div class="usage-text" id="usageText">— / —</div>
-        <div class="usage-track"><div class="usage-fill" id="usageFill" style="width: 0%"></div></div>
+        <div class="usage-track">
+          <div class="usage-fill" id="usageFill" style="width: 0%"></div>
+        </div>
         <button class="sync-btn" id="syncBtn" title="Sync usage from RapidAPI (costs 1 call)">↻</button>
       </div>
     </header>
@@ -376,18 +1016,33 @@
     <div class="banner" id="banner"></div>
 
     <div class="scan-block">
-      <button class="scan-btn" id="scanBtn">Scan databox and update DB</button>
+      <div class="scan-btn-row">
+        <button class="scan-btn" id="scanBtn">Scan databox and update DB</button>
+        <button class="scan-btn" id="scanAtmoBtn">Scan atmospheres and update DB</button>
+      </div>
       <div class="scan-hint">
         <span class="loading-spinner" id="scanSpinner"></span>
-        <span id="scanHint">Click to detect what changed in the Google Sheet since the last scan.</span>
+        <span id="scanHint">Click either button to detect what changed in the Google Sheet since the last scan.</span>
       </div>
     </div>
 
     <div class="summary-grid" id="summaryGrid" style="display: none;"></div>
 
+    <div class="track-cleanup-section">
+      <h2>Track cleanup</h2>
+      <p class="hint">Remove a single Spotify track from the DB</p>
+      <div class="track-cleanup-input-row">
+        <input type="text" id="trackLookupInput"
+          placeholder="Spotify track ID, open.spotify.com/track/... URL, or spotify:track:... URI" />
+        <button id="trackLookupBtn">Find song</button>
+      </div>
+      <div class="track-cleanup-result" id="trackLookupResult"></div>
+    </div>
+
     <div class="log-section">
       <h2>Live activity log</h2>
-      <div class="log-hint">Streams from cron in real time. Each RapidAPI call takes 18–30s, so lines land when they finish.</div>
+      <div class="log-hint">Streams from cron in real time. Each RapidAPI call takes 18–30s, so lines land when they
+        finish.</div>
       <div class="log-terminal" id="logTerminal"></div>
     </div>
 
@@ -397,26 +1052,32 @@
           Playlists to scan
           <span class="queue-counts" id="queueCounts">0 pending · 0 done</span>
         </h2>
-        <button class="start-btn" id="startBtn" title="Begin RapidAPI processing of pending playlists.">Start batch</button>
-        <button class="stop-btn" id="stopBtn" title="Halts RapidAPI calls. Progress is preserved. Click Start batch to resume.">Stop batch</button>
+        <button class="start-btn" id="startBtn" title="Begin RapidAPI processing of pending playlists.">Start
+          batch</button>
+        <button class="stop-btn" id="stopBtn"
+          title="Halts RapidAPI calls. Progress is preserved. Click Start batch to resume.">Stop batch</button>
       </div>
       <div class="batch-progress" id="batchProgress">
         <div class="batch-progress-row">
           <span class="batch-progress-label" id="batchProgressLabel">Batch progress</span>
-          <div class="batch-progress-bar"><div class="batch-progress-fill" id="batchProgressFill"></div></div>
+          <div class="batch-progress-bar">
+            <div class="batch-progress-fill" id="batchProgressFill"></div>
+          </div>
           <span class="batch-progress-pct" id="batchProgressPct">0%</span>
         </div>
         <div class="batch-progress-detail" id="batchProgressDetail"></div>
       </div>
       <p class="queue-hint">Drag rows to reorder. Highest at the top runs first. Rows in progress can't be moved.</p>
       <div class="bulk-toggle-row" id="bulkToggleRow">
-        <button class="bulk-toggle-btn" id="bulkToggleBtn" data-action="skip" title="Toggle all pending / skipped playlists"></button>
+        <button class="bulk-toggle-btn" id="bulkToggleBtn" data-action="skip"
+          title="Toggle all pending / skipped playlists"></button>
       </div>
       <ul id="queue"></ul>
       <div class="queue-empty" id="queueEmpty">No playlists in the queue yet. Run a scan.</div>
     </div>
   </div>
 
-  <script src="/v4/ami/app.js?v=02072026u"></script>
+  <script src="/v4/ami/app.js?v=02072026x"></script>
 </body>
+
 </html>

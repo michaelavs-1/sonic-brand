@@ -425,6 +425,34 @@
       .screen-card { padding: 24px 18px; border-radius: var(--r-md); }
       h1 { font-size: 22px; }
       .input-textarea { min-height: 150px; }
+
+      /* On narrow screens the Spotify embed needs the whole card width or
+         its play button gets clipped. Move the checkbox to an absolute
+         overlay so the embed takes full row width. Placed on the LEFT of
+         the card (inline-end in RTL) so it covers album art, not the
+         iframe's right-edge play button. */
+      .preview-card {
+        position: relative;
+      }
+      .preview-card-row {
+        gap: 0;
+      }
+      .preview-check-wrap {
+        position: absolute;
+        top: 10px;
+        inset-inline-end: 10px;
+        width: 36px;
+        height: 36px;
+        background: rgba(10, 10, 15, .85);
+        border: 1px solid var(--border-2);
+        border-radius: 8px;
+        z-index: 2;
+        padding: 0;
+      }
+      .preview-check-wrap .preview-checkbox {
+        width: 20px;
+        height: 20px;
+      }
     }
 
     /* ===== accessibility: keyboard focus + reduced motion (UI only) ===== */
@@ -470,7 +498,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v5/app.js?v=28072026u"></script>
+  <script type="module" src="/v5/app.js?v=28072026v"></script>
 </body>
 
 </html>

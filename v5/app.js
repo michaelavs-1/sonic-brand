@@ -5,12 +5,12 @@
 // playlist per selected direction (10 tracks, BPM+popularity screen only) →
 // show a result accordion per playlist.
 
-import { generateMusicalDirections } from '/v5/generation/musical-directions.js?v=28072026u';
-import { runAtmosphereSelection }    from '/v5/atmosphere.js?v=28072026u';
-import { derivePopularityWindow }    from '/v5/generation/popularity-window.js?v=28072026u';
-import { runDirectionPreviewFlow }   from '/v5/preview.js?v=28072026u';
-import { buildDirectionPlaylists }   from '/v5/generation/playlist-builder.js?v=28072026u';
-import { initPlaylistResultsShell, updateOnePlaylistResult, finalizePlaylistResultsHeading } from '/v5/result.js?v=28072026u';
+import { generateMusicalDirections } from '/v5/generation/musical-directions.js?v=28072026v';
+import { runAtmosphereSelection }    from '/v5/atmosphere.js?v=28072026v';
+import { derivePopularityWindow }    from '/v5/generation/popularity-window.js?v=28072026v';
+import { runDirectionPreviewFlow }   from '/v5/preview.js?v=28072026v';
+import { buildDirectionPlaylists }   from '/v5/generation/playlist-builder.js?v=28072026v';
+import { initPlaylistResultsShell, updateOnePlaylistResult, finalizePlaylistResultsHeading } from '/v5/result.js?v=28072026v';
 
 const $ = (id) => document.getElementById(id);
 

@@ -70,16 +70,37 @@ async function renderBatch(container, cards, submitLabel) {
   const list = el('div', { class: 'preview-list' });
 
   for (const c of cards) {
+    const d = c.direction;
     const mount    = el('div', { class: 'preview-spotify-mount' });
     const checkbox = el('input', { type: 'checkbox', class: 'preview-checkbox' });
+
+    const secondaryList = Array.isArray(d.secondary_genres) && d.secondary_genres.length
+      ? d.secondary_genres.join(', ')
+      : '—';
+
+    const infoEl = el('div', { class: 'preview-info' },
+      el('div', { class: 'preview-info-title' }, d.title_en || '(no title)'),
+      el('div', { class: 'preview-info-genres' },
+        el('span', { class: 'preview-info-label' }, 'anchor: '),
+        el('span', {}, d.anchor_genre || '—'),
+        el('span', { class: 'preview-info-sep' }, ' · '),
+        el('span', { class: 'preview-info-label' }, 'with: '),
+        el('span', {}, secondaryList),
+      ),
+      el('div', { class: 'preview-info-desc' }, d.description_he || ''),
+    );
+
     const cardEl = el('div',
       {
         class:       'preview-card',
-        'data-rank': String(c.direction.rank),
+        'data-rank': String(d.rank),
         'data-uri':  `spotify:track:${c.trackId}`,
       },
-      el('label', { class: 'preview-check-wrap' }, checkbox),
-      el('div',   { class: 'preview-embed' }, mount),
+      el('div', { class: 'preview-card-row' },
+        el('label', { class: 'preview-check-wrap' }, checkbox),
+        el('div',   { class: 'preview-embed' }, mount),
+      ),
+      infoEl,
     );
     list.append(cardEl);
   }

@@ -2,7 +2,7 @@
 //
 // Input:
 //   {
-//     selectedDirections: [{ rank, title_he, description_he, anchor_genre,
+//     selectedDirections: [{ rank, title_en, description_he, anchor_genre,
 //                            secondary_genres, bpm_range }, ...],
 //     bizName:            'שם העסק' | '',
 //     popularityWindow:   [lo, hi] | null,
@@ -19,8 +19,8 @@
 //   3) Add the tracks.
 //
 // Playlist name format (customer-facing, per user's screenshot):
-//   "{bizName} · {title_he} · DD.MM.YYYY"
-//   If bizName is empty: "{title_he} · DD.MM.YYYY"
+//   "{bizName} · {title_en} · DD.MM.YYYY"
+//   If bizName is empty: "{title_en} · DD.MM.YYYY"
 
 const TARGET_TRACKS = 10;
 
@@ -32,7 +32,7 @@ function dateSuffix() {
 }
 
 function playlistName(bizName, direction) {
-  const title = direction.title_he;
+  const title = direction.title_en;
   const date  = dateSuffix();
   return bizName && bizName.trim()
     ? `${bizName.trim()} · ${title} · ${date}`
@@ -78,7 +78,7 @@ async function buildOne({ direction, bizName, popularityWindow }) {
   }
 
   const name        = playlistName(bizName, direction);
-  const description = direction.description_he || direction.title_he;
+  const description = direction.description_he || direction.title_en;
 
   const playlist = await postSpotify('create_playlist', { name, description });
   if (!playlist?.id) throw new Error('create_playlist returned no id');
@@ -112,7 +112,7 @@ export async function buildDirectionPlaylists({ selectedDirections, bizName, pop
     try {
       result = await buildOne({ direction, bizName, popularityWindow });
     } catch (err) {
-      console.error(`v5 playlist "${direction.title_he}" (rank ${direction.rank}) failed:`, err);
+      console.error(`v5 playlist "${direction.title_en}" (rank ${direction.rank}) failed:`, err);
       result = { direction, skipped: true, reason: err.message };
     }
     if (typeof onProgress === 'function') {

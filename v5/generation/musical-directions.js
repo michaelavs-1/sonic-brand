@@ -82,9 +82,78 @@ Do not tag directions as calm or energetic. If the business calls for both peace
 
 ## Output language
 
-- **User-facing fields** (\`title_he\`, \`description_he\`): Hebrew.
+- **Title** (\`title_en\`): English.
+- **Description** (\`description_he\`): Hebrew.
 - **Error case field** (\`reasoning_en\`): English.
 - Genre names stay in whatever language they appear in the list — do not translate them.
+
+## Title style
+
+Each \`title_en\` is 4–7 words, English. Three acceptable patterns:
+
+1. **Adjective + genres joined by "&" or ","**
+   - "Desert Blues & Tropical Grooves"
+   - "Organic Afro & Deep House"
+   - "Vintage Latin Grooves & Boogaloo"
+   - "Nu-Disco, Retro & Italo"
+   - "Indie Electropop & Modern Lounge"
+
+2. **Pure genre chain** (no adjective)
+   - "Neo-Soul, R&B & Acid Jazz"
+
+3. **Genre chain + evocative flourish**
+   - "Acoustic Bossa, Fado & Iberian Romance"
+
+Genres named may be shortened or reformatted (e.g. "Neo-Soul" for "Neo Soul", "R&B" for "Rnb"). Avoid vague or one-word titles ("Chill", "Vibes") and never use a bare copy of a single genre-list string as the whole title.
+
+## Description style
+
+Each \`description_he\` is ONE short Hebrew sentence, 6–14 words, capturing the OVERALL FEEL of the direction. Plain, standard, everyday Hebrew — as if a knowledgeable friend were describing music to another Israeli, NOT translated from English.
+
+### Structure — three beats, in this priority order
+
+Open with **Beat 1** (required). Add Beat 2 or Beat 3 (optional) if space allows within the word budget. Do not force all three — fit whatever length allows.
+
+1. **Beat 1 (required)**: an overall vibe / mood / energy / sound statement. This is the anchor. Never open with a bare instrument list.
+2. **Beat 2 (optional)**: one or two concrete flavor details — an instrument, a genre reference, or a fusion note ("קומביה עם פאנק").
+3. **Beat 3 (optional)**: a functional / fit context — what the music does or when/who it suits ("מרים את המורל", "מתאים לצהריים בסופ״ש").
+
+### Vocabulary — use Hebrew, never transliterate English
+
+- Trumpet → חצוצרה (never "טרומפט")
+- Percussion → כלי הקשה (never "פרקסן" / "פרקושן" / "פרקשן")
+- Plucked strings → פרוטות or מנוגנות (never "מוכות" — that means "beaten")
+- OK as-is: פסנתר, גיטרה, בס, קונטרבס, תופים, סקסופון, אורגן, סינתיסייזר, שירה, מקהלה, כלי נשיפה.
+
+### Scene-setting — generic OK, specific NOT OK
+
+- ALLOWED (generic mood/setting): לבוקר, לערב, לסופ"ש, למשפחות, לקפה של בוקר, ערב מאוחר; cultural tags: אירופאי, ים-תיכוני, אורבני, מדברי, לטיני, בלקני; function verbs: מרים את המורל, מחזיק את הבר בתנועה, נותן תחושה של.
+- FORBIDDEN (specific scene-painting): city names (Paris, Tel Aviv when used as a scene, not a vibe tag), beverage brands (פינו גריג'יו, ריזלינג), specific times ("השעה שלאחר חצות"), "כמו לשבת ב…".
+
+### Do NOT
+
+- Invent or bend Hebrew word forms (e.g., "ממורטות", "ממותח"). Every word must be real dictionary Hebrew in its normal grammatical form. If unsure, use a simpler word.
+- Use marketing/critic abstractions: "עומק הרמוני", "מרקם אקוסטי אוורירי", "אנרגיה פנימית", "צלילים מהפנטים", "סאונד עשיר".
+- Open with a bare instrument list ("פסנתר, קונטרבס ותופים").
+- Exceed 14 words.
+
+### Good examples (each stays within the word budget)
+
+- "אווירה אקוסטית ביתית עם גיטרה ושירה נעימה" — Beat 1 + Beat 2
+- "רוגע אירופאי קלאסי עם גיטרות ניילון ופסנתר" — Beat 1 (with cultural tag) + Beat 2
+- "קצב רגאיי שמח, אוורירי ולא מתאמץ" — Beat 1 only
+- "חגיגה לטינית קצבית של שנות ה-60 וה-70" — Beat 1 with era
+- "גרוב איטי וחם, מתאים לערב מאוחר" — Beat 1 + Beat 3
+- "אנרגיית דיסקו נוצצת שמחזיקה את הבר בתנועה" — Beat 1 + Beat 3
+- "גרוב מדברי מהפנט עם גיטרות חשמליות" — Beat 1 + Beat 2
+
+### Bad examples — do not write like this
+
+- "פסנתר, קונטרבס ותופים בגרוב איטי" (bare instrument list, no vibe up front)
+- "פסנתר רך ובס אקוסטי שקט זורמים במפרץ כמו בר יין קטן בפריז" (scene painting + too long)
+- "טרומפט זהוב וקונטרבס ממותח" (transliteration + invented usage)
+- "מרקם אקוסטי אוורירי עם עומק הרמוני" (marketing gibberish)
+- "אווירה אלגנטית ורגועה" (pure abstraction, no color)
 
 ## Output format
 
@@ -95,10 +164,10 @@ Normal case:
   "directions": [
     {
       "rank": 1,
-      "title_he": "short evocative Hebrew title, 2-5 words",
+      "title_en": "English title, 4-7 words (see Title style)",
       "anchor_genre": "one genre name from the list",
       "secondary_genres": ["...", "..."],
-      "description_he": "one Hebrew sentence describing how this direction feels to a customer walking in",
+      "description_he": "one short Hebrew sentence, 6-14 words (see Description style)",
       "bpm_range": {"min": 90, "max": 115}
     }
     // ... up to rank 8
@@ -147,7 +216,7 @@ function summarizeDirection(d, idx) {
   const secondaries = Array.isArray(d.secondary_genres) && d.secondary_genres.length
     ? ` (with: ${d.secondary_genres.join(', ')})`
     : '';
-  return `${idx + 1}. "${d.title_he}" — anchor: ${d.anchor_genre}${secondaries}`;
+  return `${idx + 1}. "${d.title_en}" — anchor: ${d.anchor_genre}${secondaries}`;
 }
 
 function buildUserMessage({ bizName, bizDesc, atmospheres, subset, priorDirections }) {
@@ -241,7 +310,7 @@ function validateBpmRange(bpm) {
 
 function validateDirection(d) {
   return d
-      && typeof d.title_he       === 'string' && d.title_he.length
+      && typeof d.title_en       === 'string' && d.title_en.length
       && typeof d.description_he === 'string' && d.description_he.length
       && typeof d.anchor_genre   === 'string' && d.anchor_genre.length
       && Array.isArray(d.secondary_genres)

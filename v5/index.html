@@ -178,8 +178,8 @@
 
     .preview-card {
       display: flex;
-      align-items: center;
-      gap: 14px;
+      flex-direction: column;
+      gap: 8px;
       background: var(--bg-2);
       border: 1px solid var(--border-2);
       border-radius: 14px;
@@ -191,9 +191,53 @@
       border-color: var(--accent);
     }
 
+    .preview-card-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
     .preview-embed {
       flex: 1 1 auto;
       min-width: 0;
+    }
+
+    .preview-info {
+      padding: 8px 10px;
+      background: rgba(255, 255, 255, .03);
+      border-radius: 10px;
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .preview-info-title {
+      color: var(--text);
+      font-weight: 700;
+      margin-bottom: 4px;
+      direction: ltr;
+      text-align: start;
+    }
+
+    .preview-info-genres {
+      direction: ltr;
+      text-align: start;
+      margin-bottom: 4px;
+    }
+
+    .preview-info-label {
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    .preview-info-sep {
+      color: var(--border-2);
+      margin: 0 4px;
+    }
+
+    .preview-info-desc {
+      color: var(--text);
+      opacity: .85;
     }
 
     .preview-embed iframe {
@@ -426,7 +470,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v5/app.js?v=28072026o"></script>
+  <script type="module" src="/v5/app.js?v=28072026u"></script>
 </body>
 
 </html>

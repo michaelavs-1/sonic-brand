@@ -59,7 +59,7 @@ export function showBuildingPlaylists(count) {
 // no layout shift when the real card swaps in. The button is disabled and
 // dimmed via the .btn:disabled CSS rule already in index.html.
 function renderPlaceholderCard(direction) {
-  const title = direction?.title_he || 'פלייליסט';
+  const title = direction?.title_en || 'פלייליסט';
   return el('div', { class: 'pl-accordion', 'data-placeholder': 'true' },
     el('div', { class: 'pl-accordion-head' },
       el('div', { class: 'pl-accordion-info' },
@@ -85,7 +85,7 @@ function renderPlaceholderCard(direction) {
 }
 
 function renderPlaylistRow(r) {
-  const title = r.name || r.direction?.title_he || 'פלייליסט';
+  const title = r.name || r.direction?.title_en || 'פלייליסט';
 
   if (r.skipped) {
     return el('div', { class: 'pl-accordion' },

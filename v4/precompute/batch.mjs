@@ -74,6 +74,19 @@ const LOG_PATH       = path.join(STATE_DIR, 'batch.log');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Interruptible sleep — polls isAborted() every pollMs so a long backoff can
+// exit within pollMs of the abort flag flipping (instead of waiting the full
+// duration). Returns true if aborted mid-sleep, false if slept the full time.
+async function interruptibleSleep(totalMs, isAborted, pollMs = 500) {
+    const deadline = Date.now() + totalMs;
+    while (Date.now() < deadline) {
+        if (isAborted && isAborted()) return true;
+        const remaining = deadline - Date.now();
+        await sleep(Math.min(pollMs, remaining));
+    }
+    return false;
+}
+
 // Retry pgrUpsert on transient failures (network blips, fetch failures,
 // 5xx from PostgREST). Three attempts with backoff. Throws after exhaustion
 // so callers can record a real errored entry. Important: we've already paid
@@ -285,12 +298,15 @@ async function callRapidApiOnce(spotifyId, apiKey) {
     return { kind: 'ok', data };
 }
 
-async function callWithRetries(spotifyId, apiKey, cap) {
+async function callWithRetries(spotifyId, apiKey, cap, isAborted) {
     let rate429Idx = 0;
     let serr5xxIdx = 0;
     let htmlSeen   = 0;
 
     while (true) {
+        // Bail immediately if another worker has already tripped the batch abort.
+        if (isAborted && isAborted()) return { kind: 'aborted_externally' };
+
         // Per-call counter pre-check. Hard stop — better to abort the
         // batch than to nudge over the cap on a retry.
         const projected = readCurrentCycleCount() + 1;
@@ -322,7 +338,7 @@ async function callWithRetries(spotifyId, apiKey, cap) {
             }
             const wait = RETRY_5XX_BACKOFF_MS[serr5xxIdx] || RETRY_5XX_BACKOFF_MS[RETRY_5XX_BACKOFF_MS.length - 1];
             warn(`gateway_html on ${spotifyId}: status=${result.status} <HTML response len=${result.bodyLen}>; backoff ${wait}ms (html ${htmlSeen}/${HTML_RETRY_LIMIT})`);
-            await sleep(wait);
+            if (await interruptibleSleep(wait, isAborted)) return { kind: 'aborted_externally' };
             serr5xxIdx++;
             continue;
         }
@@ -335,7 +351,7 @@ async function callWithRetries(spotifyId, apiKey, cap) {
                 ? Math.min(result.retryAfter * 1000, RETRY_429_BACKOFF_MS[rate429Idx])
                 : RETRY_429_BACKOFF_MS[rate429Idx];
             warn(`429 on ${spotifyId}; backoff ${wait}ms (attempt ${rate429Idx + 1}/${RETRY_429_BACKOFF_MS.length})`);
-            await sleep(wait);
+            if (await interruptibleSleep(wait, isAborted)) return { kind: 'aborted_externally' };
             rate429Idx++;
             continue;
         }
@@ -346,7 +362,7 @@ async function callWithRetries(spotifyId, apiKey, cap) {
         }
         const wait = RETRY_5XX_BACKOFF_MS[serr5xxIdx];
         warn(`${result.kind} on ${spotifyId}: ${result.status || ''} ${result.body || result.message || ''}; backoff ${wait}ms (attempt ${serr5xxIdx + 1}/${RETRY_5XX_BACKOFF_MS.length})`);
-        await sleep(wait);
+        if (await interruptibleSleep(wait, isAborted)) return { kind: 'aborted_externally' };
         serr5xxIdx++;
     }
 }
@@ -520,6 +536,9 @@ async function main() {
     let notFound = 0;
     let errored  = 0;
     let aborted  = false;
+    // When aborted, the reason drives the summary line's resume guidance.
+    // One of: 'cap' | 'auth' | 'gateway' | 'storm'.
+    let abortReason = null;
 
     // Worker pool: N workers, each pulls from a shared queue and processes
     // sequentially. The number of in-flight RapidAPI calls is therefore
@@ -550,6 +569,7 @@ async function main() {
             const terminals = recentOutcomes.filter((o) => o === 'terminal').length;
             if (terminals >= TERMINAL_STORM_THRESHOLD) {
                 aborted = true;
+                abortReason = 'storm';
                 log(`ABORT: ${terminals}/${TERMINAL_STORM_WINDOW} recent tracks terminal-failed. Upstream appears broken — aborting to save quota. Resume later with --retry-errors once healthy.`);
                 queueProgressWrite(progress);
             }
@@ -558,17 +578,25 @@ async function main() {
 
     async function processOne(spotifyId) {
         const t1 = Date.now();
-        const result = await callWithRetries(spotifyId, apiKey, cap);
+        const result = await callWithRetries(spotifyId, apiKey, cap, () => aborted);
         const ms = Date.now() - t1;
+
+        // Batch was aborted by another worker while we were mid-retry. Bail
+        // without recording anything — the track hasn't been given a fair
+        // chance and shouldn't be marked as error. Worker loop will exit
+        // on its next iteration.
+        if (result.kind === 'aborted_externally') return;
 
         if (result.kind === 'aborted_by_cap') {
             aborted = true;
+            abortReason = 'cap';
             log(`ABORT: cap would be exceeded (${result.projected} > ${result.cap}) on ${spotifyId}`);
             queueProgressWrite(progress);  // force a write on abort
             return;
         }
         if (result.kind === 'aborted_by_auth') {
             aborted = true;
+            abortReason = 'auth';
             log(`ABORT: RapidAPI auth/subscription failure (HTTP ${result.status}) on ${spotifyId}: ${result.body}`);
             log(`This is non-transient (subscription expired, wrong key, or billing issue). Fix on RapidAPI dashboard, then resume.`);
             queueProgressWrite(progress);
@@ -576,6 +604,7 @@ async function main() {
         }
         if (result.kind === 'aborted_by_gateway') {
             aborted = true;
+            abortReason = 'gateway';
             log(`ABORT: RapidAPI gateway returned HTML on ${HTML_RETRY_LIMIT} consecutive attempts on ${spotifyId} (status=${result.status}, len=${result.bodyLen}). Upstream is likely down — try again later.`);
             queueProgressWrite(progress);
             return;
@@ -654,7 +683,15 @@ async function main() {
     log(`analyzed=${analyzed}  not_found=${notFound}  errored=${errored}`);
     log(`monthly counter after run: ${monthAfter} (cap=${cap})`);
     log(`elapsed: ${elapsedMin} min`);
-    if (aborted) log('Run was aborted by cost cap. Re-run with a higher --max-rapidapi-calls to continue (will resume from where it stopped).');
+    if (aborted) {
+        const guidance = {
+            cap:     'Cost cap reached. Re-run with a higher --max-rapidapi-calls (or wait for cycle renewal) to continue; will resume from where it stopped.',
+            auth:    'RapidAPI auth/subscription failure. Fix on the RapidAPI dashboard, then re-run to resume.',
+            gateway: 'RapidAPI gateway looked down. Try again later; re-run will resume from where it stopped.',
+            storm:   'Upstream failure storm detected (many recent terminal failures). Try again later once RapidAPI is healthy; use --retry-errors on the resume to re-attempt tracks that terminal-failed during the storm.',
+        }[abortReason] || 'See ABORT line above for the reason.';
+        log(`Run aborted (${abortReason || 'unknown'}). ${guidance}`);
+    }
 
     logStream.end();
 }

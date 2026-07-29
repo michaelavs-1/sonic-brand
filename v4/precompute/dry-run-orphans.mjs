@@ -7,9 +7,14 @@
 // auth/gateway abort, sub-section of queue manually stripped (e.g. Modern Pop).
 //
 // Complements `--retry-errors` in batch.mjs:
-//   --retry-errors  → re-attempts tracks with status='error' (transient
-//                     failures we want to give another chance)
-//   dry-run-orphans → re-attempts tracks that were never touched at all
+//   --retry-errors        → re-attempts tracks with status='error' (transient
+//                           failures we want to give another chance)
+//   dry-run-orphans       → queues tracks that were never touched at all
+//   dry-run-orphans
+//     --include-errors    → also queues tracks currently at status='error'.
+//                           Pair with `batch.mjs --retry-errors` to actually
+//                           re-analyze them (otherwise batch would skip them
+//                           since they're already in track_analyses).
 //
 // Prereqs:
 //   1) .env.local with SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
@@ -21,6 +26,7 @@
 //
 // Run (from anywhere):
 //   node v4/precompute/dry-run-orphans.mjs
+//   node v4/precompute/dry-run-orphans.mjs --include-errors
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -51,6 +57,11 @@ if (!SUPABASE_URL || !KEY) {
 }
 const OUT_PATH = path.join(STATE_DIR, 'dry-run.json');
 
+// --include-errors: also queue tracks that are in track_analyses with
+// status='error' (retries exhausted during a previous storm). Pair with
+// `batch.mjs --retry-errors` to actually re-attempt them.
+const INCLUDE_ERRORS = process.argv.includes('--include-errors');
+
 // PostgREST paginated select via Range header — works for tables much larger
 // than the 1000-row default page.
 async function fetchAllPaginated(table, query = {}) {
@@ -79,18 +90,26 @@ async function fetchAllPaginated(table, query = {}) {
 
 async function main() {
     console.log('Scanning Supabase for orphan spotify_ids...');
-    console.log('  orphan = present in playlist_tracks, MISSING from track_analyses\n');
+    console.log('  orphan = present in playlist_tracks, MISSING from track_analyses');
+    if (INCLUDE_ERRORS) console.log('  (--include-errors: also treating status=error rows as orphans)');
+    console.log('');
 
     // 1. All (playlist_id, spotify_id, position) from playlist_tracks
     console.log('Fetching playlist_tracks...');
     const ptRows = await fetchAllPaginated('playlist_tracks', { select: 'playlist_id,spotify_id,position' });
     console.log(`  playlist_tracks rows: ${ptRows.length}`);
 
-    // 2. All spotify_ids in track_analyses (any status counts as "touched")
+    // 2. All spotify_ids in track_analyses. In --include-errors mode we exclude
+    //    status='error' rows from the "touched" set so those tracks reappear as
+    //    orphans and get queued for a fresh RapidAPI attempt.
     console.log('Fetching track_analyses...');
-    const taRows = await fetchAllPaginated('track_analyses', { select: 'spotify_id' });
-    const taSet = new Set(taRows.map((r) => r.spotify_id));
-    console.log(`  track_analyses rows: ${taRows.length}`);
+    const taRows = await fetchAllPaginated('track_analyses', { select: 'spotify_id,status' });
+    const consideredTouched = INCLUDE_ERRORS
+        ? taRows.filter((r) => r.status !== 'error')
+        : taRows;
+    const taSet = new Set(consideredTouched.map((r) => r.spotify_id));
+    const errorCount = taRows.length - consideredTouched.length;
+    console.log(`  track_analyses rows: ${taRows.length}${INCLUDE_ERRORS ? ` (${errorCount} status=error re-queued)` : ''}`);
 
     // 3. Orphans grouped by playlist for round-robin ordering + reporting
     const orphansByPlaylist = new Map();   // playlist_id -> [{ spotify_id, position }]

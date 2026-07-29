@@ -29,6 +29,18 @@
     },
     "api/v4/ami-cron-tick.js": {
       "maxDuration": 300
+    },
+    "api/v5/anthropic.js": {
+      "maxDuration": 60
+    },
+    "api/v5/anchor-tracks.js": {
+      "maxDuration": 30
+    },
+    "api/v5/direction-tracks.js": {
+      "maxDuration": 30
+    },
+    "api/v5/prewarm.js": {
+      "maxDuration": 30
     }
   },
   "crons": [
@@ -170,6 +182,40 @@
           "value": "0"
         }
       ]
+    },
+    {
+      "source": "/v5",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/v5/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
     }
   ],
   "rewrites": [
@@ -196,6 +242,10 @@
     {
       "source": "/v4/ami",
       "destination": "/v4/ami/index.html"
+    },
+    {
+      "source": "/v5",
+      "destination": "/v5/index.html"
     }
   ]
 }

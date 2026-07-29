@@ -51,6 +51,13 @@ const PLAYLISTS_PER_GENRE = 2;
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 
+// Spotify's editorial/algorithmic playlists (IDs starting with "37i9dQZF1D")
+// are region-locked and Client Credentials tokens can't fetch their track
+// lists — they return empty. Skip at plan-build time.
+function isEditorialPlaylist(id) {
+    return typeof id === 'string' && id.startsWith('37i9dQZF1D');
+}
+
 async function getJSON(url) {
     const r = await fetch(url);
     const data = await r.json().catch(() => ({}));
@@ -109,19 +116,26 @@ async function main() {
     const tab2Rows = tab2.rows || [];
     console.log(`Tab 2 rows: ${tab2Rows.length}`);
 
-    // 2. Build wanted (playlist_id, genre, position) triples
+    // 2. Build wanted (playlist_id, genre, position) triples — skipping
+    //    Spotify editorial playlists which can't be fetched.
     const wantedPlaylistGenres = [];
+    let editorialSkipped = 0;
     for (const row of tab2Rows) {
-        const first = (row.playlists || []).slice(0, PLAYLISTS_PER_GENRE).filter((p) => p?.id);
-        first.forEach((p, i) => {
+        const candidates = (row.playlists || []).filter((p) => p?.id);
+        let taken = 0;
+        for (let i = 0; i < candidates.length && taken < PLAYLISTS_PER_GENRE; i++) {
+            const p = candidates[i];
+            if (isEditorialPlaylist(p.id)) { editorialSkipped++; continue; }
             wantedPlaylistGenres.push({
                 playlist_id:       p.id,
                 genre:             norm(row.genre),
                 position_in_genre: i + 1,
             });
-        });
+            taken++;
+        }
     }
     console.log(`Wanted playlist_genres entries: ${wantedPlaylistGenres.length}`);
+    if (editorialSkipped) console.log(`  editorial playlists skipped: ${editorialSkipped}`);
 
     // 3. Diff against existing playlist_genres (paginate to handle >1000 rows)
     console.log('Fetching existing playlist_genres from Supabase...');

@@ -82,6 +82,15 @@ const GENRE_FILTER = args['genres']
     ? new Set(String(args['genres']).split(',').map(norm).filter(Boolean))
     : null;
 
+// Spotify's own curated/algorithmic playlists (Discover Weekly, mood stations,
+// editorial covers, etc.) all use IDs beginning with "37i9dQZF1D". Their track
+// lists are region-locked and effectively invisible to Client Credentials
+// tokens, so any attempt to ingest them returns 0 tracks. Skip them at
+// plan-build time so they never eat a slot.
+function isEditorialPlaylist(id) {
+    return typeof id === 'string' && id.startsWith('37i9dQZF1D');
+}
+
 async function getJSON(url) {
     const r = await fetch(url);
     const data = await r.json().catch(() => ({}));
@@ -162,10 +171,13 @@ async function main() {
     console.log(`  existing playlist_genres rows: ${existing.length}`);
 
     // 3. For each genre, compute which sheet playlists to add (in sheet order,
-    //    skipping any already in DB) until reaching TARGET_PLAYLISTS (or sheet-max).
+    //    skipping any already in DB, and skipping Spotify editorial playlists
+    //    that can't be fetched via Client Credentials) until reaching
+    //    TARGET_PLAYLISTS (or sheet-max).
     const perGenreNew = []; // [{ genre, newPlaylists: [{pid, position}] }]
     let skippedAlreadyAtTarget = 0;
     let skippedSheetShortage   = 0;
+    const skippedEditorial     = []; // [{ genre, position, id }]
     for (const row of tab2Rows) {
         const genreNorm = norm(row.genre);
         if (GENRE_FILTER && !GENRE_FILTER.has(genreNorm)) continue;
@@ -180,6 +192,10 @@ async function main() {
             const p = row.playlists[i];
             if (!p?.id) continue;
             if (existingPids.has(p.id)) continue;
+            if (isEditorialPlaylist(p.id)) {
+                skippedEditorial.push({ genre: genreNorm, position: i + 1, id: p.id });
+                continue;
+            }
             newOnes.push({ pid: p.id, position: i + 1 });
         }
         if (newOnes.length > 0) {
@@ -187,12 +203,16 @@ async function main() {
         }
         if (newOnes.length < needCount) {
             skippedSheetShortage++;
-            console.warn(`  ! ${genreNorm}: wanted +${needCount} but sheet only has ${newOnes.length} unused — best effort.`);
+            console.warn(`  ! ${genreNorm}: wanted +${needCount} but sheet only has ${newOnes.length} usable — best effort.`);
         }
     }
     console.log(`\nGenres needing more playlists: ${perGenreNew.length}`);
-    console.log(`Genres skipped (already at >=${TARGET_PLAYLISTS}): ${skippedAlreadyAtTarget}`);
-    if (skippedSheetShortage) console.log(`Genres short of target (sheet doesn't have enough): ${skippedSheetShortage}`);
+    console.log(`Genres skipped (already at >=${TARGET_IS_MAX ? 'sheet-max' : TARGET_PLAYLISTS}): ${skippedAlreadyAtTarget}`);
+    if (skippedSheetShortage) console.log(`Genres short of target (sheet doesn't have enough usable playlists): ${skippedSheetShortage}`);
+    if (skippedEditorial.length) {
+        console.log(`Spotify editorial playlists skipped (region-locked, unfetchable): ${skippedEditorial.length}`);
+        for (const s of skippedEditorial) console.log(`  - ${s.genre.padEnd(30)} pos${s.position}  ${s.id}`);
+    }
     for (const g of perGenreNew) {
         console.log(`  ${g.genre.padEnd(30)} +${g.newPlaylists.length} (sheet positions ${g.newPlaylists.map(p => p.position).join(',')})`);
     }

@@ -62,3 +62,32 @@ export function pgrSelect(table, filters = {}, { select = '*', order, limit, use
 export function pgrRpc(fnName, args = {}, { useService = false } = {}) {
     return pgrRequest('POST', `rpc/${fnName}`, { body: args, useService });
 }
+
+// Upsert one or many rows. PostgREST treats POST with merge-duplicates as
+// upsert on the table's PK or a specified onConflict column list. Writes
+// always use service_role (bypasses RLS).
+export function pgrUpsert(table, rows, { onConflict, returnRows = false } = {}) {
+    const body = Array.isArray(rows) ? rows : [rows];
+    if (body.length === 0) return Promise.resolve([]);
+    const prefer = [
+        'resolution=merge-duplicates',
+        returnRows ? 'return=representation' : 'return=minimal',
+    ].join(',');
+    const query = onConflict ? { on_conflict: onConflict } : undefined;
+    return pgrRequest('POST', table, { useService: true, body, prefer, query });
+}
+
+// PATCH (partial UPDATE) by filter expressions. Never inserts — safe for
+// updating a row that may or may not exist without tripping NOT NULL
+// constraints on unsupplied columns. Writes always use service_role.
+export function pgrPatch(table, filters, body) {
+    if (!filters || Object.keys(filters).length === 0) {
+        throw new Error('pgrPatch refuses unfiltered UPDATE');
+    }
+    return pgrRequest('PATCH', table, {
+        useService: true,
+        body,
+        query: filters,
+        prefer: 'return=minimal',
+    });
+}

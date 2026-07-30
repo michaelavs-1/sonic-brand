@@ -35,7 +35,16 @@ const MAX_TOKENS = 4000;
 //   - "Downtempo" is one word, "Easy Listening" has no "(50s)"
 // If you change the DB's genre spelling, update this list too or anchor
 // lookups will silently drop that direction.
-const SYSTEM_PROMPT = `You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into 8 distinct "musical directions" that will be presented to the business owner. The owner will see one representative song per direction, pick the directions they like, and each picked direction becomes the seed for a real playlist.
+// The system prompt is split into two exported constants so the
+// /v5/ami-prompt-dashboard/ can substitute EDITABLE_PROMPT_SECTION with
+// Ami's tuned version while FIXED_PROMPT_SECTION stays constant.
+//
+// EDITABLE_PROMPT_SECTION — the creative-direction content Ami owns:
+//   intro / genre universe / inputs / task / coverage / energy /
+//   output language / title style / description style.
+// FIXED_PROMPT_SECTION — the schema/error-handling contract that downstream
+//   code depends on (output format, when-not, good/bad examples).
+export const EDITABLE_PROMPT_SECTION = `You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into 8 distinct "musical directions" that will be presented to the business owner. The owner will see one representative song per direction, pick the directions they like, and each picked direction becomes the seed for a real playlist.
 
 ## Genre universe
 
@@ -153,9 +162,9 @@ Open with **Beat 1** (required). Add Beat 2 or Beat 3 (optional) if space allows
 - "פסנתר רך ובס אקוסטי שקט זורמים במפרץ כמו בר יין קטן בפריז" (scene painting + too long)
 - "טרומפט זהוב וקונטרבס ממותח" (transliteration + invented usage)
 - "מרקם אקוסטי אוורירי עם עומק הרמוני" (marketing gibberish)
-- "אווירה אלגנטית ורגועה" (pure abstraction, no color)
+- "אווירה אלגנטית ורגועה" (pure abstraction, no color)`;
 
-## Output format
+export const FIXED_PROMPT_SECTION = `## Output format
 
 Return a single JSON object with exactly this shape, and NOTHING ELSE — no prose before or after, no markdown code fences around it. Do not add fields not listed here.
 
@@ -211,6 +220,8 @@ BAD inputs (return an error — do NOT force directions):
 - "אני בונה רקטה" → off_topic (not a business)
 - "מקום" → insufficient_description (no signal)
 - "מה השעה?" → off_topic (question about the tool / unrelated)`;
+
+const SYSTEM_PROMPT = EDITABLE_PROMPT_SECTION + '\n\n' + FIXED_PROMPT_SECTION;
 
 function summarizeDirection(d, idx) {
   const secondaries = Array.isArray(d.secondary_genres) && d.secondary_genres.length

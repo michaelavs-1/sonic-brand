@@ -88,6 +88,15 @@ async function buildOne({ direction, bizName, popularityWindow }) {
     uris:        ids.map((id) => `spotify:track:${id}`),
   });
 
+  // Fire-and-forget: record the created playlist so the cron worker can
+  // expire it 24h later. A failure here shouldn't break the user flow —
+  // worst case the playlist just isn't auto-cleaned.
+  fetch('/api/v5/record-playlist', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ spotify_id: playlist.id, name }),
+  }).catch((e) => console.warn('v5 record-playlist failed:', e?.message));
+
   return {
     direction,
     skipped:    false,

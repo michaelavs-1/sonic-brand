@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SonicBrands — עורך פרומפט (Ami)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --bg-2: #10101a;
+      --card: #161623;
+      --border: rgba(255, 255, 255, .08);
+      --border-2: rgba(255, 255, 255, .16);
+      --text: #f5f5fa;
+      --muted: #9b9bb0;
+      --accent: #1DB954;
+      --warn-bg: rgba(255, 200, 0, .08);
+      --warn-border: rgba(255, 200, 0, .35);
+      --warn-text: #ffd76b;
+      --r-md: 14px;
+      --r-lg: 22px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      padding: 24px 16px 80px;
+    }
+
+    .app {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 24px;
+      font-weight: 800;
+      margin: 0 0 6px;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14px;
+      margin: 0 0 24px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 20px 22px;
+      margin-bottom: 18px;
+    }
+
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin: 0 0 12px;
+      color: var(--text);
+    }
+
+    .card-hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin: -6px 0 12px;
+      line-height: 1.5;
+    }
+
+    .warn {
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12.5px;
+      line-height: 1.55;
+      margin-bottom: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin: 12px 0 6px;
+    }
+
+    label:first-child {
+      margin-top: 0;
+    }
+
+    input.txt,
+    textarea.txt {
+      width: 100%;
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+    }
+
+    input.txt:focus,
+    textarea.txt:focus {
+      border-color: var(--accent);
+    }
+
+    textarea.txt {
+      resize: vertical;
+      line-height: 1.55;
+    }
+
+    textarea.prompt {
+      min-height: 380px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.6;
+      direction: ltr;
+      text-align: start;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 8px;
+    }
+
+    button.btn {
+      padding: 12px 22px;
+      border: none;
+      border-radius: 12px;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      transition: box-shadow .2s, transform .05s;
+    }
+
+    button.btn-primary {
+      background: linear-gradient(135deg, var(--accent), #16a34a);
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(29, 185, 84, .25);
+    }
+
+    button.btn-primary:hover {
+      box-shadow: 0 6px 24px rgba(29, 185, 84, .4);
+    }
+
+    button.btn-secondary {
+      background: var(--bg-2);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+    }
+
+    button.btn-secondary:hover {
+      background: var(--card);
+    }
+
+    button.btn-yellow {
+      background: linear-gradient(135deg, #f5c518, #d99a13);
+      color: #1a1a24;
+      box-shadow: 0 4px 20px rgba(245, 197, 24, .28);
+    }
+
+    button.btn-yellow:hover {
+      box-shadow: 0 6px 24px rgba(245, 197, 24, .45);
+    }
+
+    button.btn:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .sb-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(255, 255, 255, .3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: sb-spin .7s linear infinite;
+      vertical-align: middle;
+    }
+
+    @keyframes sb-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .status-line {
+      color: var(--muted);
+      font-size: 12.5px;
+      margin: 10px 0 0;
+      min-height: 18px;
+    }
+
+    .status-line.err {
+      color: #ff8080;
+    }
+
+    .status-line.ok {
+      color: var(--accent);
+    }
+
+    pre.output {
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-x: auto;
+      max-height: 65vh;
+      overflow-y: auto;
+      margin: 0 0 12px;
+      direction: rtl;
+      text-align: start;
+    }
+
+    /* Atmosphere checkboxes — flex-wrap so each chip is only as wide as its
+       label, not stretched to fill a grid column. */
+    .atmo-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    .atmo-loading {
+      color: var(--muted);
+      font-size: 12.5px;
+      padding: 8px 0;
+    }
+
+    .atmo-chip {
+      /* Override the general `label` block styling defined higher up — chips
+         are inline flex items, not stacked block labels. Explicit margin:0
+         cancels the `label { margin: 12px 0 6px }` inheritance that was
+         making the first chip (with :first-child killing its top margin)
+         wrap differently than the rest. */
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      padding: 7px 12px;
+      margin: 0;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      user-select: none;
+      flex: 0 0 auto;
+      color: var(--text);
+      font-weight: 500;
+    }
+
+    .atmo-chip:has(.atmo-checkbox:checked) {
+      border-color: var(--accent);
+      background: rgba(29, 185, 84, .08);
+    }
+
+    .atmo-checkbox {
+      width: 14px;
+      height: 14px;
+      cursor: pointer;
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+      margin: 0;
+    }
+
+    .atmo-name {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    .pop-window-line {
+      margin-top: 12px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
+      font-size: 12.5px;
+      color: var(--muted);
+      direction: ltr;
+      text-align: start;
+    }
+    .pop-window-line.active { color: var(--accent); }
+
+    /* Header row inside the results card — puts the copy button right next to
+       the title so it's the first thing Ami sees when a result lands. */
+    .results-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+
+    .results-header .card-title {
+      margin: 0;
+    }
+
+    .btn-copy-prominent {
+      padding: 10px 18px;
+      font-size: 13.5px;
+    }
+
+    .usage-line {
+      color: var(--muted);
+      font-size: 11.5px;
+      margin: 0 0 12px;
+      font-family: ui-monospace, SFMono-Regular, "SF Mono", Consolas, monospace;
+    }
+
+    @media (max-width: 600px) {
+      body {
+        padding: 16px 12px 64px;
+      }
+
+      .card {
+        padding: 16px;
+      }
+
+      textarea.prompt {
+        min-height: 320px;
+        font-size: 12px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <h1>עורך פרומפט מוזיקלי</h1>
+    <p class="subtitle">
+      עורך את הפרומפט שהולך לאנתרופיק כדי לייצר כיוונים מוזיקליים. שינויים כאן משפיעים רק על הריצה הזו — לא נשמר
+      לפרודקשן.
+    </p>
+
+    <!-- Business inputs -->
+    <div class="card">
+      <div class="card-title">קלט העסק</div>
+      <label for="bizName">שם העסק (רשות)</label>
+      <input type="text" class="txt" id="bizName" placeholder="לדוגמה: קפה לואיז" autocomplete="off" maxlength="80">
+      <label for="bizDesc">תיאור העסק</label>
+      <textarea class="txt" id="bizDesc" rows="4"
+        placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח..." maxlength="1000"></textarea>
+      <label>אווירות (רשות)</label>
+      <div id="atmoContainer" class="atmo-loading">טוען אווירות…</div>
+      <div id="popWindowLine" class="pop-window-line">Popularity window: —</div>
+    </div>
+
+    <!-- Prompt editor -->
+    <div class="card">
+      <div class="card-title">הפרומפט שנשלח לאנתרופיק</div>
+      <div class="warn">
+        <b>אזהרה: לא לשנות את רשימת הז'אנרים (Genre universe) — הם חייבים להיות זהים לרשימה במסד הנתונים.</b>
+      </div>
+      <div class="card-hint">
+        זה החלק "היצירתי" של הפרומפט. חלקים אחרים (סכימת JSON, טיפול בשגיאות, דוגמאות בעייתיות) נשארים קבועים ומצטרפים
+        אוטומטית לפני השליחה.
+      </div>
+      <textarea class="txt prompt" id="promptEditor" spellcheck="false"></textarea>
+      <div class="btn-row">
+        <button class="btn btn-yellow" id="copyBtn" type="button">📋 העתק את הפרומפט</button>
+        <button class="btn btn-primary" id="generateBtn" type="button">צור כיוונים ←</button>
+      </div>
+      <div class="status-line" id="statusLine"></div>
+    </div>
+
+    <!-- Results -->
+    <div class="card" id="resultsCard" style="display:none">
+      <div class="card-title">תוצאה</div>
+      <div class="usage-line" id="usageLine"></div>
+      <pre class="output" id="outputText"></pre>
+      <div class="btn-row">
+        <button class="btn btn-yellow" id="copyResultBtn" type="button">📋 העתק את התוצאה</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=29072026e"></script>
+</body>
+
+</html>

@@ -6,3 +6,7 @@
 # (Scripts and committable artifacts live in v4/precompute/ next to this dir.)
 v4/precompute/state/
 .unique-track-ids.json
+
+# Reference snapshot of Michael's live v4 (robin-music.com) — read-only material
+# for porting UI into v5. Not our source.
+michael-v4-snapshot/

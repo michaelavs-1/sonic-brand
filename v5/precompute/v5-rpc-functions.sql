@@ -1,6 +1,29 @@
 -- v5 Supabase RPCs. Paste into Supabase SQL Editor and run once.
 -- Idempotent (CREATE OR REPLACE).
 
+-- ============================================================================
+-- v5_created_playlists: audit log of playlists we create on Rubin's account.
+-- Every successful create+add lands here with a 24h expiration. The
+-- /api/v5/cron-expire-playlists worker sweeps expired rows and empties +
+-- unfollows them on Spotify's side.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS v5_created_playlists (
+    spotify_id  text        PRIMARY KEY,
+    name        text        NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    expires_at  timestamptz NOT NULL,
+    deleted_at  timestamptz,
+    error       text
+);
+
+CREATE INDEX IF NOT EXISTS idx_v5_created_playlists_expiration
+    ON v5_created_playlists (expires_at)
+    WHERE deleted_at IS NULL;
+
+ALTER TABLE v5_created_playlists ENABLE ROW LEVEL SECURITY;
+-- No anon-read policy: writes via service_role only, reads via service_role only.
+
 -- Cleanup: drop the compound index that was added in perf-tuning iterations
 -- (not part of the original v5 design). Safe if it doesn't exist.
 DROP INDEX IF EXISTS idx_track_analyses_tempo_popularity;

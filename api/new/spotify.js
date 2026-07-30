@@ -1,8 +1,12 @@
 /* /api/new/spotify.js
-   Lean Spotify proxy for the new pipeline. Three actions:
+   Lean Spotify proxy for the new pipeline. Actions:
      - get_playlist_tracks: read tracks from public playlists (Client Credentials via Michael's app)
      - create_playlist:     create a playlist on the Rubin user's account (user token via Rubin app)
      - add_tracks:          add tracks to a playlist (user token via Rubin app)
+     - update_playlist:     rename/edit description of an existing playlist (user token)
+     - replace_tracks:      replace playlist contents (empty via uris:[]) (user token)
+     - unfollow_playlist:   remove playlist from Rubin's library (playlist itself remains reachable by URL) (user token)
+     - search_track:        title/artist search via CC token
    Token sources:
      - Client Credentials: SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET (Michael's app — grandfathered)
      - User token:         RUBIN_REFRESH_TOKEN + RUBIN_SPOTIFY_CLIENT_ID + RUBIN_SPOTIFY_CLIENT_SECRET
@@ -169,6 +173,48 @@ export default async function handler(req, res) {
         results.push({ status: r.status, body: data });
       }
       return res.status(200).json({ results });
+    }
+
+    if (action === 'update_playlist') {
+      const { playlist_id, name, description, _user_access_token: override } = req.body;
+      if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
+      const body = {};
+      if (typeof name        === 'string') body.name        = name;
+      if (typeof description === 'string') body.description = description;
+      if (!Object.keys(body).length) return res.status(400).json({ error: 'name or description required' });
+      const r = await spotifyCall(`https://api.spotify.com/v1/playlists/${playlist_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      }, 'user', override);
+      // 200 with empty body on success
+      return res.status(r.status).json(r.status === 200 ? { ok: true } : await r.json().catch(() => ({})));
+    }
+
+    if (action === 'replace_tracks') {
+      // Replaces the entire playlist's items with the given uris. Passing an
+      // empty uris array is the supported way to empty a playlist in one call.
+      const { playlist_id, uris = [], _user_access_token: override } = req.body;
+      if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
+      if (!Array.isArray(uris))       return res.status(400).json({ error: 'uris must be an array' });
+      if (uris.length > 100)          return res.status(400).json({ error: 'replace_tracks supports up to 100 uris in one call' });
+      const r = await spotifyCall(`https://api.spotify.com/v1/playlists/${playlist_id}/items`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uris }),
+      }, 'user', override);
+      const data = await r.json().catch(() => ({}));
+      return res.status(r.status).json(data);
+    }
+
+    if (action === 'unfollow_playlist') {
+      const { playlist_id, _user_access_token: override } = req.body;
+      if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
+      const r = await spotifyCall(`https://api.spotify.com/v1/playlists/${playlist_id}/followers`, {
+        method: 'DELETE',
+      }, 'user', override);
+      // 200 on success, no body
+      return res.status(r.status).json(r.status === 200 ? { ok: true } : await r.json().catch(() => ({})));
     }
 
     if (action === 'search_track') {

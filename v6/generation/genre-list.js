@@ -1,0 +1,90 @@
+// Canonical list of genres v5/v6 pipelines are allowed to reference.
+// Kept in sync with the identical comma-list embedded in
+// v6/generation/musical-directions.js → EDITABLE_PROMPT_SECTION.
+//
+// The main onboarding flow's prompt is a large static string that gets
+// prompt-cached by Anthropic; we deliberately do NOT interpolate this array
+// into that string yet (would invalidate the cache prefix). This module is
+// the source of truth for other callers — currently the event-playlist
+// endpoint under /api/v6/account/.
+//
+// If you edit either list, edit both. TODO(future): switch musical-directions
+// to interpolate from here once we're ready to re-cache the prompt.
+
+export const GENRES = [
+  'Heavy Rock+Metal',
+  'Nu Metal',
+  'Grunge',
+  'Rock',
+  'Indie Rock',
+  'IndieTronica',
+  'Post Punk',
+  'Punk',
+  'Folk',
+  'Country',
+  'Blues',
+  'Jazz (Standards)',
+  'French Jazz',
+  'Smooth Jazz',
+  'Late Night jazz',
+  'Swing Jazz',
+  'Easy Listening',
+  'Funk',
+  'World Funk',
+  'neo exotica',
+  'Baroque',
+  'Medievil music',
+  'African highlife',
+  'tishoumaren',
+  'Dabke',
+  'Algerian Rai',
+  'Arab Classic',
+  'Laiko',
+  'Turk Arabesk',
+  'Anatolian psychedelic rock',
+  'Flamenco',
+  'Fado',
+  'Bossa Nova',
+  'Samba',
+  'Salsa',
+  'cha cha cha',
+  'Peruvian Cumbia',
+  'Dancehall',
+  'Reggaeton',
+  'Reggae',
+  'lovers rock',
+  'LoFi Bossa',
+  'LoFi Beats',
+  'Acid Jazz',
+  'Neo Soul',
+  'Rnb',
+  'Hip Hop',
+  'Trap',
+  'Grime & Drill',
+  'Japanese City Pop',
+  'Disco',
+  'Nu Disco',
+  'Italo Disco',
+  'Downtempo',
+  'Indie Dance',
+  'AfroBeats',
+  'Afro House',
+  'Deep House',
+  'Soulful House',
+  'Jazz House',
+  'Tech House',
+  'UKG',
+  'Dubstep',
+  'Uplifting & Vocal Trance',
+  'Progressive & Psy Trance',
+  'Modern Pop',
+  'electro pop',
+  'alternative pop',
+  'K-Pop',
+  '80s Pop',
+  'פופ מזרחית',
+  'מזרחית ישנה',
+  'שירי ארץ ישראל',
+];
+
+export const GENRE_SET = new Set(GENRES);

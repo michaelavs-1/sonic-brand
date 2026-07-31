@@ -1,0 +1,1881 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SonicBrands — פלייליסט מותאם לעסק שלך</title>
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://robin-music.com/">
+  <meta property="og:title" content="רובין — פלייליסט מותאם לעסק שלך">
+  <meta property="og:description"
+    content="רובין בונה לעסק שלך פלייליסטים חכמים, מותאמים לאווירה ולשעות הפעילות — תוך דקות.">
+  <meta property="og:image" content="https://robin-music.com/v4/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="he_IL">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://robin-music.com/v4/og.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+  <style>
+    /* ============ SonicBrands flow — premium UI ============ */
+    :root {
+      --bg: #0a1117;
+      --bg-2: #0f1c26;
+      --card: #142835;
+      --card-2: #17303f;
+      --border: rgba(255, 255, 255, .07);
+      --border-2: rgba(255, 255, 255, .14);
+      --text: #f5f7f8;
+      --muted: #93a5af;
+      --accent: #f0a73f;
+      --accent-2: #d98a1f;
+      --teal: #2c637a;
+      --teal-soft: #57a3bd;
+      --r-md: 16px;
+      --r-lg: 26px;
+      --shadow-glow: 0 0 40px rgba(240, 167, 63, .10);
+      --ease: cubic-bezier(.22, .8, .32, 1);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    ::selection {
+      background: rgba(240, 167, 63, .35);
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 26px 16px 60px;
+      background:
+        radial-gradient(1000px 560px at 85% -12%, rgba(44, 99, 122, .38), transparent 62%),
+        radial-gradient(760px 460px at 4% 108%, rgba(240, 167, 63, .10), transparent 55%),
+        var(--bg);
+    }
+
+    .app {
+      width: 100%;
+      max-width: 580px;
+    }
+
+    /* ---------- flow progress ---------- */
+    .flow-progress {
+      display: flex;
+      gap: 6px;
+      margin: 2px auto 16px;
+      max-width: 560px;
+      width: 100%;
+      padding: 0 6px;
+    }
+
+    .fp-step {
+      flex: 1;
+      text-align: center;
+    }
+
+    .fp-bar {
+      height: 4px;
+      border-radius: 99px;
+      background: var(--border-2);
+      transition: background .4s var(--ease), box-shadow .4s;
+    }
+
+    .fp-lbl {
+      font-size: 10.5px;
+      color: var(--muted);
+      margin-top: 6px;
+      font-weight: 600;
+      letter-spacing: .2px;
+      transition: color .3s;
+    }
+
+    .fp-step.done .fp-bar {
+      background: var(--teal-soft);
+    }
+
+    .fp-step.done .fp-lbl {
+      color: var(--teal-soft);
+    }
+
+    .fp-step.active .fp-bar {
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      box-shadow: 0 0 12px rgba(240, 167, 63, .5);
+    }
+
+    .fp-step.active .fp-lbl {
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    /* ---------- card ---------- */
+    .screen-card {
+      position: relative;
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 34px 30px 30px;
+      box-shadow: var(--shadow-glow), 0 24px 60px rgba(0, 0, 0, .35);
+      overflow: hidden;
+    }
+
+    .screen-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 8%;
+      left: 8%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(240, 167, 63, .5), transparent);
+    }
+
+    h1 {
+      font-size: 27px;
+      font-weight: 900;
+      margin: 0 0 6px;
+      text-align: center;
+      letter-spacing: .2px;
+      animation: fadeUp .35s var(--ease);
+    }
+
+    .subtitle {
+      color: var(--muted);
+      font-size: 14.5px;
+      margin: 0 0 22px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+      }
+
+      to {
+        opacity: 1;
+      }
+    }
+
+    /* ---------- inputs ---------- */
+    .input-wrap {
+      margin-bottom: 16px;
+      animation: fadeUp .4s var(--ease);
+    }
+
+    .input-label {
+      display: block;
+      color: var(--muted);
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      letter-spacing: .3px;
+    }
+
+    .input-text,
+    .input-textarea {
+      width: 100%;
+      background: #0d1822;
+      border: 1.5px solid var(--border-2);
+      border-radius: 14px;
+      padding: 15px 16px;
+      font-family: inherit;
+      font-size: 16px;
+      color: var(--text);
+      outline: none;
+      transition: border-color .25s, box-shadow .25s, background .25s;
+      resize: vertical;
+    }
+
+    .input-text::placeholder,
+    .input-textarea::placeholder {
+      color: #5d707c;
+    }
+
+    .input-textarea {
+      min-height: 170px;
+      line-height: 1.7;
+    }
+
+    .input-text:focus,
+    .input-textarea:focus {
+      border-color: var(--accent);
+      background: #0e1a25;
+      box-shadow: 0 0 0 4px rgba(240, 167, 63, .12);
+    }
+
+    /* ---------- voice dictation ---------- */
+    .dictate {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      width: 100%;
+      margin-top: 10px;
+      padding: 12px 14px;
+      cursor: pointer;
+      background: rgba(87, 163, 189, .08);
+      border: 1.5px dashed rgba(87, 163, 189, .45);
+      border-radius: 14px;
+      color: var(--teal-soft);
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      transition: all .25s var(--ease);
+    }
+
+    .dictate:hover {
+      background: rgba(87, 163, 189, .14);
+      border-style: solid;
+    }
+
+    .dictate.rec {
+      background: rgba(224, 122, 106, .1);
+      border-color: rgba(224, 122, 106, .6);
+      color: #ff9b8a;
+      animation: rec-pulse 1.6s ease-out infinite;
+    }
+
+    .dictate.busy {
+      opacity: .7;
+      pointer-events: none;
+    }
+
+    @keyframes rec-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(224, 122, 106, .3);
+      }
+
+      70% {
+        box-shadow: 0 0 0 12px rgba(224, 122, 106, 0);
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(224, 122, 106, 0);
+      }
+    }
+
+    /* ---------- buttons ---------- */
+    .btn {
+      padding: 15px 28px;
+      border: none;
+      border-radius: 15px;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 15.5px;
+      cursor: pointer;
+      transition: box-shadow .25s, transform .12s var(--ease), filter .2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #1b1508;
+      box-shadow: 0 6px 22px rgba(240, 167, 63, .30);
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 10px 30px rgba(240, 167, 63, .45);
+      transform: translateY(-1px);
+    }
+
+    .btn-primary:active {
+      transform: translateY(1px);
+    }
+
+    .btn-primary:disabled {
+      opacity: .55;
+      cursor: not-allowed;
+      box-shadow: none;
+      transform: none;
+    }
+
+    .btn-secondary {
+      background: var(--card-2);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+    }
+
+    .btn-secondary:hover {
+      background: #1b3a4b;
+      border-color: rgba(255, 255, 255, .22);
+    }
+
+    .btn-block {
+      width: 100%;
+      margin-top: 8px;
+    }
+
+    .btn-ghost {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      margin-top: 14px;
+      font-family: inherit;
+      transition: color .2s;
+    }
+
+    .btn-ghost:hover {
+      color: var(--text);
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 14px;
+      text-align: center;
+    }
+
+    /* ---------- loading ---------- */
+    .preview-loading,
+    .preview-empty {
+      color: var(--muted);
+      font-size: 14.5px;
+      text-align: center;
+      padding: 40px 8px;
+      animation: fadeIn .3s;
+    }
+
+    .preview-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .sb-spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid rgba(255, 255, 255, .25);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: sb-spin .7s linear infinite;
+      vertical-align: middle;
+    }
+
+    @keyframes sb-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* ---------- previews ---------- */
+    .preview-list {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin: 18px 0 22px;
+      animation: fadeUp .4s var(--ease);
+    }
+
+    .preview-card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      background: #0d1822;
+      border: 1.5px solid var(--border-2);
+      border-radius: 16px;
+      padding: 11px 13px;
+      transition: border-color .25s, transform .2s var(--ease), box-shadow .25s;
+    }
+
+    .preview-card:hover {
+      transform: translateY(-1px);
+    }
+
+    .preview-card:has(.preview-checkbox:checked) {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(240, 167, 63, .10), 0 6px 18px rgba(0, 0, 0, .25);
+    }
+
+    .preview-embed {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .preview-embed iframe {
+      display: block;
+      border-radius: 12px;
+    }
+
+    .preview-check-wrap {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 46px;
+      height: 46px;
+      cursor: pointer;
+    }
+
+    .preview-checkbox {
+      width: 23px;
+      height: 23px;
+      cursor: pointer;
+      accent-color: var(--accent);
+    }
+
+    .preview-reason {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+      margin-top: 7px;
+      padding: 0 3px;
+      animation: fadeIn .4s;
+    }
+
+    .preview-reason b {
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .pl-explain b,
+    .ai-explain b {
+      color: var(--accent);
+      font-weight: 800;
+    }
+
+    .swap-btn {
+      margin-top: 7px;
+      background: none;
+      border: 1px dashed var(--border-2);
+      border-radius: 10px;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 11.5px;
+      padding: 6px 11px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+
+    .swap-btn:hover {
+      color: var(--teal-soft);
+      border-color: var(--teal-soft);
+      border-style: solid;
+    }
+
+    .swap-btn:disabled {
+      opacity: .6;
+      cursor: default;
+    }
+
+    /* ---------- atmospheres ---------- */
+    .atmo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 20px 0 24px;
+      animation: fadeUp .4s var(--ease);
+    }
+
+    @media (max-width: 480px) {
+      .atmo-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    .atmo-chip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      justify-content: flex-start;
+      background: #0d1822;
+      border: 1.5px solid var(--border-2);
+      border-radius: 13px;
+      padding: 12px 13px;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color .2s, background .2s, transform .15s var(--ease);
+    }
+
+    .atmo-chip:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 255, 255, .25);
+    }
+
+    .atmo-chip:has(.atmo-checkbox:checked) {
+      border-color: var(--accent);
+      background: rgba(240, 167, 63, .09);
+      box-shadow: 0 0 0 3px rgba(240, 167, 63, .08);
+    }
+
+    .atmo-checkbox {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+    }
+
+    .atmo-name {
+      font-size: 14px;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ---------- results ---------- */
+    .pl-accordion {
+      border: 1.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      overflow: hidden;
+      margin-top: 16px;
+      animation: fadeUp .4s var(--ease);
+      transition: border-color .25s, box-shadow .25s;
+    }
+
+    .pl-accordion:hover {
+      border-color: rgba(240, 167, 63, .45);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .25);
+    }
+
+    .pl-accordion-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 18px;
+      background: #0d1822;
+      user-select: none;
+    }
+
+    .pl-accordion-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pl-accordion-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pl-accordion-meta {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+
+    .pl-accordion-actions {
+      padding: 12px 18px 15px;
+      background: #0d1822;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .pl-accordion-actions .btn {
+      flex: 1 1 auto;
+      padding: 12px 18px;
+    }
+
+    .pl-explain {
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.75;
+      padding: 11px 18px 13px;
+      background: #0d1822;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ---------- brand header ---------- */
+    .brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .brand-logo-orbit {
+      animation: drift-x 6s ease-in-out infinite;
+    }
+
+    .brand-logo {
+      width: 148px;
+      height: auto;
+      filter: drop-shadow(0 12px 26px rgba(0, 0, 0, .5));
+      animation: drift-y 6s ease-in-out infinite;
+      animation-delay: -1.5s;
+    }
+
+    @keyframes drift-x {
+
+      0%,
+      100% {
+        transform: translateX(-7px);
+      }
+
+      50% {
+        transform: translateX(7px);
+      }
+    }
+
+    @keyframes drift-y {
+
+      0%,
+      100% {
+        transform: translateY(-7px);
+      }
+
+      50% {
+        transform: translateY(7px);
+      }
+    }
+
+    .brand-logo .lg-penguin {
+      transform-box: fill-box;
+      transform-origin: 50% 92%;
+      animation: penguin-sway 4.6s ease-in-out infinite;
+    }
+
+    @keyframes penguin-sway {
+
+      0%,
+      100% {
+        transform: rotate(-3.5deg);
+      }
+
+      50% {
+        transform: rotate(3.5deg);
+      }
+    }
+
+    .brand-logo .lg-crown {
+      transform-box: fill-box;
+      transform-origin: 50% 100%;
+      animation: crown-tilt 2.6s ease-in-out infinite;
+    }
+
+    @keyframes crown-tilt {
+
+      0%,
+      100% {
+        transform: rotate(-4deg);
+      }
+
+      50% {
+        transform: rotate(4deg);
+      }
+    }
+
+    .brand-logo .lg-cup {
+      transform-box: fill-box;
+      transform-origin: 50% 50%;
+      animation: cup-beat 1.15s ease-in-out infinite;
+    }
+
+    .brand-logo .lg-cup-r {
+      animation-delay: .575s;
+    }
+
+    @keyframes cup-beat {
+
+      0%,
+      100% {
+        transform: scale(1);
+      }
+
+      50% {
+        transform: scale(1.07);
+      }
+    }
+
+    .brand-logo .lg-eye-wink {
+      transform-box: fill-box;
+      transform-origin: 50% 50%;
+      animation: eye-wink 4.2s ease-in-out infinite;
+    }
+
+    @keyframes eye-wink {
+
+      0%,
+      86%,
+      94%,
+      100% {
+        transform: scaleY(1);
+      }
+
+      90% {
+        transform: scaleY(0.08);
+      }
+    }
+
+    .brand h1 {
+      margin: 0;
+      letter-spacing: .5px;
+      font-size: 30px;
+    }
+
+    .brand h1 .brand-gold {
+      color: var(--accent);
+    }
+
+    .brand-eq {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 24px;
+    }
+
+    .brand-eq span {
+      width: 5px;
+      border-radius: 3px;
+      background: var(--teal-soft);
+      transform-origin: bottom;
+      animation: brand-bounce 1s ease-in-out infinite;
+    }
+
+    .brand-eq span:nth-child(odd) {
+      background: var(--accent);
+    }
+
+    .brand-eq span:nth-child(1) {
+      height: 42%;
+      animation-delay: 0s;
+    }
+
+    .brand-eq span:nth-child(2) {
+      height: 80%;
+      animation-delay: .2s;
+    }
+
+    .brand-eq span:nth-child(3) {
+      height: 55%;
+      animation-delay: .4s;
+    }
+
+    .brand-eq span:nth-child(4) {
+      height: 96%;
+      animation-delay: .1s;
+    }
+
+    .brand-eq span:nth-child(5) {
+      height: 66%;
+      animation-delay: .3s;
+    }
+
+    @keyframes brand-bounce {
+
+      0%,
+      100% {
+        transform: scaleY(.35);
+      }
+
+      50% {
+        transform: scaleY(1);
+      }
+    }
+
+    /* ---------- AI explanation ---------- */
+    .ai-explain {
+      background: rgba(87, 163, 189, .07);
+      border: 1px solid rgba(87, 163, 189, .3);
+      border-radius: 14px;
+      padding: 13px 15px;
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.7;
+      margin: 14px 0 6px;
+      text-align: right;
+      animation: fadeUp .4s var(--ease);
+    }
+
+    .ai-explain .ai-tag {
+      color: var(--teal-soft);
+      font-weight: 800;
+      font-size: 12px;
+      display: block;
+      margin-bottom: 5px;
+      letter-spacing: .3px;
+    }
+
+    .ai-explain .ai-loading {
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nar-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 8px;
+    }
+
+    .nar-step.done {
+      color: var(--teal-soft);
+    }
+
+    .nar-step .nar-ico {
+      width: 16px;
+      display: inline-flex;
+      justify-content: center;
+      color: var(--accent);
+    }
+
+    /* ---------- upsell / pricing / checkout ---------- */
+    .upsell-box {
+      margin-top: 24px;
+      padding: 20px 18px;
+      text-align: center;
+      border: 1.5px dashed rgba(240, 167, 63, .5);
+      border-radius: var(--r-md);
+      background: rgba(240, 167, 63, .06);
+      animation: fadeUp .45s var(--ease);
+    }
+
+    .upsell-title {
+      font-weight: 900;
+      font-size: 17px;
+      margin-bottom: 6px;
+    }
+
+    .upsell-text {
+      color: var(--muted);
+      font-size: 13.5px;
+      margin: 0 0 14px;
+      line-height: 1.65;
+    }
+
+    .plans-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin: 20px 0 22px;
+      animation: fadeUp .4s var(--ease);
+    }
+
+    .plan-card {
+      position: relative;
+      background: #0d1822;
+      border: 1.5px solid var(--border-2);
+      border-radius: var(--r-md);
+      padding: 22px 18px;
+      transition: transform .2s var(--ease), border-color .25s, box-shadow .25s;
+    }
+
+    .plan-card:hover {
+      transform: translateY(-2px);
+    }
+
+    .plan-featured {
+      border-color: rgba(240, 167, 63, .7);
+      box-shadow: var(--shadow-glow);
+    }
+
+    .plan-badge {
+      position: absolute;
+      top: -11px;
+      inset-inline-start: 16px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #1b1508;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 4px 12px;
+      border-radius: 999px;
+    }
+
+    .plan-name {
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .plan-price {
+      margin: 7px 0 11px;
+    }
+
+    .plan-amount {
+      font-size: 28px;
+      font-weight: 900;
+      color: var(--accent);
+    }
+
+    .plan-period {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .plan-feats {
+      margin: 0 0 16px;
+      padding: 0 18px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 2;
+    }
+
+    .demo-banner {
+      background: rgba(255, 193, 7, .09);
+      border: 1px solid rgba(255, 193, 7, .4);
+      color: #ffd54f;
+      border-radius: 13px;
+      padding: 11px 14px;
+      font-size: 13px;
+      margin: 0 0 18px;
+      text-align: center;
+      line-height: 1.55;
+    }
+
+    .pay-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #0d1822;
+      border: 1.5px solid var(--border-2);
+      border-radius: 13px;
+      padding: 13px 16px;
+      margin-bottom: 16px;
+      font-size: 14px;
+    }
+
+    .pay-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .pay-success-ico {
+      width: 68px;
+      height: 68px;
+      margin: 0 auto 14px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #1b1508;
+      font-size: 34px;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      animation: pop .45s var(--ease);
+    }
+
+    @keyframes pop {
+      0% {
+        transform: scale(.4);
+        opacity: 0;
+      }
+
+      70% {
+        transform: scale(1.1);
+      }
+
+      100% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    a.link {
+      color: var(--accent);
+    }
+
+    /* ---------- welcome splash (Rubin logo draws itself) ---------- */
+    .splash {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(1000px 560px at 85% -12%, rgba(44, 99, 122, .38), transparent 62%),
+        radial-gradient(760px 460px at 4% 108%, rgba(240, 167, 63, .10), transparent 55%),
+        var(--bg);
+      transition: opacity .75s var(--ease), visibility .75s;
+    }
+
+    .splash.hide {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .splash-inner {
+      text-align: center;
+      padding: 0 22px;
+      transition: transform .75s var(--ease), opacity .6s ease, filter .75s ease;
+    }
+
+    /* exit: content floats up, scales and blurs while the intro card fades in below */
+    .splash.hide .splash-inner {
+      transform: translateY(-26px) scale(1.08);
+      opacity: 0;
+      filter: blur(7px);
+    }
+
+    /* smooth entrance for the question card as the splash dissolves */
+    #introCard:not([hidden]) {
+      animation: cardIn .7s var(--ease) .25s both;
+    }
+
+    @keyframes cardIn {
+      from {
+        opacity: 0;
+        transform: translateY(22px) scale(.97);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+
+    .splash-title {
+      font-size: clamp(26px, 6.4vw, 38px);
+      font-weight: 900;
+      margin: 0;
+      letter-spacing: .3px;
+      animation: fadeUp .6s var(--ease) both;
+    }
+
+    .splash-title .brand-gold {
+      color: var(--accent);
+    }
+
+    .splash-sub {
+      color: var(--muted);
+      font-size: clamp(14px, 3.6vw, 17px);
+      margin: 8px 0 0;
+      animation: fadeUp .7s var(--ease) .15s both;
+    }
+
+    .splash-logo {
+      width: min(62vw, 270px);
+      height: auto;
+      margin-top: 26px;
+      filter: drop-shadow(0 18px 40px rgba(0, 0, 0, .55));
+    }
+
+    /* draw phase: each stroke path draws itself */
+    .splash-logo .dr {
+      fill: none;
+      stroke-width: 3.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 1;
+      stroke-dashoffset: 1;
+      animation: sp-draw .55s var(--ease) forwards;
+    }
+
+    @keyframes sp-draw {
+      to {
+        stroke-dashoffset: 0;
+      }
+    }
+
+    /* fill phase: the full-color logo fades in over the sketch */
+    .splash-logo .fl {
+      opacity: 0;
+      animation: sp-fill .55s ease forwards 1.7s;
+    }
+
+    @keyframes sp-fill {
+      to {
+        opacity: 1;
+      }
+    }
+
+    /* notes pop at the end */
+    .splash-logo .nt {
+      opacity: 0;
+      transform-box: fill-box;
+      transform-origin: 50% 50%;
+      animation: sp-pop .45s var(--ease) forwards;
+    }
+
+    @keyframes sp-pop {
+      0% {
+        opacity: 0;
+        transform: scale(.2);
+      }
+
+      70% {
+        opacity: 1;
+        transform: scale(1.25);
+      }
+
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    /* final settle: tiny bounce of the whole logo once fills are in */
+    .splash-logo .lg-all {
+      transform-box: fill-box;
+      transform-origin: 50% 60%;
+      animation: sp-settle .6s var(--ease) 2.25s both;
+    }
+
+    @keyframes sp-settle {
+      0% {
+        transform: scale(1);
+      }
+
+      40% {
+        transform: scale(1.05);
+      }
+
+      100% {
+        transform: scale(1);
+      }
+    }
+
+    /* ---------- intro question (Rubin account) ---------- */
+    .intro-q {
+      text-align: center;
+      font-weight: 800;
+      font-size: 17.5px;
+      margin: 16px 0 20px;
+      line-height: 1.6;
+    }
+
+    /* ---------- compact playlist rows (final screen, no scroll) ---------- */
+    .pl-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #0d1822;
+      border: 1.5px solid var(--border-2);
+      border-radius: 14px;
+      padding: 12px 14px;
+      margin-top: 10px;
+      animation: fadeUp .4s var(--ease);
+    }
+
+    .pl-row-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .pl-row-title {
+      font-size: 14.5px;
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .pl-row-meta {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .pl-row .btn {
+      padding: 10px 16px;
+      font-size: 13.5px;
+      flex: 0 0 auto;
+    }
+
+    /* ---------- responsive ---------- */
+    @media (max-width: 480px) {
+      body {
+        padding: 14px 10px 40px;
+      }
+
+      .screen-card {
+        padding: 24px 16px 22px;
+        border-radius: 20px;
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+
+      .brand h1 {
+        font-size: 25px;
+      }
+
+      .input-textarea {
+        min-height: 140px;
+      }
+
+      .brand-logo {
+        width: 116px;
+      }
+
+      .btn {
+        padding: 13px 18px;
+        font-size: 15px;
+      }
+
+      .preview-card {
+        gap: 8px;
+        padding: 9px;
+      }
+
+      .preview-check-wrap {
+        width: 38px;
+        height: 42px;
+      }
+
+      .pl-accordion-head {
+        padding: 13px 14px;
+      }
+
+      .pl-accordion-actions {
+        padding: 10px 14px 12px;
+      }
+
+      .pl-accordion-title {
+        font-size: 15px;
+        white-space: normal;
+      }
+
+      .plan-card {
+        padding: 18px 14px;
+      }
+
+      .plan-amount {
+        font-size: 24px;
+      }
+
+      .upsell-box {
+        padding: 15px 12px;
+      }
+
+      .pay-summary {
+        font-size: 13px;
+        padding: 11px 12px;
+      }
+
+      .ai-explain {
+        padding: 11px 12px;
+        font-size: 12.5px;
+      }
+
+      .atmo-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+      }
+
+      .atmo-chip {
+        padding: 10px 11px;
+      }
+
+      .fp-lbl {
+        font-size: 9.5px;
+      }
+    }
+
+    /* ---------- reduced motion ---------- */
+    @media (prefers-reduced-motion: reduce) {
+
+      .brand-eq span,
+      .brand-logo,
+      .brand-logo-orbit,
+      .brand-logo .lg-penguin,
+      .brand-logo .lg-crown,
+      .brand-logo .lg-cup,
+      .brand-logo .lg-eye-wink,
+      .dictate.rec {
+        animation: none;
+      }
+    }
+
+    /* ===== Swipe deck (Tinder-style song preview) ===== */
+    .swipe-progress-label {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 2px 0 6px;
+      text-align: center;
+      font-weight: 700
+    }
+
+    .swipe-progress-bar {
+      height: 8px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      overflow: hidden;
+      margin: 0 2px 14px
+    }
+
+    .swipe-progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #f0a73f, #d98a1f);
+      border-radius: 99px;
+      transition: width .3s ease
+    }
+
+    .swipe-deck {
+      position: relative;
+      min-height: 200px
+    }
+
+    .swipe-card {
+      display: block;
+      position: relative;
+      touch-action: pan-y;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      will-change: transform
+    }
+
+    .swipe-card.dragging {
+      cursor: grabbing
+    }
+
+    .swipe-hint {
+      font-size: 11.5px;
+      color: var(--muted);
+      text-align: center;
+      margin-bottom: 6px;
+      opacity: .75
+    }
+
+    .swipe-stamp {
+      position: absolute;
+      top: 10px;
+      z-index: 5;
+      padding: 5px 12px;
+      border-radius: 10px;
+      font-weight: 900;
+      font-size: 15px;
+      opacity: 0;
+      pointer-events: none
+    }
+
+    .swipe-stamp.like {
+      right: 10px;
+      background: rgba(46, 204, 113, .15);
+      border: 2px solid #2ecc71;
+      color: #2ecc71;
+      transform: rotate(-8deg)
+    }
+
+    .swipe-stamp.pass {
+      left: 10px;
+      background: rgba(231, 76, 60, .12);
+      border: 2px solid #e74c3c;
+      color: #e74c3c;
+      transform: rotate(8deg)
+    }
+
+    .swipe-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px
+    }
+
+    .swipe-btn {
+      flex: 1;
+      border-radius: 14px;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 15.5px;
+      padding: 13px;
+      cursor: pointer
+    }
+
+    .swipe-no {
+      background: none;
+      border: 1.5px solid rgba(231, 76, 60, .55);
+      color: #e74c3c
+    }
+
+    .swipe-yes {
+      background: linear-gradient(135deg, #2ecc71, #27ae60);
+      border: none;
+      color: #06210f
+    }
+
+    /* ===== Swipe deck v2 — mockup design ===== */
+    .sw2-deckwrap {
+      position: relative
+    }
+
+    .sw2-rail {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 46px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      pointer-events: none;
+      z-index: 6;
+      opacity: .75;
+      transition: opacity .15s;
+      border-radius: 16px
+    }
+
+    .sw2-rail.no {
+      left: -4px;
+      background: linear-gradient(90deg, rgba(231, 76, 60, .18), transparent)
+    }
+
+    .sw2-rail.yes {
+      right: -4px;
+      background: linear-gradient(270deg, rgba(46, 204, 113, .18), transparent)
+    }
+
+    .sw2-rail .sw2-chev {
+      font-size: 32px;
+      font-weight: 900;
+      line-height: 1;
+      direction: ltr;
+      unicode-bidi: bidi-override
+    }
+
+    .sw2-rail.no .sw2-chev,
+    .sw2-rail.no .sw2-rail-label {
+      color: #e74c3c
+    }
+
+    .sw2-rail.yes .sw2-chev,
+    .sw2-rail.yes .sw2-rail-label {
+      color: #2ecc71
+    }
+
+    .sw2-rail-label {
+      font-size: 11px;
+      font-weight: 700;
+      max-width: 40px;
+      text-align: center;
+      line-height: 1.25
+    }
+
+    .swipe-card2 {
+      display: block;
+      padding: 18px 14px 14px;
+      text-align: center
+    }
+
+    .sw2-artwrap {
+      position: relative;
+      width: min(56vw, 230px);
+      margin: 6px auto 16px
+    }
+
+    .sw2-art {
+      width: 100%;
+      aspect-ratio: 1/1;
+      object-fit: cover;
+      border-radius: 14px;
+      display: block;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, .5)
+    }
+
+    .sw2-art-ph {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 46px;
+      background: #0a1117;
+      border: 1px solid var(--border-2)
+    }
+
+    .sw2-spbadge {
+      position: absolute;
+      left: -10px;
+      top: -10px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, .16);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5)
+    }
+
+    .sw2-play {
+      position: absolute;
+      right: -14px;
+      bottom: -14px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #f0a73f, #d98a1f);
+      color: #1b1508;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .55)
+    }
+
+    .sw2-play:active {
+      transform: scale(.94)
+    }
+
+    .sw2-play.waiting {
+      opacity: .55;
+      animation: sw2wait 1s ease-in-out infinite
+    }
+
+    @keyframes sw2wait {
+      50% {
+        transform: scale(.92)
+      }
+    }
+
+    .sw2-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text);
+      margin: 0 0 2px
+    }
+
+    .sw2-artist {
+      font-size: 15px;
+      color: var(--muted);
+      margin-bottom: 9px
+    }
+
+    .sw2-chip {
+      display: inline-block;
+      background: #0a1117;
+      border: 1px solid var(--border-2);
+      color: #cfd8dd;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 3px 11px;
+      margin-bottom: 11px
+    }
+
+    .sw2-reason {
+      text-align: center;
+      max-width: 36ch;
+      margin: 0 auto 12px
+    }
+
+    /* Michael's original hid the Spotify iframe fully offscreen (left:-9999px), */
+    /* but browsers throttle/suspend media in offscreen iframes so playback fails. */
+    /* Fix: keep the iframe inside .sw2-artwrap as a nearly-invisible overlay — */
+    /* still in the visible viewport so media stays active, but visually covered */
+    /* by the album art (z-index) and interaction-blocked by pointer-events:none. */
+    .sw2-embed-hidden {
+      position: absolute;
+      inset: 0;
+      opacity: .01;
+      pointer-events: none;
+      overflow: hidden;
+      border-radius: 14px;
+      z-index: 1
+    }
+
+    .sw2-art {
+      position: relative;
+      z-index: 2
+    }
+
+    .sw2-spbadge,
+    .sw2-play {
+      z-index: 3
+    }
+
+    .sw2-hint {
+      font-size: 11.5px;
+      color: var(--muted);
+      opacity: .8;
+      margin-top: 8px
+    }
+
+    .fp-step.clickable {
+      cursor: pointer
+    }
+
+    .fp-step.clickable:hover .fp-lbl {
+      color: var(--accent)
+    }
+
+    .fp-step.clickable:hover .fp-bar {
+      filter: brightness(1.25)
+    }
+
+    /* Preview loading — progress bar that fills over 20s */
+    .preview-load-column {
+      padding: 40px 8px;
+      text-align: center;
+      animation: fadeIn .3s
+    }
+
+    .preview-load-label {
+      color: var(--muted);
+      font-size: 14.5px;
+      margin-bottom: 14px
+    }
+
+    .preview-load-progress {
+      width: 100%;
+      max-width: 320px;
+      height: 8px;
+      background: rgba(255, 255, 255, .08);
+      border: 1px solid var(--border-2);
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 0 auto
+    }
+
+    .preview-load-progress-fill {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 4px;
+      animation: preview-load-fill 25s linear forwards
+    }
+
+    @keyframes preview-load-fill {
+      to {
+        width: 100%
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- ============ screen 0: welcome splash — the logo draws itself ============ -->
+  <div class="splash" id="splash" aria-hidden="true">
+    <div class="splash-inner">
+      <h1 class="splash-title">ברוכים הבאים ל<span class="brand-gold">רובין</span></h1>
+      <p class="splash-sub">העוזר שלכם ליצירת פסקול מושלם לעסק</p>
+      <svg class="splash-logo" viewBox="-18 -10 236 246" xmlns="http://www.w3.org/2000/svg" role="img"
+        aria-label="רובין — הלוגו נבנה">
+        <g class="lg-all">
+          <!-- phase 1: sketch strokes drawing in sequence -->
+          <path class="dr" pathLength="1" style="animation-delay:.05s" stroke="#2c637a"
+            d="M100 52 C 143 52 156 88 156 128 C156 166 132 196 100 196 C68 196 44 166 44 128 C44 88 57 52 100 52 Z" />
+          <path class="dr" pathLength="1" style="animation-delay:.45s" stroke="#f0a73f"
+            d="M100 78 C 111 70 130 80 130 101 C130 119 116 131 100 131 C84 131 70 119 70 101 C70 80 89 70 100 78 Z" />
+          <ellipse class="dr" pathLength="1" style="animation-delay:.65s" stroke="#f0a73f" cx="100" cy="162" rx="27"
+            ry="23" />
+          <path class="dr" pathLength="1" style="animation-delay:.9s" stroke="#f0a73f"
+            d="M70 50 L78 20 L93 34 L102 12 L111 34 L126 20 L134 50 Z" />
+          <path class="dr" pathLength="1" style="animation-delay:1.2s" stroke="#ffffff" stroke-width="7"
+            d="M40 115 A 60 60 0 0 1 160 115" />
+          <rect class="dr" pathLength="1" style="animation-delay:1.4s" stroke="#f0a73f" x="22" y="100" width="26"
+            height="52" rx="13" />
+          <rect class="dr" pathLength="1" style="animation-delay:1.4s" stroke="#f0a73f" x="152" y="100" width="26"
+            height="52" rx="13" />
+
+          <!-- phase 2: full-color logo fades in over the sketch -->
+          <g class="fl">
+            <path d="M70 50 L78 20 L93 34 L102 12 L111 34 L126 20 L134 50 Z" fill="#f0a73f" />
+            <g fill="#ffffff">
+              <circle cx="95.5" cy="41" r="4.6" />
+              <rect x="98.8" y="21.5" width="2.8" height="20" rx="1.4" />
+              <path d="M99 21.5 q8.5 2.5 8.5 10 q-4 -4.5 -8.5 -4.5 Z" />
+            </g>
+            <path
+              d="M100 52 C 143 52 156 88 156 128 C156 166 132 196 100 196 C68 196 44 166 44 128 C44 88 57 52 100 52 Z"
+              fill="#2c637a" />
+            <ellipse cx="100" cy="162" rx="27" ry="23" fill="#f0a73f" />
+            <path
+              d="M100 78 C 111 70 130 80 130 101 C130 119 116 131 100 131 C84 131 70 119 70 101 C70 80 89 70 100 78 Z"
+              fill="#f0a73f" />
+            <circle cx="86" cy="100" r="6.5" fill="#152a35" />
+            <circle cx="114" cy="100" r="6.5" fill="#152a35" />
+            <path d="M93 113 L107 113 L100 125 Z" fill="#2c637a" />
+            <path d="M40 115 A 60 60 0 0 1 160 115" fill="none" stroke="#ffffff" stroke-width="11"
+              stroke-linecap="round" />
+            <rect x="22" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
+            <rect x="152" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
+          </g>
+
+          <!-- phase 3: notes pop around the finished logo -->
+          <text class="nt" style="animation-delay:2.25s" x="100" y="8" font-size="24" fill="#f0a73f"
+            text-anchor="middle">♪</text>
+          <text class="nt" style="animation-delay:2.4s" x="192" y="182" font-size="19" fill="#57a3bd"
+            text-anchor="middle">♫</text>
+          <text class="nt" style="animation-delay:2.55s" x="8" y="182" font-size="21" fill="#f0a73f"
+            text-anchor="middle">♬</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- flow progress -->
+  <div class="flow-progress" id="flowProgress" hidden>
+    <div class="fp-step active" data-step="1">
+      <div class="fp-bar"></div>
+      <div class="fp-lbl">מספרים על העסק</div>
+    </div>
+    <div class="fp-step" data-step="2">
+      <div class="fp-bar"></div>
+      <div class="fp-lbl">בוחרים אווירה</div>
+    </div>
+    <div class="fp-step" data-step="3">
+      <div class="fp-bar"></div>
+      <div class="fp-lbl">מסמנים שירים</div>
+    </div>
+    <div class="fp-step" data-step="4">
+      <div class="fp-bar"></div>
+      <div class="fp-lbl">מקבלים פלייליסט</div>
+    </div>
+  </div>
+
+  <div class="app">
+    <!-- ============ screen 1: Spotify account question ============ -->
+    <div class="screen-card" id="introCard" hidden>
+      <h1>רגע לפני שמתחילים</h1>
+      <p class="subtitle" style="margin-bottom:6px">
+        רובין מייצר פלייליסטים מותאמים אישית וחכמים לכל עסק.
+        תנו לנו לשאול אתכם כמה שאלות כדי שנדע לפגוע בול.
+      </p>
+      <p class="intro-q">אבל בתור התחלה: האם יש לך כבר חשבון ברובין?</p>
+      <div id="introChoice">
+        <button class="btn btn-primary btn-block" id="rbYes" type="button">כן, יש לי חשבון</button>
+        <button class="btn btn-secondary btn-block" id="rbNo" type="button">עדיין לא — בואו נתחיל</button>
+      </div>
+      <div id="rbLoginBox" hidden>
+        <div class="input-wrap">
+          <label class="input-label" for="rbEmail">אימייל</label>
+          <input class="input-text" id="rbEmail" type="email" autocomplete="username" inputmode="email">
+        </div>
+        <div class="input-wrap">
+          <label class="input-label" for="rbPass">סיסמה</label>
+          <input class="input-text" id="rbPass" type="password" autocomplete="current-password">
+        </div>
+        <button class="btn btn-primary btn-block" id="rbLogin" type="button">התחברות ←</button>
+        <p class="hint">💡 בטלפון אפשר להתחבר עם זיהוי פנים — דרך הסיסמאות השמורות בדפדפן</p>
+        <p class="hint" id="rbLoginMsg" style="color:#ff9b8a;font-size:13px"></p>
+        <button class="btn-ghost" id="rbForgot" type="button">שכחתי סיסמה</button>
+        <button class="btn-ghost" id="rbBack" type="button">→ חזרה</button>
+      </div>
+    </div>
+
+    <div class="screen-card" id="mainCard" hidden>
+      <div class="brand">
+        <div class="brand-logo-orbit">
+          <svg class="brand-logo" viewBox="-18 -10 236 246" xmlns="http://www.w3.org/2000/svg" role="img"
+            aria-label="SonicBrands — הלוגו">
+            <circle cx="100" cy="122" r="86" fill="#f0a73f" opacity=".07">
+              <animate attributeName="r" values="84;95;84" dur="3.4s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values=".05;.13;.05" dur="3.4s" repeatCount="indefinite" />
+            </circle>
+            <circle cx="100" cy="122" r="106" fill="none" stroke="#f0a73f" stroke-width="1.5" stroke-dasharray="3 9"
+              opacity=".35">
+              <animateTransform attributeName="transform" type="rotate" from="360 100 122" to="0 100 122" dur="26s"
+                repeatCount="indefinite" />
+            </circle>
+            <g>
+              <animateTransform attributeName="transform" type="rotate" from="0 100 122" to="360 100 122" dur="11s"
+                repeatCount="indefinite" />
+              <g transform="translate(100,16)">
+                <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="11s"
+                  repeatCount="indefinite" additive="sum" />
+                <text x="0" y="7" font-size="24" fill="#f0a73f" text-anchor="middle">♪</text>
+              </g>
+              <g transform="translate(192,175)">
+                <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="11s"
+                  repeatCount="indefinite" additive="sum" />
+                <text x="0" y="7" font-size="19" fill="#57a3bd" text-anchor="middle">♫</text>
+              </g>
+              <g transform="translate(8,175)">
+                <animateTransform attributeName="transform" type="rotate" from="360 0 0" to="0 0 0" dur="11s"
+                  repeatCount="indefinite" additive="sum" />
+                <text x="0" y="7" font-size="21" fill="#f0a73f" text-anchor="middle">♬</text>
+              </g>
+            </g>
+            <g class="lg-penguin">
+              <g class="lg-crown">
+                <path d="M70 50 L78 20 L93 34 L102 12 L111 34 L126 20 L134 50 Z" fill="#f0a73f" />
+                <g fill="#ffffff">
+                  <circle cx="95.5" cy="41" r="4.6" />
+                  <rect x="98.8" y="21.5" width="2.8" height="20" rx="1.4" />
+                  <path d="M99 21.5 q8.5 2.5 8.5 10 q-4 -4.5 -8.5 -4.5 Z" />
+                </g>
+              </g>
+              <path class="lg-body"
+                d="M100 52 C 143 52 156 88 156 128 C156 166 132 196 100 196 C68 196 44 166 44 128 C44 88 57 52 100 52 Z"
+                fill="#2c637a" />
+              <ellipse cx="100" cy="162" rx="27" ry="23" fill="#f0a73f" />
+              <path
+                d="M100 78 C 111 70 130 80 130 101 C130 119 116 131 100 131 C84 131 70 119 70 101 C70 80 89 70 100 78 Z"
+                fill="#f0a73f" />
+              <circle cx="86" cy="100" r="6.5" fill="#152a35" />
+              <circle class="lg-eye-wink" cx="114" cy="100" r="6.5" fill="#152a35" />
+              <path d="M93 113 L107 113 L100 125 Z" fill="#2c637a" />
+              <path d="M40 115 A 60 60 0 0 1 160 115" fill="none" stroke="#ffffff" stroke-width="11"
+                stroke-linecap="round" />
+              <g class="lg-cup lg-cup-l">
+                <rect x="22" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
+              </g>
+              <g class="lg-cup lg-cup-r">
+                <rect x="152" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
+              </g>
+            </g>
+          </svg>
+        </div>
+        <div class="brand-eq" aria-hidden="true">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+        <h1>Sonic<span class="brand-gold">Brands</span></h1>
+      </div>
+      <p class="subtitle">פלייליסט מותאם לאישיות העסק שלכם, תוך דקה</p>
+
+      <div class="input-wrap">
+        <label class="input-label" for="bizName">שם העסק</label>
+        <input type="text" class="input-text" id="bizName" placeholder="לדוגמה: בר הכפר, קפה לואיז, מסעדת נוני..."
+          maxlength="80" autocomplete="off">
+      </div>
+
+      <div class="input-wrap">
+        <label class="input-label" for="bizDesc">ספרו לנו על העסק</label>
+        <textarea class="input-textarea" id="bizDesc"
+          placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח. אווירה אינטימית, לא רעשנית..."
+          maxlength="1000"></textarea>
+        <button class="dictate" id="dictateBtn" type="button">
+          <span id="dictIco">🎤</span>
+          <span id="dictLbl">או פשוט ספרו לנו בקול — אנחנו נתמלל</span>
+        </button>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="submitBtn">המשך ←</button>
+    </div>
+  </div>
+
+  <script type="module" src="/v6/app.js?v=31072026e"></script>
+</body>
+
+</html>

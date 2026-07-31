@@ -47,6 +47,21 @@
     },
     "api/v5/cron-expire-playlists.js": {
       "maxDuration": 300
+    },
+    "api/v6/transcribe.js": {
+      "maxDuration": 60
+    },
+    "api/v6/place-lookup.js": {
+      "maxDuration": 15
+    },
+    "api/v6/account/signup.js": {
+      "maxDuration": 30
+    },
+    "api/v6/account/event-playlist.js": {
+      "maxDuration": 60
+    },
+    "api/v6/account/expand-playlist.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -223,6 +238,40 @@
           "value": "0"
         }
       ]
+    },
+    {
+      "source": "/v6",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/v6/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
     }
   ],
   "rewrites": [
@@ -257,6 +306,14 @@
     {
       "source": "/v5/ami-prompt-dashboard",
       "destination": "/v5/ami-prompt-dashboard/index.html"
+    },
+    {
+      "source": "/v6",
+      "destination": "/v6/index.html"
+    },
+    {
+      "source": "/v6/account",
+      "destination": "/v6/account/index.html"
     }
   ]
 }

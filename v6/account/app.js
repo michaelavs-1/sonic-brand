@@ -23,6 +23,7 @@ if (new URLSearchParams(location.search).has('reset')) {
 }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { computeTargetForToday } from '../generation/playlist-length.js?v=02082026a';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -131,8 +132,43 @@ function renderAll() {
   closeNameEdit();
   renderBusiness();
   renderPlaceBanner();
+  renderPlaylistsTitle();
   renderPlaylists();
   renderEvents();
+}
+
+// Title above the playlists box. Two variants:
+//   Normal (open day OR closed day with playlists for today):
+//     "🎵 הפלייליסטים היומיים שלכם - יום א' - dd/mm/yy"
+//   Closed day, no playlists for today:
+//     "🎵 יום ש' - המקום סגור   [המקום פתוח?]"   ← link opens the generate popup
+function renderPlaylistsTitle() {
+  const h = $('playlistsTitle');
+  if (!h) return;
+  h.replaceChildren();
+
+  const ico = document.createElement('span');
+  ico.className   = 'h-ico';
+  ico.textContent = '🎵';
+  h.append(ico);
+
+  const dayLetter = HE_DAY_LETTERS[todayDayIdx()];
+  const dateStr   = todayDdMmYy();
+
+  if (todayIsClosed() && !hasPlaylistsForToday()) {
+    h.append(document.createTextNode(`יום ${dayLetter}' - המקום סגור`));
+    const openLink = document.createElement('a');
+    openLink.href        = '#';
+    openLink.className   = 'closed-open-link';
+    openLink.textContent = 'המקום פתוח?';
+    openLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      openGenerateDailyModal();
+    });
+    h.append(openLink);
+  } else {
+    h.append(document.createTextNode(`הפלייליסטים היומיים שלכם - יום ${dayLetter}' - ${dateStr}`));
+  }
 }
 
 // ---------- greeting + business name ----------
@@ -180,11 +216,46 @@ async function saveName() {
 }
 
 // ---------- playlists ----------
-// Target length for daily playlists. ~120 tracks ≈ 7h at 3.5min/track avg —
-// enough to cover a business day. Onboarding builds each playlist to
-// TARGET_TRACKS (10) up front; the dashboard's background expansion grows
-// each one to DAY_LENGTH_TRACKS after the user lands here.
-const DAY_LENGTH_TRACKS = 120;
+// Target length for daily playlists = today's open hours + 1h buffer. The
+// onboarding builds each playlist to a 10-track sample up front; the
+// dashboard's background expansion grows each one to that per-day target
+// after the user lands here. If today is closed (onboarding-day-is-closed
+// case), computeTargetForToday falls back to 12h + 1h.
+function dayTargetTracks() {
+  return computeTargetForToday({ hours: bmeta().hours });
+}
+
+// --- title / closed-day helpers ---
+const HE_DAY_LETTERS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
+
+function todayDayIdx() { return new Date().getDay(); }
+
+function todayDdMmYy() {
+  const d  = new Date();
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const yy = String(d.getFullYear()).slice(-2);
+  return `${dd}/${mm}/${yy}`;
+}
+
+// Today's closed status from the persisted hours object. `null` means we
+// have no hours data at all (treat as open — better to render playlists than
+// to gate the user out).
+function todayIsClosed() {
+  const h = bmeta().hours || {};
+  const t = h[todayDayIdx()];
+  if (!t) return false;
+  return !!t.closed;
+}
+
+// "Playlists exist for today" — checked via createdAt (YYYY-MM-DD). Used to
+// tell apart the onboarding day (playlists were just created → normal title)
+// from a later closed-day visit (no playlists → show the closed prompt).
+function isoDateToday() { return new Date().toISOString().slice(0, 10); }
+function hasPlaylistsForToday() {
+  const today = isoDateToday();
+  return (bmeta().playlists || []).some((p) => p && p.createdAt === today);
+}
 
 function renderPlaylists() {
   const wrap = $('slotsWrap');
@@ -194,6 +265,7 @@ function renderPlaylists() {
     wrap.innerHTML = '<p class="muted">עדיין לא נוצרו פלייליסטים.</p>';
     return;
   }
+  const target = dayTargetTracks();
   for (const p of playlists) {
     const row = document.createElement('div');
     row.className = 'slot';
@@ -201,14 +273,15 @@ function renderPlaylists() {
     const genresLine = p.genres?.length
       ? `<div class="pl-explain" style="padding:8px 0 0;font-size:12px">🎨 מורכב מהסגנונות: ${p.genres.slice(0, 6).join(' · ')}</div>`
       : '';
-    const showBar = playlistIsExpanding(p);
+    const showBar = playlistIsExpanding(p, target);
     const barHtml = showBar
-      ? `<div class="pl-expand-bar" data-target="${DAY_LENGTH_TRACKS}" data-current="${p.trackCount || 0}"><div class="pl-expand-fill"></div></div>`
+      ? `<div class="pl-expand-bar" data-target="${target}" data-current="${p.trackCount || 0}"><div class="pl-expand-fill"></div></div>`
       : '';
+    const spinnerHtml = showBar ? '<span class="pl-inline-spinner" aria-label="בונים"></span>' : '';
     row.innerHTML =
       `<div class="s-info">` +
         `<div class="s-title">${p.ico || '🎵'} ${p.label || 'פלייליסט'}</div>` +
-        `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${p.createdAt ? ` · נבנה ${p.createdAt}` : ''}</div>` +
+        `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}${p.createdAt ? ` · נבנה ${p.createdAt}` : ''}</div>` +
         barHtml +
         genresLine +
       `</div>`;
@@ -228,16 +301,24 @@ function renderPlaylists() {
 }
 
 // A playlist should show the expansion progress bar when it's an onboarding
-// playlist that still needs expanding — meaning it has expansion metadata
-// (a direction spec) and hasn't been expanded yet.
-function playlistIsExpanding(p) {
-  return !!p && !!p.expansion?.direction && !p.expandedAt && (p.trackCount || 0) < DAY_LENGTH_TRACKS;
+// playlist that still needs expanding. Two conditions:
+//   1. Business-level `onboardingExpanded` flag is NOT set — the expansion
+//      is a strict one-time-per-business event (set at the start of the
+//      first expansion pass and never cleared). If the flag is set, we
+//      never show a bar or trigger expansion again, regardless of what any
+//      individual playlist's expandedAt looks like.
+//   2. This specific playlist has expansion metadata (direction spec) and
+//      hasn't been individually expanded yet, and is below target.
+function playlistIsExpanding(p, target) {
+  if (bmeta().onboardingExpanded) return false;
+  const t = target ?? dayTargetTracks();
+  return !!p && !!p.expansion?.direction && !p.expandedAt && (p.trackCount || 0) < t;
 }
 
 function updateExpandBar(row, current) {
   const bar = row.querySelector('.pl-expand-bar');
   if (!bar) return;
-  const target = Number(bar.dataset.target) || DAY_LENGTH_TRACKS;
+  const target = Number(bar.dataset.target) || dayTargetTracks();
   const fill   = bar.querySelector('.pl-expand-fill');
   if (fill) fill.style.width = Math.min(100, Math.round((current / target) * 100)) + '%';
 }
@@ -248,19 +329,48 @@ function updateCountInRow(row, count) {
   updateExpandBar(row, count);
 }
 
-// After renderAll, expand any playlist that still has < DAY_LENGTH_TRACKS
-// tracks and carries an `expansion` field. Each playlist expands in
-// parallel; the endpoint streams progress lines back and we tick the
-// row's track count as each line arrives.
+// Expansion is a STRICT one-time-per-business event. It runs on the very
+// first dashboard visit after onboarding: the 10-track sample playlists
+// each grow to today's opening hours + 1h buffer (or 12h if today is
+// closed). After that first pass, it must never run again — the daily-gen
+// mechanism (a separate future task) handles fresh playlists on subsequent
+// days.
+//
+// Enforcement:
+//   - Business-level `onboardingExpanded` flag guards re-entry. Set BEFORE
+//     any expansion starts so a mid-pass tab close / refresh / crash never
+//     causes a second pass.
+//   - Expansions still run sequentially (Σ times, not max()) so each
+//     per-playlist expand-playlist call reads-writes user_metadata cleanly.
+//     A parallel Promise.all previously caused a last-writer-wins race
+//     that clobbered sibling expandedAt fields.
 async function expandPendingPlaylists() {
-  const playlists = bmeta().playlists || [];
-  const pending   = playlists.filter(playlistIsExpanding);
-  if (!pending.length) return;
+  const b = bmeta();
+  if (b.onboardingExpanded) return;
+
+  const playlists = b.playlists || [];
+  const target    = dayTargetTracks();
+  const pending   = playlists.filter((p) => playlistIsExpanding(p, target));
+
+  // Even if nothing to expand (pre-flag user with all playlists already
+  // expandedAt), still stamp the flag so we short-circuit next load.
+  if (!pending.length) {
+    await saveB({ onboardingExpanded: true });
+    return;
+  }
 
   const { data: { session } } = await sb.auth.getSession();
   if (!session?.access_token) return;
 
-  await Promise.all(pending.map((p) => expandOne(p, session.access_token)));
+  // Set the flag NOW — before we do any expansion work. This is the
+  // durable "we've done this" guarantee. If the tab closes mid-way, some
+  // playlists may end up under-populated, but nothing will re-populate
+  // them. That is intentional per the product spec.
+  await saveB({ onboardingExpanded: true });
+
+  for (const p of pending) {
+    await expandOne(p, session.access_token, target);
+  }
 
   // Refresh the local mirror so subsequent renders see the new counts +
   // expandedAt flags (server persisted them). This won't re-render — the
@@ -277,8 +387,17 @@ async function expandPendingPlaylists() {
   } catch (e) { console.warn('post-expand metadata refresh failed:', e); }
 }
 
-async function expandOne(playlist, token) {
+async function expandOne(playlist, token, target) {
+  const targetCount = target ?? dayTargetTracks();
   const row = document.querySelector(`#slotsWrap .slot[data-playlist-id="${cssEscape(playlist.id)}"]`);
+  // Belt-and-suspenders spinner cleanup: any exit path (success, stream
+  // reports done, HTTP error, exception) must clear the inline spinner
+  // so it never keeps spinning on a stalled row.
+  const clearSpinner = () => {
+    if (!row) return;
+    const s = row.querySelector('.pl-inline-spinner');
+    if (s) s.remove();
+  };
   try {
     const r = await fetch('/api/v6/account/expand-playlist', {
       method: 'POST',
@@ -289,15 +408,16 @@ async function expandOne(playlist, token) {
       body: JSON.stringify({
         businessId:  business.id,
         playlistId:  playlist.id,
-        targetCount: DAY_LENGTH_TRACKS,
+        targetCount,
       }),
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
       console.warn(`expand-playlist ${playlist.id} failed:`, err?.error || r.statusText);
+      clearSpinner();
       return;
     }
-    if (!r.body) return;   // fallback for browsers without ReadableStream
+    if (!r.body) { clearSpinner(); return; }   // fallback for browsers without ReadableStream
     const reader  = r.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -320,6 +440,8 @@ async function expandOne(playlist, token) {
           if (msg.done && row) {
             const bar = row.querySelector('.pl-expand-bar');
             if (bar) bar.classList.add('done');
+            const spinner = row.querySelector('.pl-inline-spinner');
+            if (spinner) spinner.remove();
           }
         } catch (e) {
           console.warn('expand-playlist: bad ndjson line', line);
@@ -340,8 +462,74 @@ async function expandOne(playlist, token) {
     return finalCount;
   } catch (err) {
     console.warn(`expand-playlist ${playlist.id} threw:`, err);
+    clearSpinner();
   }
 }
+
+// ---------- closed-day → generate daily playlists ----------
+// Shown when today is a closed day AND no playlists were created for today
+// yet. Confirms with the user, then hits /api/v6/account/generate-daily
+// which reuses the last direction set to build fresh 12h playlists.
+
+function openGenerateDailyModal() {
+  const modal = $('genDailyModal');
+  if (!modal) return;
+  modal.classList.remove('hide');
+}
+
+function closeGenerateDailyModal() {
+  const modal = $('genDailyModal');
+  if (!modal) return;
+  modal.classList.add('hide');
+  // Reset button state in case a prior attempt left it disabled.
+  const btn = $('genDailyConfirm');
+  if (btn) { btn.disabled = false; btn.textContent = 'צור פלייליסטים יומיים'; }
+}
+
+async function runGenerateDaily() {
+  const btn = $('genDailyConfirm');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>בונים…';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) throw new Error('לא מחוברים');
+    const r = await fetch('/api/v6/account/generate-daily', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization:  `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        businessId: business.id,
+        bizName:    business.name || '',
+      }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+    // Server already wrote to user_metadata — refresh the local mirror and
+    // re-render the dashboard so the new playlists appear and the title
+    // flips back to normal ("playlists for today exist").
+    const { data: refreshed } = await sb.auth.getUser();
+    meta = (refreshed?.user?.user_metadata?.sonic) || meta;
+    closeGenerateDailyModal();
+    renderPlaylistsTitle();
+    renderPlaylists();
+    toast(`נבנו ${data.count || 0} פלייליסטים ✓`);
+  } catch (err) {
+    console.error('generate-daily failed:', err);
+    toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
+    btn.disabled = false;
+    btn.textContent = 'צור פלייליסטים יומיים';
+  }
+}
+
+$('genDailyConfirm')?.addEventListener('click', runGenerateDaily);
+$('genDailyCancel') ?.addEventListener('click', closeGenerateDailyModal);
+$('genDailyModal')  ?.addEventListener('click', (e) => {
+  // Click on backdrop (the modal wrapper itself) closes.
+  if (e.target?.id === 'genDailyModal') closeGenerateDailyModal();
+});
 
 // CSS.escape polyfill for safety with unusual Spotify IDs (they're alphanumeric
 // so this is just defensive — but cheap).

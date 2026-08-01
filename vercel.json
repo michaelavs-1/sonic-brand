@@ -45,7 +45,7 @@
     "api/v5/record-playlist.js": {
       "maxDuration": 10
     },
-    "api/v5/cron-expire-playlists.js": {
+    "api/cron/expire-playlists.js": {
       "maxDuration": 300
     },
     "api/v6/transcribe.js": {
@@ -62,11 +62,14 @@
     },
     "api/v6/account/expand-playlist.js": {
       "maxDuration": 60
+    },
+    "api/v6/account/generate-daily.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
     { "path": "/api/v4/ami-cron-tick",           "schedule": "* * * * *" },
-    { "path": "/api/v5/cron-expire-playlists",   "schedule": "0 * * * *" }
+    { "path": "/api/cron/expire-playlists",      "schedule": "0 * * * *" }
   ],
   "headers": [
     {

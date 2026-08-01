@@ -1,4 +1,4 @@
-/* /api/v5/cron-expire-playlists.js
+/* /api/cron/expire-playlists.js
    Vercel Cron target — runs on the schedule declared in vercel.json.
    For each v5_created_playlists row where expires_at <= now() and not yet
    deleted, this endpoint:
@@ -10,12 +10,18 @@
      4. Marks deleted_at on success, or writes the error and leaves
         deleted_at NULL so the next tick retries.
 
+   Version note: this used to live at /api/v5/cron-expire-playlists but v6
+   (and any future version) writes to the same v5_created_playlists table.
+   Moved out from under the v5 namespace so it's obvious it belongs to
+   nobody in particular. The table name stays as-is for now to avoid a
+   Supabase migration.
+
    Auth: verifies Authorization: Bearer <CRON_SECRET>. Vercel Cron sets this
    header automatically when CRON_SECRET is present in the Vercel env. Locally
    you can trigger this by hand with that header if you set the same env var.
 */
 
-import { pgrSelect, pgrPatch } from './supabase-client.js';
+import { pgrSelect, pgrPatch } from '../v5/supabase-client.js';
 
 const SPOTIFY_BASE = process.env.VERCEL_URL
   ? `https://${process.env.VERCEL_URL}`
@@ -49,19 +55,39 @@ async function expireOne(row) {
   try {
     await postSpotify('update_playlist', { playlist_id: row.spotify_id, name: newName });
   } catch (e) {
-    console.warn(`[v5 cron] ${label} rename failed (continuing):`, e.message);
+    console.warn(`[cron] ${label} rename failed (continuing):`, e.message);
   }
 
-  // 2. Empty tracks. This is the load-bearing step — the owner-visible effect.
-  await postSpotify('replace_tracks', { playlist_id: row.spotify_id, uris: [] });
+  // 2. Empty tracks. 404 means the playlist entity is gone from Spotify's
+  //    side (e.g. someone ran the purge script) — treat as already-deleted
+  //    so we still mark the row and stop retrying. Any other error bubbles
+  //    up so the next tick retries.
+  try {
+    await postSpotify('replace_tracks', { playlist_id: row.spotify_id, uris: [] });
+  } catch (e) {
+    if (isGone(e)) {
+      console.warn(`[cron] ${label} tracks already gone (404) — marking deleted:`, e.message);
+    } else {
+      throw e;
+    }
+  }
 
   // 3. Unfollow (best-effort; if Spotify has already removed the playlist for
   //    some reason, this may 404 — we still mark deleted).
   try {
     await postSpotify('unfollow_playlist', { playlist_id: row.spotify_id });
   } catch (e) {
-    console.warn(`[v5 cron] ${label} unfollow failed (continuing):`, e.message);
+    console.warn(`[cron] ${label} unfollow failed (continuing):`, e.message);
   }
+}
+
+// Detect Spotify "playlist entity no longer exists" errors. postSpotify
+// includes the HTTP status in its error message, so the substring check is
+// stable enough here — Spotify's own responses use these codes for
+// "not found" / "resource unavailable".
+function isGone(err) {
+  const msg = String(err?.message || '');
+  return /\b(404|410)\b/.test(msg);
 }
 
 export default async function handler(req, res) {
@@ -86,11 +112,11 @@ export default async function handler(req, res) {
       { select: 'spotify_id,name,expires_at', order: 'expires_at.asc', limit: 100, useService: true },
     );
   } catch (e) {
-    console.error('[v5 cron] fetch expired rows failed:', e.message);
+    console.error('[cron expire] fetch expired rows failed:', e.message);
     return res.status(500).json({ error: e.message });
   }
 
-  console.log(`[v5 cron] ${expired.length} playlist(s) to expire`);
+  console.log(`[cron expire] ${expired.length} playlist(s) to expire`);
 
   const results = { succeeded: 0, failed: 0, details: [] };
   for (const row of expired) {
@@ -104,7 +130,7 @@ export default async function handler(req, res) {
       results.succeeded += 1;
       results.details.push({ spotify_id: row.spotify_id, ok: true });
     } catch (e) {
-      console.error(`[v5 cron] expire failed for ${row.spotify_id}:`, e.message);
+      console.error(`[cron expire] expire failed for ${row.spotify_id}:`, e.message);
       // Record the error but leave deleted_at NULL so the next tick retries.
       try {
         await pgrPatch(
@@ -118,6 +144,6 @@ export default async function handler(req, res) {
     }
   }
 
-  console.log(`[v5 cron] done in ${Date.now() - t0}ms: ${results.succeeded} ok / ${results.failed} failed`);
+  console.log(`[cron expire] done in ${Date.now() - t0}ms: ${results.succeeded} ok / ${results.failed} failed`);
   return res.status(200).json({ ok: true, elapsed_ms: Date.now() - t0, ...results });
 }

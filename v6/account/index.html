@@ -122,8 +122,53 @@ textarea.input{resize:vertical;min-height:74px;line-height:1.6}
 .slot .pl-expand-bar{margin-top:6px;height:4px;width:100%;max-width:220px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
 .slot .pl-expand-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:2px;transition:width .4s ease}
 .slot .pl-expand-bar.done .pl-expand-fill{background:var(--teal-soft)}
+/* Small inline spinner shown next to "X שירים" while a playlist is populating.
+   Removed as soon as the expansion stream reports done. */
+.slot .pl-inline-spinner{
+  display:inline-block;width:10px;height:10px;margin-inline-start:6px;
+  border:1.6px solid rgba(255,255,255,.22);border-top-color:var(--accent);
+  border-radius:50%;animation:sb-spin .7s linear infinite;vertical-align:-1px;
+}
+
+/* Generic project spinner used inside buttons (e.g. modal CTAs). Mirrors the
+   one defined in /v6/index.html so the account page can use the same class. */
+.sb-spinner{
+  display:inline-block;width:18px;height:18px;
+  border:2.5px solid rgba(255,255,255,.25);border-top-color:var(--accent);
+  border-radius:50%;animation:sb-spin .7s linear infinite;vertical-align:middle;
+}
+@keyframes sb-spin{to{transform:rotate(360deg)}}
 .slot .btn{width:auto;margin:0;padding:9px 14px;font-size:13px;white-space:nowrap;border-radius:11px}
 .slot a.btn{text-decoration:none;text-align:center}
+
+/* Small "המקום פתוח?" link that sits next to the "closed" title on days the
+   venue is marked closed. Deliberately quiet (muted color, smaller font) so
+   it reads as a secondary offer, not a primary action. */
+.closed-open-link{
+  color:var(--muted);font-size:12px;font-weight:500;margin-inline-start:10px;
+  text-decoration:underline;text-underline-offset:3px;cursor:pointer;
+}
+.closed-open-link:hover{color:var(--accent);text-decoration-color:var(--accent)}
+
+/* Generate-daily confirmation modal. Matches the overall dashboard aesthetic
+   (dark card on blurred backdrop). */
+.gd-overlay{
+  position:fixed;inset:0;z-index:120;background:rgba(6,12,17,.62);
+  backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;
+  padding:20px;animation:fadeIn .2s ease;
+}
+.gd-overlay.hide{display:none}
+.gd-modal{
+  background:var(--card);border:1px solid var(--border-2);border-radius:var(--r-lg);
+  padding:22px 20px;max-width:360px;width:100%;text-align:center;
+  box-shadow:0 24px 60px rgba(0,0,0,.55);
+}
+.gd-modal h3{margin:0 0 10px;font-size:17px;font-weight:800}
+.gd-modal p{margin:0 0 18px;font-size:13.5px;color:var(--muted);line-height:1.55}
+.gd-modal .gd-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.gd-modal .btn{width:auto;margin:0;padding:10px 18px;font-size:13.5px;border-radius:11px}
+.gd-modal .btn-ghost{width:auto;margin:0;padding:10px 18px;font-size:13.5px;border-radius:11px;background:transparent;color:var(--muted);border:1px solid var(--border-2)}
+.gd-modal .btn-ghost:hover{color:var(--text)}
 
 /* ---------- profile form ---------- */
 .frow{margin-bottom:12px}
@@ -369,7 +414,7 @@ a.link{color:var(--accent)}
     </div>
 
     <div class="box">
-      <h2><span class="h-ico">🎵</span>הפלייליסטים שלכם</h2>
+      <h2 id="playlistsTitle"><span class="h-ico">🎵</span>הפלייליסטים שלכם</h2>
       <div id="slotsWrap"></div>
     </div>
 
@@ -391,6 +436,19 @@ a.link{color:var(--accent)}
   <div class="muted">טוען…</div>
 </div>
 
-<script type="module" src="/v6/account/app.js?v=01082026b"></script>
+<!-- Confirmation modal for the closed-day "המקום פתוח?" flow. Hidden by
+     default; app.js flips .hide off when the user clicks the link. -->
+<div class="gd-overlay hide" id="genDailyModal">
+  <div class="gd-modal">
+    <h3>צור פלייליסטים יומיים</h3>
+    <p>ניצור לכם סט פלייליסטים באורך של כ־12 שעות לפי הכיוונים המוסיקליים שבחרתם.</p>
+    <div class="gd-actions">
+      <button class="btn"      id="genDailyConfirm" type="button">צור פלייליסטים יומיים</button>
+      <button class="btn-ghost" id="genDailyCancel"  type="button">ביטול</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="/v6/account/app.js?v=02082026d"></script>
 </body>
 </html>

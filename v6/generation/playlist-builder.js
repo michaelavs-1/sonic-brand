@@ -109,9 +109,13 @@ async function buildOne({ direction, bizName, popularityWindow }) {
     name,
     trackCount: ids.length,
     requested:  TARGET_TRACKS,
-    // Fields carried forward into user_metadata for later expansion:
+    // Fields carried forward into user_metadata for later expansion + for
+    // the "closed day → generate daily" flow which needs title_en +
+    // description_he to name the fresh playlists.
     expansion: {
       direction: {
+        title_en:         direction.title_en,
+        description_he:   direction.description_he,
         anchor_genre:     direction.anchor_genre,
         secondary_genres: direction.secondary_genres || [],
         bpm_range:        direction.bpm_range,

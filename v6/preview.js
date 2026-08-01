@@ -365,6 +365,7 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
 // Page 1 anchors and page 2 (Claude call + anchor fetch) run in parallel, so
 // the total prep time is bounded by the slowest branch instead of their sum.
 export async function preparePreview({ directions, page2Promise, popularityWindow }) {
+  console.log('v6 musical directions (page 1):', { directions });
   const page1Task = fetchAnchorTracks(directions, popularityWindow)
     .then((byRank) => directionsToPreviews(directions, byRank));
 

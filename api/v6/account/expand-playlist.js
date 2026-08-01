@@ -1,6 +1,9 @@
 /* /api/v6/account/expand-playlist.js
    Grows an onboarding-generated playlist from its initial ~10-track "sample"
-   size to a full day's length (~120 tracks by default) in the background.
+   size to a full day's length in the background. The client (v6/account/app.js)
+   sizes `targetCount` to today's opening hours + 1h buffer via
+   v6/generation/playlist-length.js; the ~120-track default here is only used
+   if the client omits it.
 
    Called by v6/account/app.js after the dashboard renders. The endpoint
    streams progress back as newline-delimited JSON so the client can show the
@@ -15,7 +18,7 @@
      {
        businessId:    string,
        playlistId:    string  // Spotify playlist id (matches user_metadata.b[bizId].playlists[i].id)
-       targetCount?:  number  // default 120 (~7 hours at 3.5min/track)
+       targetCount?:  number  // default 120 (~7 hours at 3.5min/track); capped at 500
      }
 
    Idempotency:
@@ -125,7 +128,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'businessId and playlistId required' });
     }
     const target = Number.isFinite(targetCount) && targetCount > 0
-      ? Math.min(Math.round(targetCount), 400)
+      ? Math.min(Math.round(targetCount), 500)
       : DEFAULT_TARGET;
 
     // Locate the playlist entry inside user_metadata.
@@ -229,14 +232,26 @@ export default async function handler(req, res) {
     }
 
     // Persist final state so future dashboard loads see this playlist as
-    // expanded and skip re-running.
-    entry.trackCount = running;
-    entry.expandedAt = Date.now();
-    playlists[idx]   = entry;
-    bRow.playlists   = playlists;
-    const nextSonic = { ...sonic, b: { ...bMap, [businessId]: bRow } };
+    // expanded and skip re-running. Re-read user_metadata NOW (not the copy
+    // fetched at the start of the request) and only touch this playlist's
+    // fields — anything that changed in between (name update, a new event
+    // playlist prepended, a sibling expansion) is preserved.
     try {
-      await writeUserSonic(user.id, nextSonic);
+      const latestSonic = await readUserSonic(user.id);
+      const latestBMap  = { ...(latestSonic.b || {}) };
+      const latestBRow  = { ...(latestBMap[businessId] || {}) };
+      const latestPls   = Array.isArray(latestBRow.playlists) ? [...latestBRow.playlists] : [];
+      const latestIdx   = latestPls.findIndex((p) => p && p.id === playlistId);
+      if (latestIdx >= 0) {
+        latestPls[latestIdx] = {
+          ...latestPls[latestIdx],
+          trackCount: running,
+          expandedAt: Date.now(),
+        };
+        latestBRow.playlists = latestPls;
+        const nextSonic = { ...latestSonic, b: { ...latestBMap, [businessId]: latestBRow } };
+        await writeUserSonic(user.id, nextSonic);
+      }
     } catch (err) {
       console.warn('[expand-playlist] final user_metadata write failed:', err.message);
       send({ error: 'metadata write failed', trackCount: running });

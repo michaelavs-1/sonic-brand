@@ -21,6 +21,7 @@
 
 import { GENRES, GENRE_SET }   from '../../../v6/generation/genre-list.js';
 import { pgrRpc, pgrUpsert }   from '../../v5/supabase-client.js';
+import { nextIl4amIso }        from '../../../v6/generation/playlist-length.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -37,9 +38,9 @@ const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
 const MIN_TRACKS = 5;      // floor: below this we tell the user to retry
 const MAX_TRACKS = 40;
 
-// 24h auto-expiry — hooks into the existing v5 cron worker which unfollows
-// expired playlists on Rubin's account. Matches the daily-playlist TTL.
-const TTL_HOURS = 24;
+// Event playlist expiry = next 04:00 Asia/Jerusalem. Kept visible through
+// the night of the event, swept before the following morning. Handled by
+// the existing /api/cron/expire-playlists cron via the shared ledger.
 
 async function verifyUser(req) {
   const auth = req.headers.authorization || '';
@@ -251,8 +252,8 @@ export default async function handler(req, res) {
     // 4) Register for 24h auto-expiry via the same v5 cron worker that
     //    handles daily playlists (unfollows from Rubin's account when TTL
     //    elapses).
-    const expiresAtMs = Date.now() + TTL_HOURS * 3600 * 1000;
-    const expiresAtIso = new Date(expiresAtMs).toISOString();
+    const expiresAtIso = nextIl4amIso();
+    const expiresAtMs  = Date.parse(expiresAtIso);
     try {
       await pgrUpsert('v5_created_playlists', {
         spotify_id: id,

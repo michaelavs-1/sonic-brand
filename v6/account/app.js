@@ -251,16 +251,25 @@ function todayIsClosed() {
 // "Playlists exist for today" — checked via createdAt (YYYY-MM-DD). Used to
 // tell apart the onboarding day (playlists were just created → normal title)
 // from a later closed-day visit (no playlists → show the closed prompt).
+// Only LIVE playlists (not past their expiresAt) count.
 function isoDateToday() { return new Date().toISOString().slice(0, 10); }
 function hasPlaylistsForToday() {
   const today = isoDateToday();
-  return (bmeta().playlists || []).some((p) => p && p.createdAt === today);
+  return (bmeta().playlists || []).some((p) => p && p.createdAt === today && playlistIsLive(p));
+}
+
+// Shared expiry gate for daily playlists AND event playlists. Missing
+// expiresAt = "no expiry recorded" → treat as live (backward compat for
+// entries written before per-day expiry existed; the ledger cron will
+// still unfollow them at their old 24h TTL).
+function playlistIsLive(p) {
+  return !!p && (!p.expiresAt || p.expiresAt > Date.now());
 }
 
 function renderPlaylists() {
   const wrap = $('slotsWrap');
   wrap.innerHTML = '';
-  const playlists = bmeta().playlists || [];
+  const playlists = (bmeta().playlists || []).filter(playlistIsLive);
   if (!playlists.length) {
     wrap.innerHTML = '<p class="muted">עדיין לא נוצרו פלייליסטים.</p>';
     return;
@@ -539,11 +548,10 @@ function cssEscape(s) {
 
 // ---------- special events ----------
 // Look up an event's live (unexpired) playlist by cross-referencing the
-// event's id against bmeta().playlists[i].eventId.
+// event's id against bmeta().playlists[i].eventId. Shares the expiry gate
+// with daily playlists via playlistIsLive.
 function activePlaylistForEvent(eventId) {
-  const playlists = bmeta().playlists || [];
-  const now = Date.now();
-  return playlists.find((p) => p.eventId === eventId && (!p.expiresAt || p.expiresAt > now)) || null;
+  return (bmeta().playlists || []).find((p) => p && p.eventId === eventId && playlistIsLive(p)) || null;
 }
 
 function renderEvents() {

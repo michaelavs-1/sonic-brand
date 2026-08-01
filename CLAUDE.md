@@ -177,10 +177,11 @@ sonic-brand/
 │   │   ├── place-lookup.js                 ← Google Places (New) v1 textsearch
 │   │   ├── transcribe.js                   ← Whisper (OpenAI)
 │   │   └── account/
+│   │       ├── _daily-builder.js           ← Shared build+persist module: buildDailyBatch, latestDirections
 │   │       ├── signup.js                   ← Supabase admin user + business creation + user_metadata write
 │   │       ├── event-playlist.js           ← Claude Haiku → direction-tracks → Spotify create+add + ledger
 │   │       ├── expand-playlist.js          ← Streaming ndjson: grow onboarding playlists to per-day target
-│   │       └── generate-daily.js           ← Closed-day "המקום פתוח?" flow: reuses latest direction set, builds 12h playlists
+│   │       └── generate-daily.js           ← Closed-day "המקום פתוח?" flow (delegates to _daily-builder)
 │   ├── v5/
 │   │   ├── anthropic.js                    ← Anthropic Messages API proxy (uses ANTHROPIC_KEY)
 │   │   ├── anchor-tracks.js                ← Per-direction random preview track (BPM+popularity filter)
@@ -198,8 +199,10 @@ sonic-brand/
 │   │   ├── openai.js                       ← GPT proxy (legacy)
 │   │   └── rubin-oauth-callback.js         ← One-time OAuth seed for RUBIN_REFRESH_TOKEN
 │   ├── cron/
-│   │   └── expire-playlists.js             ← Hourly cron. Renames + empties + unfollows expired playlists.
-│   │                                          Tolerates 404 (isGone helper) so purged playlists don't loop.
+│   │   ├── expire-playlists.js             ← Hourly cron. Renames + empties + unfollows expired playlists.
+│   │   │                                      Tolerates 404 (isGone helper) so purged playlists don't loop.
+│   │   └── generate-daily.js               ← Hourly cron. For each business, 2h before that day's opening,
+│   │                                          builds one daily playlist per direction (Israel-local time).
 │   ├── openai.js, spotify.js, databox.js   ← Root-level legacy proxies (v1/v2/v3-era)
 ├── scripts/
 │   ├── benchmark-directions.mjs            ← OpenAI vs Anthropic timing/quality benchmark
@@ -242,13 +245,46 @@ Applied twice in v6:
 
 Shared 73-genre canonical menu. Both `musical-directions.js` (for the system prompt) and `api/v6/account/event-playlist.js` (Claude Haiku prompt) import from here. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match.
 
-### Playlist auto-expiry (24h)
+### Playlist auto-expiry
 
-- Every playlist created via `/api/new/spotify` create_playlist gets a row in `v5_created_playlists` (`spotify_id`, `name`, `expires_at`, `deleted_at`, `error`)
-- Hourly cron `/api/cron/expire-playlists` (previously `/api/v5/cron-expire-playlists` — moved to be version-agnostic)
-- Per expired row: rename to `(expired) X`, empty tracks (`replace_tracks` with empty URI list), unfollow on Rubin's side, mark `deleted_at`
-- Wrapped in try/catch — 404 (`isGone` helper) is treated as "already purged" so the row is marked deleted instead of retried forever
-- Applies to onboarding playlists, event playlists, and expanded playlists uniformly
+Every playlist created via `/api/new/spotify` create_playlist gets a row in
+`v5_created_playlists` (`spotify_id`, `name`, `expires_at`, `deleted_at`,
+`error`). Hourly cron `/api/cron/expire-playlists` picks up any row with
+`expires_at <= now()` and unfollows on Rubin's side (rename → empty →
+unfollow → mark `deleted_at`; 404 treated as already-gone via `isGone`).
+
+Two different expiry regimes feed into that one cron:
+
+- **Daily playlists** (onboarding-day expansion + `/api/cron/generate-daily`)
+  expire **2h after that day's closing time in Asia/Jerusalem**. Different
+  each day if the venue's hours differ. Computed via
+  `dailyPlaylistExpiryIso({ hours })` in [v6/generation/playlist-length.js].
+  DST-safe; handles overnight-wrap (close ≤ open).
+- **Event playlists** and **closed-day playlists** (both the manual
+  "המקום פתוח?" flow and the rare onboarding-on-a-closed-day fallback)
+  expire at the **next 04:00 Asia/Jerusalem** — one-off items kept visible
+  through the night but swept before the following morning. Helper:
+  `nextIl4amIso()` in [v6/generation/playlist-length.js].
+
+`user_metadata.b[bizId].playlists[i].expiresAt` (ms) mirrors the ledger
+`expires_at` and drives dashboard visibility: `playlistIsLive(p)` filters
+expired entries out of the render loop, `hasPlaylistsForToday()`, and
+`activePlaylistForEvent()`. Missing `expiresAt` is treated as live
+(backward-compat for pre-per-day entries; the cron still cleans them up on
+their old 24h clock).
+
+### Daily-gen cron (`/api/cron/generate-daily`)
+
+Runs hourly. For each business:
+1. Skip if `!hours`, `!onboardingExpanded`, or today's day is closed.
+2. Skip if any playlist with today's IL `createdAt` is already live.
+3. Skip if `now < today's open - 2h` (in Asia/Jerusalem).
+4. Extract latest direction batch via `latestDirections()`; skip if empty.
+5. Build via shared `buildDailyBatch()` in `_daily-builder.js` — one Spotify
+   playlist per direction, single user_metadata write at the end.
+6. Ledger row's `expires_at` is `dailyPlaylistExpiryIso({ hours })`.
+
+Auth: `Authorization: Bearer ${CRON_SECRET}` (same as `expire-playlists`).
 
 ---
 
@@ -277,7 +313,8 @@ Everything the account dashboard reads lives here:
           "trackCount": 10,          // starts at 10, grows to ~120 after expansion
           "genres": [...],
           "createdAt": "2026-08-01",
-          "expiresAt": 1723456789000, // ms; for event playlists (24h)
+          "expiresAt": 1723456789000, // ms. Daily = 2h after that day's close.
+                                     // Event / closed-day = next 04:00 IL.
           "eventId": "<uuid>",       // back-ref for event playlists only
           "expansion": {             // present on onboarding playlists only
             "direction": { "title_en", "description_he", "anchor_genre",

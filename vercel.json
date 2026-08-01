@@ -65,11 +65,15 @@
     },
     "api/v6/account/generate-daily.js": {
       "maxDuration": 60
+    },
+    "api/cron/generate-daily.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
     { "path": "/api/v4/ami-cron-tick",           "schedule": "* * * * *" },
-    { "path": "/api/cron/expire-playlists",      "schedule": "0 * * * *" }
+    { "path": "/api/cron/expire-playlists",      "schedule": "0 * * * *" },
+    { "path": "/api/cron/generate-daily",        "schedule": "0 * * * *" }
   ],
   "headers": [
     {

@@ -30,7 +30,8 @@
        tab closes mid-stream the next dashboard load will just re-run.
 */
 
-import { pgrRpc } from '../../v5/supabase-client.js';
+import { pgrRpc, pgrUpsert } from '../../v5/supabase-client.js';
+import { dailyPlaylistExpiryIso, nextIl4amIso } from '../../../v6/generation/playlist-length.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -236,6 +237,14 @@ export default async function handler(req, res) {
     // fetched at the start of the request) and only touch this playlist's
     // fields — anything that changed in between (name update, a new event
     // playlist prepended, a sibling expansion) is preserved.
+    //
+    // Also stamp expiresAt on both the entry (drives dashboard visibility)
+    // and the ledger row (drives the expire cron's Spotify unfollow). If
+    // today is open we get "close+2h in IL" from the helper. If today is
+    // closed (onboarding on a closed day) the helper returns null and we
+    // fall back to "next 04:00 IL" — matches the closed-day manual flow's
+    // expiry and guarantees the entry always carries an expiresAt so it
+    // can't linger indefinitely on the dashboard.
     try {
       const latestSonic = await readUserSonic(user.id);
       const latestBMap  = { ...(latestSonic.b || {}) };
@@ -243,14 +252,33 @@ export default async function handler(req, res) {
       const latestPls   = Array.isArray(latestBRow.playlists) ? [...latestBRow.playlists] : [];
       const latestIdx   = latestPls.findIndex((p) => p && p.id === playlistId);
       if (latestIdx >= 0) {
+        const expiryIso   = dailyPlaylistExpiryIso({ hours: latestBRow.hours })
+                            || nextIl4amIso();
+        const expiresAtMs = Date.parse(expiryIso);
         latestPls[latestIdx] = {
           ...latestPls[latestIdx],
           trackCount: running,
           expandedAt: Date.now(),
+          expiresAt:  expiresAtMs,
         };
         latestBRow.playlists = latestPls;
         const nextSonic = { ...latestSonic, b: { ...latestBMap, [businessId]: latestBRow } };
         await writeUserSonic(user.id, nextSonic);
+
+        // Overwrite the ledger row so the expire cron unfollows at the same
+        // moment the dashboard hides the entry. Best-effort: a ledger write
+        // failure just leaves it at whatever record-playlist.js wrote.
+        try {
+          await pgrUpsert('v5_created_playlists', {
+            spotify_id: playlistId,
+            name:       latestPls[latestIdx].label || 'playlist',
+            expires_at: expiryIso,
+            deleted_at: null,
+            error:      null,
+          }, { onConflict: 'spotify_id' });
+        } catch (e) {
+          console.warn('[expand-playlist] ledger expiry rewrite failed:', e.message);
+        }
       }
     } catch (err) {
       console.warn('[expand-playlist] final user_metadata write failed:', err.message);

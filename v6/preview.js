@@ -362,31 +362,34 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
 // the background (e.g. while the user picks opening hours) so that when the
 // swipe deck is actually needed it can render instantly.
 //
-// Page 1 anchors and page 2 (Claude call + anchor fetch) run in parallel, so
-// the total prep time is bounded by the slowest branch instead of their sum.
+// Page 1 anchor fetch runs first; page 2 anchor fetch is intentionally
+// SEQUENCED after page 1 completes. Running both fetches concurrently caused
+// the v5_anchor_tracks RPC (JOIN-heavy random-order query) to trip Supabase's
+// statement_timeout on page 2 while page 1 warmed the plan cache — the two
+// batches contended and page 2 lost. Sequencing lets page 2's queries reuse
+// page 1's warm plan and connections. Total prep goes from max() to sum()
+// (~1-2s slower), but that stays hidden behind the hours picker.
 export async function preparePreview({ directions, page2Promise, popularityWindow }) {
   console.log('v6 musical directions (page 1):', { directions });
-  const page1Task = fetchAnchorTracks(directions, popularityWindow)
-    .then((byRank) => directionsToPreviews(directions, byRank));
+  const page1ByRank   = await fetchAnchorTracks(directions, popularityWindow);
+  const page1Previews = directionsToPreviews(directions, page1ByRank);
 
-  const page2Task = page2Promise
-    ? page2Promise.then(async (page2Result) => {
-        if (page2Result && !page2Result.error && Array.isArray(page2Result.directions) && page2Result.directions.length) {
-          console.log('v6 musical directions (page 2):', { directions: page2Result.directions });
-          const byRank = await fetchAnchorTracks(page2Result.directions, popularityWindow);
-          return directionsToPreviews(page2Result.directions, byRank);
-        }
-        if (page2Result?.error) {
-          console.warn('v6 preview: page 2 unavailable —', page2Result.error, page2Result.reasoning_en);
-        }
-        return [];
-      }).catch((e) => {
-        console.warn('v6 preview: page 2 promise rejected', e);
-        return [];
-      })
-    : Promise.resolve([]);
+  let page2Previews = [];
+  if (page2Promise) {
+    try {
+      const page2Result = await page2Promise;
+      if (page2Result && !page2Result.error && Array.isArray(page2Result.directions) && page2Result.directions.length) {
+        console.log('v6 musical directions (page 2):', { directions: page2Result.directions });
+        const page2ByRank = await fetchAnchorTracks(page2Result.directions, popularityWindow);
+        page2Previews = directionsToPreviews(page2Result.directions, page2ByRank);
+      } else if (page2Result?.error) {
+        console.warn('v6 preview: page 2 unavailable —', page2Result.error, page2Result.reasoning_en);
+      }
+    } catch (e) {
+      console.warn('v6 preview: page 2 promise rejected', e);
+    }
+  }
 
-  const [page1Previews, page2Previews] = await Promise.all([page1Task, page2Task]);
   const previews = [...page1Previews, ...page2Previews];
 
   // Track metadata (name / artist / art). Runs after we know the full preview

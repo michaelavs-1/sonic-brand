@@ -11,19 +11,19 @@
 // navigation; downstream state is invalidated when an earlier step is
 // re-entered.
 
-import { runAtmosphereSelection } from '/v6/atmosphere.js?v=01082026c';
-import { runHoursSelection } from '/v6/hours-selector.js?v=01082026c';
-import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=01082026c';
-import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=01082026c';
-import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=01082026c';
-import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=01082026c';
+import { runAtmosphereSelection } from '/v6/atmosphere.js?v=02082026a';
+import { runHoursSelection } from '/v6/hours-selector.js?v=02082026a';
+import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=02082026a';
+import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
+import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=02082026a';
+import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=02082026a';
 import {
   initPlaylistResultsShell,
   updateOnePlaylistResult,
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=01082026c';
+} from '/v6/result.js?v=02082026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.

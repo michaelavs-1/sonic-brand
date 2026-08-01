@@ -471,7 +471,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 ### Cache busting
 
-`v6/index.html` script tag uses `?v=DDMMYYYY{letter}` (e.g., `01082026c`). Bump when JS/CSS changes. Currently at `01082026c`.
+`v6/index.html` script tag uses `?v=DDMMYYYY{letter}` (e.g., `02082026a`). Bump when JS/CSS changes — and bump the matching `?v=` on every `import` inside `v6/app.js` too (they use the same query so browsers pick up the new module bytes).
 
 `v6/account/index.html` similarly at `01082026b`.
 

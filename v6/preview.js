@@ -123,8 +123,10 @@ function directionsToPreviews(directions, byRank) {
 }
 
 // ---------- swipe deck ----------
-async function renderSwipeDeck(card, previews, popularityWindow) {
-  const trackMeta = await fetchTrackMeta(previews.map((p) => p.trackId));
+// trackMeta is provided pre-fetched by preparePreview so we don't re-hit
+// Spotify get_track at render time. The swap button still fetches metadata
+// on demand for its own replacement tracks (see below).
+async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
   const api = await getSpotifyIframeApi();
 
   return new Promise((resolve) => {
@@ -355,38 +357,59 @@ async function renderSwipeDeck(card, previews, popularityWindow) {
   });
 }
 
-// v5's contract: input = { directions, page2Promise, popularityWindow };
-// output = array of picked direction objects.
-export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow }) {
+// Prepares everything the swipe deck needs — page 1 + page 2 anchor tracks
+// AND metadata for all preview tracks — up front. Callers can fire this in
+// the background (e.g. while the user picks opening hours) so that when the
+// swipe deck is actually needed it can render instantly.
+//
+// Page 1 anchors and page 2 (Claude call + anchor fetch) run in parallel, so
+// the total prep time is bounded by the slowest branch instead of their sum.
+export async function preparePreview({ directions, page2Promise, popularityWindow }) {
+  const page1Task = fetchAnchorTracks(directions, popularityWindow)
+    .then((byRank) => directionsToPreviews(directions, byRank));
+
+  const page2Task = page2Promise
+    ? page2Promise.then(async (page2Result) => {
+        if (page2Result && !page2Result.error && Array.isArray(page2Result.directions) && page2Result.directions.length) {
+          console.log('v6 musical directions (page 2):', { directions: page2Result.directions });
+          const byRank = await fetchAnchorTracks(page2Result.directions, popularityWindow);
+          return directionsToPreviews(page2Result.directions, byRank);
+        }
+        if (page2Result?.error) {
+          console.warn('v6 preview: page 2 unavailable —', page2Result.error, page2Result.reasoning_en);
+        }
+        return [];
+      }).catch((e) => {
+        console.warn('v6 preview: page 2 promise rejected', e);
+        return [];
+      })
+    : Promise.resolve([]);
+
+  const [page1Previews, page2Previews] = await Promise.all([page1Task, page2Task]);
+  const previews = [...page1Previews, ...page2Previews];
+
+  // Track metadata (name / artist / art). Runs after we know the full preview
+  // set — parallelised across all IDs inside fetchTrackMeta.
+  const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
+
+  return { previews, trackMeta };
+}
+
+// If `preparedPromise` is supplied, its resolution is what actually drives
+// the swipe deck — the caller has already kicked off preparePreview() in the
+// background. Otherwise we do the prep synchronously here as a fallback.
+// When the prepared payload is already resolved, `await` returns in the same
+// microtask so the swipe deck appears without a visible loading flash.
+export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow, preparedPromise }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('preview: .screen-card not found');
 
   showLoading(container);
 
-  // Page 1 anchor tracks.
-  const page1Anchors  = await fetchAnchorTracks(directions, popularityWindow);
-  const page1Previews = directionsToPreviews(directions, page1Anchors);
+  const prepared = preparedPromise
+    ? await preparedPromise
+    : await preparePreview({ directions, page2Promise, popularityWindow });
 
-  // Await page 2 (usually resolved already since it fires in parallel with the
-  // page 1 Anthropic call). Fetch its anchor tracks too. Merge into one deck.
-  let page2Previews = [];
-  if (page2Promise) {
-    try {
-      const page2Result = await page2Promise;
-      if (page2Result && !page2Result.error && Array.isArray(page2Result.directions) && page2Result.directions.length) {
-        console.log('v6 musical directions (page 2):', { directions: page2Result.directions });
-        const page2Anchors = await fetchAnchorTracks(page2Result.directions, popularityWindow);
-        page2Previews = directionsToPreviews(page2Result.directions, page2Anchors);
-      } else if (page2Result?.error) {
-        console.warn('v6 preview: page 2 unavailable —', page2Result.error, page2Result.reasoning_en);
-      }
-    } catch (e) {
-      console.warn('v6 preview: page 2 promise rejected', e);
-    }
-  }
-
-  const previews = [...page1Previews, ...page2Previews];
-  if (!previews.length) return [];
-
-  return renderSwipeDeck(container, previews, popularityWindow);
+  if (!prepared.previews.length) return [];
+  return renderSwipeDeck(container, prepared.previews, prepared.trackMeta, popularityWindow);
 }

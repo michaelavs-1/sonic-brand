@@ -11,18 +11,19 @@
 // navigation; downstream state is invalidated when an earlier step is
 // re-entered.
 
-import { runAtmosphereSelection } from '/v6/atmosphere.js?v=31072026e';
-import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=31072026e';
-import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=31072026e';
-import { runDirectionPreviewFlow } from '/v6/preview.js?v=31072026e';
-import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=31072026e';
+import { runAtmosphereSelection } from '/v6/atmosphere.js?v=01082026c';
+import { runHoursSelection } from '/v6/hours-selector.js?v=01082026c';
+import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=01082026c';
+import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=01082026c';
+import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=01082026c';
+import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=01082026c';
 import {
   initPlaylistResultsShell,
   updateOnePlaylistResult,
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=31072026e';
+} from '/v6/result.js?v=01082026c';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -42,6 +43,11 @@ const state = {
   confirmedPlace: undefined,  // undefined = never looked up; null = looked up, none found
   atmosphereRows: null,       // cached once per session
   selectedAtmos: [],
+  // Opening hours are collected in step 3 alongside the Claude call. Kept
+  // across step re-entry so users don't re-enter them just for changing
+  // atmospheres.
+  hours: null,                // { 0: { closed: true } | { open, close }, ..., 6: ... }
+  longestMinutes: 0,          // longest open window across days — feeds daily-playlist target
   directions: null,
   page2Promise: null,
   popularityWindow: null,
@@ -179,13 +185,26 @@ async function toggleDictation() {
 }
 
 // ---------- atmosphere rows (cached once) ----------
+// The endpoint keeps a 30-min server-side cache; we DON'T pass `fresh=1` any
+// more so warm hits return in ~50ms. We also dedupe in-flight requests via
+// atmosphereRowsPromise so kick-off from multiple call sites (e.g. background
+// prefetch + step 2's await) doesn't fire two fetches.
+let atmosphereRowsPromise = null;
 async function getAtmosphereRows() {
   if (state.atmosphereRows) return state.atmosphereRows;
-  const r = await fetch('/api/v5/databox-atmospheres?fresh=1');
-  if (!r.ok) throw new Error(`databox-atmospheres ${r.status}: ${r.statusText}`);
-  const { rows } = await r.json();
-  state.atmosphereRows = rows;
-  return rows;
+  if (atmosphereRowsPromise) return atmosphereRowsPromise;
+  atmosphereRowsPromise = fetch('/api/v5/databox-atmospheres')
+    .then(async (r) => {
+      if (!r.ok) throw new Error(`databox-atmospheres ${r.status}: ${r.statusText}`);
+      const { rows } = await r.json();
+      state.atmosphereRows = rows;
+      return rows;
+    })
+    .catch((e) => {
+      atmosphereRowsPromise = null;  // let a later call retry after a failure
+      throw e;
+    });
+  return atmosphereRowsPromise;
 }
 
 function prewarmSupabase() { fetch('/api/v5/prewarm').catch(() => { }); }
@@ -238,6 +257,12 @@ function startNarrator() {
 async function runBusinessStep() {
   const card = document.querySelector('.screen-card');
   if (!card) throw new Error('runBusinessStep: no .screen-card');
+
+  // Fire the atmosphere-rows fetch NOW, in the background, while the user
+  // is still typing their business description. By the time they hit submit
+  // and step 2 needs the rows, the fetch has usually landed. Fire-and-forget:
+  // if the network fails here, step 2's own await will surface the error.
+  getAtmosphereRows().catch(() => {});
 
   // If we've navigated away from step 1 and are now returning, the mainCard's
   // form was replaced by other screens — restore it from the snapshot.
@@ -366,6 +391,22 @@ function showError(message) {
   card.replaceChildren(h, p);
 }
 
+// Renders the "waiting for Claude" screen shown after the hours picker if
+// the directions call hasn't returned yet. Uses the same 25s progress-bar
+// CSS the preview screen uses so the visual language stays consistent.
+function showDirectionsLoading() {
+  const card = document.querySelector('.screen-card');
+  if (!card) return;
+  const h = document.createElement('h1');
+  h.textContent = 'רובין חושבת על העסק שלכם';
+  const wrap = document.createElement('div');
+  wrap.className = 'preview-load-column';
+  wrap.innerHTML =
+    '<div class="preview-load-label">מתאימים כיוונים מוזיקליים…</div>' +
+    '<div class="preview-load-progress"><div class="preview-load-progress-fill"></div></div>';
+  card.replaceChildren(h, wrap);
+}
+
 // ---------- step orchestrator ----------
 async function goToStep(start) {
   if (start > highestStep) return;
@@ -418,30 +459,84 @@ async function goToStep(start) {
       }
 
       else if (s === 3) {
-        // Narrator plays here — Claude call is 3–5s.
+        // Fire Claude in the background — don't await yet. The hours picker
+        // runs while it thinks. Track resolution via a settled flag so we
+        // know whether to show a loading screen after the hours picker.
+        //
+        // As soon as Claude page 1 lands, we IMMEDIATELY chain preparePreview
+        // onto it so anchor-tracks + Spotify get_track metadata also happen
+        // in the background — that way when the swipe deck actually needs
+        // to render (after the hours picker), everything is warm and it
+        // appears instantly.
+        let directionsPromise = null;
+        let directionsSettled = state.directions != null;
+        let preparedPromise   = null;
+
         if (!state.directions) {
-          const narrator = startNarrator();
-          try {
-            const dResult = await abortable(generateMusicalDirections({
-              bizName: state.bizName,
-              bizDesc: state.bizDesc,
-              atmospheres: state.selectedAtmos,
-            }), signal);
-            if (dResult.error) {
-              showError(dResult.reasoning_en ? `סיבה: ${dResult.reasoning_en}` : undefined);
-              return;
-            }
-            state.directions = dResult.directions;
-            state.page2Promise = dResult.page2Promise;
-            state.popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
-          } finally {
-            narrator.stop();
-          }
+          const rawDirections = generateMusicalDirections({
+            bizName:     state.bizName,
+            bizDesc:     state.bizDesc,
+            atmospheres: state.selectedAtmos,
+          });
+          directionsPromise = rawDirections.then(
+            (r) => { directionsSettled = true; return r; },
+            (e) => { directionsSettled = true; throw e; },
+          );
+          // Kick off prep as soon as directions land (page 1 anchors fire
+          // immediately; page 2 anchors chain onto Claude's second call).
+          preparedPromise = rawDirections.then((r) => {
+            if (r?.error) return { previews: [], trackMeta: {} };
+            const popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
+            return preparePreview({
+              directions:       r.directions,
+              page2Promise:     r.page2Promise,
+              popularityWindow,
+            });
+          }).catch((e) => {
+            console.warn('preparePreview failed:', e);
+            return { previews: [], trackMeta: {} };
+          });
+        } else {
+          // Cached directions from a prior run — start prep synchronously.
+          preparedPromise = preparePreview({
+            directions:       state.directions,
+            page2Promise:     state.page2Promise,
+            popularityWindow: state.popularityWindow,
+          }).catch((e) => {
+            console.warn('preparePreview failed:', e);
+            return { previews: [], trackMeta: {} };
+          });
         }
+
+        // Opening hours picker. Runs in the foreground; the Claude call +
+        // preview prep chug along behind it.
+        const hoursResult = await abortable(
+          runHoursSelection({ prechecked: state.hours ? { hours: state.hours } : null }),
+          signal,
+        );
+        state.hours          = hoursResult.hours;
+        state.longestMinutes = hoursResult.longestMinutes;
+
+        // If Claude hasn't returned yet, show a progress bar until it does.
+        // Usually already resolved by now if the user spent any real time
+        // on the hours picker.
+        if (!state.directions && directionsPromise) {
+          if (!directionsSettled) showDirectionsLoading();
+          const dResult = await abortable(directionsPromise, signal);
+          if (dResult.error) {
+            showError(dResult.reasoning_en ? `סיבה: ${dResult.reasoning_en}` : undefined);
+            return;
+          }
+          state.directions       = dResult.directions;
+          state.page2Promise     = dResult.page2Promise;
+          state.popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
+        }
+
         const picked = await abortable(runDirectionPreviewFlow({
-          directions: state.directions,
-          page2Promise: state.page2Promise,
+          directions:       state.directions,
+          page2Promise:     state.page2Promise,
           popularityWindow: state.popularityWindow,
+          preparedPromise,
         }), signal);
         if (!picked.length) {
           const card = document.querySelector('.screen-card');
@@ -471,9 +566,11 @@ async function goToStep(start) {
         showRubinCTA(() => {
           if (signal.aborted) return;
           showSignupCard(results, {
-            name: state.bizName,
+            name:        state.bizName,
             atmospheres: state.selectedAtmos,
-            place: state.confirmedPlace,
+            place:       state.confirmedPlace,
+            hours:       state.hours,
+            longestMinutes: state.longestMinutes,
           });
         });
         return;

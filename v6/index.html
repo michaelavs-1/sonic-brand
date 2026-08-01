@@ -1670,6 +1670,137 @@
         width: 100%
       }
     }
+
+    /* ---------- hours selector (v6/hours-selector.js) ---------- */
+    .day-list {
+      background: rgba(255,255,255,.03);
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      padding: 4px 14px;
+      margin-bottom: 14px;
+    }
+    .day-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .day-row:last-child { border-bottom: none; }
+    /* Closed rows: dim the non-interactive columns only. The day-cell stays
+       vibrant so users don't misread it as dead UI. */
+    .day-row.closed .override-cell,
+    .day-row.closed .times-cell { opacity: .35; }
+
+    .day-cell { display: flex; align-items: center; gap: 10px; }
+    .day-cell input[type=checkbox] {
+      width: 20px; height: 20px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .day-cell label {
+      font-size: 15px; font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+      transition: color .15s;
+    }
+    .day-row.closed .day-cell { cursor: pointer; }
+    .day-row.closed .day-cell label {
+      color: var(--muted);
+      text-decoration: line-through;
+      text-decoration-color: rgba(255, 255, 255, .2);
+    }
+
+    .override-cell {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      user-select: none;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .override-cell:hover { background: rgba(255,255,255,.04); }
+    .override-cell input[type=checkbox] {
+      width: 16px; height: 16px;
+      accent-color: var(--teal-soft);
+      cursor: pointer;
+    }
+    .override-cell label {
+      font-size: 12px; color: var(--muted); font-weight: 600;
+      cursor: pointer;
+    }
+    .day-row .override-cell.active label { color: var(--teal-soft); }
+    .day-row.closed .override-cell { opacity: .3; pointer-events: none; }
+
+    .times-cell {
+      display: flex; align-items: center; gap: 8px;
+      direction: ltr;
+    }
+    .time-block {
+      display: flex; align-items: center;
+      background: #0d1822;
+      border: 1.5px solid var(--border-2);
+      border-radius: 9px;
+      padding: 4px 10px;
+      transition: border-color .15s, box-shadow .15s, color .15s;
+    }
+    .time-block:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(240,167,63,.12);
+    }
+    .time-block .colon {
+      color: var(--muted);
+      font-size: 15px; font-weight: 700;
+      padding: 0 3px;
+    }
+    .time-part {
+      background: transparent;
+      border: none;
+      outline: none;
+      font-family: inherit;
+      font-size: 15px; font-weight: 700;
+      color: var(--text);
+      width: 26px;
+      padding: 6px 0;
+      text-align: center;
+      caret-color: var(--accent);
+    }
+    .time-part::-webkit-outer-spin-button,
+    .time-part::-webkit-inner-spin-button {
+      -webkit-appearance: none; margin: 0;
+    }
+    .day-row.override-on .time-block,
+    .day-row.override-on .time-block .colon,
+    .day-row.override-on .time-part {
+      color: var(--teal-soft);
+      border-color: rgba(87,163,189,.35);
+    }
+    .day-row.override-on .time-block:focus-within {
+      border-color: var(--teal-soft);
+      box-shadow: 0 0 0 3px rgba(87,163,189,.15);
+    }
+    .time-block[data-disabled="true"] { opacity: .4; pointer-events: none; }
+    .times-arrow { color: var(--muted); font-size: 15px; }
+
+    .closed-summary {
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 18px;
+      line-height: 1.5;
+      min-height: 20px;
+    }
+    .closed-summary b { color: var(--text); font-weight: 800; }
+    .closed-summary.warn { color: #ff9b8a; }
+
+    @media (max-width: 500px) {
+      .day-row { grid-template-columns: 1fr; gap: 8px; }
+      .times-cell { justify-self: start; }
+      .override-cell { justify-self: start; }
+    }
   </style>
 </head>
 
@@ -1875,7 +2006,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=31072026e"></script>
+  <script type="module" src="/v6/app.js?v=01082026c"></script>
 </body>
 
 </html>

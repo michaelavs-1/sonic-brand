@@ -1,0 +1,176 @@
+{
+  "timestamp": "2026-08-01T09:03:15.242Z",
+  "config": {
+    "bizDesc": "בר יין שכונתי בלב תל אביב",
+    "atmospheres": [
+      "אלגנטי",
+      "קליל"
+    ],
+    "openaiModel": "gpt-4o",
+    "anthropicModel": "claude-sonnet-4-6",
+    "systemPromptChars": 11877
+  },
+  "openai": {
+    "elapsed_ms": 3329,
+    "status": 200,
+    "usage": {
+      "prompt_tokens": 3196,
+      "completion_tokens": 375,
+      "total_tokens": 3571,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "text": "{\n  \"directions\": [\n    {\n      \"rank\": 1,\n      \"title_en\": \"Smooth Jazz & Late Night Vibes\",\n      \"anchor_genre\": \"Smooth Jazz\",\n      \"secondary_genres\": [\"Late Night jazz\", \"Easy Listening\"],\n      \"description_he\": \"אווירה אלגנטית ורגועה עם ג'אז חלק\",\n      \"bpm_range\": {\"min\": 70, \"max\": 100}\n    },\n    {\n      \"rank\": 2,\n      \"title_en\": \"French Jazz & European Elegance\",\n      \"anchor_genre\": \"French Jazz\",\n      \"secondary_genres\": [\"Jazz (Standards)\", \"Bossa Nova\"],\n      \"description_he\": \"ג'אז צרפתי אלגנטי עם נגיעות אירופאיות\",\n      \"bpm_range\": {\"min\": 80, \"max\": 110}\n    },\n    {\n      \"rank\": 3,\n      \"title_en\": \"R&B, Neo-Soul & Warm Grooves\",\n      \"anchor_genre\": \"Neo Soul\",\n      \"secondary_genres\": [\"Rnb\", \"Acid Jazz\"],\n      \"description_he\": \"גרוב חם ונעים עם נגיעות של נשמה\",\n      \"bpm_range\": {\"min\": 85, \"max\": 110}\n    },\n    {\n      \"rank\": 4,\n      \"title_en\": \"IndieTronica & Modern Lounge\",\n      \"anchor_genre\": \"IndieTronica\",\n      \"secondary_genres\": [\"Indie Rock\", \"Downtempo\"],\n      \"description_he\": \"צלילים מודרניים ונעימים לאווירה קלילה\",\n      \"bpm_range\": {\"min\": 90, \"max\": 115}\n    }\n  ]\n}",
+    "parsed": {
+      "directions": [
+        {
+          "rank": 1,
+          "title_en": "Smooth Jazz & Late Night Vibes",
+          "anchor_genre": "Smooth Jazz",
+          "secondary_genres": [
+            "Late Night jazz",
+            "Easy Listening"
+          ],
+          "description_he": "אווירה אלגנטית ורגועה עם ג'אז חלק",
+          "bpm_range": {
+            "min": 70,
+            "max": 100
+          }
+        },
+        {
+          "rank": 2,
+          "title_en": "French Jazz & European Elegance",
+          "anchor_genre": "French Jazz",
+          "secondary_genres": [
+            "Jazz (Standards)",
+            "Bossa Nova"
+          ],
+          "description_he": "ג'אז צרפתי אלגנטי עם נגיעות אירופאיות",
+          "bpm_range": {
+            "min": 80,
+            "max": 110
+          }
+        },
+        {
+          "rank": 3,
+          "title_en": "R&B, Neo-Soul & Warm Grooves",
+          "anchor_genre": "Neo Soul",
+          "secondary_genres": [
+            "Rnb",
+            "Acid Jazz"
+          ],
+          "description_he": "גרוב חם ונעים עם נגיעות של נשמה",
+          "bpm_range": {
+            "min": 85,
+            "max": 110
+          }
+        },
+        {
+          "rank": 4,
+          "title_en": "IndieTronica & Modern Lounge",
+          "anchor_genre": "IndieTronica",
+          "secondary_genres": [
+            "Indie Rock",
+            "Downtempo"
+          ],
+          "description_he": "צלילים מודרניים ונעימים לאווירה קלילה",
+          "bpm_range": {
+            "min": 90,
+            "max": 115
+          }
+        }
+      ]
+    },
+    "error": null
+  },
+  "anthropic": {
+    "elapsed_ms": 11297,
+    "status": 200,
+    "usage": {
+      "input_tokens": 91,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 3840,
+      "cache_creation": {
+        "ephemeral_5m_input_tokens": 0,
+        "ephemeral_1h_input_tokens": 0
+      },
+      "output_tokens": 546,
+      "service_tier": "standard",
+      "inference_geo": "global"
+    },
+    "text": "```json\n{\n  \"directions\": [\n    {\n      \"rank\": 1,\n      \"title_en\": \"Warm Jazz & Neo Soul Evenings\",\n      \"anchor_genre\": \"Late Night jazz\",\n      \"secondary_genres\": [\"Jazz (Standards)\", \"Neo Soul\", \"Acid Jazz\"],\n      \"description_he\": \"ג'אז חמים ואינטימי שמתאים לערב רגוע עם כוס יין\",\n      \"bpm_range\": {\"min\": 60, \"max\": 90}\n    },\n    {\n      \"rank\": 2,\n      \"title_en\": \"Bossa Nova, Fado & Iberian Warmth\",\n      \"anchor_genre\": \"Bossa Nova\",\n      \"secondary_genres\": [\"Fado\", \"LoFi Bossa\", \"French Jazz\"],\n      \"description_he\": \"רוגע ים-תיכוני אקוסטי עם גיטרה ושירה עדינה\",\n      \"bpm_range\": {\"min\": 65, \"max\": 95}\n    },\n    {\n      \"rank\": 3,\n      \"title_en\": \"Soulful House & Smooth Jazz Lounge\",\n      \"anchor_genre\": \"Soulful House\",\n      \"secondary_genres\": [\"Smooth Jazz\", \"Nu Disco\", \"Downtempo\"],\n      \"description_he\": \"גרוב עדין ואלגנטי שמחזיק את הבר בתנועה נעימה\",\n      \"bpm_range\": {\"min\": 100, \"max\": 122}\n    },\n    {\n      \"rank\": 4,\n      \"title_en\": \"Indie Folk, Acoustic & Easy Listening\",\n      \"anchor_genre\": \"Folk\",\n      \"secondary_genres\": [\"Indie Rock\", \"Easy Listening\", \"IndieTronica\"],\n      \"description_he\": \"אווירה שכונתית קלילה עם גיטרות אקוסטיות ושירה\",\n      \"bpm_range\": {\"min\": 72, \"max\": 100}\n    }\n  ]\n}\n```",
+    "parsed": {
+      "directions": [
+        {
+          "rank": 1,
+          "title_en": "Warm Jazz & Neo Soul Evenings",
+          "anchor_genre": "Late Night jazz",
+          "secondary_genres": [
+            "Jazz (Standards)",
+            "Neo Soul",
+            "Acid Jazz"
+          ],
+          "description_he": "ג'אז חמים ואינטימי שמתאים לערב רגוע עם כוס יין",
+          "bpm_range": {
+            "min": 60,
+            "max": 90
+          }
+        },
+        {
+          "rank": 2,
+          "title_en": "Bossa Nova, Fado & Iberian Warmth",
+          "anchor_genre": "Bossa Nova",
+          "secondary_genres": [
+            "Fado",
+            "LoFi Bossa",
+            "French Jazz"
+          ],
+          "description_he": "רוגע ים-תיכוני אקוסטי עם גיטרה ושירה עדינה",
+          "bpm_range": {
+            "min": 65,
+            "max": 95
+          }
+        },
+        {
+          "rank": 3,
+          "title_en": "Soulful House & Smooth Jazz Lounge",
+          "anchor_genre": "Soulful House",
+          "secondary_genres": [
+            "Smooth Jazz",
+            "Nu Disco",
+            "Downtempo"
+          ],
+          "description_he": "גרוב עדין ואלגנטי שמחזיק את הבר בתנועה נעימה",
+          "bpm_range": {
+            "min": 100,
+            "max": 122
+          }
+        },
+        {
+          "rank": 4,
+          "title_en": "Indie Folk, Acoustic & Easy Listening",
+          "anchor_genre": "Folk",
+          "secondary_genres": [
+            "Indie Rock",
+            "Easy Listening",
+            "IndieTronica"
+          ],
+          "description_he": "אווירה שכונתית קלילה עם גיטרות אקוסטיות ושירה",
+          "bpm_range": {
+            "min": 72,
+            "max": 100
+          }
+        }
+      ]
+    },
+    "error": null
+  }
+}

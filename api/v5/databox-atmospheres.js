@@ -1,14 +1,16 @@
 /* /api/v5/databox-atmospheres.js
-   Copied from api/v4/databox-atmospheres.js so v5 can evolve independently.
    Reads the atmospheres table (source of truth once Ami has scanned), with a
    direct-sheet fallback for a fresh install.
+
+   No server-side cache: every call re-reads Supabase so Ami's scan-dashboard
+   changes are visible immediately to v6 onboarding sessions. The client
+   hides the ~100-500ms latency by firing this fetch in the background as
+   soon as the business-description page renders (see v6/app.js
+   runBusinessStep). By the time the user submits, the rows are already in
+   state.atmosphereRows.
 */
 
 import { pgrSelect } from './supabase-client.js';
-
-let cache = null;
-let cacheTime = 0;
-const CACHE_MS = 30 * 60 * 1000;
 
 const SHEET_ID = '1Ujk7Mb-i1i1LCfQZ31W27pDF66CGobrt9jifRqc0d28';
 const GID      = '0';
@@ -88,18 +90,10 @@ async function loadFromSupabase() {
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  // no-store so no browser/CDN caches this either — the whole point of
+  // dropping the in-memory cache is that Ami's edits are visible immediately.
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   if (req.method === 'OPTIONS') return res.status(200).end();
-
-  const fresh = req.query?.fresh === '1' || req.query?.fresh === 'true';
-  if (!fresh && cache && Date.now() - cacheTime < CACHE_MS) {
-    return res.status(200).json(cache);
-  }
-
-  if (fresh) {
-    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-  } else {
-    res.setHeader('Cache-Control', 'public, max-age=1800');
-  }
 
   try {
     let rows = [];
@@ -111,12 +105,8 @@ export default async function handler(req, res) {
     if (rows.length === 0) {
       rows = await fetchAtmospheresFromSheet();
     }
-
-    cache = { rows, fetchedAt: new Date().toISOString() };
-    cacheTime = Date.now();
-    return res.status(200).json(cache);
+    return res.status(200).json({ rows, fetchedAt: new Date().toISOString() });
   } catch (e) {
-    if (cache) return res.status(200).json({ ...cache, stale: true });
     return res.status(503).json({ error: e.message, rows: [] });
   }
 }

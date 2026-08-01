@@ -10,6 +10,7 @@
    Request body: {
      email, password?,
      business_name?, business_type?, atmospheres?, place?,
+     hours?, longestMinutes?,   // from the onboarding hours picker
      playlists?: [ { ico, label, url, id, trackCount, genres, createdAt, expansion? } ]
                   // `expansion` = { direction, popularityWindow } — carried
                   //  through verbatim so the dashboard's expand-playlist
@@ -198,6 +199,8 @@ export default async function handler(req, res) {
       business_type,
       atmospheres,
       place,
+      hours,
+      longestMinutes,
       playlists,
     } = req.body || {};
 
@@ -231,6 +234,15 @@ export default async function handler(req, res) {
     if (Array.isArray(playlists) && playlists.length) {
       const prior = Array.isArray(bRow.playlists) ? bRow.playlists : [];
       bRow.playlists = [...playlists, ...prior].slice(0, 20);
+    }
+    // Opening hours from the onboarding hours picker. Overwrite whatever
+    // the user had before — this is the freshest signal about how their
+    // week actually runs.
+    if (hours && typeof hours === 'object') {
+      bRow.hours = hours;
+      if (Number.isFinite(longestMinutes) && longestMinutes > 0) {
+        bRow.longestMinutes = Math.round(longestMinutes);
+      }
     }
     bMap[businessId] = bRow;
     nextSonic.b = bMap;

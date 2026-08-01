@@ -279,6 +279,8 @@ async function postSignupAndRedirect({ email, password, business_name, biz, play
       business_type: null,
       atmospheres:   biz?.atmospheres || [],
       place:         biz?.place || null,
+      hours:         biz?.hours || null,
+      longestMinutes: biz?.longestMinutes || 0,
       playlists,
     }),
   });

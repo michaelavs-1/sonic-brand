@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>שעות פתיחה — טסט</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a1117;
+    --bg-2: #0f1c26;
+    --card: #142835;
+    --border: rgba(255,255,255,.07);
+    --border-2: rgba(255,255,255,.14);
+    --text: #f5f7f8;
+    --muted: #93a5af;
+    --accent: #f0a73f;
+    --accent-2: #d98a1f;
+    --teal-soft: #57a3bd;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+    min-height: 100vh;
+    padding: 26px 16px 60px;
+    background:
+      radial-gradient(1000px 560px at 85% -12%, rgba(44,99,122,.38), transparent 62%),
+      radial-gradient(760px 460px at 4% 108%, rgba(240,167,63,.10), transparent 55%),
+      var(--bg);
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .app { width: 100%; max-width: 640px; }
+  .screen-card {
+    position: relative;
+    background: linear-gradient(180deg, var(--card), var(--bg-2));
+    border: 1px solid var(--border);
+    border-radius: 26px;
+    padding: 34px 28px 30px;
+    box-shadow: 0 0 40px rgba(240,167,63,.10), 0 24px 60px rgba(0,0,0,.35);
+  }
+  h1 {
+    font-size: 26px; font-weight: 900; margin: 0 0 6px; text-align: center;
+    letter-spacing: .2px;
+  }
+  .subtitle {
+    color: var(--muted); font-size: 14px; margin: 0 0 22px;
+    text-align: center; line-height: 1.55;
+  }
+
+  .day-list {
+    background: rgba(255,255,255,.03);
+    border: 1px solid var(--border-2);
+    border-radius: 14px;
+    padding: 4px 14px;
+    margin-bottom: 14px;
+  }
+  .day-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .day-row:last-child { border-bottom: none; }
+  /* Closed rows: dim the non-interactive columns only. The day-cell (the
+     ONLY thing you can click when a day is closed) stays visually vibrant so
+     users don't misread it as dead UI. */
+  .day-row.closed .override-cell,
+  .day-row.closed .times-cell { opacity: .35; }
+
+  /* Column 1 (right in RTL): day checkbox + label */
+  .day-cell {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .day-cell input[type=checkbox] {
+    width: 20px; height: 20px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .day-cell label {
+    font-size: 15px; font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+    transition: color .15s;
+  }
+  /* Closed day: label is grey with a line-through. Checkbox stays native. */
+  .day-row.closed .day-cell { cursor: pointer; }
+  .day-row.closed .day-cell label {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-color: rgba(255, 255, 255, .2);
+  }
+
+  /* Column 2 (middle): override toggle — compact chip */
+  .override-cell {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s;
+    white-space: nowrap;
+  }
+  .override-cell:hover { background: rgba(255,255,255,.04); }
+  .override-cell input[type=checkbox] {
+    width: 16px; height: 16px;
+    accent-color: var(--teal-soft);
+    cursor: pointer;
+  }
+  .override-cell label {
+    font-size: 12px; color: var(--muted); font-weight: 600;
+    cursor: pointer;
+  }
+  .day-row .override-cell.active label { color: var(--teal-soft); }
+  .day-row.closed .override-cell {
+    opacity: .3; pointer-events: none;
+  }
+
+  /* Column 3 (left in RTL): times.
+     Forced dir=ltr so open→close reads naturally left-to-right, and the
+     arrow character renders as an actual right-arrow. */
+  .times-cell {
+    display: flex; align-items: center; gap: 8px;
+    direction: ltr;
+  }
+  .time-block {
+    display: flex; align-items: center;
+    background: #0d1822;
+    border: 1.5px solid var(--border-2);
+    border-radius: 9px;
+    padding: 4px 10px;
+    transition: border-color .15s, box-shadow .15s, color .15s;
+  }
+  .time-block:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(240,167,63,.12);
+  }
+  .time-block .colon {
+    color: var(--muted);
+    font-size: 15px; font-weight: 700;
+    padding: 0 3px;
+  }
+  .time-part {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: 15px; font-weight: 700;
+    color: var(--text);
+    width: 26px;
+    padding: 6px 0;
+    text-align: center;
+    caret-color: var(--accent);
+  }
+  .time-part::-webkit-outer-spin-button,
+  .time-part::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+  }
+  .day-row.override-on .time-block,
+  .day-row.override-on .time-block .colon,
+  .day-row.override-on .time-part {
+    color: var(--teal-soft);
+    border-color: rgba(87,163,189,.35);
+  }
+  .day-row.override-on .time-block:focus-within {
+    border-color: var(--teal-soft);
+    box-shadow: 0 0 0 3px rgba(87,163,189,.15);
+  }
+  .time-block[data-disabled="true"] {
+    opacity: .4; pointer-events: none;
+  }
+  .times-arrow { color: var(--muted); font-size: 15px; }
+
+  .btn {
+    display: block; width: 100%;
+    padding: 15px 28px;
+    border: none;
+    border-radius: 15px;
+    font-family: inherit; font-size: 16px; font-weight: 800;
+    cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #1b1508;
+    box-shadow: 0 8px 22px rgba(240,167,63,.25);
+    transition: transform .1s ease;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .closed-summary {
+    text-align: center;
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 18px;
+    line-height: 1.5;
+    min-height: 20px;
+  }
+  .closed-summary b { color: var(--text); font-weight: 800; }
+  .closed-summary.warn { color: #ff9b8a; }
+
+  @media (max-width: 500px) {
+    .day-row { grid-template-columns: 1fr; gap: 8px; }
+    .times-cell { justify-self: start; }
+    .override-cell { justify-self: start; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="screen-card">
+      <h1>מתי העסק פתוח?</h1>
+      <p class="subtitle">
+        שינוי שעות ביום אחד מעדכן את כולם.<br>
+        רוצים ליום מסוים שעות שונות? סמנו "שעות שונות" לצידו.
+      </p>
+
+      <div id="dayList" class="day-list"></div>
+      <div id="closedSummary" class="closed-summary"></div>
+
+      <button id="submitBtn" class="btn" type="button">המשך ←</button>
+    </div>
+  </div>
+
+<script>
+  const DAYS = [
+    { idx: 0, long: 'ראשון' },
+    { idx: 1, long: 'שני' },
+    { idx: 2, long: 'שלישי' },
+    { idx: 3, long: 'רביעי' },
+    { idx: 4, long: 'חמישי' },
+    { idx: 5, long: 'שישי' },
+    { idx: 6, long: 'שבת' },
+  ];
+
+  // Model:
+  //  - master.open/close = the shared hours the "unlocked" days follow.
+  //  - each day: { closed, override, open, close }.
+  //    - closed=true → the row is disabled; day is a closed day.
+  //    - override=true → day's hours are independent of master.
+  //    - override=false → hours mirror master (kept in sync on edit).
+  // Defaults: everyone at 10:00–22:00, Friday breaks off to 10:00–14:00,
+  // Saturday is closed.
+  const state = {
+    master: { open: '10:00', close: '22:00' },
+    days: DAYS.map((info) => {
+      if (info.idx === 5) return { closed: false, override: true,  open: '10:00', close: '14:00' };
+      if (info.idx === 6) return { closed: true,  override: false, open: '10:00', close: '22:00' };
+      return                    { closed: false, override: false, open: '10:00', close: '22:00' };
+    }),
+  };
+
+  const el = (t, a = {}, ...c) => {
+    const n = document.createElement(t);
+    for (const k in a) {
+      if (k === 'class') n.className = a[k];
+      else if (k.startsWith('on') && typeof a[k] === 'function') n.addEventListener(k.slice(2), a[k]);
+      else if (a[k] != null && a[k] !== false) n.setAttribute(k, a[k]);
+    }
+    for (const child of c) if (child != null) n.append(child instanceof Node ? child : document.createTextNode(String(child)));
+    return n;
+  };
+
+  // Custom HH:MM input pair. onChange gets 'HH:MM' string; only fires when
+  // the field carries a valid 2-digit value (or on blur after pad).
+  function buildTimeBlock(value, disabled, onChange) {
+    const [initH, initM] = String(value || '10:00').split(':');
+    const block = el('div', { class: 'time-block' });
+    if (disabled) block.setAttribute('data-disabled', 'true');
+
+    const hh = el('input', {
+      type:      'text',
+      class:     'time-part',
+      inputmode: 'numeric',
+      maxlength: '2',
+      value:     initH,
+      'aria-label': 'שעה',
+    });
+    const mm = el('input', {
+      type:      'text',
+      class:     'time-part',
+      inputmode: 'numeric',
+      maxlength: '2',
+      value:     initM,
+      'aria-label': 'דקה',
+    });
+    const colon = el('span', { class: 'colon' }, ':');
+
+    const clampH = (v) => Math.max(0, Math.min(23, parseInt(v, 10) || 0));
+    const clampM = (v) => Math.max(0, Math.min(59, parseInt(v, 10) || 0));
+    const fire = () => {
+      const h = String(clampH(hh.value)).padStart(2, '0');
+      const m = String(clampM(mm.value)).padStart(2, '0');
+      onChange(`${h}:${m}`);
+    };
+
+    // Select the current digits on focus so typing overwrites cleanly. This
+    // is the fix for the "type 1 → becomes 01, next digit does nothing"
+    // native-time-input quirk.
+    for (const inp of [hh, mm]) {
+      inp.addEventListener('focus', () => inp.select());
+      inp.addEventListener('click', () => inp.select());
+    }
+
+    hh.addEventListener('input', () => {
+      // Strip non-digits.
+      hh.value = hh.value.replace(/\D/g, '').slice(0, 2);
+      // Auto-advance to minutes once two digits are in, or when the first
+      // digit is >= 3 (can't be a valid start of an HH, so user meant a
+      // single-digit hour).
+      if (hh.value.length === 2) {
+        mm.focus();
+        mm.select();
+      } else if (hh.value.length === 1 && parseInt(hh.value, 10) >= 3) {
+        mm.focus();
+        mm.select();
+      }
+    });
+    mm.addEventListener('input', () => {
+      mm.value = mm.value.replace(/\D/g, '').slice(0, 2);
+    });
+
+    // Commit on blur (pad + clamp + fire).
+    hh.addEventListener('blur', () => { hh.value = String(clampH(hh.value)).padStart(2, '0'); fire(); });
+    mm.addEventListener('blur', () => { mm.value = String(clampM(mm.value)).padStart(2, '0'); fire(); });
+
+    // Also commit on Enter — same effect as blur.
+    for (const inp of [hh, mm]) {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') inp.blur();
+      });
+    }
+
+    block.append(hh, colon, mm);
+    return block;
+  }
+
+  // When an unlocked day's hours change, master + all other unlocked open days follow.
+  function propagateMasterEdit(field, value) {
+    state.master[field] = value;
+    for (const d of state.days) {
+      if (!d.closed && !d.override) d[field] = value;
+    }
+  }
+
+  function render() {
+    const wrap = document.getElementById('dayList');
+    wrap.innerHTML = '';
+
+    DAYS.forEach((info, i) => {
+      const d = state.days[i];
+
+      const row = el('div', { class: 'day-row' + (d.closed ? ' closed' : '') });
+
+      // ---- Column 1 (right): day checkbox + name ----
+      const dayCb = el('input', {
+        type: 'checkbox',
+        id: 'day-' + i,
+        checked: !d.closed,
+        onchange: (e) => {
+          d.closed = !e.target.checked;
+          // Closing a day doesn't touch override / hours — they're just hidden.
+          render();
+        },
+      });
+      const dayLbl = el('label', { for: 'day-' + i }, info.long);
+      const dayCell = el('div', { class: 'day-cell' }, dayCb, dayLbl);
+
+      // ---- Column 2 (middle): "שעות שונות" ----
+      const overrideCb = el('input', {
+        type: 'checkbox',
+        id: 'override-' + i,
+        checked: d.override,
+        onchange: (e) => {
+          d.override = e.target.checked;
+          if (!d.override) {
+            // Snap back to master when unlocking the override.
+            d.open  = state.master.open;
+            d.close = state.master.close;
+          }
+          render();
+        },
+      });
+      const overrideLbl = el('label', { for: 'override-' + i }, 'שעות שונות');
+      const overrideCell = el('div',
+        { class: 'override-cell' + (d.override ? ' active' : '') },
+        overrideCb, overrideLbl,
+      );
+
+      // ---- Column 3 (left): custom HH:MM inputs.
+      // Native <input type="time"> has finicky segmented typing that Chrome
+      // pads-then-swallows the second digit. Two plain text inputs per time
+      // (H + M) with maxlength=2 + inputmode=numeric are reliable, keep the
+      // numeric keypad on mobile, and let us style the digits directly. ----
+      const openBlock  = buildTimeBlock(d.open,  d.closed, (v) => {
+        if (d.override) d.open = v;
+        else propagateMasterEdit('open', v);
+        render();
+      });
+      const closeBlock = buildTimeBlock(d.close, d.closed, (v) => {
+        if (d.override) d.close = v;
+        else propagateMasterEdit('close', v);
+        render();
+      });
+      const timesCell = el('div', { class: 'times-cell' },
+        openBlock,
+        el('span', { class: 'times-arrow' }, '→'),
+        closeBlock,
+      );
+
+      row.append(dayCell, overrideCell, timesCell);
+      if (d.override) row.classList.add('override-on');
+      wrap.append(row);
+    });
+
+    renderClosedSummary();
+  }
+
+  function renderClosedSummary() {
+    const closedNames = DAYS.filter((info) => state.days[info.idx].closed).map((info) => info.long);
+    const cs = document.getElementById('closedSummary');
+    cs.classList.remove('warn');
+    if (closedNames.length === 0) {
+      cs.textContent = '';
+    } else if (closedNames.length === 7) {
+      cs.classList.add('warn');
+      cs.innerHTML = '<b>העסק סגור בכל ימות השבוע</b> — סמנו לפחות יום פתוח אחד';
+    } else if (closedNames.length === 1) {
+      cs.innerHTML = `סגור ביום <b>${closedNames[0]}</b>`;
+    } else {
+      const last = closedNames.pop();
+      cs.innerHTML = `סגור בימי <b>${closedNames.join(', ')} ו${last}</b>`;
+    }
+  }
+
+  // Output shape mirrors what the account-side hours store will look like.
+  // The `longestMinutes` field will drive the playlist expansion target
+  // (playlist grows until it covers the longest open day, so no day runs out).
+  function collectHours() {
+    const hours = {};
+    let longestMinutes = 0;
+    for (const info of DAYS) {
+      const d = state.days[info.idx];
+      if (d.closed) {
+        hours[info.idx] = { closed: true };
+        continue;
+      }
+      hours[info.idx] = { closed: false, open: d.open, close: d.close };
+      const [oh, om] = d.open.split(':').map(Number);
+      const [ch, cm] = d.close.split(':').map(Number);
+      let mins = (ch * 60 + cm) - (oh * 60 + om);
+      if (mins <= 0) mins += 24 * 60;
+      if (mins > longestMinutes) longestMinutes = mins;
+    }
+    return { hours, longestMinutes };
+  }
+
+  document.getElementById('submitBtn').addEventListener('click', () => {
+    const result = collectHours();
+    console.log('opening hours submitted:', result);
+    alert('נשלח:\n\n' + JSON.stringify(result, null, 2));
+  });
+
+  render();
+</script>
+</body>
+</html>

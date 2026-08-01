@@ -1,0 +1,61 @@
+{
+  "test": {
+    "business":    "בר יין שכונתי בלב תל אביב",
+    "atmospheres": ["אלגנטי", "קליל"],
+    "task":        "Return only the top 4 musical directions (page-1 call)",
+    "systemPromptTokens": 2969
+  },
+  "runs": [
+    {
+      "file":              "run3-gpt-5.json",
+      "openaiModel":       "gpt-5",
+      "openaiElapsedMs":   53277,
+      "openaiOutputTokens": 2924,
+      "openaiInputTokens": 3195,
+      "notes":             "Reasoning tokens (~2400) dominate. Not viable for a live user-facing flow."
+    },
+    {
+      "file":              "run1-gpt-5-mini.json",
+      "openaiModel":       "gpt-5-mini",
+      "openaiElapsedMs":   25718,
+      "openaiOutputTokens": 2729,
+      "openaiInputTokens": 3195,
+      "notes":             "Still reasoning-heavy. Faster than gpt-5 but 2.3x slower than warm Sonnet."
+    },
+    {
+      "file":              "run2-gpt-4o.json",
+      "openaiModel":       "gpt-4o",
+      "openaiElapsedMs":   3329,
+      "openaiOutputTokens": 375,
+      "openaiInputTokens": 3196,
+      "notes":             "No reasoning phase. 3.4x FASTER than warm Sonnet."
+    }
+  ],
+  "anthropicColdStart": {
+    "model":         "claude-sonnet-4-6",
+    "elapsedMs":     11197,
+    "outputTokens":  553,
+    "cacheCreation": 3840,
+    "cacheRead":     0,
+    "notes":         "First call — pays cache-write cost."
+  },
+  "anthropicWarmAverage": {
+    "model":              "claude-sonnet-4-6",
+    "elapsedMsSamples":   [10929, 11297, 11426],
+    "meanElapsedMs":      11217,
+    "outputTokensSample": 553,
+    "cacheReadTokens":    3840,
+    "notes":              "Consistent ~11s across warm calls. Cache hit doesn't reduce wall time much because output generation still takes most of the wall clock."
+  },
+  "verdict": {
+    "fastest":       "gpt-4o (~3.3s)",
+    "slowest":       "gpt-5 (~53s)",
+    "productionRecommendation": "gpt-4o if you want speed; claude-sonnet-4-6 for slightly richer/tighter output.",
+    "notesForSwitchDecision": [
+      "gpt-5-family reasoning tokens are the bottleneck — avoid for user-facing time-sensitive flows.",
+      "Anthropic cache_read didn't drop wall time meaningfully (11.2s cold → 10.9s warm), because output generation still needs to happen.",
+      "gpt-4o hit ~3.3s consistently but returned slightly leaner directions (fewer secondary genres on some ranks).",
+      "Quality-wise all four outputs picked plausible jazz-forward directions for the wine-bar prompt. Sonnet's descriptions felt tightest; gpt-4o's felt shortest."
+    ]
+  }
+}

@@ -325,6 +325,10 @@
     {
       "source": "/v6/test-hours",
       "destination": "/v6/test-hours/index.html"
+    },
+    {
+      "source": "/v6/test-player",
+      "destination": "/v6/test-player/index.html"
     }
   ]
 }

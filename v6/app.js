@@ -15,7 +15,7 @@ import { runAtmosphereSelection } from '/v6/atmosphere.js?v=02082026a';
 import { runHoursSelection } from '/v6/hours-selector.js?v=02082026a';
 import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=02082026a';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
-import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=02082026a';
+import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=02082026e';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=02082026a';
 import {
   initPlaylistResultsShell,
@@ -100,6 +100,17 @@ function invalidateFrom(step) {
   if (step <= 4) {
     state.results = null;
   }
+}
+
+// Fallback shape matching preparePreview's return type — used when the
+// Claude call errors or preparePreview itself throws. Both pages resolve
+// immediately as empty so runDirectionPreviewFlow's `await page1Ready`
+// doesn't hang and just falls through to its "no previews" path.
+function emptyPreparedPreview() {
+  return {
+    page1Ready: Promise.resolve({ previews: [], trackMeta: {} }),
+    page2Ready: Promise.resolve({ previews: [], trackMeta: {} }),
+  };
 }
 
 // Wrap a promise so it rejects with AbortError if `signal` fires. The underlying
@@ -262,7 +273,7 @@ async function runBusinessStep() {
   // is still typing their business description. By the time they hit submit
   // and step 2 needs the rows, the fetch has usually landed. Fire-and-forget:
   // if the network fails here, step 2's own await will surface the error.
-  getAtmosphereRows().catch(() => {});
+  getAtmosphereRows().catch(() => { });
 
   // If we've navigated away from step 1 and are now returning, the mainCard's
   // form was replaced by other screens — restore it from the snapshot.
@@ -398,7 +409,7 @@ function showDirectionsLoading() {
   const card = document.querySelector('.screen-card');
   if (!card) return;
   const h = document.createElement('h1');
-  h.textContent = 'רובין חושבת על העסק שלכם';
+  h.textContent = 'רובין חושב על העסק שלכם';
   const wrap = document.createElement('div');
   wrap.className = 'preview-load-column';
   wrap.innerHTML =
@@ -470,12 +481,12 @@ async function goToStep(start) {
         // appears instantly.
         let directionsPromise = null;
         let directionsSettled = state.directions != null;
-        let preparedPromise   = null;
+        let preparedPromise = null;
 
         if (!state.directions) {
           const rawDirections = generateMusicalDirections({
-            bizName:     state.bizName,
-            bizDesc:     state.bizDesc,
+            bizName: state.bizName,
+            bizDesc: state.bizDesc,
             atmospheres: state.selectedAtmos,
           });
           directionsPromise = rawDirections.then(
@@ -485,26 +496,26 @@ async function goToStep(start) {
           // Kick off prep as soon as directions land (page 1 anchors fire
           // immediately; page 2 anchors chain onto Claude's second call).
           preparedPromise = rawDirections.then((r) => {
-            if (r?.error) return { previews: [], trackMeta: {} };
+            if (r?.error) return emptyPreparedPreview();
             const popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
             return preparePreview({
-              directions:       r.directions,
-              page2Promise:     r.page2Promise,
+              directions: r.directions,
+              page2Promise: r.page2Promise,
               popularityWindow,
             });
           }).catch((e) => {
             console.warn('preparePreview failed:', e);
-            return { previews: [], trackMeta: {} };
+            return emptyPreparedPreview();
           });
         } else {
           // Cached directions from a prior run — start prep synchronously.
           preparedPromise = preparePreview({
-            directions:       state.directions,
-            page2Promise:     state.page2Promise,
+            directions: state.directions,
+            page2Promise: state.page2Promise,
             popularityWindow: state.popularityWindow,
           }).catch((e) => {
             console.warn('preparePreview failed:', e);
-            return { previews: [], trackMeta: {} };
+            return emptyPreparedPreview();
           });
         }
 
@@ -514,7 +525,7 @@ async function goToStep(start) {
           runHoursSelection({ prechecked: state.hours ? { hours: state.hours } : null }),
           signal,
         );
-        state.hours          = hoursResult.hours;
+        state.hours = hoursResult.hours;
         state.longestMinutes = hoursResult.longestMinutes;
 
         // If Claude hasn't returned yet, show a progress bar until it does.
@@ -527,14 +538,14 @@ async function goToStep(start) {
             showError(dResult.reasoning_en ? `סיבה: ${dResult.reasoning_en}` : undefined);
             return;
           }
-          state.directions       = dResult.directions;
-          state.page2Promise     = dResult.page2Promise;
+          state.directions = dResult.directions;
+          state.page2Promise = dResult.page2Promise;
           state.popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
         }
 
         const picked = await abortable(runDirectionPreviewFlow({
-          directions:       state.directions,
-          page2Promise:     state.page2Promise,
+          directions: state.directions,
+          page2Promise: state.page2Promise,
           popularityWindow: state.popularityWindow,
           preparedPromise,
         }), signal);
@@ -566,10 +577,10 @@ async function goToStep(start) {
         showRubinCTA(() => {
           if (signal.aborted) return;
           showSignupCard(results, {
-            name:        state.bizName,
+            name: state.bizName,
             atmospheres: state.selectedAtmos,
-            place:       state.confirmedPlace,
-            hours:       state.hours,
+            place: state.confirmedPlace,
+            hours: state.hours,
             longestMinutes: state.longestMinutes,
           });
         });

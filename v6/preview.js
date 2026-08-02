@@ -13,6 +13,13 @@ const HEADING = 'בחרו את השירים שאהבתם';
 const PLAY_ICON  = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><rect x="6.6" y="5.6" width="3.9" height="12.8" rx="1.2"/><rect x="13.5" y="5.6" width="3.9" height="12.8" rx="1.2"/></svg>';
 
+function fmtTime(ms) {
+  const s   = Math.floor(Math.max(0, ms) / 1000);
+  const m   = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
 // ---------- Spotify IFrame API singleton ----------
 let _apiPromise = null;
 function getSpotifyIframeApi() {
@@ -126,11 +133,22 @@ function directionsToPreviews(directions, byRank) {
 // trackMeta is provided pre-fetched by preparePreview so we don't re-hit
 // Spotify get_track at render time. The swap button still fetches metadata
 // on demand for its own replacement tracks (see below).
-async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
+//
+// `page2Ready` (nullable) is a Promise that resolves with the page-2 batch
+// of previews + trackMeta when it's ready. The deck renders with page 1's
+// 4 cards immediately; when page 2 lands, its 4 previews are appended to
+// the same deck so the user can keep swiping seamlessly. If the user
+// reaches the end of page 1 before page 2 arrives, we show a brief
+// "loading more" state until it does.
+async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, popularityWindow, page2Ready) {
   const api = await getSpotifyIframeApi();
 
   return new Promise((resolve) => {
-    const total = previews.length;
+    // Mutable so page 2 can push into them once it resolves.
+    const previews  = [...initialPreviews];
+    const trackMeta = { ...initialTrackMeta };
+    let page2Settled = false;
+
     const likedDirections = [];
     let index = 0;
     let controller = null;
@@ -162,9 +180,46 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
     card.replaceChildren(el('h1', {}, HEADING), aiBox, progLabel, progBar, deckWrap, btns);
 
     const setProgress = () => {
-      progLabel.textContent = 'רובין לומד את הטעם שלכם 🎧 · ' + Math.min(index + 1, total) + '/' + total;
+      const total = previews.length;
+      // Show a small spinner next to the count until page 2 has settled
+      // (either resolved with more previews or arrived empty). It signals
+      // to the user that the denominator may still grow.
+      const spinner = page2Settled
+        ? ''
+        : '<span class="sb-spinner" style="width:11px;height:11px;margin-inline-start:6px;vertical-align:-1px"></span>';
+      progLabel.innerHTML = 'רובין לומד את הטעם שלכם 🎧 · ' + Math.min(index + 1, total) + '/' + total + spinner;
       progFill.style.width = ((index / total) * 100) + '%';
     };
+
+    // Wait for page 2 (if there is one). When it lands, append its previews
+    // to the deck and merge its metadata. If the user is already at the end
+    // of page 1 waiting, showCard() picks the new cards up next time it's
+    // called (via the retry inside its "no more cards yet" branch).
+    if (page2Ready) {
+      page2Ready.then((page2) => {
+        page2Settled = true;
+        if (page2 && Array.isArray(page2.previews) && page2.previews.length) {
+          previews.push(...page2.previews);
+          Object.assign(trackMeta, page2.trackMeta || {});
+        }
+        // If we've been waiting on page 2 (the "loading more" state), the
+        // waitingResume closure below is set and will fire showCard again.
+        if (waitingResume) {
+          const r = waitingResume;
+          waitingResume = null;
+          r();
+        } else {
+          // Update the progress label to reflect the new denominator.
+          setProgress();
+        }
+      });
+    } else {
+      page2Settled = true;
+    }
+    // Set when showCard bails because we've reached the end of the currently
+    // known previews and page 2 hasn't arrived yet — page2Ready.then() calls
+    // it to resume rendering when the new previews land.
+    let waitingResume = null;
 
     const railsIdle = () => {
       railNo.style.opacity = '';
@@ -179,7 +234,22 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
     const showCard = () => {
       busy = false;
       railsIdle();
-      if (index >= total) {
+      if (index >= previews.length) {
+        if (!page2Settled) {
+          // Page 2 is still loading — show a brief "loading more" state and
+          // resume when page2Ready resolves (see waitingResume above).
+          destroyController();
+          deck.replaceChildren(
+            el('div', { class: 'preview-load-column' },
+              el('div', { class: 'preview-load-label' }, 'מכינים עוד שירים…'),
+              el('div', { class: 'preview-load-progress' },
+                el('div', { class: 'preview-load-progress-fill' }),
+              ),
+            ),
+          );
+          waitingResume = showCard;
+          return;
+        }
         destroyController();
         resolve(likedDirections);
         return;
@@ -213,6 +283,32 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
 
       const swap = el('button', { class: 'swap-btn', type: 'button' }, '🔀 שיר אחר מהכיוון הזה');
 
+      // --- Playback progress bar. Interpolates position between the (sparse)
+      // playback_update events via a RAF loop, so scrubbing feels smooth. The
+      // outer .sw2-prog-bar reserves fixed 14px in the layout so hovering
+      // never pushes the swap button / hint downward. ---
+      const pbState = {
+        lastPosition:  0,
+        lastTimestamp: Date.now(),
+        duration:      0,
+        isPaused:      true,
+        dragging:      false,
+        pendingSeek:   null,     // seconds, set during drag; committed on release
+        // playback_update `position` values are ignored while this timestamp
+        // is in the future — after a controller.seek(), Spotify fires one
+        // more update with the stale pre-seek position before catching up,
+        // which without this guard makes the dot jump back for one frame.
+        seekLockUntil: 0,
+      };
+      const pbFill      = el('div', { class: 'sw2-prog-fill' });
+      const pbTrack     = el('div', { class: 'sw2-prog-track' }, pbFill);
+      const pbThumb     = el('div', { class: 'sw2-prog-thumb' });
+      const pbBar       = el('div', { class: 'sw2-prog-bar' }, pbTrack, pbThumb);
+      const pbCurrent   = el('span', {}, '0:00');
+      const pbTotal     = el('span', {}, '0:00');
+      const pbTimes     = el('div', { class: 'sw2-timestamps' }, pbCurrent, pbTotal);
+      const pbContainer = el('div', { class: 'sw2-progress' }, pbBar, pbTimes);
+
       const cardEl = el('div',
         {
           class: 'preview-card swipe-card swipe-card2',
@@ -225,10 +321,85 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
         artistEl,
         el('div', { class: 'sw2-chip' }, 'Preview'),
         reasonEl,
+        pbContainer,
         el('div', {}, swap),
         el('div', { class: 'sw2-hint' }, '👆 אפשר גם לגרור את הכרטיס לצדדים'),
       );
       deck.replaceChildren(cardEl);
+
+      // Progress bar interactions
+      function pbPctFromEvent(e) {
+        const rect = pbBar.getBoundingClientRect();
+        const x    = Math.max(rect.left, Math.min(rect.right, e.clientX));
+        return (x - rect.left) / rect.width;
+      }
+      function pbSeekTo(seconds) {
+        if (!controller) return;
+        try { controller.seek(seconds); } catch { }
+        // Snap the local mirror so the RAF loop doesn't interpolate from the
+        // old position for one frame before the next playback_update lands.
+        pbState.lastPosition  = seconds * 1000;
+        pbState.lastTimestamp = Date.now();
+        // Give Spotify ~500ms to actually process the seek before we accept
+        // its position updates again. Without this the first update after
+        // seek carries the pre-seek position and briefly jumps the dot back.
+        pbState.seekLockUntil = Date.now() + 500;
+      }
+      pbBar.addEventListener('pointerdown', (e) => {
+        if (!pbState.duration) return;
+        e.stopPropagation();          // don't let the card's swipe handler catch this
+        pbState.dragging    = true;
+        pbState.pendingSeek = pbPctFromEvent(e) * (pbState.duration / 1000);
+        pbBar.classList.add('dragging');
+        try { pbBar.setPointerCapture(e.pointerId); } catch { }
+        e.preventDefault();
+      });
+      pbBar.addEventListener('pointermove', (e) => {
+        if (!pbState.dragging) return;
+        pbState.pendingSeek = pbPctFromEvent(e) * (pbState.duration / 1000);
+      });
+      const endPbDrag = () => {
+        if (!pbState.dragging) return;
+        const target        = pbState.pendingSeek;
+        pbState.dragging    = false;
+        pbState.pendingSeek = null;
+        pbBar.classList.remove('dragging');
+        if (target != null) pbSeekTo(target);
+      };
+      pbBar.addEventListener('pointerup',     endPbDrag);
+      pbBar.addEventListener('pointercancel', endPbDrag);
+
+      // RAF loop drives the visual fill + timestamps between playback_update
+      // events. Exits when the card is disconnected (next swipe / decide).
+      function pbCurrentPosMs() {
+        if (pbState.dragging && pbState.pendingSeek != null) return pbState.pendingSeek * 1000;
+        if (pbState.isPaused) return pbState.lastPosition;
+        const elapsed = Date.now() - pbState.lastTimestamp;
+        return Math.min(pbState.duration || Infinity, pbState.lastPosition + elapsed);
+      }
+      (function pbTick() {
+        if (!cardEl.isConnected) return;
+        const pos = pbCurrentPosMs();
+        const dur = pbState.duration;
+        const pct = dur > 0 ? Math.min(1, pos / dur) : 0;
+        pbFill.style.width  = (pct * 100) + '%';
+        pbThumb.style.left  = (pct * 100) + '%';
+        pbCurrent.textContent = fmtTime(pos);
+        pbTotal.textContent   = fmtTime(dur);
+        requestAnimationFrame(pbTick);
+      })();
+
+      function resetPbState() {
+        pbState.lastPosition  = 0;
+        pbState.lastTimestamp = Date.now();
+        pbState.duration      = 0;
+        pbState.isPaused      = true;
+        pbState.pendingSeek   = null;
+        pbFill.style.width    = '0%';
+        pbThumb.style.left    = '0%';
+        pbCurrent.textContent = '0:00';
+        pbTotal.textContent   = '0:00';
+      }
 
       let pendingPlay = false;
       const wireController = (mountNode) => {
@@ -236,8 +407,17 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
           if (!cardEl.isConnected) { try { c.destroy(); } catch { } return; }
           controller = c;
           c.addListener('playback_update', (e) => {
-            const paused = e?.data?.isPaused !== false;
+            const dd = e?.data || {};
+            const paused = dd.isPaused !== false;
             playBtn.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
+            // Capture position/duration into pbState so the RAF loop and
+            // seek/scrub UI reflect the actual iframe state.
+            if (typeof dd.duration === 'number' && dd.duration > 0) pbState.duration = dd.duration;
+            if (typeof dd.position === 'number' && Date.now() >= pbState.seekLockUntil) {
+              pbState.lastPosition  = dd.position;
+              pbState.lastTimestamp = Date.now();
+            }
+            pbState.isPaused = paused;
           });
           // If the user clicked play before the controller was ready, honour
           // it now. Otherwise stay paused — autoplay is browser-blocked and
@@ -282,6 +462,7 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
           pendingPlay = false;
           playBtn.classList.remove('waiting');
           playBtn.innerHTML = PLAY_ICON;
+          resetPbState();
           if (artImg.tagName === 'IMG' && m2.art) artImg.src = m2.art;
           titleEl.textContent  = m2.name   || '';
           artistEl.textContent = m2.artist || '';
@@ -312,7 +493,7 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
         destroyController();
         if (like) likedDirections.push(d);
         index += 1;
-        progFill.style.width = ((index / total) * 100) + '%';
+        progFill.style.width = ((index / previews.length) * 100) + '%';
         flyOff(like);
         setTimeout(showCard, 300);
       };
@@ -324,9 +505,12 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
       let dx = 0;
       let dragging = false;
       cardEl.addEventListener('pointerdown', (e) => {
-        // Don't start a swipe on the swap or play buttons — they need their
-        // own click events.
-        if (busy || e.target.closest('.swap-btn') || e.target.closest('.sw2-play')) return;
+        // Don't start a swipe on the swap/play buttons or the scrubbable
+        // progress bar — they need their own pointer events.
+        if (busy
+            || e.target.closest('.swap-btn')
+            || e.target.closest('.sw2-play')
+            || e.target.closest('.sw2-prog-bar')) return;
         dragging = true;
         startX = e.clientX;
         dx = 0;
@@ -370,33 +554,58 @@ async function renderSwipeDeck(card, previews, trackMeta, popularityWindow) {
 // page 1's warm plan and connections. Total prep goes from max() to sum()
 // (~1-2s slower), but that stays hidden behind the hours picker.
 export async function preparePreview({ directions, page2Promise, popularityWindow }) {
-  console.log('v6 musical directions (page 1):', { directions });
-  const page1ByRank   = await fetchAnchorTracks(directions, popularityWindow);
-  const page1Previews = directionsToPreviews(directions, page1ByRank);
+  // Sequence anchor-tracks calls (page 2's anchor fetch waits for page 1's
+  // to finish) so page 2's query hits the warm v5_anchor_tracks plan cache
+  // and doesn't trip Supabase's statement_timeout. Metadata (get_track)
+  // calls hit Spotify directly and don't need this — they run in parallel.
+  let anchorSeq = Promise.resolve();
+  const sequencedAnchors = (dirs) => {
+    const prev = anchorSeq;
+    const next = (async () => {
+      await prev.catch(() => {});
+      return fetchAnchorTracks(dirs, popularityWindow);
+    })();
+    anchorSeq = next;
+    return next;
+  };
 
-  let page2Previews = [];
-  if (page2Promise) {
-    try {
-      const page2Result = await page2Promise;
-      if (page2Result && !page2Result.error && Array.isArray(page2Result.directions) && page2Result.directions.length) {
-        console.log('v6 musical directions (page 2):', { directions: page2Result.directions });
-        const page2ByRank = await fetchAnchorTracks(page2Result.directions, popularityWindow);
-        page2Previews = directionsToPreviews(page2Result.directions, page2ByRank);
-      } else if (page2Result?.error) {
-        console.warn('v6 preview: page 2 unavailable —', page2Result.error, page2Result.reasoning_en);
-      }
-    } catch (e) {
-      console.warn('v6 preview: page 2 promise rejected', e);
-    }
-  }
+  // Page 1: anchors → previews → metadata, chained together.
+  const page1Ready = (async () => {
+    console.log('v6 musical directions (page 1):', { directions });
+    const byRank   = await sequencedAnchors(directions);
+    const previews = directionsToPreviews(directions, byRank);
+    const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
+    return { previews, trackMeta };
+  })().catch((e) => {
+    console.warn('v6 preview: page 1 prep failed', e);
+    return { previews: [], trackMeta: {} };
+  });
 
-  const previews = [...page1Previews, ...page2Previews];
+  // Page 2: waits for Claude's second call, then hits anchor-tracks (queued
+  // behind page 1 via sequencedAnchors), then metadata. Runs concurrently
+  // with page 1's metadata fetch — that's the whole point of the refactor.
+  const page2Ready = page2Promise
+    ? (async () => {
+        try {
+          const page2Result = await page2Promise;
+          if (!page2Result || page2Result.error
+              || !Array.isArray(page2Result.directions) || !page2Result.directions.length) {
+            if (page2Result?.error) console.warn('v6 preview: page 2 unavailable —', page2Result.error, page2Result.reasoning_en);
+            return { previews: [], trackMeta: {} };
+          }
+          console.log('v6 musical directions (page 2):', { directions: page2Result.directions });
+          const byRank   = await sequencedAnchors(page2Result.directions);
+          const previews = directionsToPreviews(page2Result.directions, byRank);
+          const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
+          return { previews, trackMeta };
+        } catch (e) {
+          console.warn('v6 preview: page 2 promise rejected', e);
+          return { previews: [], trackMeta: {} };
+        }
+      })()
+    : Promise.resolve({ previews: [], trackMeta: {} });
 
-  // Track metadata (name / artist / art). Runs after we know the full preview
-  // set — parallelised across all IDs inside fetchTrackMeta.
-  const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
-
-  return { previews, trackMeta };
+  return { page1Ready, page2Ready };
 }
 
 // If `preparedPromise` is supplied, its resolution is what actually drives
@@ -414,6 +623,17 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, popula
     ? await preparedPromise
     : await preparePreview({ directions, page2Promise, popularityWindow });
 
-  if (!prepared.previews.length) return [];
-  return renderSwipeDeck(container, prepared.previews, prepared.trackMeta, popularityWindow);
+  // The deck starts rendering as soon as page 1 is ready. Page 2's promise
+  // is handed to renderSwipeDeck, which appends its previews to the deck
+  // when it resolves — users can swipe through the first 4 cards while
+  // cards 5-8 are still loading behind them.
+  const page1 = await prepared.page1Ready;
+  if (!page1.previews.length) {
+    // Page 1 empty — fall back to page 2 as a last chance.
+    const page2 = await prepared.page2Ready;
+    if (!page2.previews.length) return [];
+    return renderSwipeDeck(container, page2.previews, page2.trackMeta, popularityWindow, null);
+  }
+
+  return renderSwipeDeck(container, page1.previews, page1.trackMeta, popularityWindow, prepared.page2Ready);
 }

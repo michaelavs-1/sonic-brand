@@ -33,7 +33,7 @@
    https://vercel.com/dashboard when debugging.
 */
 
-import { pgrSelect } from '../v5/supabase-client.js';
+import { pgrSelect, pgrDelete } from '../v5/supabase-client.js';
 import { buildDailyBatch, latestDirections, readSonic } from '../v6/account/_daily-builder.js';
 import {
   dailyPlaylistExpiryIso,
@@ -192,6 +192,16 @@ export default async function handler(req, res) {
       console.error(`[cron daily-gen] biz=${b.id} outer throw:`, e.message);
       results.push({ id: b.id, skipped: 'outer-throw', error: e.message });
     }
+  }
+
+  // Opportunistic prune of v6_daily_track_history rows older than 14 days
+  // (2x the 7-day exclusion window, safety margin). Non-fatal — a failure
+  // just means the table grows a bit; nothing user-visible breaks.
+  try {
+    const cutoffIso = new Date(Date.now() - 14 * 86400 * 1000).toISOString();
+    await pgrDelete('v6_daily_track_history', { served_at: `lt.${cutoffIso}` });
+  } catch (e) {
+    console.warn('[cron daily-gen] history prune failed:', e.message);
   }
 
   const summary = {

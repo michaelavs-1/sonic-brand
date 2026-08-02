@@ -153,3 +153,83 @@ AS $$
     ORDER BY random()
     LIMIT p_limit;
 $$;
+
+-- ============================================================================
+-- v6_daily_track_history: per-business, per-direction record of every track
+-- ever served in a daily playlist. Used by v6_direction_tracks_recent to
+-- exclude recently-served tracks so consecutive days for the same
+-- (business, direction) don't repeat.
+--
+-- direction_key is a stable string derived from the direction spec
+-- (currently anchor_genre + BPM range) so the same direction across days
+-- looks up the same history. See directionKey() in
+-- v6/generation/playlist-length.js.
+--
+-- served_at is part of the PK so re-serving a track later (after the
+-- exclusion window elapses) is a plain insert, not an upsert. Rows older
+-- than ~2x the exclusion window are opportunistically pruned by the
+-- daily-gen cron.
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS v6_daily_track_history (
+    business_id   uuid        NOT NULL,
+    direction_key text        NOT NULL,
+    spotify_id    text        NOT NULL,
+    served_at     timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (business_id, direction_key, spotify_id, served_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_v6_history_lookup
+    ON v6_daily_track_history (business_id, direction_key, served_at DESC);
+
+ALTER TABLE v6_daily_track_history ENABLE ROW LEVEL SECURITY;
+-- No anon policies: writes/reads via service_role only.
+
+-- ============================================================================
+-- v6_direction_tracks_recent: same as v5_direction_tracks but excludes any
+-- track already served to this (business, direction) within the last
+-- p_exclude_days days. Pass p_exclude_days=0 to disable the exclusion
+-- (used by the caller as the pool-exhaustion fallback).
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION v6_direction_tracks_recent(
+    p_genres        text[],
+    p_bpm_lo        int,
+    p_bpm_hi        int,
+    p_pop_lo        int,
+    p_pop_hi        int,
+    p_limit         int,
+    p_biz_id        uuid,
+    p_direction_key text,
+    p_exclude_days  int DEFAULT 7
+) RETURNS TABLE (
+    spotify_id text
+)
+LANGUAGE sql STABLE
+AS $$
+    WITH candidates AS (
+        SELECT DISTINCT
+            ta.spotify_id
+        FROM playlist_genres pg
+        JOIN playlist_tracks pt ON pt.playlist_id = pg.playlist_id
+        JOIN track_analyses  ta ON ta.spotify_id  = pt.spotify_id
+        WHERE ta.status = 'ok'
+          AND pg.genre = ANY(SELECT lower(g) FROM unnest(p_genres) AS g)
+          AND ta.tempo      BETWEEN p_bpm_lo AND p_bpm_hi
+          AND ta.popularity BETWEEN p_pop_lo AND p_pop_hi
+          AND (
+              p_exclude_days <= 0
+              OR ta.spotify_id NOT IN (
+                  SELECT h.spotify_id
+                  FROM v6_daily_track_history h
+                  WHERE h.business_id   = p_biz_id
+                    AND h.direction_key = p_direction_key
+                    AND h.served_at > now() - (p_exclude_days || ' days')::interval
+              )
+          )
+    )
+    SELECT spotify_id
+    FROM candidates
+    ORDER BY random()
+    LIMIT p_limit;
+$$;

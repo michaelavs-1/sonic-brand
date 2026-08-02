@@ -27,8 +27,14 @@
        Admin-API user_metadata read/write helpers.
 */
 
-import { pgrRpc, pgrUpsert } from '../../v5/supabase-client.js';
-import { nextIl4amIso }      from '../../../v6/generation/playlist-length.js';
+import { pgrRpc, pgrUpsert, pgrInsert } from '../../v5/supabase-client.js';
+import { nextIl4amIso, directionKey }   from '../../../v6/generation/playlist-length.js';
+
+// Default freshness window for the dedup filter — tracks served to this
+// (business, direction) within this many days are excluded from selection.
+// If the filtered pool comes back short, we retry with 0 days (no exclusion)
+// and merge, so playlists still hit target length.
+const DEDUP_WINDOW_DAYS = 7;
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -107,20 +113,68 @@ export function latestDirections(playlists) {
 
 // -------- Supabase RPC + Spotify helpers --------
 
-async function fetchDirectionTracks(direction, popularityWindow, target) {
+// Fetch `target` unique spotify_ids for one (business, direction), avoiding
+// tracks served to that same pair within DEDUP_WINDOW_DAYS. If the filtered
+// pool comes back short (narrow direction / small track catalogue), refill
+// from the full pool so the playlist still reaches target length.
+export async function fetchTracksWithHistory({ businessId, direction, popularityWindow, target }) {
+  const key = directionKey(direction);
   const genres = [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean);
   const [pop_lo, pop_hi] = Array.isArray(popularityWindow)
     ? popularityWindow.map((v) => Math.round(v))
     : [0, 100];
-  const rows = await pgrRpc('v5_direction_tracks', {
+  const baseArgs = {
     p_genres: genres,
     p_bpm_lo: Math.floor(direction.bpm_range.min),
     p_bpm_hi: Math.ceil(direction.bpm_range.max),
     p_pop_lo: pop_lo,
     p_pop_hi: pop_hi,
-    p_limit:  target,
+    p_biz_id: businessId,
+    p_direction_key: key,
+  };
+
+  // Primary: exclude tracks served in the last 7 days.
+  const primary = await pgrRpc('v6_direction_tracks_recent', {
+    ...baseArgs, p_limit: target, p_exclude_days: DEDUP_WINDOW_DAYS,
   });
-  return (rows || []).map((r) => r.spotify_id).filter(Boolean);
+  const ids = (primary || []).map((r) => r.spotify_id).filter(Boolean);
+
+  // Pool-shortage fallback: refill from the full pool. Ask for extra so we
+  // can skip anything already in `ids` without a second round-trip. Track
+  // duplicates within one playlist are meaningless (Spotify silently allows
+  // them) — but we still dedupe for tidiness and to correctly count length.
+  if (ids.length < target) {
+    const seen = new Set(ids);
+    const need = target - ids.length;
+    const fill = await pgrRpc('v6_direction_tracks_recent', {
+      ...baseArgs, p_limit: (need + ids.length) * 2, p_exclude_days: 0,
+    });
+    for (const r of (fill || [])) {
+      if (r?.spotify_id && !seen.has(r.spotify_id)) {
+        ids.push(r.spotify_id);
+        seen.add(r.spotify_id);
+        if (ids.length >= target) break;
+      }
+    }
+  }
+
+  return { ids, directionKey: key };
+}
+
+// Record every served track in v6_daily_track_history so future runs can
+// dedup against it. Non-fatal on failure — the playlist is already built;
+// worst case is a next-day overlap.
+export async function recordTrackHistory({ businessId, directionKey: key, spotifyIds }) {
+  if (!businessId || !key || !Array.isArray(spotifyIds) || !spotifyIds.length) return;
+  try {
+    await pgrInsert('v6_daily_track_history', spotifyIds.map((sid) => ({
+      business_id:   businessId,
+      direction_key: key,
+      spotify_id:    sid,
+    })), { ignoreDuplicates: true });
+  } catch (e) {
+    console.warn(`[daily-builder] history insert failed for biz=${businessId} key=${key}:`, e.message);
+  }
 }
 
 async function spotifyCall(origin, action, body) {
@@ -160,13 +214,16 @@ function playlistName(bizName, direction) {
 // -------- build one playlist --------
 
 // Builds one Spotify playlist for one direction, registers a ledger row for
-// expiry, and returns the entry object the caller will splice into
-// user_metadata. Never writes user_metadata itself — the batch caller does
-// that once at the end so N parallel builds don't race.
+// expiry, writes a history row per served track, and returns the entry
+// object the caller will splice into user_metadata. Never writes
+// user_metadata itself — the batch caller does that once at the end so N
+// parallel builds don't race.
 export async function buildOneDailyPlaylist({
-  origin, direction, popularityWindow, target, bizName, expiryIso,
+  origin, businessId, direction, popularityWindow, target, bizName, expiryIso,
 }) {
-  const ids = await fetchDirectionTracks(direction, popularityWindow, target);
+  const { ids, directionKey: key } = await fetchTracksWithHistory({
+    businessId, direction, popularityWindow, target,
+  });
   if (!ids.length) {
     return { skipped: true, reason: 'no tracks matched', title: direction.title_en };
   }
@@ -176,6 +233,10 @@ export async function buildOneDailyPlaylist({
   const created     = await spotifyCall(origin, 'create_playlist', { name, description });
   if (!created?.id) throw new Error('create_playlist returned no id');
   await addAllTracks(origin, created.id, ids);
+
+  // Record every served track for next-day dedup. Best-effort — a failure
+  // here doesn't undo the build, worst case is minor overlap tomorrow.
+  await recordTrackHistory({ businessId, directionKey: key, spotifyIds: ids });
 
   // Ledger row so /api/cron/expire-playlists cleans up on time. When the
   // caller passes expiryIso=null (closed-day manual flow), fall back to
@@ -237,7 +298,7 @@ export async function buildDailyBatch({
 
   const results = await Promise.all(
     directions.map((direction) =>
-      buildOneDailyPlaylist({ origin, direction, popularityWindow, target, bizName, expiryIso })
+      buildOneDailyPlaylist({ origin, businessId, direction, popularityWindow, target, bizName, expiryIso })
         .catch((err) => {
           console.warn(`[daily-builder] "${direction.title_en}" failed:`, err.message);
           return { skipped: true, reason: err.message, title: direction.title_en };

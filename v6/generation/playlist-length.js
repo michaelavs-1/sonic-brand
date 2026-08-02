@@ -71,6 +71,18 @@ export function closedDayTargetTracks() {
   return computeTargetTracks(CLOSED_DAY_MINUTES);
 }
 
+// -------- direction key --------
+// Stable string identifier for a musical direction, used to look up per-biz
+// track-serve history in the v6_daily_track_history table. Derived from
+// anchor_genre + BPM range because those two fields uniquely characterize
+// the direction's track pool (secondary_genres widen the pool but don't
+// change its identity, and title_en can be regenerated with wording tweaks).
+// Same direction across days → same key → history lookup works.
+export function directionKey(direction) {
+  const bpm = direction?.bpm_range || {};
+  return `${direction?.anchor_genre || ''}|${bpm.min ?? '?'}-${bpm.max ?? '?'}`;
+}
+
 // -------- daily-playlist expiry --------
 // All venues are in Israel today; timezone is hardcoded here as a single
 // future config point. When venues outside IL become a thing, pass this per

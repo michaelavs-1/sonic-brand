@@ -101,6 +101,23 @@ export function pgrUpsert(table, rows, { onConflict, returnRows = false } = {}) 
     return pgrRequest('POST', table, { useService: true, body, prefer, query });
 }
 
+// Plain INSERT (no upsert semantics). Use when you want a hard error on PK
+// conflict, or when the target table has no meaningful conflict target (e.g.
+// an append-only history table). `ignoreDuplicates: true` swaps the Prefer
+// header so PK collisions are silently ignored instead of erroring — useful
+// for append tables where a retry might replay the same rows.
+export function pgrInsert(table, rows, { ignoreDuplicates = false, returnRows = false } = {}) {
+    const body = Array.isArray(rows) ? rows : [rows];
+    if (body.length === 0) return Promise.resolve([]);
+    const preferParts = [returnRows ? 'return=representation' : 'return=minimal'];
+    if (ignoreDuplicates) preferParts.push('resolution=ignore-duplicates');
+    return pgrRequest('POST', table, {
+        useService: true,
+        body,
+        prefer: preferParts.join(','),
+    });
+}
+
 // PATCH (partial UPDATE) by filter expressions. Never inserts — safe for
 // updating a row that may or may not exist without tripping NOT NULL
 // constraints on unsupplied columns. Writes always use service_role.
@@ -111,6 +128,20 @@ export function pgrPatch(table, filters, body) {
     return pgrRequest('PATCH', table, {
         useService: true,
         body,
+        query: filters,
+        prefer: 'return=minimal',
+    });
+}
+
+// DELETE by filter expressions. Refuses to run without filters — an
+// unfiltered DELETE would nuke the whole table. Writes always use
+// service_role.
+export function pgrDelete(table, filters) {
+    if (!filters || Object.keys(filters).length === 0) {
+        throw new Error('pgrDelete refuses unfiltered DELETE');
+    }
+    return pgrRequest('DELETE', table, {
+        useService: true,
         query: filters,
         prefer: 'return=minimal',
     });

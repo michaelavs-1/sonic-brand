@@ -30,8 +30,9 @@
        tab closes mid-stream the next dashboard load will just re-run.
 */
 
-import { pgrRpc, pgrUpsert } from '../../v5/supabase-client.js';
+import { pgrUpsert } from '../../v5/supabase-client.js';
 import { dailyPlaylistExpiryIso, nextIl4amIso } from '../../../v6/generation/playlist-length.js';
+import { fetchTracksWithHistory, recordTrackHistory } from './_daily-builder.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -172,24 +173,18 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, trackCount: current, done: true });
     }
 
-    // Fetch a pool of `need` fresh candidate IDs. Since v5_direction_tracks
-    // returns random tracks, there's a small chance of overlap with what's
-    // already in the playlist — Spotify silently allows duplicates and a
-    // few dupes in a 120-track playlist won't be noticed.
-    const d = expansion.direction;
-    const genres = [d.anchor_genre, ...(d.secondary_genres || [])].filter(Boolean);
-    const [pop_lo, pop_hi] = Array.isArray(expansion.popularityWindow)
-      ? expansion.popularityWindow.map((v) => Math.round(v))
-      : [0, 100];
-    const rows = await pgrRpc('v5_direction_tracks', {
-      p_genres: genres,
-      p_bpm_lo: Math.floor(d.bpm_range.min),
-      p_bpm_hi: Math.ceil(d.bpm_range.max),
-      p_pop_lo: pop_lo,
-      p_pop_hi: pop_hi,
-      p_limit:  need,
+    // Fetch a pool of `need` fresh candidate IDs via the history-aware
+    // helper. Since this is the onboarding-day expansion, the history is
+    // usually empty (no prior serves for this biz+direction) so exclusion
+    // is a no-op on day 1. But if the user reonboards or re-triggers
+    // expansion, the helper avoids repeating recent tracks. The helper's
+    // internal pool-shortage fallback fills any gap for narrow directions.
+    const { ids: newIds, directionKey: dKey } = await fetchTracksWithHistory({
+      businessId,
+      direction:        expansion.direction,
+      popularityWindow: expansion.popularityWindow,
+      target:           need,
     });
-    const newIds = (rows || []).map((r) => r.spotify_id).filter(Boolean);
     if (!newIds.length) {
       // DB has nothing more for this direction. Mark expanded so we don't
       // retry on every dashboard load.
@@ -217,11 +212,13 @@ export default async function handler(req, res) {
 
     const origin = selfOrigin(req);
     let running  = current;
+    const addedIds = [];
     try {
       for (let i = 0; i < newIds.length; i += SPOTIFY_CHUNK) {
         const chunk = newIds.slice(i, i + SPOTIFY_CHUNK);
         const uris  = chunk.map((id) => `spotify:track:${id}`);
         await addTracksToSpotify(origin, playlistId, uris);
+        addedIds.push(...chunk);
         running += chunk.length;
         send({ trackCount: running });
       }
@@ -231,6 +228,11 @@ export default async function handler(req, res) {
       res.end();
       return;
     }
+
+    // Record served tracks in v6_daily_track_history so tomorrow's daily-gen
+    // cron dedups against them. Only IDs whose chunk actually succeeded are
+    // recorded (addedIds accumulates as we go). Non-fatal on failure.
+    await recordTrackHistory({ businessId, directionKey: dKey, spotifyIds: addedIds });
 
     // Persist final state so future dashboard loads see this playlist as
     // expanded and skip re-running. Re-read user_metadata NOW (not the copy

@@ -283,8 +283,24 @@ Runs hourly. For each business:
 5. Build via shared `buildDailyBatch()` in `_daily-builder.js` — one Spotify
    playlist per direction, single user_metadata write at the end.
 6. Ledger row's `expires_at` is `dailyPlaylistExpiryIso({ hours })`.
+7. Opportunistic prune: DELETE `v6_daily_track_history` rows > 14 days old.
 
 Auth: `Authorization: Bearer ${CRON_SECRET}` (same as `expire-playlists`).
+
+### Cross-day track dedup (`v6_daily_track_history`)
+
+To prevent the same tracks appearing in a business's daily playlists day
+after day, every serve is recorded in `v6_daily_track_history (business_id,
+direction_key, spotify_id, served_at)`. Direction key is
+`${anchor_genre}|${bpm_min}-${bpm_max}` — see `directionKey()` in
+[v6/generation/playlist-length.js]. On the next build for that (biz, dir),
+`v6_direction_tracks_recent` RPC excludes tracks served within the last 7
+days. Pool-shortage fallback: if the filtered pool comes back short, caller
+retries with `p_exclude_days=0` and merges — playlists always hit target.
+
+Applies to auto daily-gen (cron), closed-day manual "המקום פתוח?" flow,
+and the onboarding-day sample expansion. Event playlists are NOT deduped
+(one-off, different genre pool anyway).
 
 ---
 
@@ -353,7 +369,7 @@ Everything the account dashboard reads lives here:
 
 ### Track pool coverage
 
-`v4/precompute/state/batch.log` had ~90.5k successful analyses as of 2026-08-01 (verify against current batch.log line count if quoting; do not rely on stale figures). Distribution across the 73 canonical genres is uneven — biz types added earlier (café, pizzeria) have deeper pools.
+**~90.5k successfully-analyzed tracks** in `track_analyses` as of 2026-08-01. This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To refresh the count: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`. **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the 73 canonical genres is uneven; biz types added earlier (café, pizzeria) have deeper pools.
 
 ---
 

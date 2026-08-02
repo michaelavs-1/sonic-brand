@@ -1,7 +1,8 @@
 // v6 result screen. Uses v5's progressive placeholder-then-swap pattern for
-// the playlist cards, then shows a minimal signup card (email + password
-// only, no subscription/pricing) that POSTs to /api/v6/account/signup with
-// the playlists attached so they land on the account home.
+// the playlist cards, then shows a minimal signup card (email only — no
+// password anywhere in the system) that POSTs to /api/v6/account/signup
+// with the playlists attached so they land on the account home once the
+// magic link is clicked.
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -52,10 +53,10 @@ function renderPlaceholderCard(direction) {
     el('div', { class: 'pl-accordion-actions' },
       el('button',
         {
-          class:    'btn btn-primary',
-          type:     'button',
+          class: 'btn btn-primary',
+          type: 'button',
           disabled: 'true',
-          style:    'text-decoration:none',
+          style: 'text-decoration:none',
         },
         'פתח ב-Spotify ▶',
       ),
@@ -80,11 +81,11 @@ function renderPlaylistRow(r) {
   const meta = `${r.trackCount} שירים · Spotify`;
   const open = el('a',
     {
-      class:  'btn btn-primary',
-      href:   r.url,
+      class: 'btn btn-primary',
+      href: r.url,
       target: '_blank',
-      rel:    'noopener',
-      style:  'text-decoration:none',
+      rel: 'noopener',
+      style: 'text-decoration:none',
     },
     'פתח ב-Spotify ▶',
   );
@@ -159,26 +160,14 @@ export function showRubinCTA(onClick) {
 }
 
 /* =========================================================================
-   Signup card — shown after playlists are done. Minimal: email + password.
-   Sends { email, password, business_name, atmospheres, place, playlists }
-   to /api/v6/account/signup. On success signs the user in and redirects to
-   /v6/account.
+   Signup card — shown after playlists are done. Email only (magic-link
+   auth, no passwords anywhere). Sends { email, business_name, atmospheres,
+   place, hours, longestMinutes, playlists } to /api/v6/account/signup, which
+   creates/updates the user + business and emails a magic link. Client
+   swaps in a "check your email" state; the user finishes login by clicking
+   the emailed link, which lands them on /v6/account with their new
+   playlists already saved.
    ========================================================================= */
-
-const SB_URL  = 'https://xhkqrxljncazvbgkmqex.supabase.co';
-const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
-
-async function passwordLogin(email, password) {
-  const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { apikey: SB_ANON, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error_description || j.msg || 'login failed');
-  if (!j.expires_at && j.expires_in) j.expires_at = Math.floor(Date.now() / 1000) + j.expires_in;
-  localStorage.setItem('sb-xhkqrxljncazvbgkmqex-auth-token', JSON.stringify(j));
-}
 
 function existingSessionEmail() {
   try {
@@ -198,23 +187,23 @@ function toAccountPlaylist(r) {
   const d = r.direction || {};
   const genres = [d.anchor_genre, ...(d.secondary_genres || [])].filter(Boolean);
   return {
-    ico:        '🎵',
-    label:      r.name || d.title_en || 'פלייליסט',
-    url:        r.url,
-    id:         r.id,
+    ico: '🎵',
+    label: r.name || d.title_en || 'פלייליסט',
+    url: r.url,
+    id: r.id,
     trackCount: r.trackCount,
     genres,
-    createdAt:  new Date().toISOString().slice(0, 10),
-    expansion:  r.expansion || null,
+    createdAt: new Date().toISOString().slice(0, 10),
+    expansion: r.expansion || null,
   };
 }
 
 // Called by app.js after all playlists have finished building.
 // results = array from buildDirectionPlaylists (some may be skipped)
-// biz     = { name, atmospheres, place }
+// biz     = { name, atmospheres, place, hours, longestMinutes }
 export function showSignupCard(results, biz) {
   const card = getCard();
-  const arr  = Array.isArray(results) ? results : [];
+  const arr = Array.isArray(results) ? results : [];
   const usable = arr.filter((r) => r && !r.skipped && r.url);
 
   if (!usable.length) {
@@ -227,30 +216,38 @@ export function showSignupCard(results, biz) {
 
   const playlists = usable.map(toAccountPlaylist);
 
-  // If already logged in, skip signup and go straight to /v6/account after
-  // POST-ing the fresh playlists.
+  // Already logged in → save the new business under their account and go
+  // straight to /v6/account. No email needed.
   const existing = existingSessionEmail();
   if (existing) {
-    postSignupAndRedirect({ email: existing, business_name: biz?.name, biz, playlists, isNew: false });
+    postSignupAndRedirect({ email: existing, business_name: biz?.name, biz, playlists });
     return;
   }
 
-  const emailInput = el('input', { class: 'input-text', type: 'email',    autocomplete: 'username',     inputmode: 'email', placeholder: 'you@business.co.il' });
-  const passInput  = el('input', { class: 'input-text', type: 'password', autocomplete: 'new-password', placeholder: 'לפחות 6 תווים' });
+  const emailInput = el('input', {
+    class: 'input-text',
+    type: 'email',
+    autocomplete: 'email',
+    inputmode: 'email',
+    placeholder: 'you@business.co.il',
+  });
   const msg = el('p', { class: 'hint', style: 'color:#ff9b8a;font-size:13px' }, '');
-  const goBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'צרו חשבון ועברו לאזור האישי ←');
+  const goBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'שלחו לי קישור לאימייל ←');
 
   goBtn.addEventListener('click', async () => {
     const email = emailInput.value.trim().toLowerCase();
-    const pass  = passInput.value;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = 'הזינו כתובת אימייל תקינה'; emailInput.focus(); return; }
-    if (pass.length < 6) { msg.textContent = 'הסיסמה צריכה להיות באורך 6 תווים לפחות'; passInput.focus(); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      msg.textContent = 'הזינו כתובת אימייל תקינה';
+      emailInput.focus();
+      return;
+    }
     goBtn.disabled = true;
     const origHtml = goBtn.innerHTML;
     goBtn.innerHTML = '<span class="sb-spinner"></span>';
     msg.textContent = '';
     try {
-      await postSignupAndRedirect({ email, password: pass, business_name: biz?.name, biz, playlists, isNew: true });
+      await postSignup({ email, business_name: biz?.name, biz, playlists });
+      showCheckEmailState({ email, biz, playlists });
     } catch (err) {
       goBtn.disabled = false;
       goBtn.innerHTML = origHtml;
@@ -260,34 +257,74 @@ export function showSignupCard(results, biz) {
 
   card.replaceChildren(
     el('h1', {}, 'הפלייליסטים מוכנים 🎉'),
-    el('p',  { class: 'subtitle', style: 'margin-bottom:12px' }, 'צרו חשבון כדי לשמור אותם ולנהל את המוזיקה של העסק שלכם.'),
+    el('p', { class: 'subtitle', style: 'margin-bottom:12px' },
+      'השאירו אימייל ונשלח קישור כניסה — ללא סיסמה. הפלייליסטים ימתינו לכם באזור האישי.'),
     el('div', { class: 'input-wrap' }, el('label', { class: 'input-label' }, 'אימייל'), emailInput),
-    el('div', { class: 'input-wrap' }, el('label', { class: 'input-label' }, 'סיסמה'), passInput),
     goBtn,
     msg,
   );
 }
 
-async function postSignupAndRedirect({ email, password, business_name, biz, playlists, isNew }) {
+// After successful signup, replace the form with a "check your email" state
+// including a resend link (in case the mail didn't arrive).
+function showCheckEmailState({ email, biz, playlists }) {
+  const card = getCard();
+  const msg = el('p', { class: 'hint', style: 'margin-top:10px' }, '');
+
+  const resend = el('button', { class: 'btn-ghost', type: 'button' }, 'לא הגיע? שלחו שוב');
+  resend.addEventListener('click', async () => {
+    resend.disabled = true;
+    const orig = resend.textContent;
+    resend.textContent = 'שולחים…';
+    msg.style.color = '';
+    msg.textContent = '';
+    try {
+      await postSignup({ email, business_name: biz?.name, biz, playlists });
+      msg.style.color = 'var(--teal-soft)';
+      msg.textContent = 'שלחנו שוב ✓';
+    } catch (err) {
+      msg.style.color = '#ff9b8a';
+      msg.textContent = String(err?.message || 'שליחה נכשלה — נסו עוד רגע');
+    } finally {
+      setTimeout(() => { resend.disabled = false; resend.textContent = orig; }, 3000);
+    }
+  });
+
+  card.replaceChildren(
+    el('h1', {}, 'בדקו את המייל ✉️'),
+    el('p', { class: 'subtitle', style: 'margin-bottom:8px' },
+      `שלחנו קישור כניסה חד־פעמי אל ${email}`),
+    el('p', { class: 'hint', style: 'margin-top:14px' },
+      'הפלייליסטים כבר שמורים בחשבון — יופיעו לכם ברגע שתיכנסו.'),
+    resend,
+    msg,
+  );
+}
+
+async function postSignup({ email, business_name, biz, playlists }) {
   const r = await fetch('/api/v6/account/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
-      password,
       business_name: business_name || null,
       business_type: null,
-      atmospheres:   biz?.atmospheres || [],
-      place:         biz?.place || null,
-      hours:         biz?.hours || null,
+      atmospheres: biz?.atmospheres || [],
+      place: biz?.place || null,
+      hours: biz?.hours || null,
       longestMinutes: biz?.longestMinutes || 0,
       playlists,
     }),
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok || !data.ok) throw new Error(data?.error || r.statusText);
-  if (isNew && password) {
-    try { await passwordLogin(email, password); } catch (e) { console.warn('auto-login failed:', e); }
-  }
+  return data;
+}
+
+// Already-logged-in fast path: server just adds the new business/playlists
+// to the existing account (JWT is unused server-side here — email is the
+// key). No magic link needed; redirect straight to the dashboard.
+async function postSignupAndRedirect({ email, business_name, biz, playlists }) {
+  await postSignup({ email, business_name, biz, playlists });
   window.location.href = '/v6/account';
 }

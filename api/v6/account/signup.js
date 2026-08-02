@@ -1,14 +1,22 @@
 /* /api/v6/account/signup.js
-   Onboarding → personal-area bridge.
+   Onboarding → personal-area bridge (passwordless).
 
    Called by v6's onboarding after playlists finish building. Creates (or
    finds) a Supabase auth user for the given email, ensures a `businesses`
    row exists for them, stores the just-built playlists inside
-   user_metadata.sonic.b[bizId].playlists, and returns an instant login
-   link so the browser can jump straight into /v6/account.
+   user_metadata.sonic.b[bizId].playlists, and emails a one-time magic
+   link so the user can enter the account area by clicking through from
+   their inbox.
+
+   No passwords anywhere: `admin.createUser` is called without a password
+   and with `email_confirm: false`; the click on the magic-link email is
+   the verification step. Existing users get the same treatment — a fresh
+   magic link is emailed and their business row / user_metadata is updated
+   in place so their new onboarding session is attached to the account
+   when they follow the link.
 
    Request body: {
-     email, password?,
+     email,
      business_name?, business_type?, atmospheres?, place?,
      hours?, longestMinutes?,   // from the onboarding hours picker
      playlists?: [ { ico, label, url, id, trackCount, genres, createdAt, expansion? } ]
@@ -17,17 +25,27 @@
                   //  endpoint can grow the playlist without re-running the
                   //  atmosphere/directions flow.
    }
-   Response: { ok: true, existing_user, business_id, login_url, emailed }
+   Response: { ok: true, existing_user, business_id, emailed: true, email }
 */
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const REDIRECT_TO = process.env.V6_ACCOUNT_REDIRECT_URL || 'https://robin-music.com/v6/account';
-
 // v6 has no subscription tiers — everyone gets the same starter credit pool.
 const DEFAULT_CREDITS = 30;
+
+// Derive the magic-link redirect target from the incoming request so this
+// endpoint works unchanged from `vercel dev` (localhost), preview URLs, and
+// production. Whatever host lands here has to also be on Supabase's
+// Redirect URLs allow-list (Auth → URL Configuration) — otherwise Supabase
+// silently substitutes its Site URL and the link goes to the wrong place.
+function accountRedirectUrl(req) {
+  if (process.env.V6_ACCOUNT_REDIRECT_URL) return process.env.V6_ACCOUNT_REDIRECT_URL;
+  const host  = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
+  const proto = req.headers['x-forwarded-proto'] || (host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https');
+  return `${proto}://${host}/v6/account`;
+}
 
 function adminHeaders() {
   return {
@@ -37,51 +55,35 @@ function adminHeaders() {
   };
 }
 
-// Create the auth user; if they already exist, resolve them via a
-// generate_link call (which returns the user object without sending mail).
-async function findOrCreateUser(email, password) {
-  const body = { email, email_confirm: true };
-  if (password) body.password = password; // registration → password login
-  const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-    method: 'POST',
-    headers: adminHeaders(),
-    body: JSON.stringify(body),
-  });
-  const created = await createRes.json().catch(() => ({}));
-  if (createRes.ok && created?.id) return { user: created, existing: false };
-
-  // Address already registered + password supplied: many existing accounts
-  // were created passwordless (magic-link era), so "go log in" would dead-end
-  // them. DEMO behavior: set the new password on the existing account and
-  // continue. Before real payments this must become email verification.
-  if (password) {
-    const linkRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
-      method: 'POST', headers: adminHeaders(),
-      body: JSON.stringify({ type: 'magiclink', email }),
-    });
-    const linkData = await linkRes.json().catch(() => ({}));
-    const user = linkData?.user || (linkData?.id ? linkData : null);
-    if (!user?.id) throw new Error('could not create or find user');
-    const upd = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${user.id}`, {
-      method: 'PUT', headers: adminHeaders(),
-      body: JSON.stringify({ password }),
-    });
-    if (!upd.ok) throw new Error('password update failed');
-    return { user, existing: true };
-  }
-
-  // Probably "already registered" — resolve via generate_link (magiclink).
-  const linkRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
+// Look up an existing auth user by email via the admin generate_link endpoint
+// (returns the user object without emailing anyone). Returns { id, ... } or
+// null if the address isn't registered.
+async function findUserByEmail(email) {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
     method: 'POST',
     headers: adminHeaders(),
     body: JSON.stringify({ type: 'magiclink', email }),
   });
-  const linkData = await linkRes.json().catch(() => ({}));
-  const user = linkData?.user || (linkData?.id ? linkData : null);
-  if (!user?.id) {
-    throw new Error(created?.msg || created?.message || linkData?.msg || 'could not create or find user');
-  }
-  return { user, existing: true };
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) return null;
+  return data?.user || (data?.id ? data : null);
+}
+
+// Create the auth user (unconfirmed — clicking the magic link confirms). If
+// they already exist, resolve them via generate_link so we can attach the new
+// business under their account.
+async function findOrCreateUser(email) {
+  const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: JSON.stringify({ email, email_confirm: false }),
+  });
+  const created = await createRes.json().catch(() => ({}));
+  if (createRes.ok && created?.id) return { user: created, existing: false };
+
+  const existing = await findUserByEmail(email);
+  if (existing?.id) return { user: existing, existing: true };
+  throw new Error(created?.msg || created?.message || 'could not create or find user');
 }
 
 // Ensure a businesses row exists for the owner. Returns the business row's id.
@@ -134,7 +136,7 @@ async function readUserSonicMeta(userId) {
   });
   if (!r.ok) return {};
   const j = await r.json().catch(() => ({}));
-  return (j?.user_metadata?.sonic) || (j?.user_metadata?.sonic === 0 ? {} : (j?.user_metadata?.sonic || {}));
+  return (j?.user_metadata?.sonic) || {};
 }
 
 async function writeUserSonicMeta(userId, sonic) {
@@ -149,34 +151,41 @@ async function writeUserSonicMeta(userId, sonic) {
   }
 }
 
-// Generate a one-time sign-in link (admin API) so the buyer lands in the
-// personal area immediately, without waiting for an email round-trip.
-async function generateLoginLink(email) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/generate_link`, {
-    method: 'POST',
-    headers: adminHeaders(),
-    body: JSON.stringify({ type: 'magiclink', email, redirect_to: REDIRECT_TO }),
+// Attach owner_id + business_id to created_playlists rows written by
+// /api/v5/record-playlist during onboarding. Uses PostgREST's `in.(...)`
+// filter for a single round-trip, plus `owner_id=is.null` so we only
+// touch rows that were left unattributed.
+async function backfillLedgerOwnership(spotifyIds, userId, businessId) {
+  const list = spotifyIds.map(encodeURIComponent).join(',');
+  const url  = `${SUPABASE_URL}/rest/v1/created_playlists?spotify_id=in.(${list})&owner_id=is.null`;
+  const r = await fetch(url, {
+    method:  'PATCH',
+    headers: { ...adminHeaders(), Prefer: 'return=minimal' },
+    body:    JSON.stringify({ owner_id: userId, business_id: businessId }),
   });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data?.msg || data?.message || 'generate_link failed');
-  return data?.action_link || data?.properties?.action_link || null;
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(`ledger backfill failed: ${r.status} ${t.slice(0, 200)}`);
+  }
 }
 
-// Fallback: send the magic-link email with the PUBLIC anon key (same as the
-// client would). Used only when generating a direct link fails.
-async function sendMagicLink(email) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/otp?redirect_to=${encodeURIComponent(REDIRECT_TO)}`, {
+// Send the magic-link email via the PUBLIC anon endpoint. This is what
+// actually triggers Supabase SMTP to email the user — admin/generate_link
+// only returns a URL, it doesn't send mail. `create_user: false` because
+// findOrCreateUser has already ensured the account exists.
+async function sendMagicLink(email, redirectTo) {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
     method: 'POST',
     headers: {
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ email, create_user: false, redirect_to: REDIRECT_TO }),
+    body: JSON.stringify({ email, create_user: false, redirect_to: redirectTo }),
   });
   if (!r.ok) {
     const t = await r.text().catch(() => '');
-    throw new Error(`otp send failed: ${t.slice(0, 200)}`);
+    throw new Error(`magic-link send failed: ${t.slice(0, 200)}`);
   }
 }
 
@@ -194,7 +203,6 @@ export default async function handler(req, res) {
 
     const {
       email,
-      password,
       business_name,
       business_type,
       atmospheres,
@@ -210,7 +218,7 @@ export default async function handler(req, res) {
     }
 
     const name = String(business_name || '').trim().slice(0, 80);
-    const { user, existing } = await findOrCreateUser(cleanEmail, String(password || '') || null);
+    const { user, existing } = await findOrCreateUser(cleanEmail);
     const businessId = await ensureBusiness(user.id, name, DEFAULT_CREDITS);
 
     // Merge user_metadata.sonic non-destructively.
@@ -250,23 +258,38 @@ export default async function handler(req, res) {
     try { await writeUserSonicMeta(user.id, nextSonic); }
     catch (e) { console.warn('[signup] user_metadata write failed:', e.message); }
 
-    // Instant login link; email fallback only when there's a real inbox.
-    let loginUrl = null;
-    let emailed  = false;
-    try { loginUrl = await generateLoginLink(cleanEmail); }
-    catch (e) { console.warn('[signup] generate_link failed:', e.message); }
-    if (!loginUrl) {
-      try { await sendMagicLink(cleanEmail); emailed = true; }
-      catch (e) { console.warn('[signup] magic-link fallback failed:', e.message); }
+    // Back-fill owner_id + business_id on the ledger rows that /api/v5/
+    // record-playlist wrote during onboarding (before the account existed).
+    // Filter on `owner_id=is.null` so we never overwrite a legitimate owner
+    // in the edge case that this endpoint is hit with someone else's spotify
+    // ids in the body.
+    if (Array.isArray(playlists) && playlists.length) {
+      const ids = playlists.map((p) => p?.id).filter(Boolean);
+      if (ids.length) {
+        try { await backfillLedgerOwnership(ids, user.id, businessId); }
+        catch (e) { console.warn('[signup] ledger backfill failed:', e.message); }
+      }
     }
 
-    console.log(`[signup:v6] ${existing ? 'existing' : 'new'} ${cleanEmail} → biz ${businessId} (${Array.isArray(playlists) ? playlists.length : 0} playlists)`);
+    // Send the magic-link email. Business + playlists are already persisted
+    // above, so by the time the user clicks the link their dashboard is
+    // ready to render everything. Redirect target follows the request
+    // origin so localhost/preview/prod all Just Work — as long as the host
+    // is on Supabase's Redirect URLs allow-list.
+    const redirectTo = accountRedirectUrl(req);
+    try { await sendMagicLink(cleanEmail, redirectTo); }
+    catch (e) {
+      console.error('[signup] magic-link send failed:', e.message);
+      return res.status(502).json({ error: 'לא הצלחנו לשלוח את קישור הכניסה. נסו שוב עוד רגע.' });
+    }
+
+    console.log(`[signup:v6] ${existing ? 'existing' : 'new'} ${cleanEmail} → biz ${businessId} (${Array.isArray(playlists) ? playlists.length : 0} playlists) — magic link sent`);
     return res.status(200).json({
       ok: true,
       existing_user: existing,
       business_id:   businessId,
-      login_url:     loginUrl,
-      emailed,
+      emailed:       true,
+      email:         cleanEmail,
     });
   } catch (err) {
     console.error('[signup:v6] failed:', err.message);

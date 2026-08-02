@@ -1,10 +1,16 @@
 /* /api/v5/record-playlist.js
    Called by v5/generation/playlist-builder.js right after a playlist has been
-   successfully created + tracks added. Inserts a row in v5_created_playlists
+   successfully created + tracks added. Inserts a row in created_playlists
    with expires_at = now + TTL_HOURS. The cron worker picks it up later.
 
-   Request body: { spotify_id, name, ttl_hours? }
-   Response:     { ok: true, expires_at }
+   Request body: { spotify_id, name, ttl_hours?, owner_id?, business_id? }
+   - owner_id / business_id are optional because this endpoint is called
+     during onboarding, BEFORE the user account exists. In that flow the
+     row is written with NULL owner_id/business_id and /api/v6/account/
+     signup.js back-fills them once the account + business are created.
+     Callers with a user context in-hand (event-playlist, expand-playlist,
+     _daily-builder) SHOULD pass both.
+   Response: { ok: true, expires_at }
 */
 
 import { pgrUpsert } from './supabase-client.js';
@@ -19,7 +25,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { spotify_id, name, ttl_hours } = req.body || {};
+    const { spotify_id, name, ttl_hours, owner_id, business_id } = req.body || {};
     if (typeof spotify_id !== 'string' || !spotify_id) {
       return res.status(400).json({ error: 'spotify_id required' });
     }
@@ -31,17 +37,19 @@ export default async function handler(req, res) {
       : DEFAULT_TTL_HOURS;
     const expiresAt = new Date(Date.now() + ttl * 3600 * 1000).toISOString();
 
-    await pgrUpsert('v5_created_playlists', {
+    await pgrUpsert('created_playlists', {
       spotify_id,
       name,
-      expires_at: expiresAt,
-      deleted_at: null,
-      error:      null,
+      expires_at:  expiresAt,
+      deleted_at:  null,
+      error:       null,
+      owner_id:    owner_id    || null,
+      business_id: business_id || null,
     }, { onConflict: 'spotify_id' });
 
     return res.status(200).json({ ok: true, expires_at: expiresAt });
   } catch (err) {
-    console.error('[v5 record-playlist]', err.message);
+    console.error('[record-playlist]', err.message);
     return res.status(500).json({ error: err.message || 'Server error' });
   }
 }

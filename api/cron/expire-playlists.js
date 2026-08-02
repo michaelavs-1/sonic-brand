@@ -1,6 +1,6 @@
 /* /api/cron/expire-playlists.js
    Vercel Cron target — runs on the schedule declared in vercel.json.
-   For each v5_created_playlists row where expires_at <= now() and not yet
+   For each created_playlists row where expires_at <= now() and not yet
    deleted, this endpoint:
      1. Renames the playlist to "(expired) <original>" so the owner sees why
         it's blank if they revisit the link.
@@ -11,7 +11,7 @@
         deleted_at NULL so the next tick retries.
 
    Version note: this used to live at /api/v5/cron-expire-playlists but v6
-   (and any future version) writes to the same v5_created_playlists table.
+   (and any future version) writes to the same created_playlists table.
    Moved out from under the v5 namespace so it's obvious it belongs to
    nobody in particular. The table name stays as-is for now to avoid a
    Supabase migration.
@@ -111,7 +111,7 @@ export default async function handler(req, res) {
   let expired = [];
   try {
     expired = await pgrSelect(
-      'v5_created_playlists',
+      'created_playlists',
       { deleted_at: 'is.null', expires_at: `lte.${new Date().toISOString()}` },
       { select: 'spotify_id,name,expires_at', order: 'expires_at.asc', limit: 100, useService: true },
     );
@@ -127,7 +127,7 @@ export default async function handler(req, res) {
     try {
       await expireOne(row);
       await pgrPatch(
-        'v5_created_playlists',
+        'created_playlists',
         { spotify_id: `eq.${row.spotify_id}` },
         { deleted_at: new Date().toISOString(), error: null },
       );
@@ -138,7 +138,7 @@ export default async function handler(req, res) {
       // Record the error but leave deleted_at NULL so the next tick retries.
       try {
         await pgrPatch(
-          'v5_created_playlists',
+          'created_playlists',
           { spotify_id: `eq.${row.spotify_id}` },
           { error: e.message?.slice(0, 400) || 'unknown error' },
         );

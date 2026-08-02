@@ -35,7 +35,7 @@ const CLIENT_ID     = process.env.RUBIN_SPOTIFY_CLIENT_ID;
 const CLIENT_SECRET = process.env.RUBIN_SPOTIFY_CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.RUBIN_REFRESH_TOKEN;
 
-// Supabase (for marking rows deleted in the v5_created_playlists ledger, so
+// Supabase (for marking rows deleted in the created_playlists ledger, so
 // the expire-playlists cron doesn't keep retrying).
 const SUPABASE_URL         = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -85,7 +85,7 @@ async function getMe(token) {
   return r.json();
 }
 
-// Enumerate playlists from Supabase's v5_created_playlists ledger. Every
+// Enumerate playlists from Supabase's created_playlists ledger. Every
 // playlist created via /api/new/spotify since v5 is logged here — v5, v6,
 // event-playlist, expand-playlist all write to it. Rows with deleted_at
 // already set are skipped (they've been unfollowed on a previous run).
@@ -97,7 +97,7 @@ async function listFromLedger() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY required for ledger source');
   }
-  const url = `${SUPABASE_URL}/rest/v1/v5_created_playlists?deleted_at=is.null&select=spotify_id,name,expires_at&limit=10000`;
+  const url = `${SUPABASE_URL}/rest/v1/created_playlists?deleted_at=is.null&select=spotify_id,name,expires_at&limit=10000`;
   const r = await fetch(url, {
     headers: {
       apikey:        SUPABASE_SERVICE_KEY,
@@ -130,12 +130,12 @@ async function unfollow(token, playlistId) {
   }
 }
 
-// Mark a v5_created_playlists row as deleted so the expire-playlists cron
+// Mark a created_playlists row as deleted so the expire-playlists cron
 // won't try to re-process it. Silently no-ops if the row doesn't exist
 // (playlist was created before the tracking table existed).
 async function markLedgerDeleted(spotifyId) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return;
-  const url = `${SUPABASE_URL}/rest/v1/v5_created_playlists?spotify_id=eq.${spotifyId}`;
+  const url = `${SUPABASE_URL}/rest/v1/created_playlists?spotify_id=eq.${spotifyId}`;
   const r = await fetch(url, {
     method: 'PATCH',
     headers: {
@@ -165,7 +165,7 @@ async function main() {
   console.log(`Rubin user: id=${me.id} display_name="${me.display_name}"`);
 
   const playlists = await listFromLedger();
-  console.log(`Un-deleted rows in v5_created_playlists: ${playlists.length}`);
+  console.log(`Un-deleted rows in created_playlists: ${playlists.length}`);
 
   const targets = playlists.filter((p) => {
     if (NAME_FILTER && !String(p.name || '').toLowerCase().includes(NAME_FILTER)) return false;

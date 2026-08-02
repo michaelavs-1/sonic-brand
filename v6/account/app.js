@@ -72,11 +72,7 @@ sb.auth.onAuthStateChange((event, session) => {
   }
 });
 
-// ---------- login (magic link fallback) ----------
-$('emailToggle')?.addEventListener('click', () => {
-  $('emailForm').classList.toggle('hide');
-});
-
+// ---------- login (magic link) ----------
 $('sendLink')?.addEventListener('click', async () => {
   const email = $('email').value.trim();
   if (!email) { $('loginMsg').textContent = 'הכניסו אימייל'; return; }

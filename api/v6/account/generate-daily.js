@@ -21,6 +21,7 @@
 
 import { buildDailyBatch, latestDirections, readSonic } from './_daily-builder.js';
 import { closedDayTargetTracks } from '../../../v6/generation/playlist-length.js';
+import { requireBusinessOwner } from './_require-business-owner.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -59,6 +60,9 @@ export default async function handler(req, res) {
 
     const { businessId, bizName, targetTracks } = req.body || {};
     if (!businessId) return res.status(400).json({ error: 'businessId required' });
+
+    try { await requireBusinessOwner(businessId, user.id); }
+    catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
 
     // Default to 12h + 1h for the closed-day flow (that's what
     // closedDayTargetTracks returns). Callers can override with an explicit

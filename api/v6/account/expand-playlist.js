@@ -33,6 +33,7 @@
 import { pgrUpsert } from '../../v5/supabase-client.js';
 import { dailyPlaylistExpiryIso, nextIl4amIso } from '../../../v6/generation/playlist-length.js';
 import { fetchTracksWithHistory, recordTrackHistory } from './_daily-builder.js';
+import { requireBusinessOwner } from './_require-business-owner.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -129,6 +130,8 @@ export default async function handler(req, res) {
     if (!businessId || !playlistId) {
       return res.status(400).json({ error: 'businessId and playlistId required' });
     }
+    try { await requireBusinessOwner(businessId, user.id); }
+    catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
     const target = Number.isFinite(targetCount) && targetCount > 0
       ? Math.min(Math.round(targetCount), 500)
       : DEFAULT_TARGET;
@@ -271,12 +274,14 @@ export default async function handler(req, res) {
         // moment the dashboard hides the entry. Best-effort: a ledger write
         // failure just leaves it at whatever record-playlist.js wrote.
         try {
-          await pgrUpsert('v5_created_playlists', {
-            spotify_id: playlistId,
-            name:       latestPls[latestIdx].label || 'playlist',
-            expires_at: expiryIso,
-            deleted_at: null,
-            error:      null,
+          await pgrUpsert('created_playlists', {
+            spotify_id:  playlistId,
+            name:        latestPls[latestIdx].label || 'playlist',
+            expires_at:  expiryIso,
+            deleted_at:  null,
+            error:       null,
+            owner_id:    user.id,
+            business_id: businessId,
           }, { onConflict: 'spotify_id' });
         } catch (e) {
           console.warn('[expand-playlist] ledger expiry rewrite failed:', e.message);

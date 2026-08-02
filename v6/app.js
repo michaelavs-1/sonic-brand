@@ -23,7 +23,7 @@ import {
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=02082026a';
+} from '/v6/result.js?v=02082026f';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -606,22 +606,7 @@ function wireStepClicks() {
   });
 }
 
-// ---------- welcome intro: splash → "have a Rubin account?" → login | onboarding ----------
-const SB_URL = 'https://xhkqrxljncazvbgkmqex.supabase.co';
-const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
-
-async function rubinPasswordLogin(email, password) {
-  const r = await fetch(`${SB_URL}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: { apikey: SB_ANON, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error_description || j.msg || 'login failed');
-  if (!j.expires_at && j.expires_in) j.expires_at = Math.floor(Date.now() / 1000) + j.expires_in;
-  localStorage.setItem('sb-xhkqrxljncazvbgkmqex-auth-token', JSON.stringify(j));
-}
-
+// ---------- welcome intro: splash → "have a Rubin account?" → /v6/account | onboarding ----------
 function runIntro() {
   const splash = $('splash');
   const intro = $('introCard');
@@ -648,57 +633,7 @@ function runIntro() {
 
   $('rbNo')?.addEventListener('click', finish);
   $('rbYes')?.addEventListener('click', () => {
-    $('introChoice').hidden = true;
-    $('rbLoginBox').hidden = false;
-    $('rbEmail')?.focus();
-  });
-  $('rbBack')?.addEventListener('click', () => {
-    $('rbLoginBox').hidden = true;
-    $('introChoice').hidden = false;
-  });
-  $('rbForgot')?.addEventListener('click', async () => {
-    const msg = $('rbLoginMsg');
-    const email = $('rbEmail').value.trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      msg.textContent = 'הזינו את האימייל למעלה ואז לחצו "שכחתי סיסמה"';
-      return;
-    }
-    try {
-      await fetch(`${SB_URL}/auth/v1/recover`, {
-        method: 'POST',
-        headers: { apikey: SB_ANON, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, redirect_to: `${location.origin}/v6/account` }),
-      });
-      msg.style.color = 'var(--teal-soft)';
-      msg.textContent = 'שלחנו קישור איפוס לאימייל — היכנסו דרכו ותוכלו להגדיר סיסמה חדשה';
-    } catch {
-      msg.textContent = 'לא הצלחנו לשלוח כרגע — נסו שוב';
-    }
-  });
-
-  $('rbLogin')?.addEventListener('click', async () => {
-    const btn = $('rbLogin');
-    const msg = $('rbLoginMsg');
-    const email = $('rbEmail').value.trim().toLowerCase();
-    const pass = $('rbPass').value;
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !pass) {
-      msg.textContent = 'הזינו אימייל וסיסמה';
-      return;
-    }
-    btn.disabled = true;
-    const orig = btn.innerHTML;
-    btn.innerHTML = '<span class="sb-spinner" style="width:15px;height:15px"></span>';
-    msg.textContent = '';
-    try {
-      await rubinPasswordLogin(email, pass);
-      btn.innerHTML = 'מחוברים ✓ עוברים לאזור האישי…';
-      setTimeout(() => { window.location.href = '/v6/account'; }, 600);
-    } catch (err) {
-      console.warn('rubin login failed:', err);
-      btn.disabled = false;
-      btn.innerHTML = orig;
-      msg.textContent = 'האימייל או הסיסמה לא נכונים — נסו שוב';
-    }
+    window.location.href = '/v6/account';
   });
 }
 

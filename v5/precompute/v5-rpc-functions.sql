@@ -2,26 +2,36 @@
 -- Idempotent (CREATE OR REPLACE).
 
 -- ============================================================================
--- v5_created_playlists: audit log of playlists we create on Rubin's account.
--- Every successful create+add lands here with a 24h expiration. The
--- /api/v5/cron-expire-playlists worker sweeps expired rows and empties +
+-- created_playlists: audit log of playlists we create on Rubin's account.
+-- Every successful create+add lands here with an expires_at timestamp; the
+-- /api/cron/expire-playlists worker sweeps expired rows and empties +
 -- unfollows them on Spotify's side.
+--
+-- owner_id / business_id are nullable because onboarding writes rows
+-- BEFORE the user account exists; /api/v6/account/signup back-fills them
+-- once the account + business are created. See migration file
+-- v5/precompute/migrations/2026-08-02-rename-and-owner-columns.sql for
+-- the ALTER path against an existing (pre-rename) table.
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS v5_created_playlists (
+CREATE TABLE IF NOT EXISTS created_playlists (
     spotify_id  text        PRIMARY KEY,
     name        text        NOT NULL,
     created_at  timestamptz NOT NULL DEFAULT now(),
     expires_at  timestamptz NOT NULL,
     deleted_at  timestamptz,
-    error       text
+    error       text,
+    owner_id    uuid        REFERENCES auth.users(id)      ON DELETE SET NULL,
+    business_id uuid        REFERENCES public.businesses(id) ON DELETE SET NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_v5_created_playlists_expiration
-    ON v5_created_playlists (expires_at)
+CREATE INDEX IF NOT EXISTS idx_created_playlists_expiration
+    ON created_playlists (expires_at)
     WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS created_playlists_owner_id_idx    ON created_playlists(owner_id);
+CREATE INDEX IF NOT EXISTS created_playlists_business_id_idx ON created_playlists(business_id);
 
-ALTER TABLE v5_created_playlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE created_playlists ENABLE ROW LEVEL SECURITY;
 -- No anon-read policy: writes via service_role only, reads via service_role only.
 
 -- Cleanup: drop the compound index that was added in perf-tuning iterations

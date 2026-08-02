@@ -22,6 +22,7 @@
 import { GENRES, GENRE_SET }   from '../../../v6/generation/genre-list.js';
 import { pgrRpc, pgrUpsert }   from '../../v5/supabase-client.js';
 import { nextIl4amIso }        from '../../../v6/generation/playlist-length.js';
+import { requireBusinessOwner } from './_require-business-owner.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -205,6 +206,8 @@ export default async function handler(req, res) {
     if (!businessId || !eventId) {
       return res.status(400).json({ error: 'businessId and eventId required' });
     }
+    try { await requireBusinessOwner(businessId, user.id); }
+    catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
     const desc = String(description || '').trim();
     if (desc.length < 5) {
       return res.status(400).json({ error: 'description too short' });
@@ -255,12 +258,14 @@ export default async function handler(req, res) {
     const expiresAtIso = nextIl4amIso();
     const expiresAtMs  = Date.parse(expiresAtIso);
     try {
-      await pgrUpsert('v5_created_playlists', {
-        spotify_id: id,
-        name:       playlistName,
-        expires_at: expiresAtIso,
-        deleted_at: null,
-        error:      null,
+      await pgrUpsert('created_playlists', {
+        spotify_id:  id,
+        name:        playlistName,
+        expires_at:  expiresAtIso,
+        deleted_at:  null,
+        error:       null,
+        owner_id:    user.id,
+        business_id: businessId,
       }, { onConflict: 'spotify_id' });
     } catch (e) {
       console.warn('[event-playlist] failed to register expiry:', e.message);

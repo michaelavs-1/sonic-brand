@@ -219,7 +219,7 @@ function playlistName(bizName, direction) {
 // user_metadata itself — the batch caller does that once at the end so N
 // parallel builds don't race.
 export async function buildOneDailyPlaylist({
-  origin, businessId, direction, popularityWindow, target, bizName, expiryIso,
+  origin, ownerId, businessId, direction, popularityWindow, target, bizName, expiryIso,
 }) {
   const { ids, directionKey: key } = await fetchTracksWithHistory({
     businessId, direction, popularityWindow, target,
@@ -244,12 +244,14 @@ export async function buildOneDailyPlaylist({
   // playlists.
   const expiresAtIso = expiryIso || nextIl4amIso();
   try {
-    await pgrUpsert('v5_created_playlists', {
-      spotify_id: created.id,
+    await pgrUpsert('created_playlists', {
+      spotify_id:  created.id,
       name,
-      expires_at: expiresAtIso,
-      deleted_at: null,
-      error:      null,
+      expires_at:  expiresAtIso,
+      deleted_at:  null,
+      error:       null,
+      owner_id:    ownerId || null,
+      business_id: businessId,
     }, { onConflict: 'spotify_id' });
   } catch (e) {
     console.warn(`[daily-builder] ledger upsert failed for ${created.id}:`, e.message);
@@ -298,7 +300,7 @@ export async function buildDailyBatch({
 
   const results = await Promise.all(
     directions.map((direction) =>
-      buildOneDailyPlaylist({ origin, businessId, direction, popularityWindow, target, bizName, expiryIso })
+      buildOneDailyPlaylist({ origin, ownerId, businessId, direction, popularityWindow, target, bizName, expiryIso })
         .catch((err) => {
           console.warn(`[daily-builder] "${direction.title_en}" failed:`, err.message);
           return { skipped: true, reason: err.message, title: direction.title_en };

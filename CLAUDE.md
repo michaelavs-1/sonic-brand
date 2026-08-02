@@ -163,7 +163,10 @@ sonic-brand/
 │   ├── account/
 │   │   ├── index.html                      ← Dashboard shell (Home tab only — no profile/music/plan/chat/mic)
 │   │   └── app.js                          ← Supabase Auth boot, renderPlaylists, renderEvents, expand streaming
-│   └── test-hours/                         ← Standalone test page for iterating on hours-selector UX
+│   ├── test-hours/                         ← Standalone test page for iterating on hours-selector UX
+│   └── test-player/                        ← Standalone test page for iterating on the swipe-card playback UI
+│                                              (progress bar, custom play button). Uses hardcoded tracks —
+│                                              no track-meta fetch, so album art shows a placeholder.
 ├── v5/                                     ← Reference; standalone flow still runnable
 ├── v4/
 │   ├── ami/                                ← Ami's dashboard (scan sheet → Supabase)
@@ -188,7 +191,7 @@ sonic-brand/
 │   │   ├── direction-tracks.js             ← Bulk fetch tracks matching genres + BPM + popularity
 │   │   ├── databox-atmospheres.js          ← Reads Supabase atmospheres table (NO CACHE — see optimization notes)
 │   │   ├── prewarm.js                      ← Fire-and-forget Postgres plan warmer
-│   │   ├── record-playlist.js              ← Writes 24h expiry ledger row (v5_created_playlists)
+│   │   ├── record-playlist.js              ← Writes 24h expiry ledger row (created_playlists)
 │   │   └── supabase-client.js              ← pgrRpc/pgrSelect/pgrUpsert/pgrPatch wrappers; RETRIES ON 57014
 │   ├── v4/
 │   │   ├── ami-*.js                        ← Ami dashboard endpoints (scan, cron-tick, toggle, delete, etc.)
@@ -206,7 +209,7 @@ sonic-brand/
 │   ├── openai.js, spotify.js, databox.js   ← Root-level legacy proxies (v1/v2/v3-era)
 ├── scripts/
 │   ├── benchmark-directions.mjs            ← OpenAI vs Anthropic timing/quality benchmark
-│   ├── purge-rubin-playlists.mjs           ← Unfollow all Rubin playlists (source: v5_created_playlists ledger)
+│   ├── purge-rubin-playlists.mjs           ← Unfollow all Rubin playlists (source: created_playlists ledger)
 │   ├── mirror-vercel-deployment.mjs        ← Pull deployment source via Vercel API
 │   ├── mirror-live-site.mjs                ← Pull deployed static assets via HTTP
 │   └── feedback-*                          ← Legacy feedback system helpers
@@ -231,7 +234,42 @@ sonic-brand/
 
 Applied twice in v6:
 1. **Atmosphere rows** fire the moment the description page renders (`runBusinessStep`). Deduped via `atmosphereRowsPromise` so multiple call-sites don't fire twice.
-2. **Preview prep** (`preparePreview`) chains onto the raw Claude promise the instant it lands. Page 1 anchors + Claude page 2 fire in parallel, then page 2 anchors, then all Spotify get_track metadata. By the time the user finishes the hours picker (typically 10s+), the swipe deck can render instantly.
+2. **Preview prep** (`preparePreview`) chains onto the raw Claude promise the instant it lands. See "Progressive swipe-deck rendering" below for the full sequencing.
+
+### Progressive swipe-deck rendering — `v6/preview.js`
+
+`preparePreview` doesn't return a single "everything's ready" payload — it returns two independent promises:
+
+```js
+{ page1Ready, page2Ready }  // each resolves to { previews, trackMeta }
+```
+
+**Why:** page 1's four cards should show up as soon as page 1 is fully ready (anchors + metadata for those 4 tracks). Blocking page 1's metadata fetch until page 2 anchors also finish — the previous shape — wasted ~5-10s of user-visible wait for no reason.
+
+**Inside `preparePreview`:**
+- A `sequencedAnchors(dirs)` closure serialises the two anchor-tracks calls so page 2's query hits the warm `v5_anchor_tracks` plan cache (page 1 anchors → page 2 anchors, sequential). Metadata calls hit Spotify directly and don't need this — they run in parallel.
+- `page1Ready`: anchors → metadata (4 tracks in parallel).
+- `page2Ready`: waits for Claude page 2 → queues behind page 1 anchors via `sequencedAnchors` → its own metadata fetch. Runs concurrently with page 1's metadata.
+
+**Inside `renderSwipeDeck`:** accepts `initialPreviews`, `initialTrackMeta`, and `page2Ready`. The `previews` and `trackMeta` are mutable in scope (`const previews = [...initialPreviews]`). When `page2Ready` resolves, its previews are `push`ed and `trackMeta` is `Object.assign`ed. `previews.length` is read inline every place a total is needed — the captured `total` const is gone.
+
+**Edge case handled:** if the user swipes all 4 page-1 cards before page 2 arrives, `showCard` shows a `preview-load-column` "loading more" state inside the deck and parks a `waitingResume` closure. When `page2Ready` resolves, that closure fires and rendering resumes with the new cards.
+
+**Progress label spinner:** `setProgress` sets `progLabel.innerHTML` (not textContent) so it can inline an `<span class="sb-spinner">` next to the `X/N` count until `page2Settled` flips true. Signals to the user that the denominator may still grow.
+
+**Fallback shape:** `v6/app.js emptyPreparedPreview()` returns `{ page1Ready: Promise.resolve({previews:[],trackMeta:{}}), page2Ready: ... }` for error paths — matches the successful shape so `runDirectionPreviewFlow` doesn't need to branch.
+
+### Scrubbable playback progress bar (per swipe card) — `v6/preview.js`
+
+Each swipe card has a playback progress bar between the description line and the swap button. Not a separate iframe — it's a UI layer over the same hidden Spotify embed the custom play button drives.
+
+- `pbState` (per-card): `lastPosition`, `lastTimestamp`, `duration`, `isPaused`, `dragging`, `pendingSeek`, `seekLockUntil`.
+- The Spotify `playback_update` handler captures `position` and `duration` into `pbState` — but ignores `position` values while `Date.now() < pbState.seekLockUntil`. Spotify fires one more update with the stale pre-seek position after `controller.seek()` is called; that guard prevents the dot from briefly jerking back.
+- A RAF loop (`pbTick`, self-terminates when `cardEl.isConnected` is false) interpolates position between the (sparse) `playback_update` events so the fill and thumb move smoothly.
+- Click or drag on `.sw2-prog-bar` → calculates target seconds → `controller.seek(seconds)` + sets `pbState.lastPosition` + sets `pbState.seekLockUntil = Date.now() + 500`.
+- Card swipe pointer guard extended to exclude `.sw2-prog-bar` (alongside `.swap-btn` and `.sw2-play`) so dragging the bar doesn't start a card swipe.
+- On swap: `resetPbState()` zeroes everything so the new track starts at 0:00.
+- CSS: outer `.sw2-prog-bar` has fixed 14px height (reserved layout space + touch hit area); the visible `.sw2-prog-track` inside is 6px at rest / 10px on hover; thumb appears on hover/drag. No layout shift when hovering.
 
 ### Musical directions — `v6/generation/musical-directions.js`
 
@@ -248,7 +286,7 @@ Shared 73-genre canonical menu. Both `musical-directions.js` (for the system pro
 ### Playlist auto-expiry
 
 Every playlist created via `/api/new/spotify` create_playlist gets a row in
-`v5_created_playlists` (`spotify_id`, `name`, `expires_at`, `deleted_at`,
+`created_playlists` (`spotify_id`, `name`, `expires_at`, `deleted_at`,
 `error`). Hourly cron `/api/cron/expire-playlists` picks up any row with
 `expires_at <= now()` and unfollows on Rubin's side (rename → empty →
 unfollow → mark `deleted_at`; 404 treated as already-gone via `isGone`).
@@ -363,7 +401,7 @@ Everything the account dashboard reads lives here:
 - `playlist_genres` — playlist_id ↔ genre + position_in_genre.
 - `playlist_tracks` — playlist_id ↔ spotify_id + position.
 - `track_analyses` — spotify_id + typed audio-feature columns (tempo, popularity, energy, etc.) + raw_analysis jsonb.
-- `v5_created_playlists` — the 24h expiry ledger. Table name unchanged despite the cron being moved out of the v5 namespace.
+- `created_playlists` — the expiry ledger. Columns: `spotify_id` (PK), `name`, `expires_at`, `deleted_at`, `error`, `owner_id` (nullable FK → auth.users), `business_id` (nullable FK → businesses). Both FKs use ON DELETE SET NULL so the cron can still unfollow expired playlists after their owner/business is deleted. Rows written by onboarding (via /api/v5/record-playlist) start with NULL owner/business — signup.js back-fills them. Renamed from `v5_created_playlists` on 2026-08-02; migration in `v5/precompute/migrations/`.
 - `businesses` — { id, owner_id, name, monthly_credits, credits_remaining }. Written by signup.
 - Historical: `analyses`, `track_feedback`, `app_settings` (old OpenAI key storage), `spotify_tokens` (v1 era).
 
@@ -390,7 +428,7 @@ If you need enumeration (e.g., cleaning up pre-ledger cruft), re-seed with wider
 https://accounts.spotify.com/authorize?client_id=431c55feb024444c979f2aa51e04426d&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fnew%2Frubin-oauth-callback&scope=playlist-modify-private%20playlist-read-private&show_dialog=true
 ```
 
-Otherwise, `scripts/purge-rubin-playlists.mjs` uses the `v5_created_playlists` ledger as the enumeration source instead — no scope needed.
+Otherwise, `scripts/purge-rubin-playlists.mjs` uses the `created_playlists` ledger as the enumeration source instead — no scope needed.
 
 ### Development mode
 
@@ -502,6 +540,11 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 ### Test hours-selector in isolation
 - `http://127.0.0.1:3000/v6/test-hours`
 
+### Test swipe-card playback UI in isolation
+- `http://127.0.0.1:3000/v6/test-player`
+- Rotates through 4 well-known tracks with a swap button. `?uri=spotify:track:XXXX` overrides the first track.
+- Uses hardcoded track names/artists — album art shows a placeholder, since we don't wire the `/api/v4/spotify` `get_track` fetch here. If art is essential to a change, port the swipe deck's `fetchTrackMeta` call.
+
 ### Re-seed Rubin refresh token with wider scope
 - See "Spotify Setup → RUBIN_REFRESH_TOKEN scope" above.
 - Update `RUBIN_REFRESH_TOKEN` in Vercel cloud env AND `.env.local`. Restart `vercel dev`.
@@ -525,7 +568,7 @@ Get-Content .env.local | ForEach-Object {
 node scripts/purge-rubin-playlists.mjs             # dry-run
 node scripts/purge-rubin-playlists.mjs --confirm   # actually unfollow
 ```
-Source: `v5_created_playlists` ledger (not `GET /me/playlists`) because current refresh token lacks read scope. Ledger row marked `deleted_at` automatically so the cron doesn't re-process.
+Source: `created_playlists` ledger (not `GET /me/playlists`) because current refresh token lacks read scope. Ledger row marked `deleted_at` automatically so the cron doesn't re-process.
 
 ### Reset a user for re-testing
 Supabase Dashboard → SQL Editor:
@@ -579,7 +622,7 @@ Highlights from the session that produced this doc's current state:
 **Infrastructure moves:**
 - `api/v5/cron-expire-playlists.js` → `api/cron/expire-playlists.js` (version-agnostic path)
 - Cron made 404-tolerant via `isGone` helper — purged playlists don't loop forever
-- `scripts/purge-rubin-playlists.mjs` uses ledger source + also marks `v5_created_playlists.deleted_at` after each unfollow
+- `scripts/purge-rubin-playlists.mjs` uses ledger source + also marks `created_playlists.deleted_at` after each unfollow
 
 **One-off cleanup:**
 - Purged 16 test playlists from Rubin's Spotify library via the ledger source
@@ -592,3 +635,38 @@ Highlights from the session that produced this doc's current state:
 - Preview loading: 25s CSS-animated progress bar instead of spinner
 - Closed day rows: cell stays clickable, dim only override/times columns, label grey with line-through (no color-change on hover)
 - Custom Spotify play button on swipe cards — visible orange play/pause overlay; iframe hidden inside artwrap with opacity:.01 to keep media pipeline active
+
+---
+
+## RECENT WORK — 2026-08-02 SESSION SUMMARY
+
+**Progressive swipe-deck rendering — the big refactor:**
+- `preparePreview` split return shape: was `{previews, trackMeta}` after everything finished, now `{page1Ready, page2Ready}` — two independent promises each resolving to `{previews, trackMeta}`.
+- Page 1 metadata fires as soon as page 1 anchors resolve, in parallel with page 2's whole pipeline (Claude → anchors → metadata). Anchor calls stay sequenced (page 2 waits for page 1) via a `sequencedAnchors` closure to keep the plan cache warm; metadata calls run parallel — they hit Spotify, not Supabase.
+- `runDirectionPreviewFlow` awaits `page1Ready` and hands `page2Ready` to `renderSwipeDeck`, which appends the second batch to the same deck when it lands. If the user reaches the end of page 1 first, a `preview-load-column` "loading more" state shows inside the deck and resumes via a `waitingResume` closure when page 2 arrives.
+- Progress-label spinner: `setProgress` uses `innerHTML` to inline an `sb-spinner` next to the `X/N` count while `page2Settled` is false.
+- Fallback `emptyPreparedPreview()` in `app.js` matches the new shape for error paths.
+
+**Scrubbable playback progress bar on each swipe card:**
+- CSS `.sw2-progress` block added to `v6/index.html` (below `.sw2-hint`). Outer `.sw2-prog-bar` reserves fixed 14px so hover doesn't push what's below it — the visible `.sw2-prog-track` and `.sw2-prog-thumb` grow/appear via absolute positioning.
+- `renderSwipeDeck` builds a per-card `pbState` mirror, wires a RAF loop that interpolates position between the (sparse) `playback_update` events, and handles click + drag to seek via `controller.seek(seconds)`.
+- Post-seek `pbState.seekLockUntil = Date.now() + 500` — the `playback_update` handler ignores `position` values during that window. Fixes the visible dot flash-back when Spotify emits one more stale update after `seek()`.
+- Iterated on the UX in `v6/test-player/` — same swipe-card structure as production, hardcoded track pool (Blinding Lights, Never Gonna Give You Up, Uptown Funk, Shape of You), swap button to rotate through them.
+
+**Cron worker moved out of the v5 namespace:**
+- `api/v5/cron-expire-playlists.js` → `api/cron/expire-playlists.js` (with `../v5/supabase-client.js` import path adjusted).
+- `vercel.json` `crons.path` + `functions` key updated.
+- `replace_tracks` step now wrapped in try/catch with an `isGone(err)` helper (matches 404/410) so a purged Spotify playlist doesn't loop forever in the retry loop.
+- Log labels `[v5 cron]` → `[cron expire]`.
+- **Deploy gotcha discovered**: moving a file must be paired with updating `vercel.json` in the same edit — otherwise `vercel dev` picks up the mismatch and crashes with "pattern doesn't match any Serverless Functions inside the api directory."
+
+**Purge script hardened:**
+- Enumerates from the `created_playlists` ledger (since `RUBIN_REFRESH_TOKEN` only has `playlist-modify-private` scope, not `playlist-read-private`). Cannot cover pre-ledger playlists — for those you'd need a wider-scoped token.
+- After each successful Spotify unfollow, PATCHes the matching ledger row with `deleted_at = now()` so the cron doesn't retry.
+- 16 old test playlists purged this session.
+
+**Cache-bust cascade rule** now documented in the `Cache busting` section — bumping `?v=` on an `import` inside a module isn't enough; you must also bump the version of the file that imports it, up the chain until `index.html`. Chain reference is included so future edits can trace it quickly.
+
+**One-off benchmarks:**
+- `scripts/benchmark-directions.mjs` compared OpenAI (`gpt-5`, `gpt-5-mini`, `gpt-4o`) vs Anthropic (`claude-sonnet-4-6`) on the musical-directions prompt. Results in `benchmark-results/summary.json`. Takeaway: `gpt-4o` at ~3.3s is the fastest usable option, warm Sonnet at ~11s edges the quality; kept Anthropic for now.
+- OpenAI API key is stored in Supabase `app_settings` table where `key='openai_key'` (legacy fallback) — that's how the benchmark script finds it without needing `OPENAI_API_KEY` in `.env.local`.

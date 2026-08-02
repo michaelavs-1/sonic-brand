@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Fully purge one or more test accounts:
- *   1. Enumerate each user's playlists from user_metadata + v5_created_playlists.
+ *   1. Enumerate each user's playlists from user_metadata + created_playlists.
  *   2. Unfollow every playlist from Rubin's Spotify account.
  *   3. Mark the ledger rows deleted.
  *   4. Delete the user's businesses rows (public.businesses.owner_id = user.id).
@@ -114,7 +114,7 @@ async function deleteAuthUser(userId) {
 
 async function markLedgerDeleted(spotifyId) {
   const r = await fetch(
-    `${SUPABASE_URL}/rest/v1/v5_created_playlists?spotify_id=eq.${spotifyId}`,
+    `${SUPABASE_URL}/rest/v1/created_playlists?spotify_id=eq.${spotifyId}`,
     {
       method: 'PATCH',
       headers: { ...adminHeaders(), Prefer: 'return=minimal' },

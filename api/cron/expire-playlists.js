@@ -23,9 +23,13 @@
 
 import { pgrSelect, pgrPatch } from '../v5/supabase-client.js';
 
-const SPOTIFY_BASE = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : 'http://127.0.0.1:3000';
+// Prefer the stable prod alias over the deployment-specific VERCEL_URL. The
+// deployment URL is subject to Vercel Deployment Protection and would return
+// {error:"Protected deployment"} for the server-to-server calls we make into
+// /api/new/spotify. VERCEL_PROJECT_PRODUCTION_URL is the public prod alias.
+const SPOTIFY_BASE = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://127.0.0.1:3000');
 
 async function postSpotify(action, body) {
   const r = await fetch(`${SPOTIFY_BASE}/api/new/spotify`, {

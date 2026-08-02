@@ -42,9 +42,14 @@ import {
   ilPartsFromDate,
 } from '../../v6/generation/playlist-length.js';
 
-const SPOTIFY_BASE = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : 'http://127.0.0.1:3000';
+// Prefer the stable prod alias (e.g. sonic-brand.vercel.app) over the
+// deployment-specific VERCEL_URL. The deployment URL is subject to Vercel
+// Deployment Protection and returns {error:"Protected deployment"} for
+// server-to-server calls from inside a cron. VERCEL_PROJECT_PRODUCTION_URL
+// resolves to the primary production alias, which is publicly reachable.
+const SPOTIFY_BASE = process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+  : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://127.0.0.1:3000');
 
 // Fire the generation this many minutes before opening. Cron is hourly so
 // the actual firing lands anywhere in [openIL-120min, openIL-60min].
@@ -131,7 +136,14 @@ async function processBusiness({ business, now, ilNow, origin }) {
       origin,
     });
     console.log(`[cron daily-gen] ${label} built=${built.length}/${directions.length} target=${target} expires=${expiryIso}${failures.length ? ' failures=' + JSON.stringify(failures) : ''}`);
-    return { id: business.id, built: built.length, failures: failures.length };
+    return {
+      id: business.id,
+      built: built.length,
+      failures: failures.length,
+      // Include the per-direction failure reasons so the diagnostic curl
+      // can see why nothing was built without having to open Vercel logs.
+      ...(failures.length ? { failureDetails: failures } : {}),
+    };
   } catch (e) {
     console.error(`[cron daily-gen] ${label} build threw:`, e.message);
     return { id: business.id, skipped: 'build-failed', error: e.message };

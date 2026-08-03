@@ -21,6 +21,48 @@
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
     rel="stylesheet">
   <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+  <script>
+    // Synchronous pre-body session check. app.js runs as a deferred module and
+    // by the time it executes the splash has already painted a frame — so we
+    // do the "logged-in? bounce to /v6/account" decision here, in <head>,
+    // before the splash element is even parsed. Duplicates the logic in
+    // app.js hasSupabaseSession() intentionally: this must be inline so no
+    // network round-trip delays the redirect.
+    (function () {
+      try {
+        var params = new URLSearchParams(location.search);
+        if (params.has('reset')) {
+          Object.keys(localStorage)
+            .filter(function (k) { return k.indexOf('sb-') === 0; })
+            .forEach(function (k) { localStorage.removeItem(k); });
+          return;
+        }
+        if (params.has('intro')) {
+          // Post-logout landing: mark the document so the CSS below (declared
+          // in the same <head>, applied before body parse) suppresses the
+          // splash + entrance animation and reveals the intro card the moment
+          // it's parsed — no waiting on app.js.
+          document.documentElement.classList.add('no-splash');
+          return;
+        }
+        var nowSec = Math.floor(Date.now() / 1000);
+        for (var i = 0; i < localStorage.length; i++) {
+          var k = localStorage.key(i);
+          if (!k || !/^sb-.*-auth-token$/.test(k)) continue;
+          var raw = localStorage.getItem(k);
+          if (!raw) continue;
+          var parsed = JSON.parse(raw);
+          var s = Array.isArray(parsed) ? parsed[0] : parsed;
+          if (!s) continue;
+          var notExpired = typeof s.expires_at === 'number' && s.expires_at > nowSec;
+          if (s.access_token && (notExpired || s.refresh_token)) {
+            location.replace('/v6/account');
+            return;
+          }
+        }
+      } catch (_) { /* fall through to normal flow */ }
+    })();
+  </script>
   <style>
     /* ============ SonicBrands flow — premium UI ============ */
     :root {
@@ -1008,6 +1050,13 @@
     a.link {
       color: var(--accent);
     }
+
+    /* Post-logout landing (?intro=1): head script adds html.no-splash before
+       body parses. Splash never renders; intro card is shown immediately
+       (overrides the base [hidden]{display:none} rule) with no cardIn fade. */
+    html.no-splash .splash { display: none !important; }
+    html.no-splash #introCard[hidden] { display: block !important; }
+    html.no-splash #introCard { animation: none !important; }
 
     /* ---------- welcome splash (Rubin logo draws itself) ---------- */
     .splash {
@@ -2047,7 +2096,7 @@
       </div>
 
       <div class="input-wrap">
-        <label class="input-label" for="bizDesc">ספרו לנו על העסק</label>
+        <label class="input-label" for="bizDesc">ספרו לנו על העסק <span style="font-weight:400;font-size:11px;letter-spacing:0;opacity:.85">(מיקום, אווירה, גילאים, סגנונות מועדפים…)</span></label>
         <textarea class="input-textarea" id="bizDesc"
           placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח. אווירה אינטימית, לא רעשנית..."
           maxlength="1000"></textarea>
@@ -2061,7 +2110,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=02082026f"></script>
+  <script type="module" src="/v6/app.js?v=03082026d"></script>
 </body>
 
 </html>

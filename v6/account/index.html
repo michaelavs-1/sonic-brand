@@ -50,6 +50,8 @@ h2 .h-ico{width:30px;height:30px;border-radius:9px;display:inline-flex;align-ite
   transition:border-color .2s, box-shadow .2s;
 }
 .input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,167,63,.12)}
+#email{direction:ltr;text-align:left}
+#email:placeholder-shown:not(:focus){direction:rtl;text-align:right}
 select.input{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(14px) 55%,calc(14px + 5px) 55%;background-size:5px 5px;background-repeat:no-repeat}
 textarea.input{resize:vertical;min-height:74px;line-height:1.6}
 .btn{
@@ -67,7 +69,8 @@ textarea.input{resize:vertical;min-height:74px;line-height:1.6}
 .btn-small{width:auto;padding:9px 15px;font-size:13.5px;margin-top:0}
 .btn-danger{background:none;border:1.5px solid var(--danger);color:var(--danger);box-shadow:none}
 .btn-danger:hover{box-shadow:0 4px 14px rgba(224,122,106,.25)}
-.btn.sec{background:var(--card-2);color:var(--text);border:1px solid var(--border-2);box-shadow:none}
+.btn.sec{background:var(--card-2);color:var(--text);border:1px solid var(--border-2);box-shadow:none;transition:border-color .2s, box-shadow .2s, transform .06s}
+.btn.sec:hover:not(:disabled){border-color:rgba(240,167,63,.55);box-shadow:0 4px 16px rgba(240,167,63,.14)}
 
 /* ---------- header ---------- */
 .tophead{display:flex;align-items:center;gap:12px;padding:2px 2px 14px}
@@ -146,9 +149,9 @@ textarea.input{resize:vertical;min-height:74px;line-height:1.6}
    it reads as a secondary offer, not a primary action. */
 .closed-open-link{
   color:var(--muted);font-size:12px;font-weight:500;margin-inline-start:10px;
-  text-decoration:underline;text-underline-offset:3px;cursor:pointer;
+  text-decoration:none;cursor:pointer;
 }
-.closed-open-link:hover{color:var(--accent);text-decoration-color:var(--accent)}
+.closed-open-link:hover{color:var(--accent)}
 
 /* Generate-daily confirmation modal. Matches the overall dashboard aesthetic
    (dark card on blurred backdrop). */
@@ -362,9 +365,20 @@ a.link{color:var(--accent)}
     <p class="muted">שלחו לעצמכם קישור חד־פעמי לאימייל</p>
   </div>
   <div style="margin-top:34px">
-    <div id="emailForm">
+    <form id="emailForm" novalidate>
       <input class="input" id="email" type="email" placeholder="האימייל שלכם" autocomplete="email">
-      <button class="btn sec" id="sendLink">שלחו לי קישור כניסה</button>
+      <button class="btn sec" id="sendLink" type="submit">
+        <span class="btn-label">שלחו לי קישור כניסה</span>
+        <span class="sb-spinner hide" id="sendSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+      </button>
+    </form>
+    <div id="resendRow" class="hide" style="text-align:center">
+      <p style="margin:0 0 14px;font-size:15px">שלחנו קישור כניסה ל־<span id="sentToEmail" dir="ltr" style="unicode-bidi:isolate;font-weight:700;color:var(--text)"></span> ✉️</p>
+      <button class="btn sec" id="resendLink" type="button">
+        <span class="btn-label">שלחו לי קישור חדש</span>
+        <span class="sb-spinner hide" id="resendSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+      </button>
+      <button class="btn-ghost" id="changeEmail" type="button" style="margin-top:10px">שנו כתובת אימייל</button>
     </div>
     <p class="muted" id="loginMsg" style="text-align:center;margin-top:14px"></p>
   </div>
@@ -447,6 +461,6 @@ a.link{color:var(--accent)}
   </div>
 </div>
 
-<script type="module" src="/v6/account/app.js?v=02082026f"></script>
+<script type="module" src="/v6/account/app.js?v=03082026c"></script>
 </body>
 </html>

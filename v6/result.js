@@ -271,7 +271,7 @@ function showCheckEmailState({ email, biz, playlists }) {
   const card = getCard();
   const msg = el('p', { class: 'hint', style: 'margin-top:10px' }, '');
 
-  const resend = el('button', { class: 'btn-ghost', type: 'button' }, 'לא הגיע? שלחו שוב');
+  const resend = el('button', { class: 'btn-ghost', type: 'button', style: 'display:block;margin-inline:auto' }, 'לא הגיע? שלחו שוב');
   resend.addEventListener('click', async () => {
     resend.disabled = true;
     const orig = resend.textContent;

@@ -66,26 +66,121 @@ async function saveMeta(patch) {
 // Never call auth methods synchronously inside this callback — supabase-js
 // holds an internal lock during it and updateUser() would deadlock.
 sb.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_OUT') { show('loginView'); return; }
+  if (event === 'SIGNED_OUT') {
+    if (loggingOut) return; // logout button handles its own navigation
+    show('loginView');
+    return;
+  }
   if (event === 'SIGNED_IN' && session) {
     setTimeout(() => { if (!business && !entering) enterDashboard(); }, 0);
   }
 });
 
 // ---------- login (magic link) ----------
-$('sendLink')?.addEventListener('click', async () => {
-  const email = $('email').value.trim();
-  if (!email) { $('loginMsg').textContent = 'הכניסו אימייל'; return; }
-  $('sendLink').disabled = true;
+// Supabase enforces a per-address rate limit (~60s) between OTP sends. We
+// mirror that on the client with a countdown so users can't just spam the
+// button — and once they've sent one, the UI switches to a "resend / change
+// address" panel instead of leaving them staring at the same form.
+const RESEND_COOLDOWN_SEC = 60;
+let resendTimerId = null;
+let pendingEmail = '';
+
+async function sendMagicLink(email, { isResend = false } = {}) {
+  const btn = isResend ? $('resendLink') : $('sendLink');
+  const spinner = isResend ? $('resendSpinner') : $('sendSpinner');
+  btn.disabled = true;
+  spinner?.classList.remove('hide');
+  $('loginMsg').textContent = '';
   const { error } = await sb.auth.signInWithOtp({
     email,
     options: { emailRedirectTo: window.location.origin + '/v6/account' },
   });
+  spinner?.classList.add('hide');
+  if (error) {
+    btn.disabled = false;
+    $('loginMsg').textContent = 'שגיאה: ' + error.message;
+    return false;
+  }
+  pendingEmail = email;
+  showResendPanel(email);
+  startResendCooldown();
+  if (isResend) flashResendConfirm();
+  return true;
+}
+
+function showResendPanel(email) {
+  $('sentToEmail').textContent = email;
+  $('emailForm').classList.add('hide');
+  $('resendRow').classList.remove('hide');
+  $('loginMsg').textContent = '';
+}
+
+function showEmailForm() {
+  if (resendTimerId) { clearInterval(resendTimerId); resendTimerId = null; }
+  $('resendRow').classList.add('hide');
+  $('emailForm').classList.remove('hide');
   $('sendLink').disabled = false;
-  $('loginMsg').textContent = error ? ('שגיאה: ' + error.message) : 'שלחנו לכם קישור כניסה למייל ✉️';
+  $('loginMsg').textContent = '';
+  $('email').focus();
+}
+
+function startResendCooldown() {
+  const btn = $('resendLink');
+  const baseLabel = 'שלחו לי קישור חדש';
+  let left = RESEND_COOLDOWN_SEC;
+  const tick = () => {
+    if (left <= 0) {
+      btn.disabled = false;
+      btn.textContent = baseLabel;
+      clearInterval(resendTimerId);
+      resendTimerId = null;
+      return;
+    }
+    btn.disabled = true;
+    btn.textContent = `${baseLabel} (${left})`;
+    left--;
+  };
+  if (resendTimerId) clearInterval(resendTimerId);
+  tick();
+  resendTimerId = setInterval(tick, 1000);
+}
+
+function flashResendConfirm() {
+  const msg = $('loginMsg');
+  msg.textContent = 'נשלח שוב ✉️';
+  setTimeout(() => { if (msg.textContent === 'נשלח שוב ✉️') msg.textContent = ''; }, 4000);
+}
+
+// Bind on the form so Enter inside the email input submits (native <form>
+// behavior) — not just mouse clicks on the button. Prevent default to avoid a
+// page reload; sendMagicLink handles the rest.
+$('emailForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('email').value.trim();
+  if (!email) { $('loginMsg').textContent = 'הכניסו אימייל'; return; }
+  await sendMagicLink(email);
 });
 
-$('logout')?.addEventListener('click', async () => { await sb.auth.signOut(); });
+$('resendLink')?.addEventListener('click', async () => {
+  if (!pendingEmail) return;
+  await sendMagicLink(pendingEmail, { isResend: true });
+});
+
+$('changeEmail')?.addEventListener('click', () => {
+  pendingEmail = '';
+  showEmailForm();
+});
+
+// Logout: swallow the SIGNED_OUT event so we don't briefly flash the loginView
+// on this page, then hop back to /v6 with ?intro=1 (which tells that page to
+// skip the splash + entrance animation and land on the "have an account?" card
+// straight away).
+let loggingOut = false;
+$('logout')?.addEventListener('click', async () => {
+  loggingOut = true;
+  try { await sb.auth.signOut(); } catch { /* proceed regardless */ }
+  window.location.replace('/v6?intro=1');
+});
 
 // ---------- dashboard ----------
 let entering = false;

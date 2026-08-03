@@ -23,7 +23,7 @@ import {
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=02082026f';
+} from '/v6/result.js?v=03082026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -607,12 +607,47 @@ function wireStepClicks() {
 }
 
 // ---------- welcome intro: splash → "have a Rubin account?" → /v6/account | onboarding ----------
+// If a Supabase session already exists in localStorage, skip the intro card
+// entirely and go straight to /v6/account. Expired-but-refreshable sessions
+// (refresh_token present) also count — supabase-js will auto-refresh on
+// dashboard boot. Only fully absent sessions get the "have an account?" card.
+function hasSupabaseSession() {
+  try {
+    for (const k of Object.keys(localStorage)) {
+      if (!/^sb-.*-auth-token$/.test(k)) continue;
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      // supabase-js v2 stores the session object directly (or wrapped in an
+      // array in some older builds). Accept either shape.
+      const s = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (!s) continue;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const notExpired = typeof s.expires_at === 'number' && s.expires_at > nowSec;
+      if (s.access_token && (notExpired || s.refresh_token)) return true;
+    }
+  } catch { /* fall through — treat as no session */ }
+  return false;
+}
+
 function runIntro() {
   const splash = $('splash');
   const intro = $('introCard');
   const main = $('mainCard');
   const fp = $('flowProgress');
   if (!splash || !intro || !main) return;
+
+  // ?intro=1 — arrived from an explicit logout on /v6/account. Force the
+  // intro card: skip both the "logged-in? go to dashboard" auto-redirect
+  // (Supabase's token clearing on signOut can race with our navigation, so
+  // relying on hasSupabaseSession() here would risk bouncing the user right
+  // back) and the splash + entrance animation.
+  const skipSplash = new URLSearchParams(location.search).has('intro');
+
+  if (!skipSplash && hasSupabaseSession()) {
+    window.location.replace('/v6/account');
+    return;
+  }
 
   const finish = () => {
     intro.remove();
@@ -625,11 +660,17 @@ function runIntro() {
     goToStep(1);
   };
 
-  setTimeout(() => {
-    splash.classList.add('hide');
+  if (skipSplash) {
+    splash.remove();
+    intro.style.animation = 'none';
     intro.hidden = false;
-    setTimeout(() => splash.remove(), 800);
-  }, 2650);
+  } else {
+    setTimeout(() => {
+      splash.classList.add('hide');
+      intro.hidden = false;
+      setTimeout(() => splash.remove(), 800);
+    }, 2650);
+  }
 
   $('rbNo')?.addEventListener('click', finish);
   $('rbYes')?.addEventListener('click', () => {

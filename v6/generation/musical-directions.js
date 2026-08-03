@@ -1,4 +1,4 @@
-// v5 musical-directions generator. Split into TWO Claude calls so the second
+// v6 musical-directions generator. Split into TWO model calls so the second
 // half can generate while the user is interacting with the first half.
 //
 //   Call 1 (blocking): 4 top-fit directions → returned immediately
@@ -9,7 +9,7 @@
 // while the user is listening to page-1 tracks, so the second page appears
 // instantly.
 //
-// Network: POST /api/v5/anthropic (twice)
+// Provider (Anthropic vs Gemini) is selected in ai-provider.js.
 //
 // Success return:
 //   { directions:   [4 objects, ranks 1-4],
@@ -22,7 +22,8 @@
 //            'matcher_error',
 //     reasoning_en: '...' }
 
-const MODEL = 'claude-sonnet-4-6';
+import { callModel, parseJSONFromText } from '/v6/generation/ai-provider.js?v=03082026c';
+
 const MAX_TOKENS = 4000;
 
 // The genre list below must byte-match the strings stored in
@@ -129,10 +130,13 @@ Open with **Beat 1** (required). Add Beat 2 or Beat 3 (optional) if space allows
 
 ### Vocabulary — use Hebrew, never transliterate English
 
-- Trumpet → חצוצרה (never "טרומפט")
-- Percussion → כלי הקשה (never "פרקסן" / "פרקושן" / "פרקשן")
-- Plucked strings → פרוטות or מנוגנות (never "מוכות" — that means "beaten")
-- OK as-is: פסנתר, גיטרה, בס, קונטרבס, תופים, סקסופון, אורגן, סינתיסייזר, שירה, מקהלה, כלי נשיפה.
+**Instruments — prefer families over specifics.** Only פסנתר, סינתים, and גיטרה may be named directly. Do not qualify guitar with a type (never גיטרות חשמליות, גיטרות ניילון, גיטרה אקוסטית). For anything else, use the family name.
+
+- Wind instruments → כלי נשיפה (never חצוצרה, סקסופון, קלרינט, טובה)
+- Percussion → כלי הקשה (never "פרקסן" / "פרקושן" / "פרקשן"; also avoid naming תופים / קונגה specifically)
+- Strings other than guitar → כלי מיתר (never כינור, צ'לו, קונטרבס)
+- Keyboards other than פסנתר / סינתים → don't mention them at all (never אורגן, סינתיסייזר, קלידים)
+- Vocals: שירה, מקהלה are fine
 
 ### Scene-setting — generic OK, specific NOT OK
 
@@ -149,12 +153,12 @@ Open with **Beat 1** (required). Add Beat 2 or Beat 3 (optional) if space allows
 ### Good examples (each stays within the word budget)
 
 - "אווירה אקוסטית ביתית עם גיטרה ושירה נעימה" — Beat 1 + Beat 2
-- "רוגע אירופאי קלאסי עם גיטרות ניילון ופסנתר" — Beat 1 (with cultural tag) + Beat 2
+- "רוגע אירופאי קלאסי עם גיטרות ופסנתר" — Beat 1 (with cultural tag) + Beat 2
 - "קצב רגאיי שמח, אוורירי ולא מתאמץ" — Beat 1 only
 - "חגיגה לטינית קצבית של שנות ה-60 וה-70" — Beat 1 with era
 - "גרוב איטי וחם, מתאים לערב מאוחר" — Beat 1 + Beat 3
 - "אנרגיית דיסקו נוצצת שמחזיקה את הבר בתנועה" — Beat 1 + Beat 3
-- "גרוב מדברי מהפנט עם גיטרות חשמליות" — Beat 1 + Beat 2
+- "גרוב מדברי עם גיטרות" — Beat 1 + Beat 2
 
 ### Bad examples — do not write like this
 
@@ -232,7 +236,7 @@ function summarizeDirection(d, idx) {
 
 function buildUserMessage({ bizName, bizDesc, atmospheres, subset, priorDirections }) {
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
-  const atmLine  = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
+  const atmLine = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
   const base = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
 
   // The system prompt asks for 8 directions. For the split flow, each call
@@ -250,82 +254,33 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, subset, priorDirectio
   return base;
 }
 
-// Haiku 4.5 usually returns clean JSON when the prompt asks for JSON, but may
-// occasionally wrap it in ```json … ``` fences or add trailing whitespace.
-function parseJSONFromText(text) {
-  const trimmed = String(text || '').trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return JSON.parse(fenced ? fenced[1] : trimmed);
-}
-
-async function callAnthropic({ bizName, bizDesc, atmospheres, subset, priorDirections, label }) {
-  const t0 = Date.now();
-  const r = await fetch('/api/v5/anthropic', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({
-      model:      MODEL,
-      max_tokens: MAX_TOKENS,
-      // cache_control on the system prompt caches it for reuse across users.
-      // Sonnet 4.6's minimum cacheable prefix is 2048 tokens — our prompt is
-      // ~2400, so caching activates. Verify via `cache_read_input_tokens`.
-      system: [
-        {
-          type:          'text',
-          text:          SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      messages: [
-        {
-          role:    'user',
-          content: buildUserMessage({ bizName, bizDesc, atmospheres, subset, priorDirections }),
-        },
-      ],
-    }),
+// Provider-agnostic call. Caching is on: system prompt is stable across
+// users, so on Anthropic the ~2400-token prefix is served from the ephemeral
+// cache after the first call. No-op on Gemini.
+async function callDirections({ bizName, bizDesc, atmospheres, subset, priorDirections, label }) {
+  const { text } = await callModel({
+    system: SYSTEM_PROMPT,
+    userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, subset, priorDirections }),
+    maxTokens: MAX_TOKENS,
+    cache: true,
+    label,
   });
-  if (!r.ok) {
-    const errBody = await r.json().catch(() => ({}));
-    throw new Error(`anthropic ${r.status}: ${errBody.error?.message || errBody.error || r.statusText}`);
-  }
-  const data = await r.json();
-  const elapsed = Date.now() - t0;
-
-  // Cache visibility during dev — strip once cache behavior is confirmed.
-  if (data?.usage) {
-    console.log(`v5 anthropic ${label || 'call'} (${elapsed}ms):`, {
-      input:       data.usage.input_tokens,
-      cache_write: data.usage.cache_creation_input_tokens,
-      cache_read:  data.usage.cache_read_input_tokens,
-      output:      data.usage.output_tokens,
-    });
-  }
-
-  if (data?.stop_reason === 'refusal') {
-    throw new Error('anthropic: model refused the request');
-  }
-
-  const text = Array.isArray(data?.content)
-    ? data.content.find((b) => b?.type === 'text')?.text
-    : null;
-  if (typeof text !== 'string') throw new Error('anthropic: no text block in response');
-
   return parseJSONFromText(text);
 }
 
 function validateBpmRange(bpm) {
   return bpm && typeof bpm === 'object'
-      && Number.isFinite(bpm.min) && Number.isFinite(bpm.max)
-      && bpm.min <= bpm.max;
+    && Number.isFinite(bpm.min) && Number.isFinite(bpm.max)
+    && bpm.min <= bpm.max;
 }
 
 function validateDirection(d) {
   return d
-      && typeof d.title_en       === 'string' && d.title_en.length
-      && typeof d.description_he === 'string' && d.description_he.length
-      && typeof d.anchor_genre   === 'string' && d.anchor_genre.length
-      && Array.isArray(d.secondary_genres)
-      && validateBpmRange(d.bpm_range);
+    && typeof d.title_en === 'string' && d.title_en.length
+    && typeof d.description_he === 'string' && d.description_he.length
+    && typeof d.anchor_genre === 'string' && d.anchor_genre.length
+    && Array.isArray(d.secondary_genres)
+    && validateBpmRange(d.bpm_range);
 }
 
 // Normalizes a raw model response into an array of validated + sorted
@@ -347,13 +302,13 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres 
   // Call 1 — page 1 (top 4 fits). Blocks the user.
   let parsed1;
   try {
-    parsed1 = await callAnthropic({ bizName, bizDesc, atmospheres, subset: 'top', label: 'page1' });
+    parsed1 = await callDirections({ bizName, bizDesc, atmospheres, subset: 'top', label: 'page1' });
   } catch (e) {
     return { error: 'matcher_error', reasoning_en: e.message };
   }
   if (parsed1?.error) {
     return {
-      error:        String(parsed1.error),
+      error: String(parsed1.error),
       reasoning_en: typeof parsed1.reasoning_en === 'string' ? parsed1.reasoning_en : '',
     };
   }
@@ -368,15 +323,15 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres 
   // avoid duplicates and choose complementary sonic territory.
   const page2Promise = (async () => {
     try {
-      const parsed2 = await callAnthropic({
+      const parsed2 = await callDirections({
         bizName, bizDesc, atmospheres,
-        subset:          'next',
+        subset: 'next',
         priorDirections: page1,
-        label:           'page2',
+        label: 'page2',
       });
       if (parsed2?.error) {
         return {
-          error:        String(parsed2.error),
+          error: String(parsed2.error),
           reasoning_en: typeof parsed2.reasoning_en === 'string' ? parsed2.reasoning_en : '',
         };
       }

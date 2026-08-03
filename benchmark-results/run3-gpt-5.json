@@ -28,7 +28,7 @@
         "rejected_prediction_tokens": 0
       }
     },
-    "text": "{\n  \"directions\": [\n    {\n      \"rank\": 1,\n      \"title_en\": \"Bossa Nova, Lo-Fi Bossa & Samba\",\n      \"anchor_genre\": \"Bossa Nova\",\n      \"secondary_genres\": [\"LoFi Bossa\", \"Jazz (Standards)\", \"Samba\"],\n      \"description_he\": \"בוסה נובה אוורירית עם גיטרות ניילון וקצב נעים\",\n      \"bpm_range\": {\"min\": 96, \"max\": 118}\n    },\n    {\n      \"rank\": 2,\n      \"title_en\": \"French Jazz, Swing & Standards\",\n      \"anchor_genre\": \"French Jazz\",\n      \"secondary_genres\": [\"Swing Jazz\", \"Jazz (Standards)\", \"Easy Listening\"],\n      \"description_he\": \"ג'אז צרפתי אלגנטי עם אקורדיון וקונטרבס\",\n      \"bpm_range\": {\"min\": 92, \"max\": 118}\n    },\n    {\n      \"rank\": 3,\n      \"title_en\": \"Neo-Soul, R&B & Acid Jazz\",\n      \"anchor_genre\": \"Neo Soul\",\n      \"secondary_genres\": [\"Rnb\", \"Acid Jazz\", \"LoFi Beats\"],\n      \"description_he\": \"גרוב רך וחם עם שירה נשית ונגיעות ג'אז\",\n      \"bpm_range\": {\"min\": 78, \"max\": 94}\n    },\n    {\n      \"rank\": 4,\n      \"title_en\": \"Downtempo, IndieTronica & Lo-Fi Beats\",\n      \"anchor_genre\": \"Downtempo\",\n      \"secondary_genres\": [\"IndieTronica\", \"LoFi Beats\", \"Acid Jazz\"],\n      \"description_he\": \"אלקטרוני רגוע ומעודן עם באסים רכים וקצב נינוח\",\n      \"bpm_range\": {\"min\": 74, \"max\": 90}\n    }\n  ]\n}",
+    "text": "{\n  \"directions\": [\n    {\n      \"rank\": 1,\n      \"title_en\": \"Bossa Nova, Lo-Fi Bossa & Samba\",\n      \"anchor_genre\": \"Bossa Nova\",\n      \"secondary_genres\": [\"LoFi Bossa\", \"Jazz (Standards)\", \"Samba\"],\n      \"description_he\": \"בוסה נובה אוורירית עם גיטרות וקצב נעים\",\n      \"bpm_range\": {\"min\": 96, \"max\": 118}\n    },\n    {\n      \"rank\": 2,\n      \"title_en\": \"French Jazz, Swing & Standards\",\n      \"anchor_genre\": \"French Jazz\",\n      \"secondary_genres\": [\"Swing Jazz\", \"Jazz (Standards)\", \"Easy Listening\"],\n      \"description_he\": \"ג'אז צרפתי אלגנטי עם אקורדיון וקונטרבס\",\n      \"bpm_range\": {\"min\": 92, \"max\": 118}\n    },\n    {\n      \"rank\": 3,\n      \"title_en\": \"Neo-Soul, R&B & Acid Jazz\",\n      \"anchor_genre\": \"Neo Soul\",\n      \"secondary_genres\": [\"Rnb\", \"Acid Jazz\", \"LoFi Beats\"],\n      \"description_he\": \"גרוב רך וחם עם שירה נשית ונגיעות ג'אז\",\n      \"bpm_range\": {\"min\": 78, \"max\": 94}\n    },\n    {\n      \"rank\": 4,\n      \"title_en\": \"Downtempo, IndieTronica & Lo-Fi Beats\",\n      \"anchor_genre\": \"Downtempo\",\n      \"secondary_genres\": [\"IndieTronica\", \"LoFi Beats\", \"Acid Jazz\"],\n      \"description_he\": \"אלקטרוני רגוע ומעודן עם באסים רכים וקצב נינוח\",\n      \"bpm_range\": {\"min\": 74, \"max\": 90}\n    }\n  ]\n}",
     "parsed": {
       "directions": [
         {
@@ -40,7 +40,7 @@
             "Jazz (Standards)",
             "Samba"
           ],
-          "description_he": "בוסה נובה אוורירית עם גיטרות ניילון וקצב נעים",
+          "description_he": "בוסה נובה אוורירית עם גיטרות וקצב נעים",
           "bpm_range": {
             "min": 96,
             "max": 118

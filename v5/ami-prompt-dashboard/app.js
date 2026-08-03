@@ -1,24 +1,27 @@
 // v5 Ami prompt dashboard.
 // Lets Ami tweak the editable half of the musical-directions system prompt,
-// fire one Anthropic call against real business inputs, and see the returned
+// fire one model call against real business inputs, and see the returned
 // directions in a readable text block with a copy button.
+//
+// Which model runs (Anthropic vs Gemini) is controlled by v6/generation/ai-provider.js.
+// One switch there governs both this dashboard and the v6 production flow.
 //
 // Flow:
 //   1. Import EDITABLE_PROMPT_SECTION + FIXED_PROMPT_SECTION from the
 //      musical-directions module (single source of truth).
 //   2. Pre-fill the textarea with EDITABLE_PROMPT_SECTION.
 //   3. On generate: assemble system = editedEditable + '\n\n' + FIXED,
-//      user message = business inputs, call /api/v5/anthropic.
+//      user message = business inputs, call the shared ai-provider.
 //   4. Parse response JSON, format each direction as text, display.
 //   5. Copy button dumps the formatted text to clipboard.
 
 import {
   EDITABLE_PROMPT_SECTION,
   FIXED_PROMPT_SECTION,
-} from '/v5/generation/musical-directions.js?v=29072026e';
+} from '/v5/generation/musical-directions.js?v=03082026b';
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
+import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=03082026c';
 
-const MODEL      = 'claude-sonnet-4-6';
 const MAX_TOKENS = 4000;
 
 const $ = (id) => document.getElementById(id);
@@ -139,12 +142,6 @@ function buildUserMessage({ bizName, bizDesc, atmospheres }) {
   return `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
 }
 
-function parseJSONFromText(text) {
-  const trimmed = String(text || '').trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return JSON.parse(fenced ? fenced[1] : trimmed);
-}
-
 // Format one direction as a text block. Same format is what the copy button
 // puts on the clipboard.
 function formatDirection(d, idx) {
@@ -174,33 +171,6 @@ function formatError(parsed) {
   return `ERROR: ${parsed?.error || 'unknown'}\nReasoning: ${parsed?.reasoning_en || '(none)'}`;
 }
 
-async function callAnthropic({ system, userMessage }) {
-  const t0 = Date.now();
-  const r = await fetch('/api/v5/anthropic', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({
-      model:      MODEL,
-      max_tokens: MAX_TOKENS,
-      // No cache_control: Ami's edits change the prompt every time, so
-      // caching would just add write premium with no hit.
-      system:     [{ type: 'text', text: system }],
-      messages:   [{ role: 'user', content: userMessage }],
-    }),
-  });
-  const elapsed = Date.now() - t0;
-  if (!r.ok) {
-    const errBody = await r.json().catch(() => ({}));
-    throw new Error(`anthropic ${r.status}: ${errBody.error?.message || errBody.error || r.statusText}`);
-  }
-  const data = await r.json();
-  const text = Array.isArray(data?.content)
-    ? data.content.find((b) => b?.type === 'text')?.text
-    : null;
-  if (typeof text !== 'string') throw new Error('anthropic: no text block in response');
-  return { text, usage: data?.usage || null, elapsed };
-}
-
 async function onGenerate() {
   const bizName = els.bizName.value.trim();
   const bizDesc = els.bizDesc.value.trim();
@@ -220,13 +190,17 @@ async function onGenerate() {
   const originalBtnHtml = els.generateBtn.innerHTML;
   els.generateBtn.disabled = true;
   els.generateBtn.innerHTML = '<span class="sb-spinner"></span>';
-  setStatus('שולח לאנתרופיק...', '');
+  setStatus(`שולח ל־${PROVIDER}...`, '');
 
   try {
     const system      = edited.trimEnd() + '\n\n' + FIXED_PROMPT_SECTION;
     const userMessage = buildUserMessage({ bizName, bizDesc, atmospheres: atmos });
 
-    const { text, usage, elapsed } = await callAnthropic({ system, userMessage });
+    // No caching: Ami's edits change the prompt every call, so Anthropic
+    // caching would just add write premium with no hit. No-op on Gemini.
+    const { text, usage, elapsed } = await callModel({
+      system, userMessage, maxTokens: MAX_TOKENS, cache: false, label: 'ami',
+    });
 
     let parsed;
     try {
@@ -258,18 +232,18 @@ async function onGenerate() {
 function renderResult(text, usage, elapsed) {
   els.outputText.textContent = text;
   els.resultsCard.style.display = '';
-  if (usage) {
+  const base = `[${PROVIDER}]  elapsed ${(elapsed / 1000).toFixed(1)}s`;
+  if (!usage) {
+    els.usageLine.textContent = base;
+  } else if (PROVIDER === 'gemini') {
     els.usageLine.textContent =
-      `elapsed ${(elapsed / 1000).toFixed(1)}s · input ${usage.input_tokens || 0}` +
-      ` · output ${usage.output_tokens || 0}` +
-      (usage.cache_read_input_tokens
-        ? ` · cache_read ${usage.cache_read_input_tokens}`
-        : '') +
-      (usage.cache_creation_input_tokens
-        ? ` · cache_write ${usage.cache_creation_input_tokens}`
-        : '');
+      `${base} · input ${usage.input || 0} · output ${usage.output || 0}` +
+      (usage.thinking ? ` · thinking ${usage.thinking}` : '');
   } else {
-    els.usageLine.textContent = `elapsed ${(elapsed / 1000).toFixed(1)}s`;
+    els.usageLine.textContent =
+      `${base} · input ${usage.input_tokens || 0} · output ${usage.output_tokens || 0}` +
+      (usage.cache_read_input_tokens     ? ` · cache_read ${usage.cache_read_input_tokens}`     : '') +
+      (usage.cache_creation_input_tokens ? ` · cache_write ${usage.cache_creation_input_tokens}` : '');
   }
   els.resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

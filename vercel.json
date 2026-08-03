@@ -51,6 +51,9 @@
     "api/v6/transcribe.js": {
       "maxDuration": 60
     },
+    "api/v6/gemini.js": {
+      "maxDuration": 60
+    },
     "api/v6/place-lookup.js": {
       "maxDuration": 15
     },

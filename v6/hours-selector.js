@@ -158,25 +158,17 @@ function fromPersisted({ hours = {}, master }) {
   return { master: { open: masterOpen, close: masterClose }, days };
 }
 
-export async function runHoursSelection({ prechecked = null } = {}) {
-  const card = document.querySelector('.screen-card');
-  if (!card) throw new Error('hours-selector: .screen-card not found');
-
+// Low-level editor. Renders the day-row grid + closed summary into any
+// container and returns handles the caller can drive from its own chrome
+// (submit button, save handler, etc.). Used by both the onboarding flow
+// (`runHoursSelection`) and the profile tab.
+export function mountHoursEditor(container, { prechecked = null, onChange = null } = {}) {
   const state = prechecked ? fromPersisted(prechecked) : defaultState();
-
-  const heading = el('h1', {}, 'מתי העסק פתוח?');
-  const subtitle = el('p', { class: 'subtitle' });
-  subtitle.innerHTML = 'שינוי שעות ביום אחד מעדכן את כולם.<br>' +
-    'רוצים ליום מסוים שעות שונות? סמנו "שעות שונות" לצידו.';
 
   const dayList = el('div', { class: 'day-list' });
   const closedSummary = el('div', { class: 'closed-summary' });
-  const submitBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'המשך ←');
+  container.replaceChildren(dayList, closedSummary);
 
-  card.replaceChildren(heading, subtitle, dayList, closedSummary, submitBtn);
-
-  // When an unlocked day's hours change, master + all other unlocked open
-  // days follow.
   function propagateMasterEdit(field, value) {
     state.master[field] = value;
     for (const d of state.days) {
@@ -236,8 +228,7 @@ export async function runHoursSelection({ prechecked = null } = {}) {
     });
 
     renderClosedSummary();
-    const allClosed = state.days.every((d) => d.closed);
-    submitBtn.disabled = allClosed;
+    if (onChange) onChange({ allClosed: state.days.every((d) => d.closed) });
   }
 
   function renderClosedSummary() {
@@ -257,13 +248,39 @@ export async function runHoursSelection({ prechecked = null } = {}) {
 
   render();
 
+  return {
+    getPayload: () => collectHours(state),
+    isAllClosed: () => state.days.every((d) => d.closed),
+  };
+}
+
+export async function runHoursSelection({ prechecked = null } = {}) {
+  const card = document.querySelector('.screen-card');
+  if (!card) throw new Error('hours-selector: .screen-card not found');
+
+  const heading = el('h1', {}, 'מתי העסק פתוח?');
+  const subtitle = el('p', { class: 'subtitle' });
+  subtitle.innerHTML = 'שינוי שעות ביום אחד מעדכן את כולם.<br>' +
+    'רוצים ליום מסוים שעות שונות? סמנו "שעות שונות" לצידו.';
+
+  const editorHost = el('div');
+  const submitBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'המשך ←');
+
+  card.replaceChildren(heading, subtitle, editorHost, submitBtn);
+
+  const editor = mountHoursEditor(editorHost, {
+    prechecked,
+    onChange: ({ allClosed }) => { submitBtn.disabled = allClosed; },
+  });
+
   return new Promise((resolve) => {
     submitBtn.addEventListener('click', () => {
+      if (editor.isAllClosed()) return;
       submitBtn.disabled = true;
       submitBtn.replaceChildren(
         el('span', { class: 'sb-spinner', 'aria-label': 'טוען' }),
       );
-      resolve(collectHours(state));
+      resolve(editor.getPayload());
     });
   });
 }

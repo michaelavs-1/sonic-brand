@@ -24,6 +24,7 @@ if (new URLSearchParams(location.search).has('reset')) {
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeTargetForToday } from '../generation/playlist-length.js?v=02082026a';
+import { mountHoursEditor } from '../hours-selector.js?v=03082026a';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -220,7 +221,6 @@ async function loadBusinesses() {
 }
 
 function renderAll() {
-  closeNameEdit();
   renderBusiness();
   renderPlaceBanner();
   renderPlaylistsTitle();
@@ -285,26 +285,76 @@ function renderPlaceBanner() {
   }
 }
 
-// ---------- name editing ----------
-$('editName')?.addEventListener('click', () => {
-  $('nameInput').value = business.name || '';
-  $('nameEdit').classList.remove('hide');
-  $('nameInput').focus();
+// ---------- tabs (Home / Profile) ----------
+// The profile tab is mounted lazily on switch — this lets us pull the latest
+// business.name + bmeta().hours each time the user opens it (so edits made
+// elsewhere, like the onboarding-time hours, always appear fresh) and lets
+// the hours editor rebuild its DOM from scratch instead of us wiring a
+// separate "reset" path.
+let hoursEditor = null;
+
+document.querySelectorAll('.nav button[data-tab]').forEach((btn) => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
-$('nameCancel')?.addEventListener('click', closeNameEdit);
-$('nameSave')?.addEventListener('click', saveName);
-$('nameInput')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveName(); });
-function closeNameEdit() { $('nameEdit')?.classList.add('hide'); }
-async function saveName() {
-  const name = $('nameInput').value.trim();
-  if (!name) { toast('הכניסו שם לעסק'); return; }
-  const { error } = await sb.from('businesses').update({ name }).eq('id', business.id);
-  if (error) console.warn('name update blocked:', error.message);
-  business.name = name;
-  renderBusiness();
-  closeNameEdit();
-  toast('שם העסק עודכן ✓');
+
+function switchTab(tab) {
+  ['Home', 'Profile'].forEach((t) => {
+    $('tab' + t)?.classList.toggle('hide', t !== tab);
+  });
+  document.querySelectorAll('.nav button[data-tab]').forEach((b) => {
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+  if (tab === 'Profile') renderProfileTab();
 }
+
+function renderProfileTab() {
+  $('profileBizName').value = business?.name || '';
+  $('profileMsg').textContent = '';
+  const savedHours = bmeta().hours;
+  hoursEditor = mountHoursEditor($('hoursHost'), {
+    prechecked: savedHours ? { hours: savedHours } : null,
+    onChange: ({ allClosed }) => { $('saveProfile').disabled = allClosed; },
+  });
+}
+
+$('saveProfile')?.addEventListener('click', async () => {
+  const name = $('profileBizName').value.trim();
+  const msg  = $('profileMsg');
+  const btn  = $('saveProfile');
+  msg.style.color = '';
+  msg.textContent = '';
+
+  if (!name) { msg.style.color = '#ff9b8a'; msg.textContent = 'הכניסו שם לעסק'; return; }
+  if (!hoursEditor || hoursEditor.isAllClosed()) {
+    msg.style.color = '#ff9b8a';
+    msg.textContent = 'סמנו לפחות יום פתוח אחד';
+    return;
+  }
+  const { hours, longestMinutes } = hoursEditor.getPayload();
+
+  btn.disabled = true;
+  const origLabel = btn.textContent;
+  btn.textContent = 'שומרים…';
+  try {
+    if (name !== business.name) {
+      const { error } = await sb.from('businesses').update({ name }).eq('id', business.id);
+      if (error) console.warn('name update blocked:', error.message);
+      else business.name = name;
+    }
+    await saveB({ hours, longestMinutes });
+    renderBusiness();
+    renderPlaylistsTitle();
+    msg.style.color = 'var(--teal-soft)';
+    msg.textContent = 'נשמר ✓';
+  } catch (e) {
+    console.error('saveProfile:', e);
+    msg.style.color = '#ff9b8a';
+    msg.textContent = 'שגיאה בשמירה — נסו שוב';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = origLabel;
+  }
+});
 
 // ---------- playlists ----------
 // Target length for daily playlists = today's open hours + 1h buffer. The

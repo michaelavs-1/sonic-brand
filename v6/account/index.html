@@ -340,6 +340,69 @@ a.link{color:var(--accent)}
 .tw-actions{display:flex;gap:10px;margin-top:14px}
 .tw-actions .tw-ok{flex:1;background:linear-gradient(135deg,#f0a73f,#d98a1f);color:#1b1508;border:none;border-radius:12px;font-family:inherit;font-weight:800;font-size:15px;padding:11px;cursor:pointer}
 .tw-actions .tw-cancel{background:none;border:1px solid rgba(255,255,255,.18);color:#93a5af;border-radius:12px;font-family:inherit;font-size:13.5px;padding:11px 14px;cursor:pointer}
+
+/* ---------- tabs + bottom nav ---------- */
+.tabview{animation:tab-fade .28s ease}
+@keyframes tab-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+.nav{
+  position:absolute;bottom:12px;right:14px;left:14px;display:flex;z-index:20;
+  background:rgba(15,28,38,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--border-2);border-radius:18px;padding:6px;gap:4px;
+  box-shadow:0 10px 30px rgba(0,0,0,.45);
+}
+.nav button{
+  flex:1;background:none;border:none;color:var(--muted);font-family:inherit;font-size:11px;
+  font-weight:700;padding:8px 2px 7px;cursor:pointer;border-radius:13px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .2s;
+}
+.nav button .nico{font-size:19px;transition:transform .2s}
+.nav button.active{color:var(--accent);background:rgba(240,167,63,.10)}
+.nav button.active .nico{transform:translateY(-1px) scale(1.12)}
+
+/* ---------- profile form ---------- */
+.frow{margin-bottom:12px}
+.frow:last-child{margin-bottom:0}
+.flabel{display:block;color:var(--muted);font-size:12.5px;font-weight:700;margin-bottom:6px}
+
+/* ---------- hours selector (shared with /v6 onboarding) ---------- */
+.day-list{background:rgba(255,255,255,.03);border:1px solid var(--border-2);border-radius:14px;padding:4px 14px;margin-bottom:14px}
+.day-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.day-row:last-child{border-bottom:none}
+.day-row.closed .override-cell,
+.day-row.closed .times-cell{opacity:.35}
+.day-cell{display:flex;align-items:center;gap:10px}
+.day-cell input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
+.day-cell label{font-size:15px;font-weight:700;cursor:pointer;user-select:none;transition:color .15s}
+.day-row.closed .day-cell{cursor:pointer}
+.day-row.closed .day-cell label{color:var(--muted);text-decoration:line-through;text-decoration-color:rgba(255,255,255,.2)}
+.override-cell{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;cursor:pointer;user-select:none;transition:background .15s;white-space:nowrap}
+.override-cell:hover{background:rgba(255,255,255,.04)}
+.override-cell input[type=checkbox]{width:16px;height:16px;accent-color:var(--teal-soft);cursor:pointer}
+.override-cell label{font-size:12px;color:var(--muted);font-weight:600;cursor:pointer}
+.day-row .override-cell.active label{color:var(--teal-soft)}
+.day-row.closed .override-cell{opacity:.3;pointer-events:none}
+.times-cell{display:flex;align-items:center;gap:8px;direction:ltr}
+.time-block{display:flex;align-items:center;background:#0d1822;border:1.5px solid var(--border-2);border-radius:9px;padding:4px 10px;transition:border-color .15s,box-shadow .15s,color .15s}
+.time-block:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,167,63,.12)}
+.time-block .colon{color:var(--muted);font-size:15px;font-weight:700;padding:0 3px}
+.time-part{background:transparent;border:none;outline:none;font-family:inherit;font-size:15px;font-weight:700;color:var(--text);width:26px;padding:6px 0;text-align:center;caret-color:var(--accent)}
+.time-part::-webkit-outer-spin-button,
+.time-part::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.day-row.override-on .time-block,
+.day-row.override-on .time-block .colon,
+.day-row.override-on .time-part{color:var(--teal-soft);border-color:rgba(87,163,189,.35)}
+.day-row.override-on .time-block:focus-within{border-color:var(--teal-soft);box-shadow:0 0 0 3px rgba(87,163,189,.15)}
+.time-block[data-disabled="true"]{opacity:.4;pointer-events:none}
+.times-arrow{color:var(--muted);font-size:15px}
+.closed-summary{text-align:center;font-size:13px;color:var(--muted);margin-bottom:6px;line-height:1.5;min-height:20px}
+.closed-summary b{color:var(--text);font-weight:800}
+.closed-summary.warn{color:#ff9b8a}
+@media (max-width:500px){
+  .day-row{grid-template-columns:1fr;gap:8px}
+  .times-cell{justify-self:start}
+  .override-cell{justify-self:start}
+}
 </style>
 </head>
 <body>
@@ -406,16 +469,9 @@ a.link{color:var(--accent)}
       <div class="hello" id="greeting">ברוכים הבאים 👋</div>
       <div class="bizrow">
         <h1 id="bizName">העסק שלי</h1>
-        <button class="editbtn" id="editName" title="עריכת שם">✏️</button>
       </div>
     </div>
     <button class="btn-ghost" id="logout">יציאה</button>
-  </div>
-
-  <div class="name-edit hide" id="nameEdit">
-    <input class="input" id="nameInput" type="text" maxlength="40" placeholder="שם העסק">
-    <button class="btn" id="nameSave">שמירה</button>
-    <button class="btn-ghost" id="nameCancel">ביטול</button>
   </div>
 
   <!-- HOME -->
@@ -441,6 +497,31 @@ a.link{color:var(--accent)}
     </div>
   </div>
 
+  <!-- PROFILE -->
+  <div id="tabProfile" class="tabview hide">
+    <div class="box">
+      <div class="frow">
+        <label class="flabel" for="profileBizName">שם העסק</label>
+        <input class="input" id="profileBizName" type="text" maxlength="40" placeholder="שם העסק">
+      </div>
+    </div>
+
+    <div class="box">
+      <h2><span class="h-ico">🕒</span>שעות פתיחה</h2>
+      <p class="muted sub">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן את כולם — סמנו "שעות שונות" ליום מסוים.</p>
+      <div id="hoursHost"></div>
+    </div>
+
+    <button class="btn" id="saveProfile">שמירת הפרופיל</button>
+    <p class="muted" id="profileMsg" style="text-align:center;margin-top:10px"></p>
+  </div>
+
+  <!-- bottom nav -->
+  <div class="nav">
+    <button data-tab="Home" class="active" type="button"><span class="nico">🏠</span>בית</button>
+    <button data-tab="Profile" type="button"><span class="nico">🏪</span>פרופיל</button>
+  </div>
+
   <div class="toast" id="toast"></div>
 </div>
 
@@ -461,6 +542,6 @@ a.link{color:var(--accent)}
   </div>
 </div>
 
-<script type="module" src="/v6/account/app.js?v=03082026c"></script>
+<script type="module" src="/v6/account/app.js?v=03082026d"></script>
 </body>
 </html>

@@ -15,7 +15,7 @@ import { runAtmosphereSelection } from '/v6/atmosphere.js?v=02082026a';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
 import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=02082026a';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
-import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=02082026e';
+import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=03082026c';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=02082026a';
 import {
   initPlaylistResultsShell,
@@ -94,10 +94,12 @@ function invalidateFrom(step) {
     state.page2Promise = null;
     state.popularityWindow = null;
   }
-  if (step <= 3) {
+  // Step 3 is the hours picker; it doesn't feed anything downstream that
+  // needs invalidation. Hours themselves persist so re-entering pre-fills.
+  if (step <= 4) {
     state.picked = null;
   }
-  if (step <= 4) {
+  if (step <= 5) {
     state.results = null;
   }
 }
@@ -283,11 +285,21 @@ async function runBusinessStep() {
 
   const bizNameEl = $('bizName');
   const bizDescEl = $('bizDesc');
+  const bizNameHint = $('bizNameHint');
+  const bizDescHint = $('bizDescHint');
   const btn = $('submitBtn');
   const dictateBtn = $('dictateBtn');
 
   if (state.bizName && !bizNameEl.value) bizNameEl.value = state.bizName;
   if (state.bizDesc && !bizDescEl.value) bizDescEl.value = state.bizDesc;
+
+  const clearErr = (el, hint) => () => {
+    if (!el.classList.contains('err')) return;
+    el.classList.remove('err');
+    if (hint) hint.textContent = '';
+  };
+  bizNameEl.addEventListener('input', clearErr(bizNameEl, bizNameHint));
+  bizDescEl.addEventListener('input', clearErr(bizDescEl, bizDescHint));
 
   dictateBtn?.addEventListener('click', toggleDictation);
 
@@ -295,7 +307,22 @@ async function runBusinessStep() {
     const onSubmit = () => {
       const bizName = bizNameEl.value.trim();
       const bizDesc = bizDescEl.value.trim();
-      if (bizDesc.length < 4) return;
+
+      let firstInvalid = null;
+      if (!bizName) {
+        bizNameEl.classList.add('err');
+        if (bizNameHint) bizNameHint.textContent = 'הכניסו את שם העסק';
+        firstInvalid = bizNameEl;
+      }
+      if (bizDesc.length < 4) {
+        bizDescEl.classList.add('err');
+        if (bizDescHint) bizDescHint.textContent = bizDesc.length === 0
+          ? 'ספרו לנו קצת על העסק כדי שנוכל להמשיך'
+          : 'תיאור קצר מדי — הוסיפו עוד כמה מילים';
+        if (!firstInvalid) firstInvalid = bizDescEl;
+      }
+      if (firstInvalid) { firstInvalid.focus(); return; }
+
       btn.disabled = true;
       btn.innerHTML = '<span class="sb-spinner" aria-label="טוען"></span>';
       resolve({ bizName, bizDesc });
@@ -430,9 +457,18 @@ async function goToStep(start) {
 
   invalidateFrom(start);
 
+  // Cross-step promise handles: Claude directions + preview prep are kicked
+  // off during the hours step (step 3) so they warm in the background while
+  // the user picks hours, then get awaited during the preview step (step 4).
+  // Declared here so they survive the s === 3 → s === 4 boundary inside the
+  // while loop.
+  let directionsPromise = null;
+  let directionsSettled = state.directions != null;
+  let preparedPromise = null;
+
   try {
     let s = start;
-    while (s <= 4) {
+    while (s <= 5) {
       setStep(s);
 
       if (s === 1) {
@@ -472,18 +508,13 @@ async function goToStep(start) {
       else if (s === 3) {
         // Fire Claude in the background — don't await yet. The hours picker
         // runs while it thinks. Track resolution via a settled flag so we
-        // know whether to show a loading screen after the hours picker.
+        // know whether to show a loading screen after step 4 starts.
         //
         // As soon as Claude page 1 lands, we IMMEDIATELY chain preparePreview
         // onto it so anchor-tracks + Spotify get_track metadata also happen
         // in the background — that way when the swipe deck actually needs
-        // to render (after the hours picker), everything is warm and it
-        // appears instantly.
-        let directionsPromise = null;
-        let directionsSettled = state.directions != null;
-        let preparedPromise = null;
-
-        if (!state.directions) {
+        // to render (step 4), everything is warm and it appears instantly.
+        if (!state.directions && !directionsPromise) {
           const rawDirections = generateMusicalDirections({
             bizName: state.bizName,
             bizDesc: state.bizDesc,
@@ -507,7 +538,7 @@ async function goToStep(start) {
             console.warn('preparePreview failed:', e);
             return emptyPreparedPreview();
           });
-        } else {
+        } else if (state.directions && !preparedPromise) {
           // Cached directions from a prior run — start prep synchronously.
           preparedPromise = preparePreview({
             directions: state.directions,
@@ -527,6 +558,45 @@ async function goToStep(start) {
         );
         state.hours = hoursResult.hours;
         state.longestMinutes = hoursResult.longestMinutes;
+        markReached(4);
+      }
+
+      else if (s === 4) {
+        // Preview swipe. If we jumped straight here (e.g. via the progress
+        // bar), the hours step didn't run — so directionsPromise may not
+        // exist yet. Kick it off inline in that case.
+        if (!state.directions && !directionsPromise) {
+          const rawDirections = generateMusicalDirections({
+            bizName: state.bizName,
+            bizDesc: state.bizDesc,
+            atmospheres: state.selectedAtmos,
+          });
+          directionsPromise = rawDirections.then(
+            (r) => { directionsSettled = true; return r; },
+            (e) => { directionsSettled = true; throw e; },
+          );
+          preparedPromise = rawDirections.then((r) => {
+            if (r?.error) return emptyPreparedPreview();
+            const popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
+            return preparePreview({
+              directions: r.directions,
+              page2Promise: r.page2Promise,
+              popularityWindow,
+            });
+          }).catch((e) => {
+            console.warn('preparePreview failed:', e);
+            return emptyPreparedPreview();
+          });
+        } else if (state.directions && !preparedPromise) {
+          preparedPromise = preparePreview({
+            directions: state.directions,
+            page2Promise: state.page2Promise,
+            popularityWindow: state.popularityWindow,
+          }).catch((e) => {
+            console.warn('preparePreview failed:', e);
+            return emptyPreparedPreview();
+          });
+        }
 
         // If Claude hasn't returned yet, show a progress bar until it does.
         // Usually already resolved by now if the user spent any real time
@@ -561,10 +631,10 @@ async function goToStep(start) {
         }
         state.picked = picked;
         state.results = null;   // any new picks → fresh build
-        markReached(4);
+        markReached(5);
       }
 
-      else if (s === 4) {
+      else if (s === 5) {
         initPlaylistResultsShell(state.picked);
         const results = await abortable(buildDirectionPlaylists({
           selectedDirections: state.picked,

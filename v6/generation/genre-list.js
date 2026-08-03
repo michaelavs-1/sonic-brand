@@ -33,7 +33,7 @@ export const GENRES = [
   'World Funk',
   'neo exotica',
   'Baroque',
-  'Medievil music',
+  'Medieval Music',
   'African highlife',
   'tishoumaren',
   'Dabke',

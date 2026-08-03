@@ -279,6 +279,20 @@
       box-shadow: 0 0 0 4px rgba(240, 167, 63, .12);
     }
 
+    .input-text.err,
+    .input-textarea.err {
+      border-color: #e07a6a;
+      box-shadow: 0 0 0 3px rgba(224, 122, 106, .16);
+    }
+
+    .field-hint {
+      margin: 6px 2px 0;
+      color: #ff9b8a;
+      font-size: 12.5px;
+      min-height: 16px;
+      line-height: 1.3;
+    }
+
     /* ---------- voice dictation ---------- */
     .dictate {
       display: flex;
@@ -1996,9 +2010,13 @@
     </div>
     <div class="fp-step" data-step="3">
       <div class="fp-bar"></div>
-      <div class="fp-lbl">מסמנים שירים</div>
+      <div class="fp-lbl">שעות פתיחה</div>
     </div>
     <div class="fp-step" data-step="4">
+      <div class="fp-bar"></div>
+      <div class="fp-lbl">מסמנים שירים</div>
+    </div>
+    <div class="fp-step" data-step="5">
       <div class="fp-bar"></div>
       <div class="fp-lbl">מקבלים פלייליסט</div>
     </div>
@@ -2093,6 +2111,7 @@
         <label class="input-label" for="bizName">שם העסק</label>
         <input type="text" class="input-text" id="bizName" placeholder="לדוגמה: בר הכפר, קפה לואיז, מסעדת נוני..."
           maxlength="80" autocomplete="off">
+        <p class="field-hint" id="bizNameHint" aria-live="polite"></p>
       </div>
 
       <div class="input-wrap">
@@ -2100,6 +2119,7 @@
         <textarea class="input-textarea" id="bizDesc"
           placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח. אווירה אינטימית, לא רעשנית..."
           maxlength="1000"></textarea>
+        <p class="field-hint" id="bizDescHint" aria-live="polite"></p>
         <button class="dictate" id="dictateBtn" type="button">
           <span id="dictIco">🎤</span>
           <span id="dictLbl">או פשוט ספרו לנו בקול — אנחנו נתמלל</span>
@@ -2110,7 +2130,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=03082026e"></script>
+  <script type="module" src="/v6/app.js?v=03082026k"></script>
 </body>
 
 </html>

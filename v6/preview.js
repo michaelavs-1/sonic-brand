@@ -281,7 +281,8 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         ? el('div', { class: 'preview-reason sw2-reason' }, d.description_he)
         : null;
 
-      const swap = el('button', { class: 'swap-btn', type: 'button' }, '🔀 שיר אחר מהכיוון הזה');
+      const SWAP_LABEL = '🔀 שיר אחר מהכיוון הזה';
+      const swap = el('button', { class: 'swap-btn', type: 'button' }, SWAP_LABEL);
 
       // --- Playback progress bar. Interpolates position between the (sparse)
       // playback_update events via a RAF loop, so scrubbing feels smooth. The
@@ -441,16 +442,43 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       });
 
       // "Another song from this direction" — re-hit /api/v5/anchor-tracks for
-      // just this direction. The endpoint picks randomly, so a repeat call
-      // usually returns a different track.
+      // just this direction. The endpoint has no exclusion parameter — it
+      // just draws randomly from the filtered pool — so a small pool can
+      // return the same current track by chance. Strategy:
+      //   1. Retry up to 4 times with the original (BPM + popularity) window
+      //      to shrug off duplicate hits when the tight pool has ≥2 tracks.
+      //   2. If that still fails, WIDEN: drop BPM + popularity constraints
+      //      and draw purely from the anchor genre. Keeps the user swapping
+      //      even after they've exhausted the tight window — better UX than
+      //      flashing "no more songs" when we still have alternatives just
+      //      outside the ideal profile.
+      //   3. Only if the widened pool is also empty (or contains only the
+      //      current track) do we show the "no more songs" message.
+      // (Reported by Ami — small directions like Klezmer or tight BPM ranges
+      // exhaust the tight pool within a handful of swaps.)
+      const drawUnique = async (dir, pop) => {
+        for (let attempt = 0; attempt < 4; attempt++) {
+          const byRank = await fetchAnchorTracks([dir], pop);
+          const candidate = byRank[String(dir.rank)];
+          if (candidate && candidate !== cardEl.dataset.trackId) return candidate;
+        }
+        return null;
+      };
       swap.addEventListener('click', async () => {
         swap.disabled = true;
-        const orig = swap.textContent;
+        // Reset to the canonical label — NOT the current DOM text, which may
+        // be a stale "אין עוד שירים" message from a prior click that failed
+        // to widen. Otherwise a successful swap after that message would end
+        // up restoring the message, and the user sees "no more songs" while
+        // songs keep loading.
         swap.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים…';
         try {
-          const byRank = await fetchAnchorTracks([d], popularityWindow);
-          const nextId = byRank[String(d.rank)];
-          if (!nextId || nextId === cardEl.dataset.trackId) {
+          let nextId = await drawUnique(d, popularityWindow);
+          if (!nextId) {
+            const wideDir = { ...d, bpm_range: { min: 0, max: 300 } };
+            nextId = await drawUnique(wideDir, [0, 100]);
+          }
+          if (!nextId) {
             swap.textContent = 'אין עוד שירים בכיוון הזה';
             return;
           }
@@ -471,10 +499,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           const newMount = el('div', { class: 'preview-spotify-mount' });
           embedWrap.append(newMount);
           wireController(newMount);
-          swap.textContent = orig;
+          swap.textContent = SWAP_LABEL;
         } catch (err) {
           console.warn('swap failed:', err);
-          swap.textContent = orig;
+          swap.textContent = SWAP_LABEL;
         } finally {
           swap.disabled = false;
         }

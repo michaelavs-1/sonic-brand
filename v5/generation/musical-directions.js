@@ -30,7 +30,7 @@ const MAX_TOKENS = 4000;
 // output and compare directly. Notable non-obvious entries:
 //   - "Heavy Rock+Metal" is intentionally one entry (DB combines them)
 //   - "Nu Metal" is a separate DB entry — keep as its own line
-//   - "Medievil music" is a DB typo we mirror rather than diverge from
+//   - "Medieval Music" — sheet now spells it correctly (was "Medievil music" pre-2026-07-28)
 //   - "Peruvian Cumbia" (not Cumbria — Cumbia is the music, Cumbria is a UK county)
 //   - "Downtempo" is one word, "Easy Listening" has no "(50s)"
 // If you change the DB's genre spelling, update this list too or anchor
@@ -50,7 +50,7 @@ export const EDITABLE_PROMPT_SECTION = `You design strategic sonic identities fo
 
 The ONLY genres you may use are the ones in this list. Do not invent, rename, translate, or combine genres. If a musical style is not in the list, it does not exist for the purposes of this task.
 
-Heavy Rock+Metal, Nu Metal, Grunge, Rock, Indie Rock, IndieTronica, Post Punk, Punk, Folk, Country, Blues, Jazz (Standards), French Jazz, Smooth Jazz, Late Night jazz, Swing Jazz, Easy Listening, Funk, World Funk, neo exotica, Baroque, Medievil music, African highlife, tishoumaren, Dabke, Algerian Rai, Arab Classic, Laiko, Turk Arabesk, Anatolian psychedelic rock, Flamenco, Fado, Bossa Nova, Samba, Salsa, cha cha cha, Peruvian Cumbia, Dancehall, Reggaeton, Reggae, lovers rock, LoFi Bossa, LoFi Beats, Acid Jazz, Neo Soul, Rnb, Hip Hop, Trap, Grime & Drill, Japanese City Pop, Disco, Nu Disco, Italo Disco, Downtempo, Indie Dance, AfroBeats, Afro House, Deep House, Soulful House, Jazz House, Tech House, UKG, Dubstep, Uplifting & Vocal Trance, Progressive & Psy Trance, Modern Pop, electro pop, alternative pop, K-Pop, 80s Pop, פופ מזרחית, מזרחית ישנה, שירי ארץ ישראל
+Heavy Rock+Metal, Nu Metal, Grunge, Rock, Indie Rock, IndieTronica, Post Punk, Punk, Folk, Country, Blues, Jazz (Standards), French Jazz, Smooth Jazz, Late Night jazz, Swing Jazz, Easy Listening, Funk, World Funk, neo exotica, Baroque, Medieval Music, African highlife, tishoumaren, Dabke, Algerian Rai, Arab Classic, Laiko, Turk Arabesk, Anatolian psychedelic rock, Flamenco, Fado, Bossa Nova, Samba, Salsa, cha cha cha, Peruvian Cumbia, Dancehall, Reggaeton, Reggae, lovers rock, LoFi Bossa, LoFi Beats, Acid Jazz, Neo Soul, Rnb, Hip Hop, Trap, Grime & Drill, Japanese City Pop, Disco, Nu Disco, Italo Disco, Downtempo, Indie Dance, AfroBeats, Afro House, Deep House, Soulful House, Jazz House, Tech House, UKG, Dubstep, Uplifting & Vocal Trance, Progressive & Psy Trance, Modern Pop, electro pop, alternative pop, K-Pop, 80s Pop, פופ מזרחית, מזרחית ישנה, שירי ארץ ישראל
 
 ## Inputs
 

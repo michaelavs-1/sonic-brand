@@ -123,14 +123,19 @@ async function main() {
     for (const row of tab2Rows) {
         const candidates = (row.playlists || []).filter((p) => p?.id);
         let taken = 0;
+        const takenThisGenre = new Set();
         for (let i = 0; i < candidates.length && taken < PLAYLISTS_PER_GENRE; i++) {
             const p = candidates[i];
             if (isEditorialPlaylist(p.id)) { editorialSkipped++; continue; }
+            // Sheet occasionally contains the same playlist twice in one row —
+            // dedupe so Phase 1's upsert doesn't hit ON CONFLICT twice.
+            if (takenThisGenre.has(p.id)) continue;
             wantedPlaylistGenres.push({
                 playlist_id:       p.id,
                 genre:             norm(row.genre),
                 position_in_genre: i + 1,
             });
+            takenThisGenre.add(p.id);
             taken++;
         }
     }

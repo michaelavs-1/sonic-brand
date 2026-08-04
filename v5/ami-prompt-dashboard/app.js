@@ -22,7 +22,7 @@ import {
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
 import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=04082026a';
 
-const MAX_TOKENS = 4000;
+const MAX_TOKENS = 16000;
 
 const $ = (id) => document.getElementById(id);
 

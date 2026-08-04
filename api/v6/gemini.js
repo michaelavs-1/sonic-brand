@@ -46,57 +46,78 @@ export default async function handler(req, res) {
 
   try {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-    const r = await fetch(url, {
-      method:  'POST',
-      headers: {
-        'x-goog-api-key': key,
-        'content-type':   'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-    const data = await r.json();
-    if (data?.usageMetadata) {
-      data.usage = {
-        input:    data.usageMetadata.promptTokenCount,
-        output:   data.usageMetadata.candidatesTokenCount,
-        thinking: data.usageMetadata.thoughtsTokenCount || 0,
-        total:    data.usageMetadata.totalTokenCount,
+
+    // Inner call: fires one Gemini request, normalizes usage, writes the
+    // diagnostic log line. Reused by the initial call and the MAX_TOKENS
+    // retry below so both paths log with identical shape.
+    async function callAndLog(currentPayload, currentLevel, isRetry) {
+      const r = await fetch(url, {
+        method:  'POST',
+        headers: {
+          'x-goog-api-key': key,
+          'content-type':   'application/json',
+        },
+        body: JSON.stringify(currentPayload),
+      });
+      const data = await r.json();
+      if (data?.usageMetadata) {
+        data.usage = {
+          input:    data.usageMetadata.promptTokenCount,
+          output:   data.usageMetadata.candidatesTokenCount,
+          thinking: data.usageMetadata.thoughtsTokenCount || 0,
+          total:    data.usageMetadata.totalTokenCount,
+        };
+      }
+      try {
+        const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
+        const text = Array.isArray(cand?.content?.parts)
+          ? cand.content.parts.find((p) => typeof p?.text === 'string')?.text
+          : null;
+        const textStr = typeof text === 'string' ? text : '';
+        const RESP_FULL_LIMIT = 8000;
+        const respField = textStr.length <= RESP_FULL_LIMIT
+          ? { text: textStr }
+          : { textHead: textStr.slice(0, 400), textTail: textStr.slice(-400) };
+        console.log('[gemini]', JSON.stringify({
+          status:        r.status,
+          model,
+          thinkingLevel: currentLevel,
+          retry:         !!isRetry,
+          label:         label || null,
+          finishReason:  cand?.finishReason || null,
+          blockReason:   data?.promptFeedback?.blockReason || null,
+          safetyRatings: cand?.safetyRatings || null,
+          textLen:       textStr.length,
+          ...respField,
+          usage:         data?.usage || null,
+          user,
+        }));
+      } catch (logErr) {
+        console.log('[gemini] log failed:', logErr?.message);
+      }
+      return { r, data };
+    }
+
+    let { r, data } = await callAndLog(payload, level, false);
+
+    // Safety net: if Gemini hit MAX_TOKENS and thinking was 'high', retry
+    // once with thinkingLevel='medium' to free some token budget for actual
+    // JSON output while keeping most of the reasoning depth. Transparent to
+    // the client — it sees the successful retry response. If the retry also
+    // hits MAX_TOKENS we return it as-is; the client-side parse error path
+    // will surface it.
+    const finishReason = data?.candidates?.[0]?.finishReason;
+    if (finishReason === 'MAX_TOKENS' && level === 'high') {
+      const retryPayload = {
+        ...payload,
+        generationConfig: {
+          ...payload.generationConfig,
+          thinkingConfig: { thinkingLevel: 'medium' },
+        },
       };
+      ({ r, data } = await callAndLog(retryPayload, 'medium', true));
     }
-    // Diagnostic log — one line per call. Written to Vercel function logs so
-    // client-side "JSON Parse error: Unexpected EOF" failures can be root-caused
-    // after the fact (empty text vs truncated text vs MAX_TOKENS vs SAFETY)
-    // WITHOUT needing to ask the user for anything — the full user prompt
-    // (biz description + name + atmospheres + subset instruction) and the
-    // full response text are both captured here.
-    try {
-      const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
-      const text = Array.isArray(cand?.content?.parts)
-        ? cand.content.parts.find((p) => typeof p?.text === 'string')?.text
-        : null;
-      const textStr = typeof text === 'string' ? text : '';
-      // Response text: log in full up to 8KB; head+tail otherwise (enough to
-      // see whether it's truncated and where).
-      const RESP_FULL_LIMIT = 8000;
-      const respField = textStr.length <= RESP_FULL_LIMIT
-        ? { text: textStr }
-        : { textHead: textStr.slice(0, 400), textTail: textStr.slice(-400) };
-      console.log('[gemini]', JSON.stringify({
-        status:        r.status,
-        model,
-        thinkingLevel: level,
-        label:         label || null,
-        finishReason:  cand?.finishReason || null,
-        blockReason:   data?.promptFeedback?.blockReason || null,
-        safetyRatings: cand?.safetyRatings || null,
-        textLen:       textStr.length,
-        ...respField,
-        usage:         data?.usage || null,
-        user,
-      }));
-    } catch (logErr) {
-      console.log('[gemini] log failed:', logErr?.message);
-    }
+
     return res.status(r.status).json(data);
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Upstream fetch failed' });

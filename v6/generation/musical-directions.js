@@ -24,7 +24,7 @@
 
 import { callModel, parseJSONFromText } from '/v6/generation/ai-provider.js?v=04082026a';
 
-const MAX_TOKENS = 4000;
+const MAX_TOKENS = 16000;
 
 // The genre list below must byte-match the strings stored in
 // playlist_genres.genre — the anchor + direction RPCs lowercase the AI's

@@ -188,15 +188,21 @@ async function main() {
         const needCount = Math.max(0, effectiveTarget - existingPids.size);
         if (needCount === 0) { skippedAlreadyAtTarget++; continue; }
         const newOnes = [];
+        const takenThisGenre = new Set();
         for (let i = 0; i < (row.playlists || []).length && newOnes.length < needCount; i++) {
             const p = row.playlists[i];
             if (!p?.id) continue;
             if (existingPids.has(p.id)) continue;
+            // Guard against the sheet containing the same playlist twice under
+            // one genre row — otherwise Phase 1's upsert into playlist_genres
+            // dies with "ON CONFLICT cannot affect row a second time".
+            if (takenThisGenre.has(p.id)) continue;
             if (isEditorialPlaylist(p.id)) {
                 skippedEditorial.push({ genre: genreNorm, position: i + 1, id: p.id });
                 continue;
             }
             newOnes.push({ pid: p.id, position: i + 1 });
+            takenThisGenre.add(p.id);
         }
         if (newOnes.length > 0) {
             perGenreNew.push({ genre: genreNorm, newPlaylists: newOnes });

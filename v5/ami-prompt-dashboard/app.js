@@ -20,7 +20,7 @@ import {
   FIXED_PROMPT_SECTION,
 } from '/v5/generation/musical-directions.js?v=03082026b';
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
-import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=03082026c';
+import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=04082026a';
 
 const MAX_TOKENS = 4000;
 

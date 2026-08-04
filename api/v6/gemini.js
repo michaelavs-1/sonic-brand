@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
-  const { model, system, user, max_output_tokens, thinking_level } = req.body || {};
+  const { model, system, user, max_output_tokens, thinking_level, label } = req.body || {};
   if (!model || typeof user !== 'string' || !user.length) {
     return res.status(400).json({ error: 'model and user are required' });
   }
@@ -62,6 +62,40 @@ export default async function handler(req, res) {
         thinking: data.usageMetadata.thoughtsTokenCount || 0,
         total:    data.usageMetadata.totalTokenCount,
       };
+    }
+    // Diagnostic log — one line per call. Written to Vercel function logs so
+    // client-side "JSON Parse error: Unexpected EOF" failures can be root-caused
+    // after the fact (empty text vs truncated text vs MAX_TOKENS vs SAFETY)
+    // WITHOUT needing to ask the user for anything — the full user prompt
+    // (biz description + name + atmospheres + subset instruction) and the
+    // full response text are both captured here.
+    try {
+      const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
+      const text = Array.isArray(cand?.content?.parts)
+        ? cand.content.parts.find((p) => typeof p?.text === 'string')?.text
+        : null;
+      const textStr = typeof text === 'string' ? text : '';
+      // Response text: log in full up to 8KB; head+tail otherwise (enough to
+      // see whether it's truncated and where).
+      const RESP_FULL_LIMIT = 8000;
+      const respField = textStr.length <= RESP_FULL_LIMIT
+        ? { text: textStr }
+        : { textHead: textStr.slice(0, 400), textTail: textStr.slice(-400) };
+      console.log('[gemini]', JSON.stringify({
+        status:        r.status,
+        model,
+        thinkingLevel: level,
+        label:         label || null,
+        finishReason:  cand?.finishReason || null,
+        blockReason:   data?.promptFeedback?.blockReason || null,
+        safetyRatings: cand?.safetyRatings || null,
+        textLen:       textStr.length,
+        ...respField,
+        usage:         data?.usage || null,
+        user,
+      }));
+    } catch (logErr) {
+      console.log('[gemini] log failed:', logErr?.message);
     }
     return res.status(r.status).json(data);
   } catch (err) {

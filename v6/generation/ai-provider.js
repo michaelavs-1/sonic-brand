@@ -75,6 +75,7 @@ async function callGemini({ system, userMessage, maxTokens, label }) {
       thinking_level:    GEMINI_THINKING_LEVEL,
       system,
       user:              userMessage,
+      label,
     }),
   });
   const elapsed = Date.now() - t0;
@@ -103,5 +104,19 @@ async function callGemini({ system, userMessage, maxTokens, label }) {
 export function parseJSONFromText(text) {
   const trimmed = String(text || '').trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return JSON.parse(fenced ? fenced[1] : trimmed);
+  const body = fenced ? fenced[1] : trimmed;
+  try {
+    return JSON.parse(body);
+  } catch (err) {
+    // Client-side mirror of the server log. Server log is the primary source
+    // (users on mobile Safari can't open dev tools) but if someone with a
+    // console attached hits it we get both sides.
+    console.warn('[ai-provider] parse failed:', {
+      message: err?.message,
+      textLen: body.length,
+      head:    body.slice(0, 120),
+      tail:    body.slice(-120),
+    });
+    throw err;
+  }
 }

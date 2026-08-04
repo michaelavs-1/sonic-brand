@@ -22,7 +22,7 @@
 //            'matcher_error',
 //     reasoning_en: '...' }
 
-import { callModel, parseJSONFromText } from '/v6/generation/ai-provider.js?v=03082026c';
+import { callModel, parseJSONFromText } from '/v6/generation/ai-provider.js?v=04082026a';
 
 const MAX_TOKENS = 4000;
 

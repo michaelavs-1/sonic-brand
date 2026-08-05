@@ -476,7 +476,10 @@ function playlistIsLive(p) {
 function renderPlaylists() {
   const wrap = $('slotsWrap');
   wrap.innerHTML = '';
-  const playlists = (bmeta().playlists || []).filter(playlistIsLive);
+  // Daily list shows only daily playlists — event playlists surface in
+  // the events section via activePlaylistForEvent → "▶ פתח" on the event
+  // row. Filtering them out here avoids the duplicate listing.
+  const playlists = (bmeta().playlists || []).filter((p) => playlistIsLive(p) && !p.eventId);
   if (!playlists.length) {
     wrap.innerHTML = '<p class="muted">עדיין לא נוצרו פלייליסטים.</p>';
     return;
@@ -792,7 +795,7 @@ function renderEvents() {
     delBtn.className   = 'btn-ghost';
     delBtn.title       = 'מחיקה';
     delBtn.textContent = '🗑';
-    delBtn.addEventListener('click', () => deleteEvent(ev.id));
+    delBtn.addEventListener('click', () => deleteEvent(ev.id, delBtn));
     row.append(delBtn);
 
     const live = activePlaylistForEvent(ev.id);
@@ -874,8 +877,13 @@ function endEditMode() {
   $('eventsMsg').textContent = '';
 }
 
-async function deleteEvent(id) {
+async function deleteEvent(id, btn) {
   if (!confirm('למחוק את האירוע?')) return;
+  const origHtml = btn?.innerHTML;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;vertical-align:-2px;margin-inline-end:4px"></span>מוחק…';
+  }
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
@@ -890,6 +898,8 @@ async function deleteEvent(id) {
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
     // Trim locally so we don't need a round-trip for the next render.
+    // renderEvents() rebuilds the whole list so the button state resets
+    // naturally — no need to restore origHtml on the success path.
     state.dashboard = {
       ...(state.dashboard || {}),
       events: (bmeta().events || []).filter((e) => e.id !== id),
@@ -899,6 +909,7 @@ async function deleteEvent(id) {
     toast('האירוע נמחק');
   } catch (e) {
     console.error('deleteEvent failed:', e);
+    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
     toast(String(e.message || 'שגיאה במחיקה'));
   }
 }
@@ -910,6 +921,11 @@ $('saveEvents')?.addEventListener('click', async () => {
   const payload = editingEventId
     ? { id: editingEventId, name, description: text }
     : { name, description: text };
+  const btn      = $('saveEvents');
+  const origHtml = btn?.innerHTML;
+  const busyHtml = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>שומרים…';
+  if (btn) { btn.disabled = true; btn.innerHTML = busyHtml; }
+  $('eventsMsg').textContent = '';
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
@@ -931,11 +947,13 @@ $('saveEvents')?.addEventListener('click', async () => {
     else          events.push(data.event);
     state.dashboard = { ...(state.dashboard || {}), events };
     $('eventsText').value = '';
-    endEditMode();
+    endEditMode();               // endEditMode resets the button label to "שמור אירוע"
     renderEvents();
+    if (btn) btn.disabled = false;
     toast('נשמר ✓');
   } catch (e) {
     console.error('saveEvents failed:', e);
+    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
     $('eventsMsg').textContent = String(e.message || 'שגיאה בשמירה').slice(0, 120);
   }
 });

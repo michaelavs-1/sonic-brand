@@ -44,9 +44,10 @@
 const SUPABASE_URL         = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-const args      = process.argv.slice(2);
-const CONFIRM   = args.includes('--confirm');
-const ONLY_USER = (args.find((a) => a.startsWith('--user=')) || '').slice('--user='.length) || null;
+const args       = process.argv.slice(2);
+const CONFIRM    = args.includes('--confirm');
+const ONLY_USER  = (args.find((a) => a.startsWith('--user=')) || '').slice('--user='.length) || null;
+const ONLY_EMAIL = ((args.find((a) => a.startsWith('--email=')) || '').slice('--email='.length) || '').toLowerCase();
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   console.error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set (source them from .env.local).');
@@ -291,7 +292,7 @@ async function migrateUser(u) {
 
 // ---------- main ----------
 
-console.log(`Mode: ${CONFIRM ? 'CONFIRM (writes)' : 'DRY-RUN (no writes)'}${ONLY_USER ? `  user=${ONLY_USER}` : ''}`);
+console.log(`Mode: ${CONFIRM ? 'CONFIRM (writes)' : 'DRY-RUN (no writes)'}${ONLY_USER ? `  user=${ONLY_USER}` : ''}${ONLY_EMAIL ? `  email=${ONLY_EMAIL}` : ''}`);
 console.log('---');
 
 const allUsers = [];
@@ -309,7 +310,11 @@ while (true) {
 }
 console.log(`fetched ${allUsers.length} users total`);
 
-const targets = ONLY_USER ? allUsers.filter((u) => u.id === ONLY_USER) : allUsers;
+const targets = allUsers.filter((u) => {
+  if (ONLY_USER  && u.id                                 !== ONLY_USER ) return false;
+  if (ONLY_EMAIL && String(u.email || '').toLowerCase()  !== ONLY_EMAIL) return false;
+  return true;
+});
 console.log(`processing ${targets.length} users`);
 console.log('---');
 

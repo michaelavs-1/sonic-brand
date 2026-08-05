@@ -26,16 +26,16 @@ function getCard() {
 
 function buildingHeadingText(count) {
   return count === 1
-    ? 'בונים את הפלייליסט שלכם'
-    : `בונים ${count} פלייליסטים שלכם`;
+    ? 'בונים פלייליסט לדוגמה'
+    : 'בונים פלייליסטים לדוגמה';
 }
 
 function readyHeadingText(built, total) {
   if (built === total && built > 0) {
-    return built === 1 ? 'הפלייליסט מוכן' : `${built} פלייליסטים מוכנים`;
+    return built === 1 ? 'פלייליסט לדוגמה מוכן' : 'פלייליסטים לדוגמה מוכנים';
   }
   if (built === 0) return 'הפלייליסטים לא נוצרו';
-  return `${built} מתוך ${total} פלייליסטים מוכנים`;
+  return `${built} מתוך ${total} פלייליסטים לדוגמה מוכנים`;
 }
 
 function renderPlaceholderCard(direction) {
@@ -256,7 +256,7 @@ export function showSignupCard(results, biz) {
   });
 
   card.replaceChildren(
-    el('h1', {}, 'הפלייליסטים מוכנים 🎉'),
+    el('h1', {}, 'פלייליסטים לדוגמה מוכנים 🎉'),
     el('p', { class: 'subtitle', style: 'margin-bottom:12px' },
       'השאירו אימייל ונשלח קישור כניסה — ללא סיסמה. הפלייליסטים ימתינו לכם באזור האישי.'),
     el('div', { class: 'input-wrap' }, el('label', { class: 'input-label' }, 'אימייל'), emailInput),

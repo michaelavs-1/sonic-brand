@@ -23,7 +23,7 @@ import {
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=03082026a';
+} from '/v6/result.js?v=05082026c';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.

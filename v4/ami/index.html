@@ -619,6 +619,30 @@
       color: var(--red);
     }
 
+    .track-meta-label {
+      display: inline-block;
+      margin-right: 6px;
+      color: var(--muted);
+    }
+
+    .track-genres,
+    .track-playlists {
+      margin-top: 6px;
+      line-height: 1.9;
+    }
+
+    .track-badge.track-playlist-link {
+      text-decoration: none;
+      color: var(--blue);
+      border-color: var(--blue-dim);
+      background: var(--blue-dim);
+      transition: filter .15s;
+    }
+
+    .track-badge.track-playlist-link:hover {
+      filter: brightness(1.25);
+    }
+
     .track-actions {
       margin-top: 12px;
       display: flex;
@@ -667,71 +691,6 @@
       cursor: not-allowed;
       border-color: var(--border);
       color: var(--muted);
-    }
-
-    .log-section {
-      margin-top: 24px;
-    }
-
-    .log-section h2 {
-      font-size: 16px;
-      font-weight: 700;
-      margin: 0 0 8px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .log-section .log-hint {
-      color: var(--muted);
-      font-size: 12px;
-      margin: 0 0 8px;
-      font-family: inherit;
-    }
-
-    .log-terminal {
-      background: #050508;
-      border: 1px solid var(--border);
-      border-radius: var(--r-md);
-      padding: 12px 14px;
-      font-family: var(--mono);
-      font-size: 12px;
-      line-height: 1.5;
-      height: 320px;
-      overflow-y: auto;
-      color: var(--muted);
-      white-space: nowrap;
-    }
-
-    .log-terminal:empty::before {
-      content: "Waiting for cron to run...";
-      color: var(--muted);
-      opacity: .5;
-    }
-
-    .log-line {
-      padding: 1px 0;
-    }
-
-    .log-line .time {
-      color: rgba(155, 155, 176, .5);
-      margin-right: 8px;
-    }
-
-    .log-line.level-info {
-      color: var(--text);
-    }
-
-    .log-line.level-warn {
-      color: var(--amber);
-    }
-
-    .log-line.level-error {
-      color: var(--red);
-    }
-
-    .log-line.level-success {
-      color: var(--green);
     }
 
     .queue-empty {
@@ -1037,13 +996,6 @@
         <button id="trackLookupBtn">Find song</button>
       </div>
       <div class="track-cleanup-result" id="trackLookupResult"></div>
-    </div>
-
-    <div class="log-section">
-      <h2>Live activity log</h2>
-      <div class="log-hint">Streams from cron in real time. Each RapidAPI call takes 18–30s, so lines land when they
-        finish.</div>
-      <div class="log-terminal" id="logTerminal"></div>
     </div>
 
     <div class="queue-section" id="queueSection" style="display: none;">

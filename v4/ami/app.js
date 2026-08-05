@@ -37,7 +37,6 @@ const batchProgressLabel  = $('batchProgressLabel');
 const batchProgressFill   = $('batchProgressFill');
 const batchProgressPct    = $('batchProgressPct');
 const batchProgressDetail = $('batchProgressDetail');
-const logTerminal         = $('logTerminal');
 const bulkToggleRow       = $('bulkToggleRow');
 const bulkToggleBtn       = $('bulkToggleBtn');
 
@@ -58,21 +57,6 @@ const pendingOptimisticSkip = new Map();
 // Tracks the previous poll's batchActive value so we can fire a
 // "batch complete" banner on the true->false transition.
 let lastBatchActive = null;
-
-// scan_logs cursor. Terminal appends any row with id > lastLogId.
-let lastLogId = 0;
-const LOG_MAX_LINES = 400;
-const LOG_POLL_MS   = 2000;
-
-// Guards against overlapping refreshLogs calls (a slow fetch + the next
-// interval tick can both race with the same `lastLogId` and re-append the
-// same batch of rows).
-let refreshLogsInFlight = false;
-
-// Set of log ids that are already in the DOM. Belt-and-suspenders dedup so
-// a duplicated row can never render twice, even under weird server-side or
-// caching conditions.
-const appendedLogIds = new Set();
 
 let sortable       = null;
 let pollTimer      = null;
@@ -689,91 +673,18 @@ function startPolling() {
     pollTimer = setInterval(refreshStatus, POLL_INTERVAL_MS);
 }
 
-// -----------------------------------------------------------------------------
-// Live activity log — polls /api/v4/ami-logs and appends to the terminal panel
-// -----------------------------------------------------------------------------
-
-let logTimer = null;
-
-async function refreshLogs() {
-    if (refreshLogsInFlight) return;
-    refreshLogsInFlight = true;
-    try {
-        const url = lastLogId
-            ? `/api/v4/ami-logs?since_id=${lastLogId}`
-            : '/api/v4/ami-logs?limit=100';
-        const r = await fetch(url);
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-        if (!data.logs?.length) return;
-
-        const wasAtBottom = isScrolledToBottom(logTerminal);
-        for (const log of data.logs) {
-            if (appendedLogIds.has(log.id)) continue;
-            appendedLogIds.add(log.id);
-            appendLogLine(log);
-            if (log.id > lastLogId) lastLogId = log.id;
-        }
-        // Trim to LOG_MAX_LINES so the DOM doesn't grow unbounded. Also
-        // prune appendedLogIds to prevent unbounded memory (keep last 1000
-        // ids, which is well beyond LOG_MAX_LINES).
-        while (logTerminal.children.length > LOG_MAX_LINES) {
-            logTerminal.removeChild(logTerminal.firstChild);
-        }
-        if (appendedLogIds.size > 1000) {
-            const sorted = [...appendedLogIds].sort((a, b) => a - b);
-            for (const id of sorted.slice(0, sorted.length - 1000)) {
-                appendedLogIds.delete(id);
-            }
-        }
-        if (wasAtBottom) logTerminal.scrollTop = logTerminal.scrollHeight;
-    } catch (err) {
-        // Silent failure — don't spam banner for log poll blips.
-        console.warn('[ami] refreshLogs failed:', err.message);
-    } finally {
-        refreshLogsInFlight = false;
-    }
-}
-
-function appendLogLine(log) {
-    const line = document.createElement('div');
-    line.className = 'log-line level-' + (log.level || 'info');
-    const time = new Date(log.created_at).toLocaleTimeString('en-US', { hour12: false });
-    const timeSpan = document.createElement('span');
-    timeSpan.className = 'time';
-    timeSpan.textContent = `[${time}]`;
-    const msgSpan = document.createElement('span');
-    msgSpan.textContent = log.message;
-    line.appendChild(timeSpan);
-    line.appendChild(msgSpan);
-    logTerminal.appendChild(line);
-}
-
-function isScrolledToBottom(el) {
-    return (el.scrollHeight - el.scrollTop - el.clientHeight) < 40;
-}
-
-function startLogPolling() {
-    if (logTimer) return;
-    refreshLogs();
-    logTimer = setInterval(refreshLogs, LOG_POLL_MS);
-}
-
 // Render the empty summary grid on load so Ami sees the "0 changes detected"
 // layout immediately, rather than nothing at all.
 renderSummary({});
 
 startPolling();
-startLogPolling();
 
 // Pause polling when the tab is hidden — reduce server load.
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
         if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-        if (logTimer)  { clearInterval(logTimer);  logTimer  = null; }
     } else {
         startPolling();
-        startLogPolling();
     }
 });
 
@@ -902,6 +813,21 @@ function renderTrackLookupResult({ mode, track, message }) {
         ? `<span class="track-badge warn">Not in DB — nothing to delete</span>`
         : '';
 
+    const genres = Array.isArray(t.genres) ? t.genres : [];
+    const playlistIds = Array.isArray(t.playlistIds) ? t.playlistIds : [];
+    const genresHtml = (mode === 'found' && genres.length)
+        ? `<div class="track-meta track-genres">
+               <span class="track-meta-label">Genres:</span>
+               ${genres.map((g) => `<span class="track-badge">${escapeHtml(g)}</span>`).join('')}
+           </div>`
+        : '';
+    const playlistsHtml = (mode === 'found' && playlistIds.length)
+        ? `<div class="track-meta track-playlists">
+               <span class="track-meta-label">Playlists:</span>
+               ${playlistIds.map((id) => `<a class="track-badge track-playlist-link" href="https://open.spotify.com/playlist/${encodeURIComponent(id)}" target="_blank" rel="noopener noreferrer">${escapeHtml(id)}</a>`).join('')}
+           </div>`
+        : '';
+
     trackLookupResult.innerHTML = `
         <div class="track-card ${mode === 'deleted' ? 'deleted' : ''}">
             <div class="track-title">${escapeHtml(t.title || '(unknown)')}</div>
@@ -912,6 +838,8 @@ function renderTrackLookupResult({ mode, track, message }) {
                 <span class="track-badge">${escapeHtml(analysisTag)}</span>
                 <span class="track-badge">${escapeHtml(t.spotifyId)}</span>
             </div>
+            ${genresHtml}
+            ${playlistsHtml}
             <div class="track-actions">${buttonsHtml}</div>
         </div>
     `;

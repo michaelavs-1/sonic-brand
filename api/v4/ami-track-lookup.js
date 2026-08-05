@@ -17,7 +17,7 @@
    dashboard's downstream delete/undo/re-lookup calls use the right key.
 */
 
-import { pgrSelect, pgrCount } from './supabase-client.js';
+import { pgrSelect, pgrSelectIn } from './supabase-client.js';
 
 // Spotify track IDs are exactly 22 alphanumeric characters. This regex
 // matches them inside a URL, URI, or bare form.
@@ -62,17 +62,30 @@ export default async function handler(req, res) {
 
         const canonicalId = spotifyData?.id || spotifyId;
 
-        const [playlistCount, analysisRows] = await Promise.all([
-            pgrCount('playlist_tracks', { spotify_id: `eq.${canonicalId}` }),
+        const [playlistTrackRows, analysisRows] = await Promise.all([
+            pgrSelect('playlist_tracks', { spotify_id: `eq.${canonicalId}` }, { select: 'playlist_id' }),
             pgrSelect('track_analyses', { spotify_id: `eq.${canonicalId}` }, { select: 'spotify_id', limit: 1 }),
         ]);
+
+        const playlistIds = Array.from(new Set((playlistTrackRows || []).map((r) => r.playlist_id))).sort();
+
+        // Genres this track is associated with = distinct genres of every
+        // playlist it appears in (via playlist_genres). Chunked in pgrSelectIn
+        // so a very-popular track's playlist list doesn't blow the URL limit.
+        let genres = [];
+        if (playlistIds.length) {
+            const genreRows = await pgrSelectIn('playlist_genres', 'playlist_id', playlistIds, { select: 'genre' });
+            genres = Array.from(new Set((genreRows || []).map((r) => r.genre))).sort();
+        }
 
         return res.status(200).json({
             spotifyId:       canonicalId,
             inputSpotifyId:  spotifyId,
             title:           spotifyData?.name || '(unknown)',
             artists:         (spotifyData?.artists || []).map((a) => a.name),
-            inPlaylistCount: playlistCount || 0,
+            inPlaylistCount: playlistIds.length,
+            playlistIds,
+            genres,
             hasAnalysis:     (analysisRows || []).length > 0,
         });
     } catch (err) {

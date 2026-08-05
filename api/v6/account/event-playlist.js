@@ -3,8 +3,10 @@
 
    Flow:
      1. Verify Supabase JWT.
-     2. Send the event description + canonical genre menu to Claude Haiku.
-        Claude returns { genres: [...], bpm_range: { min, max } }.
+     2. Send the event description + canonical genre menu to the model
+        (Anthropic or Gemini, chosen by PROVIDER in ai-provider.js — same
+        A/B switch as the client-side musical-directions call). The model
+        returns { genres: [...], bpm_range: { min, max } }.
      3. Query v5_direction_tracks RPC with those genres + BPM (no popularity
         window — event playlists aren't tied to an atmosphere selection).
      4. Create the playlist on the Rubin Spotify account and add the tracks.
@@ -21,23 +23,36 @@
 
 import { GENRES, GENRE_SET }   from '../../../v6/generation/genre-list.js';
 import { pgrRpc, pgrUpsert }   from '../../v5/supabase-client.js';
-import { nextIl4amIso }        from '../../../v6/generation/playlist-length.js';
+import { nextIl4amIso, closedDayTargetTracks } from '../../../v6/generation/playlist-length.js';
 import { requireBusinessOwner } from './_require-business-owner.js';
+
+// Uses the same PROVIDER / MODEL_* / GEMINI_THINKING_LEVEL constants that
+// drive musical-directions on the client, so flipping PROVIDER in
+// ai-provider.js switches BOTH pipelines in lockstep. We import ONLY the
+// constants — the async functions in that module hit relative URLs that
+// don't work server-side. The model call happens via the same /api/v5/
+// anthropic and /api/v6/gemini proxies the client uses, reached through
+// selfOrigin (like the Spotify calls further down).
+import {
+  PROVIDER, MODEL_ANTHROPIC, MODEL_GEMINI, GEMINI_THINKING_LEVEL,
+} from '../../../v6/generation/ai-provider.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
 const SERVICE_KEY       = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const ANTHROPIC_KEY     = process.env.ANTHROPIC_KEY;
 const INTERNAL_API_KEY  = process.env.INTERNAL_API_KEY || '';
 
-// Claude Haiku 4.5 — the task is structured extraction against a fixed menu,
-// not creative synthesis. Haiku is ~2s vs Sonnet's ~4s, ~1/5 the cost, and
-// strong at menu-classification. Swap to 'claude-sonnet-4-6' if quality
-// proves insufficient in the wild.
-const CLAUDE_MODEL = 'claude-haiku-4-5-20251001';
+const MODEL_MAX_TOKENS  = 4096;
 
-const MIN_TRACKS = 5;      // floor: below this we tell the user to retry
-const MAX_TRACKS = 40;
+const MIN_TRACKS    = 5;                          // floor: below this we tell the user to retry
+// Event playlists are sized to a flat 12h general length (same as the
+// closed-day daily flow — both are one-off, keep-visible-through-the-night
+// playlists). `closedDayTargetTracks()` returns ceil((12h + 1h buffer) /
+// avg-track-length) ≈ 223. Spotify's add_tracks proxy batches at 100 per
+// call so a larger target here just adds internal batches, not client
+// complexity. If the RPC pool is smaller than the target we take
+// whatever's available (down to MIN_TRACKS).
+const TARGET_TRACKS = closedDayTargetTracks();
 
 // Event playlist expiry = next 04:00 Asia/Jerusalem. Kept visible through
 // the night of the event, swept before the following morning. Handled by
@@ -66,7 +81,7 @@ function todayHe() {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 }
 
-// --- Claude Haiku: description -> { genres, bpm_range } | { error } ---
+// --- Model call: description -> { genres, bpm_range } | { error } ---
 const SYSTEM_PROMPT = `You classify a Hebrew (or English) description of a special event at a physical business into music parameters, so a downstream system can build a Spotify playlist for it.
 
 ## Genre menu — the ONLY genres you may use
@@ -92,33 +107,67 @@ If the description is empty, nonsense, off-topic (not describing an event or mus
 
 { "error": "not_an_event" }`;
 
-async function askClaude(description) {
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key':         ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type':      'application/json',
-    },
-    body: JSON.stringify({
-      model:      CLAUDE_MODEL,
-      max_tokens: 512,
-      system:     SYSTEM_PROMPT,
-      messages:   [{ role: 'user', content: description }],
-    }),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    throw new Error(`Anthropic ${r.status}: ${JSON.stringify(j).slice(0, 200)}`);
-  }
-  const text = (j.content?.[0]?.text || '').trim();
-  try { return JSON.parse(text); }
+// Robust to both proxy shapes (Anthropic-style content array or Gemini-style
+// candidates.parts) and to occasional stray text around the JSON body.
+function parseModelJson(text) {
+  const trimmed = String(text || '').trim();
+  const fenced  = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  const body    = fenced ? fenced[1] : trimmed;
+  try { return JSON.parse(body); }
   catch {
-    // Occasionally Claude wraps in stray text. Extract the first {...} span.
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error(`Claude returned unparseable output: ${text.slice(0, 200)}`);
+    const m = body.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error(`model returned unparseable output: ${body.slice(0, 200)}`);
     return JSON.parse(m[0]);
   }
+}
+
+async function askModel(description, origin) {
+  if (PROVIDER === 'gemini') {
+    const r = await fetch(`${origin}/api/v6/gemini`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        model:             MODEL_GEMINI,
+        max_output_tokens: MODEL_MAX_TOKENS,
+        thinking_level:    GEMINI_THINKING_LEVEL,
+        system:            SYSTEM_PROMPT,
+        user:              description,
+        label:             'event-playlist',
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      throw new Error(`gemini ${r.status}: ${j?.error?.message || j?.error || 'proxy failed'}`);
+    }
+    const cand = Array.isArray(j?.candidates) ? j.candidates[0] : null;
+    const text = Array.isArray(cand?.content?.parts)
+      ? cand.content.parts.find((p) => typeof p?.text === 'string')?.text
+      : null;
+    if (typeof text !== 'string') throw new Error('gemini: no text part in response');
+    return parseModelJson(text);
+  }
+  if (PROVIDER === 'anthropic') {
+    const r = await fetch(`${origin}/api/v5/anthropic`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({
+        model:      MODEL_ANTHROPIC,
+        max_tokens: MODEL_MAX_TOKENS,
+        system:     [{ type: 'text', text: SYSTEM_PROMPT }],
+        messages:   [{ role: 'user', content: description }],
+      }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      throw new Error(`anthropic ${r.status}: ${j?.error?.message || j?.error || 'proxy failed'}`);
+    }
+    const text = Array.isArray(j?.content)
+      ? j.content.find((b) => b?.type === 'text')?.text
+      : null;
+    if (typeof text !== 'string') throw new Error('anthropic: no text block in response');
+    return parseModelJson(text);
+  }
+  throw new Error(`event-playlist: unknown PROVIDER "${PROVIDER}"`);
 }
 
 // --- Spotify: create + fill on Rubin's account via /api/new/spotify ---
@@ -196,7 +245,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    if (!ANTHROPIC_KEY) return res.status(500).json({ error: 'ANTHROPIC_KEY not set' });
     if (!SERVICE_KEY)   return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not set' });
 
     const user = await verifyUser(req);
@@ -213,8 +261,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'description too short' });
     }
 
-    // 1) Claude → genres + BPM
-    const parsed = await askClaude(desc);
+    // 1) Model → genres + BPM. Provider (Anthropic / Gemini) picked by
+    //    PROVIDER in ai-provider.js so this endpoint tracks the same
+    //    switch as the client-side musical-directions call.
+    const origin = selfOrigin(req);
+    const parsed = await askModel(desc, origin);
     if (parsed?.error === 'not_an_event') {
       return res.status(400).json({ error: 'לא הצלחנו להבין את התיאור. נסחו שוב.' });
     }
@@ -228,14 +279,15 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'טווח BPM לא תקין. נסחו שוב.' });
     }
 
-    // 2) DB → up to 40 tracks (BPM only; no popularity screen)
+    // 2) DB → up to TARGET_TRACKS (~223 for 12h + 1h buffer). BPM only;
+    //    no popularity screen (event playlists aren't tied to atmospheres).
     const rows = await pgrRpc('v5_direction_tracks', {
       p_genres: validGenres,
       p_bpm_lo: Math.floor(bpm.min),
       p_bpm_hi: Math.ceil(bpm.max),
       p_pop_lo: 0,
       p_pop_hi: 100,
-      p_limit:  MAX_TRACKS,
+      p_limit:  TARGET_TRACKS,
     });
     const spotifyIds = (rows || []).map((r) => r.spotify_id).filter(Boolean);
     if (spotifyIds.length < MIN_TRACKS) {
@@ -245,7 +297,6 @@ export default async function handler(req, res) {
     }
 
     // 3) Spotify → create + fill on Rubin's account
-    const origin       = selfOrigin(req);
     const cleanBiz     = String(bizName || '').trim().slice(0, 40);
     const cleanEvent   = String(eventName || 'אירוע').trim().slice(0, 40);
     const playlistName = `${cleanBiz ? cleanBiz + ' · ' : ''}${cleanEvent} · ${todayHe()}`.slice(0, 100);

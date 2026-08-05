@@ -10,10 +10,10 @@
      3. Query v5_direction_tracks RPC with those genres + BPM (no popularity
         window — event playlists aren't tied to an atmosphere selection).
      4. Create the playlist on the Rubin Spotify account and add the tracks.
-     5. Prepend the resulting playlist entry to user_metadata.sonic.b[bizId]
-        .playlists so it appears at the top of the account home alongside
-        the daily playlists. The entry carries an `eventId` back-reference
-        so renderEvents() can tell which events already have a playlist.
+     5. INSERT the playlist row into business_playlists (with event_id
+        back-reference so renderEvents() can locate the live playlist for
+        this event via activePlaylistForEvent()). The dashboard's
+        expires_at filter is the visibility gate — no per-user cap.
 
    Request:
      { businessId, eventId, eventName?, description, bizName? }
@@ -21,8 +21,8 @@
      { ok: true, playlist: {...} } | { error }
 */
 
-import { GENRES, GENRE_SET }   from '../../../v6/generation/genre-list.js';
-import { pgrRpc, pgrUpsert }   from '../../v5/supabase-client.js';
+import { GENRES, GENRE_SET }              from '../../../v6/generation/genre-list.js';
+import { pgrRpc, pgrUpsert, pgrInsert }    from '../../v5/supabase-client.js';
 import { nextIl4amIso, closedDayTargetTracks } from '../../../v6/generation/playlist-length.js';
 import { requireBusinessOwner } from './_require-business-owner.js';
 
@@ -203,39 +203,11 @@ async function createPlaylistOnRubin(origin, name, description, uris) {
   return { id: created.id, url: created.external_urls?.spotify || '' };
 }
 
-// --- user_metadata: prepend the new playlist to b[bizId].playlists ---
-function adminHeaders() {
-  return {
-    apikey:        SERVICE_KEY,
-    Authorization: `Bearer ${SERVICE_KEY}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-async function prependPlaylist(userId, businessId, playlist) {
-  const readR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-    headers: adminHeaders(),
-  });
-  if (!readR.ok) throw new Error(`user_metadata read failed: ${readR.status}`);
-  const j = await readR.json().catch(() => ({}));
-  const sonic = (j?.user_metadata?.sonic) || {};
-  const bMap  = { ...(sonic.b || {}) };
-  const bRow  = { ...(bMap[businessId] || {}) };
-  const prior = Array.isArray(bRow.playlists) ? bRow.playlists : [];
-  bRow.playlists = [playlist, ...prior].slice(0, 30);
-  bMap[businessId] = bRow;
-  const nextSonic = { ...sonic, b: bMap };
-
-  const writeR = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-    method:  'PUT',
-    headers: adminHeaders(),
-    body:    JSON.stringify({ user_metadata: { sonic: nextSonic } }),
-  });
-  if (!writeR.ok) {
-    const t = await writeR.text().catch(() => '');
-    throw new Error(`user_metadata write failed: ${writeR.status} ${t.slice(0, 150)}`);
-  }
-}
+// business_playlists insert — one INSERT is all it takes now that per-
+// business data lives in tables. No read-modify-write on user_metadata,
+// no 30-item cap, no last-writer-wins race. The dashboard's expires_at
+// filter is the visibility gate; expired rows stay in the table until
+// the daily-generation cleanup or a future prune script drops them.
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
@@ -322,10 +294,33 @@ export default async function handler(req, res) {
       console.warn('[event-playlist] failed to register expiry:', e.message);
     }
 
-    // 5) Prepend to user_metadata.sonic.b[bizId].playlists.
-    //    expiresAt (ms) drives the account UI: while now < expiresAt the
-    //    event card shows only "פתח"; after it, the card shows "צרו
-    //    פלייליסט" again for a fresh build.
+    // 5) INSERT INTO business_playlists. The row's expires_at drives the
+    //    dashboard's "▶ פתח" vs "צרו פלייליסט" gate via event_id lookup.
+    const bpmRange = { min: Math.floor(bpm.min), max: Math.ceil(bpm.max) };
+    const nowIso   = new Date().toISOString();
+    const row      = {
+      spotify_id:  id,
+      business_id: businessId,
+      url,
+      label:       cleanEvent,
+      ico:         '🎪',
+      track_count: uris.length,
+      genres:      validGenres,
+      bpm_range:   bpmRange,
+      expansion:   null,       // event playlists have no direction to re-use
+      event_id:    eventId,
+      expanded_at: null,
+      expires_at:  expiresAtIso,
+      created_at:  nowIso,
+    };
+    try { await pgrInsert('business_playlists', row, { ignoreDuplicates: true }); }
+    catch (e) {
+      console.error('[event-playlist] business_playlists insert failed:', e.message);
+      throw e;
+    }
+
+    // Client-friendly shape mirroring the old user_metadata entry so the
+    // dashboard can optimistically insert it without a refetch.
     const playlist = {
       ico:        '🎪',
       label:      cleanEvent,
@@ -333,14 +328,13 @@ export default async function handler(req, res) {
       id,
       trackCount: uris.length,
       genres:     validGenres,
-      bpmRange:   { min: Math.floor(bpm.min), max: Math.ceil(bpm.max) },
+      bpmRange,
       eventId,
-      createdAt:  new Date().toISOString().slice(0, 10),
+      createdAt:  nowIso.slice(0, 10),
       expiresAt:  expiresAtMs,
     };
-    await prependPlaylist(user.id, businessId, playlist);
 
-    console.log(`[event-playlist] user=${user.id} event=${eventId} "${playlistName}" (${uris.length} tracks, genres=${validGenres.join(',')}, bpm=${playlist.bpmRange.min}-${playlist.bpmRange.max})`);
+    console.log(`[event-playlist] user=${user.id} event=${eventId} "${playlistName}" (${uris.length} tracks, genres=${validGenres.join(',')}, bpm=${bpmRange.min}-${bpmRange.max})`);
     return res.status(200).json({ ok: true, playlist });
   } catch (err) {
     console.error('[event-playlist] failed:', err.message);

@@ -1,18 +1,18 @@
 // v6 account dashboard.
 //
 // Trimmed from Michael's v4 dashboard: only Home tab (playlists + special
-// events). No profile, no music, no plan, no chat, no mic. Playlists come
-// from onboarding (stored in user_metadata.sonic.b[bizId].playlists) — no
-// day-hours slot generation.
+// events). No profile, no music, no plan, no chat, no mic.
 //
-// Storage: user_metadata.sonic = {
-//   onboarding: { atmospheres, place },     // carried from onboarding
-//   currentBizId,
-//   b: { [businessId]: {
-//     playlists: [ { ico, label, url, id, trackCount, genres, createdAt } ],
-//     events:    [ { id, name, description } ],
-//   } }
-// }
+// Storage: per-business data lives in Postgres tables (see the 2026-08-05
+// migration). user_metadata.sonic keeps only { currentBizId, onboarding:
+// { bizType, atmospheres } } — small identity flags. Data-loading fans out
+// four parallel Supabase SELECTs on business_playlists / business_events /
+// business_hours / business_place, cached on state.dashboard for the life
+// of the page. RLS restricts each SELECT to rows for businesses owned by
+// the caller. Writes go through server endpoints (upsert-event,
+// delete-event, update-hours + the existing expand/event-playlist/
+// generate-daily) so ownership can be enforced with the service role and
+// row-level UPDATEs bypass user_metadata entirely.
 
 const SUPABASE_URL  = 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -38,22 +38,66 @@ let business   = null;
 let user       = null;
 let meta       = {};
 
+// Per-business data loaded from tables and refreshed on writes. Shape:
+//   { playlists, events, hours, longestMinutes, place }
+// Field names are camelCase (mapped from snake_case Postgres columns) so
+// the rest of the render / event-management code doesn't need to know
+// where the data comes from.
+const state = { dashboard: null };
+
 // Edit-mode marker for the events textarea. When set, the next save updates
 // this event instead of appending a new one.
 let editingEventId = null;
 
-// ---------- per-business metadata helpers ----------
-function bmeta() { return (meta.b && meta.b[business?.id]) || {}; }
-async function saveB(patch) {
-  const b = { ...(meta.b || {}) };
-  b[business.id] = { ...(b[business.id] || {}), ...patch };
-  return saveMeta({ b });
+// ---------- per-business data accessor ----------
+// Kept as a function so all render code can call `bmeta().playlists` etc.
+// unchanged. If dashboard data hasn't loaded yet, returns an empty object
+// so renders paint an empty state instead of crashing.
+function bmeta() { return state.dashboard || {}; }
+
+// Map a business_playlists row (snake_case columns) into the camelCase
+// shape the render code (renderPlaylists, activePlaylistForEvent,
+// playlistIsExpanding, playlistIsLive) already expects.
+function playlistRowToClient(r) {
+  return {
+    id:         r.spotify_id,
+    url:        r.url,
+    label:      r.label,
+    ico:        r.ico,
+    trackCount: r.track_count,
+    genres:     Array.isArray(r.genres) ? r.genres : [],
+    bpmRange:   r.bpm_range || null,
+    expansion:  r.expansion || null,
+    eventId:    r.event_id || null,
+    expandedAt: r.expanded_at ? Date.parse(r.expanded_at) : null,
+    expiresAt:  r.expires_at  ? Date.parse(r.expires_at)  : null,
+    createdAt:  r.created_at  ? String(r.created_at).slice(0, 10) : null,
+  };
 }
-async function saveMeta(patch) {
-  meta = { ...meta, ...patch };
-  const { error } = await sb.auth.updateUser({ data: { sonic: meta } });
-  if (error) { console.error('saveMeta:', error); toast('שגיאה בשמירה'); return false; }
-  return true;
+
+// Load everything the dashboard needs in four parallel table reads. RLS
+// filters each SELECT to rows for businesses owned by the caller — the
+// business_id filter is defence-in-depth (client already knows which biz
+// is active). On error, we log and fall back to empty arrays / null so
+// the dashboard still renders instead of white-screening.
+async function loadDashboardData(businessId) {
+  const [plRes, evRes, hoursRes, placeRes] = await Promise.all([
+    sb.from('business_playlists').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
+    sb.from('business_events').select('id,name,description,created_at').eq('business_id', businessId).order('created_at', { ascending: true }),
+    sb.from('business_hours').select('hours,longest_minutes').eq('business_id', businessId).limit(1),
+    sb.from('business_place').select('*').eq('business_id', businessId).limit(1),
+  ]);
+  if (plRes.error)    console.warn('business_playlists load:', plRes.error.message);
+  if (evRes.error)    console.warn('business_events load:',    evRes.error.message);
+  if (hoursRes.error) console.warn('business_hours load:',     hoursRes.error.message);
+  if (placeRes.error) console.warn('business_place load:',     placeRes.error.message);
+  state.dashboard = {
+    playlists:      (plRes.data || []).map(playlistRowToClient),
+    events:         evRes.data || [],
+    hours:          hoursRes.data?.[0]?.hours || null,
+    longestMinutes: hoursRes.data?.[0]?.longest_minutes || null,
+    place:          placeRes.data?.[0] || null,
+  };
 }
 
 // ---------- boot ----------
@@ -203,8 +247,15 @@ async function enterDashboardInner() {
   if (!businesses.length) { show('loginView'); return; }
   const wanted = businesses.find((b) => b.id === meta.currentBizId);
   business = wanted || businesses[0];
-  if (business.id !== meta.currentBizId) await saveMeta({ currentBizId: business.id });
+  if (business.id !== meta.currentBizId) {
+    // currentBizId is one of the few things that stays in user_metadata —
+    // it identifies which biz the dashboard opens to and is tiny (uuid).
+    meta = { ...meta, currentBizId: business.id };
+    try { await sb.auth.updateUser({ data: { sonic: meta } }); }
+    catch (e) { console.warn('currentBizId write failed:', e?.message || e); }
+  }
 
+  await loadDashboardData(business.id);
   renderAll();
   show('dashView');
 
@@ -215,8 +266,13 @@ async function enterDashboardInner() {
   expandPendingPlaylists().catch((e) => console.warn('expandPendingPlaylists:', e));
 }
 
+// Businesses table read — includes onboarding_expanded (moved off user_metadata
+// in the tables migration), used by expandPendingPlaylists as its one-time gate.
 async function loadBusinesses() {
-  const { data } = await sb.from('businesses').select('*').eq('owner_id', user.id).order('created_at', { ascending: true });
+  const { data } = await sb.from('businesses')
+    .select('id,owner_id,name,monthly_credits,credits_remaining,onboarding_expanded,created_at')
+    .eq('owner_id', user.id)
+    .order('created_at', { ascending: true });
   return data || [];
 }
 
@@ -272,17 +328,13 @@ function renderBusiness() {
 }
 
 // ---------- Google Business photo banner ----------
+// The Google Places integration no longer fetches photos (see api/v6/
+// place-lookup.js and the migration that dropped `photos` from the field
+// mask). Without a photo_url the banner has nothing to render — hide the
+// element permanently. Kept as a no-op function so callers don't have to
+// know the feature is gone.
 function renderPlaceBanner() {
-  const place  = (meta.onboarding || {}).place;
-  const banner = $('placeBanner');
-  if (!banner) return;
-  if (place?.photo_url) {
-    $('placeImg').src = place.photo_url;
-    $('placeCap').textContent = `📍 ${place.name || business.name || ''}${place.address ? ' · ' + place.address : ''}`;
-    banner.classList.remove('hide');
-  } else {
-    banner.classList.add('hide');
-  }
+  $('placeBanner')?.classList.add('hide');
 }
 
 // ---------- tabs (Home / Profile) ----------
@@ -341,7 +393,21 @@ $('saveProfile')?.addEventListener('click', async () => {
       if (error) console.warn('name update blocked:', error.message);
       else business.name = name;
     }
-    await saveB({ hours, longestMinutes });
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) throw new Error('לא מחוברים');
+    const r = await fetch('/api/v6/account/update-hours', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization:  `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ businessId: business.id, hours, longestMinutes }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+    // Reflect the change locally so the title renderer and
+    // hasPlaylistsForToday pick up the new hours immediately.
+    state.dashboard = { ...(state.dashboard || {}), hours, longestMinutes };
     renderBusiness();
     renderPlaylistsTitle();
     msg.style.color = 'var(--teal-soft)';
@@ -460,7 +526,7 @@ function renderPlaylists() {
 //   2. This specific playlist has expansion metadata (direction spec) and
 //      hasn't been individually expanded yet, and is below target.
 function playlistIsExpanding(p, target) {
-  if (bmeta().onboardingExpanded) return false;
+  if (business?.onboarding_expanded) return false;
   const t = target ?? dayTargetTracks();
   return !!p && !!p.expansion?.direction && !p.expandedAt && (p.trackCount || 0) < t;
 }
@@ -494,18 +560,25 @@ function updateCountInRow(row, count) {
 //     per-playlist expand-playlist call reads-writes user_metadata cleanly.
 //     A parallel Promise.all previously caused a last-writer-wins race
 //     that clobbered sibling expandedAt fields.
-async function expandPendingPlaylists() {
-  const b = bmeta();
-  if (b.onboardingExpanded) return;
+async function markOnboardingExpanded() {
+  const { error } = await sb.from('businesses')
+    .update({ onboarding_expanded: true })
+    .eq('id', business.id);
+  if (error) console.warn('onboarding_expanded update failed:', error.message);
+  else business.onboarding_expanded = true;
+}
 
-  const playlists = b.playlists || [];
+async function expandPendingPlaylists() {
+  if (business?.onboarding_expanded) return;
+
+  const playlists = bmeta().playlists || [];
   const target    = dayTargetTracks();
   const pending   = playlists.filter((p) => playlistIsExpanding(p, target));
 
   // Even if nothing to expand (pre-flag user with all playlists already
-  // expandedAt), still stamp the flag so we short-circuit next load.
+  // marked expandedAt), still stamp the flag so we short-circuit next load.
   if (!pending.length) {
-    await saveB({ onboardingExpanded: true });
+    await markOnboardingExpanded();
     return;
   }
 
@@ -516,25 +589,24 @@ async function expandPendingPlaylists() {
   // durable "we've done this" guarantee. If the tab closes mid-way, some
   // playlists may end up under-populated, but nothing will re-populate
   // them. That is intentional per the product spec.
-  await saveB({ onboardingExpanded: true });
+  await markOnboardingExpanded();
 
   for (const p of pending) {
     await expandOne(p, session.access_token, target);
   }
 
-  // Refresh the local mirror so subsequent renders see the new counts +
-  // expandedAt flags (server persisted them). This won't re-render — the
+  // Refresh dashboard data so subsequent renders see the new track_counts
+  // + expanded_at fields (server persisted them). Won't re-render — the
   // DOM is already up to date from the stream. Later navigations use this.
   try {
-    const { data: refreshed } = await sb.auth.getUser();
-    meta = (refreshed?.user?.user_metadata?.sonic) || meta;
+    await loadDashboardData(business.id);
     // Remove the progress bar from any rows that just finished so they
     // don't look "still working" on next render.
     document.querySelectorAll('#slotsWrap .slot').forEach((row) => {
       const bar = row.querySelector('.pl-expand-bar');
       if (bar && bar.classList.contains('done')) bar.remove();
     });
-  } catch (e) { console.warn('post-expand metadata refresh failed:', e); }
+  } catch (e) { console.warn('post-expand dashboard refresh failed:', e); }
 }
 
 async function expandOne(playlist, token, target) {
@@ -657,11 +729,10 @@ async function runGenerateDaily() {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
-    // Server already wrote to user_metadata — refresh the local mirror and
-    // re-render the dashboard so the new playlists appear and the title
-    // flips back to normal ("playlists for today exist").
-    const { data: refreshed } = await sb.auth.getUser();
-    meta = (refreshed?.user?.user_metadata?.sonic) || meta;
+    // Server INSERTed the new playlists into business_playlists — refresh
+    // the local mirror so the title flips back to normal ("playlists for
+    // today exist") and the new rows appear.
+    await loadDashboardData(business.id);
     closeGenerateDailyModal();
     renderPlaylistsTitle();
     renderPlaylists();
@@ -773,10 +844,10 @@ async function createEventPlaylist(ev, btn) {
     if (!r.ok || !data.ok) {
       throw new Error(data?.error || `שגיאה ${r.status}`);
     }
-    // The endpoint already wrote the playlist into user_metadata. Refresh
-    // the local mirror so renderPlaylists + renderEvents pick it up.
-    const { data: refreshed } = await sb.auth.getUser();
-    meta = (refreshed?.user?.user_metadata?.sonic) || meta;
+    // The endpoint INSERTed the row into business_playlists. Refresh the
+    // dashboard mirror so renderPlaylists picks it up and activePlaylist
+    // ForEvent finds the new row for the event card.
+    await loadDashboardData(business.id);
     renderPlaylists();
     renderEvents();
     toast('הפלייליסט מוכן ✓');
@@ -805,12 +876,30 @@ function endEditMode() {
 
 async function deleteEvent(id) {
   if (!confirm('למחוק את האירוע?')) return;
-  const events = (bmeta().events || []).filter((e) => e.id !== id);
-  const ok = await saveB({ events });
-  if (ok) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) throw new Error('לא מחוברים');
+    const r = await fetch('/api/v6/account/delete-event', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization:  `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ businessId: business.id, eventId: id }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+    // Trim locally so we don't need a round-trip for the next render.
+    state.dashboard = {
+      ...(state.dashboard || {}),
+      events: (bmeta().events || []).filter((e) => e.id !== id),
+    };
     if (editingEventId === id) endEditMode();
     renderEvents();
     toast('האירוע נמחק');
+  } catch (e) {
+    console.error('deleteEvent failed:', e);
+    toast(String(e.message || 'שגיאה במחיקה'));
   }
 }
 
@@ -818,19 +907,36 @@ $('saveEvents')?.addEventListener('click', async () => {
   const text = $('eventsText').value.trim();
   if (text.length < 5) { $('eventsMsg').textContent = 'כתבו לפחות משפט קצר'; return; }
   const name = firstLine(text, 40) || 'אירוע';
-  const events = [...(bmeta().events || [])];
-  if (editingEventId) {
-    const idx = events.findIndex((e) => e.id === editingEventId);
-    if (idx >= 0) events[idx] = { ...events[idx], name, description: text };
-  } else {
-    events.push({ id: (crypto.randomUUID?.() || String(Date.now())), name, description: text });
-  }
-  const ok = await saveB({ events });
-  if (ok) {
+  const payload = editingEventId
+    ? { id: editingEventId, name, description: text }
+    : { name, description: text };
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) throw new Error('לא מחוברים');
+    const r = await fetch('/api/v6/account/upsert-event', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization:  `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ businessId: business.id, event: payload }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok || !data.event) throw new Error(data?.error || `שגיאה ${r.status}`);
+    // Splice the returned row into local state so renderEvents picks it up
+    // without an extra table round-trip.
+    const events = [...(bmeta().events || [])];
+    const idx = events.findIndex((e) => e.id === data.event.id);
+    if (idx >= 0) events[idx] = data.event;
+    else          events.push(data.event);
+    state.dashboard = { ...(state.dashboard || {}), events };
     $('eventsText').value = '';
     endEditMode();
     renderEvents();
     toast('נשמר ✓');
+  } catch (e) {
+    console.error('saveEvents failed:', e);
+    $('eventsMsg').textContent = String(e.message || 'שגיאה בשמירה').slice(0, 120);
   }
 });
 

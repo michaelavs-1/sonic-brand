@@ -1,7 +1,7 @@
 /* /api/v6/account/_daily-builder.js
    Shared primitives for building a set of "daily playlists" (one per musical
-   direction) on Rubin's Spotify account and persisting the entries into a
-   user's user_metadata.
+   direction) on Rubin's Spotify account and persisting the rows into
+   business_playlists.
 
    Consumed by:
      - /api/v6/account/generate-daily.js  (user-triggered, closed-day flow)
@@ -13,18 +13,22 @@
      buildDailyBatch({ ownerId, businessId, bizName,
                        directions, popularityWindow, target,
                        expiryIso, origin })
-       → { built: [entryObj, ...], failures: [{ title, reason }, ...] }
-       Builds N Spotify playlists in parallel, upserts N ledger rows, then
-       prepends N entries to user_metadata.sonic.b[bizId].playlists in ONE
-       write. `expiryIso` = null means "use the module's default 24h TTL"
-       (that's what the closed-day flow uses, so its behavior is unchanged).
+       → { built: [rowObj, ...], failures: [{ title, reason }, ...] }
+       Builds N Spotify playlists in parallel, upserts N ledger rows, and
+       INSERTs N rows into business_playlists in one batch. `expiryIso` =
+       null means "use the module's default next-4am TTL" (closed-day
+       manual flow).
 
-     latestDirections(playlists)
-       → { directions, popularityWindow } — most-recent batch of onboarding
-       playlists (grouped by createdAt), dedup'd by title/anchor.
+     latestDirections(rows)
+       Accepts business_playlists rows (snake_case: expansion, event_id,
+       created_at). Returns { directions, popularityWindow } — most-recent
+       batch of onboarding/daily playlists (grouped by created_at date),
+       dedup'd by title/anchor. Skips event playlists.
 
-     readSonic(userId)  / writeSonic(userId, sonic)
-       Admin-API user_metadata read/write helpers.
+     fetchTracksWithHistory / recordTrackHistory
+       RPC helpers, unchanged from the pre-migration file — the track
+       dedup story is on v6_daily_track_history which was already in
+       Postgres.
 */
 
 import { pgrRpc, pgrUpsert, pgrInsert } from '../../v5/supabase-client.js';
@@ -36,60 +40,29 @@ import { nextIl4amIso, directionKey }   from '../../../v6/generation/playlist-le
 // and merge, so playlists still hit target length.
 const DEDUP_WINDOW_DAYS = 7;
 
-const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
-const SERVICE_KEY       = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const INTERNAL_API_KEY  = process.env.INTERNAL_API_KEY || '';
 
 // Spotify's add_tracks cap is 100 URIs per call. Chunk conservatively for
 // stability (matches expand-playlist.js).
 const SPOTIFY_ADD_CHUNK = 50;
 
-// -------- user_metadata admin helpers --------
-
-function adminHeaders() {
-  return {
-    apikey:        SERVICE_KEY,
-    Authorization: `Bearer ${SERVICE_KEY}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-export async function readSonic(userId) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, { headers: adminHeaders() });
-  if (!r.ok) throw new Error(`user_metadata read failed: ${r.status}`);
-  const j = await r.json().catch(() => ({}));
-  return (j?.user_metadata?.sonic) || {};
-}
-
-export async function writeSonic(userId, sonic) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-    method:  'PUT',
-    headers: adminHeaders(),
-    body:    JSON.stringify({ user_metadata: { sonic } }),
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => '');
-    throw new Error(`user_metadata write failed: ${r.status} ${t.slice(0, 150)}`);
-  }
-}
-
 // -------- direction selection --------
 
-// Pick the LATEST direction set from the user's playlists — the most recent
-// batch of daily playlists (skipping events + closed-day 12h without
-// expansion metadata isn't excluded because closed-day playlists don't
-// carry expansion metadata anyway). Grouped by createdAt so we take the
-// entire batch as a set, not just one entry from an older batch.
-export function latestDirections(playlists) {
-  const eligible = (playlists || []).filter((p) =>
-    p && p.expansion?.direction?.anchor_genre && p.expansion?.direction?.bpm_range && !p.eventId
+// Pick the LATEST direction set from a business's playlists — the most
+// recent batch of daily playlists grouped by created_at date. Accepts
+// business_playlists table rows (snake_case columns). Event playlists
+// (`event_id != null`) are skipped since they don't carry direction
+// expansion. Rows without expansion metadata are also skipped.
+export function latestDirections(rows) {
+  const eligible = (rows || []).filter((p) =>
+    p && p.expansion?.direction?.anchor_genre && p.expansion?.direction?.bpm_range && !p.event_id
   );
   if (!eligible.length) return { directions: [], popularityWindow: null };
 
+  // Group by ISO date (yyyy-mm-dd slice of created_at). Take the newest.
   const groups = {};
   for (const p of eligible) {
-    const k = p.createdAt || '';
+    const k = (p.created_at || '').slice(0, 10);
     (groups[k] = groups[k] || []).push(p);
   }
   const keys = Object.keys(groups).sort().reverse();
@@ -203,7 +176,6 @@ function todayHe() {
   const d = new Date();
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 }
-function isoDateToday() { return new Date().toISOString().slice(0, 10); }
 
 function playlistName(bizName, direction) {
   const title = direction.title_en || direction.anchor_genre || 'Playlist';
@@ -214,10 +186,9 @@ function playlistName(bizName, direction) {
 // -------- build one playlist --------
 
 // Builds one Spotify playlist for one direction, registers a ledger row for
-// expiry, writes a history row per served track, and returns the entry
-// object the caller will splice into user_metadata. Never writes
-// user_metadata itself — the batch caller does that once at the end so N
-// parallel builds don't race.
+// expiry, writes a history row per served track, and returns a row shaped
+// for INSERT into business_playlists. The batch caller then INSERTs all N
+// rows in one call.
 export async function buildOneDailyPlaylist({
   origin, ownerId, businessId, direction, popularityWindow, target, bizName, expiryIso,
 }) {
@@ -257,18 +228,18 @@ export async function buildOneDailyPlaylist({
     console.warn(`[daily-builder] ledger upsert failed for ${created.id}:`, e.message);
   }
 
-  const expiresAtMs = Date.parse(expiresAtIso);
-  const entry = {
-    ico:        '🎵',
-    label:      direction.title_en || direction.anchor_genre || 'פלייליסט',
-    url:        created.external_urls?.spotify || '',
-    id:         created.id,
-    trackCount: ids.length,
-    genres:     [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
-    createdAt:  isoDateToday(),
-    expiresAt:  Number.isFinite(expiresAtMs) ? expiresAtMs : undefined,
-    // Carry the direction forward so future daily-gen (or a closed-day
-    // manual click) can find + reuse this set via latestDirections().
+  // Row shaped for INSERT INTO business_playlists. `expanded_at` is set
+  // eagerly — daily playlists are born at target length; the dashboard's
+  // expand-playlist logic short-circuits on any row with expanded_at set.
+  const row = {
+    spotify_id:  created.id,
+    business_id: businessId,
+    url:         created.external_urls?.spotify || '',
+    label:       direction.title_en || direction.anchor_genre || 'פלייליסט',
+    ico:         '🎵',
+    track_count: ids.length,
+    genres:      [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
+    bpm_range:   null,
     expansion: {
       direction: {
         title_en:         direction.title_en,
@@ -279,16 +250,15 @@ export async function buildOneDailyPlaylist({
       },
       popularityWindow,
     },
-    // Already at target length — the dashboard's expand-playlist logic
-    // won't touch entries with expandedAt set.
-    expandedAt: Date.now(),
+    event_id:    null,
+    expanded_at: new Date().toISOString(),
+    expires_at:  expiresAtIso,
+    created_at:  new Date().toISOString(),
   };
-  // Strip undefined for a clean JSON blob.
-  if (entry.expiresAt === undefined) delete entry.expiresAt;
-  return { skipped: false, entry };
+  return { skipped: false, row };
 }
 
-// -------- batch: N directions → N entries + one user_metadata write --------
+// -------- batch: N directions → N INSERTs into business_playlists --------
 
 export async function buildDailyBatch({
   ownerId, businessId, bizName,
@@ -308,20 +278,20 @@ export async function buildDailyBatch({
     ),
   );
 
-  const built    = results.filter((r) => r && !r.skipped && r.entry).map((r) => r.entry);
+  const built    = results.filter((r) => r && !r.skipped && r.row).map((r) => r.row);
   const failures = results.filter((r) => r && r.skipped).map((r) => ({ title: r.title, reason: r.reason }));
 
   if (built.length) {
-    // Single user_metadata write for the whole batch. Re-read latest to
-    // preserve any unrelated concurrent updates (name edits, sibling
-    // event-playlist prepends).
-    const latest = await readSonic(ownerId);
-    const bMap   = { ...(latest.b || {}) };
-    const bRow   = { ...(bMap[businessId] || {}) };
-    const prior  = Array.isArray(bRow.playlists) ? bRow.playlists : [];
-    bRow.playlists = [...built, ...prior].slice(0, 30);
-    bMap[businessId] = bRow;
-    await writeSonic(ownerId, { ...latest, b: bMap });
+    // Single INSERT for all N rows. ignoreDuplicates=true means a retry
+    // that re-runs the batch won't error on the second attempt if the
+    // first partially succeeded — Spotify creates new IDs each run so
+    // this is defensive against the same request being replayed.
+    try {
+      await pgrInsert('business_playlists', built, { ignoreDuplicates: true });
+    } catch (e) {
+      console.error('[daily-builder] business_playlists batch insert failed:', e.message);
+      throw e;
+    }
   }
 
   return { built, failures };

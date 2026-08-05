@@ -8,7 +8,7 @@
 // direction", swipe left = "skip this direction". Returns the array of liked
 // directions, matching v5's runDirectionPreviewFlow contract.
 
-const HEADING = 'בחרו את השירים שאהבתם';
+const HEADING = 'בחרו כיוונים מוזיקליים שמתאימים לעסק';
 
 const PLAY_ICON  = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><rect x="6.6" y="5.6" width="3.9" height="12.8" rx="1.2"/><rect x="13.5" y="5.6" width="3.9" height="12.8" rx="1.2"/></svg>';
@@ -170,14 +170,8 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
     const noBtn    = el('button', { class: 'swipe-btn swipe-no',  type: 'button' }, '👎 לא בשבילי');
     const yesBtn   = el('button', { class: 'swipe-btn swipe-yes', type: 'button' }, '👍 אהבתי');
     const btns     = el('div', { class: 'swipe-actions' }, noBtn, yesBtn);
-    const aiBox    = el('div', { class: 'ai-explain' },
-      el('span', { class: 'ai-tag' }, '🎧 איך זה עובד?'),
-      document.createTextNode(
-        ' כל שיר מייצג כיוון מוזיקלי שמתאים לעסק שלך. אהבתם? החליקו ימינה או לחצו 👍 — ניצור פלייליסט מהכיוון הזה. פחות מתאים? החליקו שמאלה.',
-      ),
-    );
 
-    card.replaceChildren(el('h1', {}, HEADING), aiBox, progLabel, progBar, deckWrap, btns);
+    card.replaceChildren(el('h1', {}, HEADING), progLabel, progBar, deckWrap, btns);
 
     const setProgress = () => {
       const total = previews.length;

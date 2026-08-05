@@ -2,10 +2,13 @@
    Vercel Cron target — runs hourly per vercel.json.
    For every business, if today (Asia/Jerusalem) is an open day AND we're
    within 2h of opening AND no fresh daily playlist exists for today yet,
-   generate one Spotify playlist per direction in the user's LATEST
-   direction batch. Fresh entries land at the top of
-   user_metadata.sonic.b[bizId].playlists with today's createdAt and an
-   expiresAt of "that day's close time + 2h".
+   generate one Spotify playlist per direction in the business's LATEST
+   direction batch. Fresh rows land in business_playlists with today's
+   created_at and an expires_at of "that day's close time + 2h".
+
+   Storage: reads businesses (onboarding_expanded), business_hours (hours),
+   business_playlists (for latestDirections + already-fresh check).
+   Writes go to business_playlists via the shared _daily-builder.
 
    Version note: this is the sibling of /api/cron/expire-playlists. Same
    auth model (Bearer CRON_SECRET), same schedule slot ("0 * * * *"), but
@@ -14,11 +17,11 @@
 
    Skip reasons a business can hit (per hour):
      - no-hours              (never finished onboarding)
-     - not-onboarding-done   (still in onboarding-day expansion window)
+     - not-onboarding-done   (onboarding-day expansion hasn't set the flag)
      - closed-today          (hours[dayIdx].closed = true → user-triggered
                               "המקום פתוח?" flow is the only path on
                               closed days)
-     - already-fresh         (a live playlist with createdAt === todayIL
+     - already-fresh         (a live playlist with created_at::date = today
                               already exists — usually because the previous
                               cron tick built it, but also true when a user
                               manually built via the closed-day flow
@@ -34,7 +37,7 @@
 */
 
 import { pgrSelect, pgrDelete } from '../v5/supabase-client.js';
-import { buildDailyBatch, latestDirections, readSonic } from '../v6/account/_daily-builder.js';
+import { buildDailyBatch, latestDirections } from '../v6/account/_daily-builder.js';
 import {
   dailyPlaylistExpiryIso,
   dayMinutesFromHours,
@@ -55,6 +58,10 @@ const SPOTIFY_BASE = process.env.VERCEL_PROJECT_PRODUCTION_URL
 // the actual firing lands anywhere in [openIL-120min, openIL-60min].
 const LEAD_MINUTES = 120;
 
+// Enough rows to cover the "most recent batch" — the direction system caps
+// batches at 8 playlists so 20 leaves headroom for a couple of stragglers.
+const RECENT_ROWS_LIMIT = 20;
+
 // Parse "HH:MM" to minutes-since-midnight.
 function hhmmToMins(s) {
   const [h, m] = String(s || '').split(':').map(Number);
@@ -72,40 +79,67 @@ function minsUntilILToday(hhmm, ilNow) {
   return openMins - nowMins;
 }
 
+async function fetchBusinessHours(businessId) {
+  try {
+    const rows = await pgrSelect('business_hours',
+      { business_id: `eq.${businessId}` },
+      { select: 'hours', useService: true, limit: 1 },
+    );
+    return rows?.[0]?.hours || null;
+  } catch (e) {
+    console.warn(`[cron daily-gen] business_hours read failed for biz=${businessId}:`, e.message);
+    return null;
+  }
+}
+
+async function fetchRecentPlaylists(businessId) {
+  try {
+    return await pgrSelect('business_playlists',
+      { business_id: `eq.${businessId}`, event_id: 'is.null' },
+      { select: 'spotify_id,expansion,event_id,created_at,expires_at',
+        order: 'created_at.desc', limit: RECENT_ROWS_LIMIT, useService: true },
+    );
+  } catch (e) {
+    console.warn(`[cron daily-gen] business_playlists read failed for biz=${businessId}:`, e.message);
+    return [];
+  }
+}
+
 async function processBusiness({ business, now, ilNow, origin }) {
   const label = `biz=${business.id}`;
-  let sonic;
-  try {
-    sonic = await readSonic(business.owner_id);
-  } catch (e) {
-    return { id: business.id, skipped: 'read-failed', error: e.message };
-  }
-  const bRow = sonic?.b?.[business.id] || {};
 
-  if (!bRow.hours || typeof bRow.hours !== 'object') {
-    return { id: business.id, skipped: 'no-hours' };
-  }
   // Don't compete with the onboarding-day one-time expansion — it fires on
   // first dashboard load and creates today's playlists too. Once that's
   // done and the flag is set, the cron takes over from the next opening.
-  if (!bRow.onboardingExpanded) {
+  if (!business.onboarding_expanded) {
     return { id: business.id, skipped: 'not-onboarding-done' };
   }
 
-  const h = bRow.hours[ilNow.dayIdx];
+  const hours = await fetchBusinessHours(business.id);
+  if (!hours || typeof hours !== 'object') {
+    return { id: business.id, skipped: 'no-hours' };
+  }
+
+  const h = hours[ilNow.dayIdx];
   if (!h || h.closed) {
     return { id: business.id, skipped: 'closed-today' };
   }
 
-  // "Already fresh" — a live daily playlist with today's IL date already
+  // Fetch the recent playlist rows for both the "already fresh" check and
+  // the direction extraction. One query serves both.
+  const recentRows = await fetchRecentPlaylists(business.id);
+
+  // "Already fresh" — a live daily playlist created today (IL) already
   // exists. Covers both "cron ran an earlier hour today" and "user
   // manually built via closed-day flow earlier today".
-  const nowMs   = now.getTime();
-  const playlists = Array.isArray(bRow.playlists) ? bRow.playlists : [];
-  const alreadyFresh = playlists.some((p) =>
-    p && p.createdAt === ilNow.isoDate && !p.eventId
-       && (!p.expiresAt || p.expiresAt > nowMs)
-  );
+  const nowMs = now.getTime();
+  const alreadyFresh = recentRows.some((p) => {
+    if (!p || !p.created_at) return false;
+    const createdDate = String(p.created_at).slice(0, 10);
+    if (createdDate !== ilNow.isoDate) return false;
+    const expMs = p.expires_at ? Date.parse(p.expires_at) : null;
+    return !expMs || expMs > nowMs;
+  });
   if (alreadyFresh) return { id: business.id, skipped: 'already-fresh' };
 
   const minsToOpen = minsUntilILToday(h.open, ilNow);
@@ -115,14 +149,14 @@ async function processBusiness({ business, now, ilNow, origin }) {
   // for some reason — e.g. app was down). Still generate: better late than
   // no playlist for the day.
 
-  const { directions, popularityWindow } = latestDirections(playlists);
+  const { directions, popularityWindow } = latestDirections(recentRows);
   if (!directions.length) {
     return { id: business.id, skipped: 'no-directions' };
   }
 
-  const dayMins = dayMinutesFromHours(bRow.hours, ilNow.dayIdx);
+  const dayMins = dayMinutesFromHours(hours, ilNow.dayIdx);
   const target  = computeTargetTracks(dayMins);
-  const expiryIso = dailyPlaylistExpiryIso({ hours: bRow.hours, now });
+  const expiryIso = dailyPlaylistExpiryIso({ hours, now });
 
   try {
     const { built, failures } = await buildDailyBatch({
@@ -171,7 +205,7 @@ export default async function handler(req, res) {
     businesses = await pgrSelect(
       'businesses',
       {},
-      { select: 'id,owner_id,name', order: 'created_at.asc', limit: 500, useService: true },
+      { select: 'id,owner_id,name,onboarding_expanded', order: 'created_at.asc', limit: 500, useService: true },
     );
   } catch (e) {
     console.error('[cron daily-gen] business fetch failed:', e.message);

@@ -17,20 +17,24 @@
    Request body:
      {
        businessId:    string,
-       playlistId:    string  // Spotify playlist id (matches user_metadata.b[bizId].playlists[i].id)
+       playlistId:    string  // Spotify playlist id (matches business_playlists.spotify_id)
        targetCount?:  number  // default 120 (~7 hours at 3.5min/track); capped at 500
      }
 
    Idempotency:
-     - If the playlist entry already has `expandedAt` set, we short-circuit.
-     - Otherwise we read the entry's `expansion` field ({direction, popularityWindow})
+     - If business_playlists.expanded_at is already set, we short-circuit.
+     - Otherwise we read the row's `expansion` field ({direction, popularityWindow})
        to know what to fetch, request enough NEW tracks to fill the gap, and
        add them to Spotify. Intermediate progress is streamed but only the
-       final `trackCount + expandedAt` is written to user_metadata — if the
-       tab closes mid-stream the next dashboard load will just re-run.
+       final `track_count + expanded_at` update is committed — if the tab
+       closes mid-stream the next dashboard load will just re-run.
+
+   Storage: reads/writes go against business_playlists (PK = spotify_id) via
+   pgrPatch. No more read-modify-write on user_metadata — a single row-level
+   UPDATE replaces the whole re-read-and-splice dance.
 */
 
-import { pgrUpsert } from '../../v5/supabase-client.js';
+import { pgrSelect, pgrPatch, pgrUpsert } from '../../v5/supabase-client.js';
 import { dailyPlaylistExpiryIso, nextIl4amIso } from '../../../v6/generation/playlist-length.js';
 import { fetchTracksWithHistory, recordTrackHistory } from './_daily-builder.js';
 import { requireBusinessOwner } from './_require-business-owner.js';
@@ -64,32 +68,16 @@ function selfOrigin(req) {
   return `${proto}://${host}`;
 }
 
-function adminHeaders() {
-  return {
-    apikey:        SERVICE_KEY,
-    Authorization: `Bearer ${SERVICE_KEY}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-async function readUserSonic(userId) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-    headers: adminHeaders(),
-  });
-  if (!r.ok) throw new Error(`read user_metadata failed: ${r.status}`);
-  const j = await r.json().catch(() => ({}));
-  return (j?.user_metadata?.sonic) || {};
-}
-
-async function writeUserSonic(userId, sonic) {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-    method:  'PUT',
-    headers: adminHeaders(),
-    body:    JSON.stringify({ user_metadata: { sonic } }),
-  });
-  if (!r.ok) {
-    const t = await r.text().catch(() => '');
-    throw new Error(`user_metadata write failed: ${r.status} ${t.slice(0, 150)}`);
+async function fetchBusinessHours(businessId) {
+  try {
+    const rows = await pgrSelect('business_hours',
+      { business_id: `eq.${businessId}` },
+      { select: 'hours', limit: 1 },
+    );
+    return rows?.[0]?.hours || null;
+  } catch (e) {
+    console.warn('[expand-playlist] business_hours read failed:', e.message);
+    return null;
   }
 }
 
@@ -136,22 +124,28 @@ export default async function handler(req, res) {
       ? Math.min(Math.round(targetCount), 500)
       : DEFAULT_TARGET;
 
-    // Locate the playlist entry inside user_metadata.
-    const sonic = await readUserSonic(user.id);
-    const bMap  = sonic.b || {};
-    const bRow  = bMap[businessId] || {};
-    const playlists = Array.isArray(bRow.playlists) ? bRow.playlists : [];
-    const idx = playlists.findIndex((p) => p && p.id === playlistId);
-    if (idx < 0) {
-      return res.status(404).json({ error: 'playlist not found in user_metadata' });
+    // Locate the playlist row in business_playlists (PK = spotify_id).
+    // Scoping the query by business_id defends against cross-tenant
+    // playlist-id guessing on top of the requireBusinessOwner check.
+    let rowRes;
+    try {
+      rowRes = await pgrSelect('business_playlists',
+        { spotify_id: `eq.${playlistId}`, business_id: `eq.${businessId}` },
+        { select: 'spotify_id,track_count,expansion,expanded_at,label', limit: 1 },
+      );
+    } catch (e) {
+      return res.status(500).json({ error: `business_playlists read failed: ${e.message}` });
     }
-    const entry = playlists[idx];
+    const row = rowRes?.[0];
+    if (!row) {
+      return res.status(404).json({ error: 'playlist not found' });
+    }
 
     // Idempotency: if already expanded, short-circuit.
-    if (entry.expandedAt) {
+    if (row.expanded_at) {
       return res.status(200).json({
         ok:              true,
-        trackCount:      entry.trackCount || 0,
+        trackCount:      row.track_count || 0,
         done:            true,
         alreadyExpanded: true,
       });
@@ -159,20 +153,24 @@ export default async function handler(req, res) {
 
     // We need `expansion.direction` to know what to fetch. Playlists built
     // before this feature was rolled out won't have it — nothing to do.
-    const expansion = entry.expansion;
+    const expansion = row.expansion;
     if (!expansion?.direction?.anchor_genre || !expansion?.direction?.bpm_range) {
-      return res.status(400).json({ error: 'playlist entry has no expansion metadata (built pre-feature)' });
+      return res.status(400).json({ error: 'playlist row has no expansion metadata (built pre-feature)' });
     }
 
-    const current = Number.isFinite(entry.trackCount) ? entry.trackCount : 0;
+    // Compute the target expiry once — reused by both the short-circuit
+    // "no work needed" path and the final commit at the end of streaming.
+    const hoursForExpiry = await fetchBusinessHours(businessId);
+    const expiryIso      = dailyPlaylistExpiryIso({ hours: hoursForExpiry }) || nextIl4amIso();
+
+    const current = Number.isFinite(row.track_count) ? row.track_count : 0;
     const need    = Math.max(0, target - current);
     if (need <= 0) {
-      // Already at or above target — still mark expanded so we don't retry.
-      entry.expandedAt = Date.now();
-      playlists[idx] = entry;
-      bRow.playlists = playlists;
-      const nextSonic = { ...sonic, b: { ...bMap, [businessId]: bRow } };
-      await writeUserSonic(user.id, nextSonic);
+      // Already at or above target — mark expanded so we don't retry.
+      await pgrPatch('business_playlists', { spotify_id: `eq.${playlistId}` }, {
+        expanded_at: new Date().toISOString(),
+        expires_at:  expiryIso,
+      });
       return res.status(200).json({ ok: true, trackCount: current, done: true });
     }
 
@@ -191,11 +189,10 @@ export default async function handler(req, res) {
     if (!newIds.length) {
       // DB has nothing more for this direction. Mark expanded so we don't
       // retry on every dashboard load.
-      entry.expandedAt = Date.now();
-      playlists[idx] = entry;
-      bRow.playlists = playlists;
-      const nextSonic = { ...sonic, b: { ...bMap, [businessId]: bRow } };
-      await writeUserSonic(user.id, nextSonic);
+      await pgrPatch('business_playlists', { spotify_id: `eq.${playlistId}` }, {
+        expanded_at: new Date().toISOString(),
+        expires_at:  expiryIso,
+      });
       return res.status(200).json({ ok: true, trackCount: current, done: true, exhausted: true });
     }
 
@@ -238,58 +235,41 @@ export default async function handler(req, res) {
     await recordTrackHistory({ businessId, directionKey: dKey, spotifyIds: addedIds });
 
     // Persist final state so future dashboard loads see this playlist as
-    // expanded and skip re-running. Re-read user_metadata NOW (not the copy
-    // fetched at the start of the request) and only touch this playlist's
-    // fields — anything that changed in between (name update, a new event
-    // playlist prepended, a sibling expansion) is preserved.
+    // expanded and skip re-running. Row-level UPDATE — race-free by
+    // definition, unlike the old user_metadata read-modify-write.
     //
-    // Also stamp expiresAt on both the entry (drives dashboard visibility)
+    // Also stamps expires_at on both the row (drives dashboard visibility)
     // and the ledger row (drives the expire cron's Spotify unfollow). If
     // today is open we get "close+2h in IL" from the helper. If today is
-    // closed (onboarding on a closed day) the helper returns null and we
-    // fall back to "next 04:00 IL" — matches the closed-day manual flow's
-    // expiry and guarantees the entry always carries an expiresAt so it
-    // can't linger indefinitely on the dashboard.
+    // closed (onboarding on a closed day) the helper returned null earlier
+    // and we fell back to "next 04:00 IL" — matches the closed-day manual
+    // flow and guarantees expires_at is always populated.
     try {
-      const latestSonic = await readUserSonic(user.id);
-      const latestBMap  = { ...(latestSonic.b || {}) };
-      const latestBRow  = { ...(latestBMap[businessId] || {}) };
-      const latestPls   = Array.isArray(latestBRow.playlists) ? [...latestBRow.playlists] : [];
-      const latestIdx   = latestPls.findIndex((p) => p && p.id === playlistId);
-      if (latestIdx >= 0) {
-        const expiryIso   = dailyPlaylistExpiryIso({ hours: latestBRow.hours })
-                            || nextIl4amIso();
-        const expiresAtMs = Date.parse(expiryIso);
-        latestPls[latestIdx] = {
-          ...latestPls[latestIdx],
-          trackCount: running,
-          expandedAt: Date.now(),
-          expiresAt:  expiresAtMs,
-        };
-        latestBRow.playlists = latestPls;
-        const nextSonic = { ...latestSonic, b: { ...latestBMap, [businessId]: latestBRow } };
-        await writeUserSonic(user.id, nextSonic);
+      await pgrPatch('business_playlists', { spotify_id: `eq.${playlistId}` }, {
+        track_count: running,
+        expanded_at: new Date().toISOString(),
+        expires_at:  expiryIso,
+      });
 
-        // Overwrite the ledger row so the expire cron unfollows at the same
-        // moment the dashboard hides the entry. Best-effort: a ledger write
-        // failure just leaves it at whatever record-playlist.js wrote.
-        try {
-          await pgrUpsert('created_playlists', {
-            spotify_id:  playlistId,
-            name:        latestPls[latestIdx].label || 'playlist',
-            expires_at:  expiryIso,
-            deleted_at:  null,
-            error:       null,
-            owner_id:    user.id,
-            business_id: businessId,
-          }, { onConflict: 'spotify_id' });
-        } catch (e) {
-          console.warn('[expand-playlist] ledger expiry rewrite failed:', e.message);
-        }
+      // Overwrite the ledger row so the expire cron unfollows at the same
+      // moment the dashboard hides the row. Best-effort: a ledger write
+      // failure just leaves it at whatever record-playlist.js wrote.
+      try {
+        await pgrUpsert('created_playlists', {
+          spotify_id:  playlistId,
+          name:        row.label || 'playlist',
+          expires_at:  expiryIso,
+          deleted_at:  null,
+          error:       null,
+          owner_id:    user.id,
+          business_id: businessId,
+        }, { onConflict: 'spotify_id' });
+      } catch (e) {
+        console.warn('[expand-playlist] ledger expiry rewrite failed:', e.message);
       }
     } catch (err) {
-      console.warn('[expand-playlist] final user_metadata write failed:', err.message);
-      send({ error: 'metadata write failed', trackCount: running });
+      console.warn('[expand-playlist] final business_playlists UPDATE failed:', err.message);
+      send({ error: 'commit failed', trackCount: running });
       res.end();
       return;
     }

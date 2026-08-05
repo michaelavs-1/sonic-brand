@@ -3,13 +3,12 @@
 
    Currently used by the account dashboard's "המקום פתוח?" flow — the user
    is on a day their business is marked closed, and they want playlists
-   anyway. Reuses the LATEST direction set from
-   user_metadata.sonic.b[bizId].playlists (the last onboarding or
-   cron-generated batch), builds one 12h playlist per direction, and
-   prepends them to user_metadata.
+   anyway. Reuses the LATEST direction set from business_playlists (the
+   last onboarding or cron-generated batch), builds one 12h playlist per
+   direction, and INSERTs new rows into business_playlists.
 
    Passes `expiryIso = null` into the shared builder → closed-day playlists
-   keep the legacy 24h TTL behavior, unchanged by the daily-gen work.
+   default to next 04:00 IL (nextIl4amIso).
 
    Auto-scheduled daily generation lives at /api/cron/generate-daily.js
    which uses the SAME shared builder with `expiryIso` = "2h after that
@@ -19,9 +18,10 @@
    Response: { ok: true, count, playlists: [...] } | { error }
 */
 
-import { buildDailyBatch, latestDirections, readSonic } from './_daily-builder.js';
+import { buildDailyBatch, latestDirections } from './_daily-builder.js';
 import { closedDayTargetTracks } from '../../../v6/generation/playlist-length.js';
 import { requireBusinessOwner } from './_require-business-owner.js';
+import { pgrSelect } from '../../v5/supabase-client.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -72,11 +72,21 @@ export default async function handler(req, res) {
       ? Math.min(Math.round(targetTracks), 500)
       : closedDayTargetTracks();
 
-    const sonic     = await readSonic(user.id);
-    const bRow      = sonic?.b?.[businessId] || {};
-    const playlists = Array.isArray(bRow.playlists) ? bRow.playlists : [];
+    // Pull the recent non-event playlist rows so latestDirections can pick
+    // the newest batch. 20 rows is enough to cover any single batch (the
+    // direction system caps at 8 per batch) with headroom.
+    let recentRows = [];
+    try {
+      recentRows = await pgrSelect('business_playlists',
+        { business_id: `eq.${businessId}`, event_id: 'is.null' },
+        { select: 'expansion,event_id,created_at',
+          order: 'created_at.desc', limit: 20 },
+      );
+    } catch (e) {
+      console.warn('[generate-daily] business_playlists read failed:', e.message);
+    }
 
-    const { directions, popularityWindow } = latestDirections(playlists);
+    const { directions, popularityWindow } = latestDirections(recentRows);
     if (!directions.length) {
       return res.status(400).json({ error: 'לא נמצאו כיוונים מוסיקליים לבניית פלייליסטים' });
     }

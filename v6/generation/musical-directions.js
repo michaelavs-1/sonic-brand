@@ -59,10 +59,23 @@ You will receive:
 - Free-text description of the business (any language).
 - Optionally: Business name.
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
+- Optionally: Google Places context — factual metadata about the venue, pulled from Google Maps if the business was matched. Format:
+
+\`\`\`
+Google Places context:
+  primary_type: <string>              e.g. "wine_bar", "cafe", "restaurant"
+  types: <comma-separated list>       broader Google categories
+  editorial_summary: <string or "none">   Google's one-line venue description
+  price_level: <string or "unknown">      PRICE_LEVEL_INEXPENSIVE..VERY_EXPENSIVE
+  vibe: <key=value list>              music-relevant booleans:
+                                      liveMusic, servesBeer, servesWine,
+                                      servesBreakfast, servesLunch, servesDinner, servesBrunch
+\`\`\`
 
 ### Processing Rules:
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
+- **Google Places Context:** External factual grounding — use it to sharpen or corroborate direction choices, never as a replacement for the description. Examples: \`price_level: PRICE_LEVEL_VERY_EXPENSIVE\` + editorial mentioning "intimate" → lean elegant; \`servesBreakfast: true\` + \`servesDinner: false\` → day-part-biased toward daytime energy; \`liveMusic: true\` → venue expects live-music culture. Don't invent constraints Google didn't state. Absence of the block means Google didn't find the venue; rely on the description alone.
 
 ## Energy Cohesion & Curation Principles
 
@@ -190,10 +203,41 @@ function summarizeDirection(d, idx) {
   return `${idx + 1}. "${d.title_en}" — anchor: ${d.anchor_genre}${secondaries}`;
 }
 
-function buildUserMessage({ bizName, bizDesc, atmospheres, subset, priorDirections }) {
+// Formats a confirmed Google Places match as a labeled block matching the
+// existing "Description / Business name / Atmospheres" style. Returns null
+// when `place` is absent or malformed — caller omits the block entirely
+// rather than emitting a placeholder that could bias the model.
+//
+// Excluded on purpose:
+//   - website_uri: stored server-side for future use, not sent to the model
+//   - name / address: name is already in the "Business name" line; address
+//     adds noise without changing musical direction choice
+function formatPlaceContext(place) {
+  if (!place || typeof place !== 'object') return null;
+  const types = Array.isArray(place.types) && place.types.length ? place.types.join(', ') : 'none';
+  const editorial = place.editorial_summary ? String(place.editorial_summary) : 'none';
+  const priceLevel = place.price_level ? String(place.price_level) : 'unknown';
+  const vibe = place.vibe && typeof place.vibe === 'object' ? place.vibe : {};
+  const vibeLine = Object.entries(vibe)
+    .filter(([, v]) => v !== null && v !== undefined)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(', ') || 'none';
+  return [
+    'Google Places context:',
+    `  primary_type: ${place.primary_type || 'unknown'}`,
+    `  types: ${types}`,
+    `  editorial_summary: ${editorial}`,
+    `  price_level: ${priceLevel}`,
+    `  vibe: ${vibeLine}`,
+  ].join('\n');
+}
+
+function buildUserMessage({ bizName, bizDesc, atmospheres, place, subset, priorDirections }) {
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
   const atmLine = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
-  const base = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
+  let base = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
+  const placeBlock = formatPlaceContext(place);
+  if (placeBlock) base += `\n${placeBlock}`;
 
   // The system prompt asks for 8 directions. For the split flow, each call
   // returns 4. Instructing via user message keeps the system prompt
@@ -213,10 +257,10 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, subset, priorDirectio
 // Provider-agnostic call. Caching is on: system prompt is stable across
 // users, so on Anthropic the ~2400-token prefix is served from the ephemeral
 // cache after the first call. No-op on Gemini.
-async function callDirections({ bizName, bizDesc, atmospheres, subset, priorDirections, label }) {
+async function callDirections({ bizName, bizDesc, atmospheres, place, subset, priorDirections, label }) {
   const { text } = await callModel({
     system: SYSTEM_PROMPT,
-    userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, subset, priorDirections }),
+    userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, place, subset, priorDirections }),
     maxTokens: MAX_TOKENS,
     cache: true,
     label,
@@ -250,7 +294,7 @@ function normalizeDirections(parsed, rankStart) {
   return valid;
 }
 
-export async function generateMusicalDirections({ bizName, bizDesc, atmospheres }) {
+export async function generateMusicalDirections({ bizName, bizDesc, atmospheres, place }) {
   if (!bizDesc || typeof bizDesc !== 'string' || bizDesc.trim().length < 3) {
     return { error: 'insufficient_description', reasoning_en: 'empty or too-short description' };
   }
@@ -258,7 +302,7 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres 
   // Call 1 — page 1 (top 4 fits). Blocks the user.
   let parsed1;
   try {
-    parsed1 = await callDirections({ bizName, bizDesc, atmospheres, subset: 'top', label: 'page1' });
+    parsed1 = await callDirections({ bizName, bizDesc, atmospheres, place, subset: 'top', label: 'page1' });
   } catch (e) {
     return { error: 'matcher_error', reasoning_en: e.message };
   }
@@ -280,7 +324,7 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres 
   const page2Promise = (async () => {
     try {
       const parsed2 = await callDirections({
-        bizName, bizDesc, atmospheres,
+        bizName, bizDesc, atmospheres, place,
         subset: 'next',
         priorDirections: page1,
         label: 'page2',

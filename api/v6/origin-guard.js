@@ -8,12 +8,19 @@ function hostOf(raw) {
   try { return new URL(raw).host.toLowerCase(); } catch { return ''; }
 }
 
-// True when the request came from our own site (or a Vercel preview build).
+// True when the request came from our own site (or a Vercel preview build,
+// or a local `vercel dev` session). Origin can be spoofed trivially with
+// curl, so this guard is casual-abuse mitigation — not a real security
+// boundary — and the localhost exemption keeps browser testing on
+// http://127.0.0.1:3000 working without weakening prod protection.
 export function fromSite(req) {
   const raw = req.headers.origin || req.headers.referer || '';
   if (!raw) return false;
   const h = hostOf(raw);
-  return ALLOWED_HOST_RE.test(h) || h.endsWith('.vercel.app');
+  if (ALLOWED_HOST_RE.test(h) || h.endsWith('.vercel.app')) return true;
+  // Strip the ":port" suffix so 127.0.0.1:3000 / localhost:3000 both match.
+  const hostOnly = h.split(':')[0];
+  return hostOnly === 'localhost' || hostOnly === '127.0.0.1';
 }
 
 // Browser-only endpoints (explain / transcribe / openai): must come from the site.

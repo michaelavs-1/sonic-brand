@@ -13,7 +13,7 @@
 
 import { runAtmosphereSelection } from '/v6/atmosphere.js?v=02082026a';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
-import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=05082026b';
+import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=05082026c';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
 import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=05082026a';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=02082026a';
@@ -86,7 +86,10 @@ function markReached(step) {
 
 function invalidateFrom(step) {
   if (step <= 1) {
-    state.confirmedPlace = undefined;
+    // confirmedPlace is NOT reset here — runBusinessStep's change-detection
+    // block invalidates it only when name/description actually change, so
+    // clicking back to step 1 without editing keeps the cached place and
+    // skips a redundant Places lookup.
     state.selectedAtmos = [];
   }
   if (step <= 2) {
@@ -331,90 +334,76 @@ async function runBusinessStep() {
   });
 }
 
-// ---------- Google Business confirmation (optional) ----------
+// ---------- Google Places confirmation (optional) ----------
+// Fires after the user submits step 1 (business name + description). Hits
+// /api/v6/place-lookup and, if Google returned a match, renders a single
+// "האם זה העסק שלך?" card inside the same step-1 .screen-card.
+//
+// Silent-skip contract: any failure path (no key, no match, fetch error,
+// bad shape) returns null and logs the reason via console.info. The step-1
+// runner then falls straight through to atmosphere selection — no error
+// screen, no user-visible hiccup.
 async function maybeConfirmPlace(bizName, bizDesc) {
+  let data;
   try {
     const r = await fetch('/api/v6/place-lookup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: bizName, desc: bizDesc }),
     });
-    const data = await r.json().catch(() => ({}));
-    if (!data.found || !data.place) return null;
-    const place = data.place;
-    const candidates = Array.isArray(data.candidates) ? data.candidates : [place];
-
-    const card = document.querySelector('.screen-card');
-    if (!card) return null;
-
-    const confirmOne = (p) => new Promise((resolve) => {
-      const img = p.photo_url
-        ? `<img src="${p.photo_url}" alt="" style="width:100%;max-height:190px;object-fit:cover;border-radius:14px;border:1px solid var(--border-2)">`
-        : '';
-      const wrap = document.createElement('div');
-      wrap.innerHTML =
-        `<h1>האם זה העסק שלך?</h1>` +
-        `<div style="margin:16px 0">${img}` +
-        `<div style="font-weight:800;font-size:17px;margin-top:12px">${p.name || ''}</div>` +
-        `<div class="subtitle" style="margin:4px 0 0">${p.address || ''}</div></div>`;
-      const yes = document.createElement('button');
-      yes.className = 'btn btn-primary btn-block';
-      yes.textContent = 'כן, זה אנחנו ✓';
-      const no = document.createElement('button');
-      no.className = 'btn btn-secondary btn-block';
-      no.textContent = 'לא, זה לא העסק';
-      yes.addEventListener('click', () => resolve(p));
-      no.addEventListener('click', () => resolve(null));
-      card.replaceChildren(...wrap.childNodes, yes, no);
-    });
-
-    if (candidates.length > 1) {
-      const wantsBranches = await new Promise((resolve) => {
-        const wrap = document.createElement('div');
-        wrap.innerHTML =
-          `<h1>מצאנו כמה מקומות כאלה</h1>` +
-          `<p class="subtitle">האם יש לעסק כמה סניפים, או שזו רשת?</p>`;
-        const yes = document.createElement('button');
-        yes.className = 'btn btn-primary btn-block';
-        yes.textContent = 'כן, יש כמה סניפים / זו רשת';
-        const no = document.createElement('button');
-        no.className = 'btn btn-secondary btn-block';
-        no.textContent = 'לא, זה עסק אחד';
-        yes.addEventListener('click', () => resolve(true));
-        no.addEventListener('click', () => resolve(false));
-        card.replaceChildren(...wrap.childNodes, yes, no);
-      });
-
-      if (wantsBranches) {
-        return await new Promise((resolve) => {
-          const wrap = document.createElement('div');
-          wrap.innerHTML =
-            `<h1>לאיזה סניף נבנה את המוזיקה?</h1>` +
-            `<p class="subtitle">אפשר להוסיף סניפים נוספים אחר כך באזור האישי</p>`;
-          const list = document.createElement('div');
-          for (const c of candidates) {
-            const b = document.createElement('button');
-            b.className = 'btn btn-secondary btn-block';
-            b.style.textAlign = 'right';
-            b.innerHTML = `<div style="font-weight:800">${c.name || ''}</div>` +
-              `<div style="font-size:12px;color:var(--muted);margin-top:2px">${c.address || ''}</div>`;
-            b.addEventListener('click', () => resolve(c));
-            list.append(b);
-          }
-          const skip = document.createElement('button');
-          skip.className = 'btn-ghost';
-          skip.textContent = 'דלגו — נמשיך בלי לקשר סניף';
-          skip.addEventListener('click', () => resolve(null));
-          card.replaceChildren(...wrap.childNodes, list, skip);
-        });
-      }
-      return await confirmOne(place);
-    }
-
-    return await confirmOne(place);
-  } catch {
+    data = await r.json().catch(() => ({}));
+  } catch (err) {
+    console.info('[v6 place-lookup] skipped: fetch failed', err);
     return null;
   }
+  if (!data?.found || !data.place) {
+    console.info('[v6 place-lookup] skipped:', data?.reason || 'unknown');
+    return null;
+  }
+
+  const place = data.place;
+  const card = document.querySelector('.screen-card');
+  if (!card) return null;
+
+  return new Promise((resolve) => {
+    const h = document.createElement('h1');
+    h.textContent = 'האם זה העסק שלך?';
+
+    const info = document.createElement('div');
+    info.style.margin = '16px 0';
+
+    const nm = document.createElement('div');
+    nm.style.cssText = 'font-weight:800;font-size:17px;margin-top:4px;text-align:center';
+    nm.textContent = place.name || '';
+    info.append(nm);
+
+    if (place.address) {
+      const ad = document.createElement('div');
+      ad.className = 'subtitle';
+      ad.style.cssText = 'margin:4px 0 0;text-align:center';
+      ad.textContent = place.address;
+      info.append(ad);
+    }
+    if (place.editorial_summary) {
+      const es = document.createElement('div');
+      es.className = 'subtitle';
+      es.style.cssText = 'margin:10px 0 0;font-style:italic;text-align:center';
+      es.textContent = place.editorial_summary;
+      info.append(es);
+    }
+
+    const yes = document.createElement('button');
+    yes.className = 'btn btn-primary btn-block';
+    yes.textContent = 'כן, זה אנחנו ✓';
+    yes.addEventListener('click', () => resolve(place));
+
+    const no = document.createElement('button');
+    no.className = 'btn btn-secondary btn-block';
+    no.textContent = 'לא, זה לא העסק';
+    no.addEventListener('click', () => resolve(null));
+
+    card.replaceChildren(h, info, yes, no);
+  });
 }
 
 // ---------- error display ----------
@@ -479,14 +468,18 @@ async function goToStep(start) {
         }
         state.bizName = bizName;
         state.bizDesc = bizDesc;
+        // Google Places confirm sub-step lives inside step 1: same
+        // .screen-card, progress-bar dot stays on "מספרים על העסק". If
+        // Google finds nothing (or the key is missing / call fails), the
+        // sub-step is silently skipped and we fall through to step 2.
+        if (state.confirmedPlace === undefined) {
+          state.confirmedPlace = await abortable(maybeConfirmPlace(bizName, bizDesc), signal);
+        }
         markReached(2);
       }
 
       else if (s === 2) {
         const atmosphereRows = await abortable(getAtmosphereRows(), signal);
-        if (state.confirmedPlace === undefined) {
-          state.confirmedPlace = await abortable(maybeConfirmPlace(state.bizName, state.bizDesc), signal);
-        }
         const selectedAtmos = await abortable(
           runAtmosphereSelection({ atmosphereRows }),
           signal,
@@ -519,6 +512,7 @@ async function goToStep(start) {
             bizName: state.bizName,
             bizDesc: state.bizDesc,
             atmospheres: state.selectedAtmos,
+            place: state.confirmedPlace,
           });
           directionsPromise = rawDirections.then(
             (r) => { directionsSettled = true; return r; },
@@ -570,6 +564,7 @@ async function goToStep(start) {
             bizName: state.bizName,
             bizDesc: state.bizDesc,
             atmospheres: state.selectedAtmos,
+            place: state.confirmedPlace,
           });
           directionsPromise = rawDirections.then(
             (r) => { directionsSettled = true; return r; },

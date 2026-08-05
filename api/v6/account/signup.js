@@ -232,7 +232,6 @@ export default async function handler(req, res) {
       nextSonic.onboarding = {
         bizType:     business_type || null,
         atmospheres: atmospheres   || [],
-        place:       place         || null,
       };
     }
     nextSonic.currentBizId = businessId;
@@ -251,6 +250,13 @@ export default async function handler(req, res) {
       if (Number.isFinite(longestMinutes) && longestMinutes > 0) {
         bRow.longestMinutes = Math.round(longestMinutes);
       }
+    }
+    // Google Places metadata (structured biz-type, editorial summary,
+    // price level, vibe booleans, website_uri). Stored per-business so it
+    // survives to the dashboard and can be extended later. Only written
+    // when the user confirmed the match in step 1.
+    if (place && typeof place === 'object') {
+      bRow.place = place;
     }
     bMap[businessId] = bRow;
     nextSonic.b = bMap;

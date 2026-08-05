@@ -441,26 +441,47 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         }
       });
 
-      // "Another song from this direction" — re-hit /api/v5/anchor-tracks for
-      // just this direction. The endpoint has no exclusion parameter — it
-      // just draws randomly from the filtered pool — so a small pool can
-      // return the same current track by chance. Strategy:
-      //   1. Retry up to 4 times with the original (BPM + popularity) window
-      //      to shrug off duplicate hits when the tight pool has ≥2 tracks.
-      //   2. If that still fails, WIDEN: drop BPM + popularity constraints
-      //      and draw purely from the anchor genre. Keeps the user swapping
-      //      even after they've exhausted the tight window — better UX than
-      //      flashing "no more songs" when we still have alternatives just
-      //      outside the ideal profile.
-      //   3. Only if the widened pool is also empty (or contains only the
-      //      current track) do we show the "no more songs" message.
+      // "Another song from this direction" — cycles through the direction's
+      // genres (secondaries first, then anchor, then loop). The initial
+      // preview track was drawn from the anchor genre, so the first click
+      // moves to secondary_genres[0]. Strategy:
+      //   1. TIGHT PASS: starting at cycleIdx, walk the full genre cycle once
+      //      with the original BPM + popularity window. Per genre we retry
+      //      twice — random draws from a small pool can return an already-
+      //      seen track by chance. First not-yet-seen track wins.
+      //   2. WIDE PASS: if no genre in the cycle yielded a new track, walk
+      //      the whole cycle again with BPM+popularity constraints dropped.
+      //      Keeps the user swapping even after they've exhausted the tight
+      //      window — better UX than flashing "no more songs" while
+      //      out-of-profile alternatives still exist.
+      //   3. Only if the wide pass also produces nothing new do we show the
+      //      "no more songs" message.
+      // Card-scoped `seenIds` tracks every track ever displayed on this card
+      // (including the initial one) so cycling around a tiny pool never
+      // shows a duplicate — a stricter guarantee than the older "not equal
+      // to current track" check, which allowed A→B→A over two swaps.
       // (Reported by Ami — small directions like Klezmer or tight BPM ranges
       // exhaust the tight pool within a handful of swaps.)
+      const cycleGenres = [
+        ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : []),
+        d.anchor_genre,
+      ].filter((g) => typeof g === 'string' && g.length);
+      let cycleIdx = 0;
+      const seenIds = new Set([p.trackId]);
       const drawUnique = async (dir, pop) => {
-        for (let attempt = 0; attempt < 4; attempt++) {
+        for (let attempt = 0; attempt < 2; attempt++) {
           const byRank = await fetchAnchorTracks([dir], pop);
           const candidate = byRank[String(dir.rank)];
-          if (candidate && candidate !== cardEl.dataset.trackId) return candidate;
+          if (candidate && !seenIds.has(candidate)) return candidate;
+        }
+        return null;
+      };
+      const walkCycle = async (bpmRange, pop) => {
+        for (let step = 0; step < cycleGenres.length; step++) {
+          const idx = (cycleIdx + step) % cycleGenres.length;
+          const spec = { ...d, anchor_genre: cycleGenres[idx], bpm_range: bpmRange };
+          const hit = await drawUnique(spec, pop);
+          if (hit) { cycleIdx = (idx + 1) % cycleGenres.length; return hit; }
         }
         return null;
       };
@@ -473,15 +494,15 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         // songs keep loading.
         swap.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים…';
         try {
-          let nextId = await drawUnique(d, popularityWindow);
+          let nextId = await walkCycle(d.bpm_range, popularityWindow);
           if (!nextId) {
-            const wideDir = { ...d, bpm_range: { min: 0, max: 300 } };
-            nextId = await drawUnique(wideDir, [0, 100]);
+            nextId = await walkCycle({ min: 0, max: 300 }, [0, 100]);
           }
           if (!nextId) {
             swap.textContent = 'אין עוד שירים בכיוון הזה';
             return;
           }
+          seenIds.add(nextId);
           const m2 = (await fetchTrackMeta([nextId]))[nextId] || {};
           trackMeta[nextId] = m2;
           cardEl.dataset.trackId = nextId;

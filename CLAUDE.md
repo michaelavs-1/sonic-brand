@@ -531,6 +531,12 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 ---
 
+## PROMPT EDITING PROTOCOL
+
+Every time you edit `EDITABLE_PROMPT_SECTION` in `v6/generation/musical-directions.js` (and the mirrored `v5/generation/musical-directions.js`), append a NEW entry at the top of `prompt-history.md` at the repo root. Each entry contains: today's date, a one-sentence summary of what changed and why, and the FULL text of the new EDITABLE section as it lives in the code. Never delete old entries — the file is the audit log. Ami's dashboard reads the same section, so v6 and v5 must stay identical; check both after every edit.
+
+---
+
 ## COMMON TASKS
 
 ### Run v6 locally

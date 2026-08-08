@@ -344,6 +344,10 @@ function renderPlaceBanner() {
 // the hours editor rebuild its DOM from scratch instead of us wiring a
 // separate "reset" path.
 let hoursEditor = null;
+// Snapshot of the profile form values at last-saved (or at tab-open) so the
+// save button can dirty-track: disabled while the form matches the snapshot,
+// enabled the moment the user edits anything.
+let profileSnapshot = null;
 
 document.querySelectorAll('.nav button[data-tab]').forEach((btn) => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -365,8 +369,24 @@ function renderProfileTab() {
   const savedHours = bmeta().hours;
   hoursEditor = mountHoursEditor($('hoursHost'), {
     prechecked: savedHours ? { hours: savedHours } : null,
-    onChange: ({ allClosed }) => { $('saveProfile').disabled = allClosed; },
+    onChange: () => updateProfileSaveButton(),
   });
+  profileSnapshot = {
+    name:  ($('profileBizName').value || '').trim(),
+    hours: JSON.stringify(hoursEditor.getPayload().hours),
+  };
+  $('profileBizName').oninput = () => updateProfileSaveButton();
+  updateProfileSaveButton();
+}
+
+function updateProfileSaveButton() {
+  const btn = $('saveProfile');
+  if (!btn || !profileSnapshot || !hoursEditor) return;
+  const nameNow  = ($('profileBizName').value || '').trim();
+  const hoursNow = JSON.stringify(hoursEditor.getPayload().hours);
+  const dirty    = nameNow !== profileSnapshot.name || hoursNow !== profileSnapshot.hours;
+  const valid    = !!nameNow && !hoursEditor.isAllClosed();
+  btn.disabled = !(dirty && valid);
 }
 
 $('saveProfile')?.addEventListener('click', async () => {
@@ -412,13 +432,18 @@ $('saveProfile')?.addEventListener('click', async () => {
     renderPlaylistsTitle();
     msg.style.color = 'var(--teal-soft)';
     msg.textContent = 'נשמר ✓';
+    // Refresh the dirty-tracking snapshot so the button goes back to
+    // disabled until the user makes another change.
+    profileSnapshot = { name, hours: JSON.stringify(hours) };
   } catch (e) {
     console.error('saveProfile:', e);
     msg.style.color = '#ff9b8a';
     msg.textContent = 'שגיאה בשמירה — נסו שוב';
   } finally {
-    btn.disabled = false;
     btn.textContent = origLabel;
+    // Restore the correct enabled/disabled state via the snapshot compare,
+    // rather than blanket-enabling.
+    updateProfileSaveButton();
   }
 });
 
@@ -455,14 +480,18 @@ function todayIsClosed() {
   return !!t.closed;
 }
 
-// "Playlists exist for today" — checked via createdAt (YYYY-MM-DD). Used to
-// tell apart the onboarding day (playlists were just created → normal title)
-// from a later closed-day visit (no playlists → show the closed prompt).
-// Only LIVE playlists (not past their expiresAt) count.
+// "Daily playlists exist for today" — checked via createdAt (YYYY-MM-DD).
+// Used to tell apart the onboarding day (daily playlists just created →
+// normal title) from a later closed-day visit (no daily playlists → show
+// the closed prompt). Only LIVE playlists (not past their expiresAt) count,
+// and event playlists are excluded — they surface in the events section,
+// so their presence must not flip the daily-playlists title to "open day".
 function isoDateToday() { return new Date().toISOString().slice(0, 10); }
 function hasPlaylistsForToday() {
   const today = isoDateToday();
-  return (bmeta().playlists || []).some((p) => p && p.createdAt === today && playlistIsLive(p));
+  return (bmeta().playlists || []).some((p) =>
+    p && !p.eventId && p.createdAt === today && playlistIsLive(p),
+  );
 }
 
 // Shared expiry gate for daily playlists AND event playlists. Missing
@@ -489,9 +518,6 @@ function renderPlaylists() {
     const row = document.createElement('div');
     row.className = 'slot';
     row.dataset.playlistId = p.id || '';
-    const genresLine = p.genres?.length
-      ? `<div class="pl-explain" style="padding:8px 0 0;font-size:12px">🎨 מורכב מהסגנונות: ${p.genres.slice(0, 6).join(' · ')}</div>`
-      : '';
     const showBar = playlistIsExpanding(p, target);
     const barHtml = showBar
       ? `<div class="pl-expand-bar" data-target="${target}" data-current="${p.trackCount || 0}"><div class="pl-expand-fill"></div></div>`
@@ -500,9 +526,8 @@ function renderPlaylists() {
     row.innerHTML =
       `<div class="s-info">` +
         `<div class="s-title">${p.ico || '🎵'} ${p.label || 'פלייליסט'}</div>` +
-        `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}${p.createdAt ? ` · נבנה ${p.createdAt}` : ''}</div>` +
+        `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}</div>` +
         barHtml +
-        genresLine +
       `</div>`;
     if (p.url) {
       const open = document.createElement('a');

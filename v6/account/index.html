@@ -36,6 +36,11 @@ body{
   border:1px solid var(--border);border-radius:var(--r-lg);
   padding:18px 16px 96px;min-height:660px;box-shadow:var(--glow);
 }
+/* Login view is short — override the dashboard-sized min-height + bottom
+   padding so the card wraps its content tightly, and center the body so it
+   sits mid-viewport instead of hanging from the top. */
+#loginView{min-height:0;padding-bottom:22px}
+body:has(#loginView:not(.hide)){align-items:center}
 .hide{display:none!important}
 .center{display:flex;flex-direction:column;align-items:center;gap:8px}
 h1{font-size:23px;font-weight:800;margin:4px 0 0;letter-spacing:.2px}
@@ -251,7 +256,7 @@ textarea.input{resize:vertical;min-height:74px;line-height:1.6}
   position:fixed;bottom:96px;left:50%;transform:translateX(-50%);
   background:var(--card-2);color:var(--accent);border:1px solid rgba(240,167,63,.5);
   border-radius:999px;padding:9px 18px;font-size:13px;font-weight:600;opacity:0;
-  transition:opacity .25s;pointer-events:none;white-space:nowrap;z-index:50;
+  transition:opacity .25s;pointer-events:none;white-space:nowrap;z-index:200;
   box-shadow:0 8px 24px rgba(0,0,0,.4);
 }
 
@@ -367,22 +372,22 @@ a.link{color:var(--accent)}
 
 /* ---------- hours selector (shared with /v6 onboarding) ---------- */
 .day-list{background:rgba(255,255,255,.03);border:1px solid var(--border-2);border-radius:14px;padding:4px 14px;margin-bottom:14px}
-.day-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
+.day-row{display:grid;grid-template-columns:1fr auto auto;grid-template-areas:"day override times";align-items:center;column-gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
 .day-row:last-child{border-bottom:none}
 .day-row.closed .override-cell,
 .day-row.closed .times-cell{opacity:.35}
-.day-cell{display:flex;align-items:center;gap:10px}
+.day-cell{display:flex;align-items:center;gap:10px;grid-area:day}
 .day-cell input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
 .day-cell label{font-size:15px;font-weight:700;cursor:pointer;user-select:none;transition:color .15s}
 .day-row.closed .day-cell{cursor:pointer}
 .day-row.closed .day-cell label{color:var(--muted);text-decoration:line-through;text-decoration-color:rgba(255,255,255,.2)}
-.override-cell{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;cursor:pointer;user-select:none;transition:background .15s;white-space:nowrap}
+.override-cell{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;cursor:pointer;user-select:none;transition:background .15s;white-space:nowrap;grid-area:override}
 .override-cell:hover{background:rgba(255,255,255,.04)}
 .override-cell input[type=checkbox]{width:16px;height:16px;accent-color:var(--teal-soft);cursor:pointer}
 .override-cell label{font-size:12px;color:var(--muted);font-weight:600;cursor:pointer}
 .day-row .override-cell.active label{color:var(--teal-soft)}
 .day-row.closed .override-cell{opacity:.3;pointer-events:none}
-.times-cell{display:flex;align-items:center;gap:8px;direction:ltr}
+.times-cell{display:flex;align-items:center;gap:8px;direction:ltr;grid-area:times}
 .time-block{display:flex;align-items:center;background:#0d1822;border:1.5px solid var(--border-2);border-radius:9px;padding:4px 10px;transition:border-color .15s,box-shadow .15s,color .15s}
 .time-block:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,167,63,.12)}
 .time-block .colon{color:var(--muted);font-size:15px;font-weight:700;padding:0 3px}
@@ -398,10 +403,37 @@ a.link{color:var(--accent)}
 .closed-summary{text-align:center;font-size:13px;color:var(--muted);margin-bottom:6px;line-height:1.5;min-height:20px}
 .closed-summary b{color:var(--text);font-weight:800}
 .closed-summary.warn{color:#ff9b8a}
-@media (max-width:500px){
-  .day-row{grid-template-columns:1fr;gap:8px}
-  .times-cell{justify-self:start}
-  .override-cell{justify-self:start}
+/* Narrow: stack day-name + override on the right (in their own column),
+   let times-cell span both rows on the left. Kicks in before the wide
+   3-column layout runs out of room and pushes times outside the card. */
+@media (max-width:560px){
+  .day-row{
+    grid-template-columns:auto 1fr;
+    grid-template-areas:
+      "day       times"
+      "override  times";
+    column-gap:12px;row-gap:4px;
+  }
+  .day-cell{align-self:end;justify-self:start}
+  .override-cell{align-self:start;justify-self:start;padding-inline:0}
+  .times-cell{align-self:center;justify-self:end}
+}
+/* Very narrow (iPhone SE ~375px and below): shrink time inputs + labels so
+   both blocks + arrow still fit alongside the day name. */
+@media (max-width:400px){
+  .day-list{padding:4px 10px}
+  .day-row{column-gap:8px}
+  .times-cell{gap:6px}
+  .time-block{padding:3px 7px}
+  .time-block .colon{font-size:14px;padding:0 2px}
+  .time-part{width:22px;font-size:14px}
+  .times-arrow{font-size:13px}
+  .day-cell{gap:8px}
+  .day-cell input[type=checkbox]{width:17px;height:17px}
+  .day-cell label{font-size:13px}
+  .override-cell{gap:5px;padding:4px 0}
+  .override-cell input[type=checkbox]{width:14px;height:14px}
+  .override-cell label{font-size:11px}
 }
 </style>
 </head>
@@ -409,7 +441,7 @@ a.link{color:var(--accent)}
 
 <!-- LOGIN -->
 <div class="screen hide" id="loginView">
-  <div class="center" style="margin-top:70px">
+  <div class="center" style="margin-top:8px">
     <svg class="logo-svg" style="width:96px" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SonicBrands">
       <g class="lg-crown">
         <path d="M70 50 L78 20 L93 34 L102 12 L111 34 L126 20 L134 50 Z" fill="#f0a73f"/>
@@ -512,7 +544,7 @@ a.link{color:var(--accent)}
       <div id="hoursHost"></div>
     </div>
 
-    <button class="btn" id="saveProfile">שמירת הפרופיל</button>
+    <button class="btn" id="saveProfile" disabled>שמור</button>
     <p class="muted" id="profileMsg" style="text-align:center;margin-top:10px"></p>
   </div>
 

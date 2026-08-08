@@ -72,7 +72,7 @@ async function fetchBusinessHours(businessId) {
   try {
     const rows = await pgrSelect('business_hours',
       { business_id: `eq.${businessId}` },
-      { select: 'hours', limit: 1 },
+      { select: 'hours', limit: 1, useService: true },
     );
     return rows?.[0]?.hours || null;
   } catch (e) {
@@ -127,11 +127,16 @@ export default async function handler(req, res) {
     // Locate the playlist row in business_playlists (PK = spotify_id).
     // Scoping the query by business_id defends against cross-tenant
     // playlist-id guessing on top of the requireBusinessOwner check.
+    //
+    // useService: true — business_playlists RLS keys on auth.uid(), which
+    // is null when the anon-key path (default) sends no user JWT.
+    // requireBusinessOwner above already established the caller owns this
+    // business, so bypassing RLS here is safe.
     let rowRes;
     try {
       rowRes = await pgrSelect('business_playlists',
         { spotify_id: `eq.${playlistId}`, business_id: `eq.${businessId}` },
-        { select: 'spotify_id,track_count,expansion,expanded_at,label', limit: 1 },
+        { select: 'spotify_id,track_count,expansion,expanded_at,label', limit: 1, useService: true },
       );
     } catch (e) {
       return res.status(500).json({ error: `business_playlists read failed: ${e.message}` });

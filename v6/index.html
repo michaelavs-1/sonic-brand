@@ -234,7 +234,7 @@
 
     /* ---------- inputs ---------- */
     .input-wrap {
-      margin-bottom: 16px;
+      margin-bottom: 8px;
       animation: fadeUp .4s var(--ease);
     }
 
@@ -300,7 +300,7 @@
       justify-content: center;
       gap: 9px;
       width: 100%;
-      margin-top: 10px;
+      margin-top: 4px;
       padding: 12px 14px;
       cursor: pointer;
       background: rgba(87, 163, 189, .08);
@@ -677,7 +677,7 @@
       flex-direction: column;
       align-items: center;
       gap: 10px;
-      margin-bottom: 16px;
+      margin-bottom: 8px;
     }
 
     .brand-logo-orbit {
@@ -1109,6 +1109,14 @@
     /* smooth entrance for the question card as the splash dissolves */
     #introCard:not([hidden]) {
       animation: cardIn .7s var(--ease) .25s both;
+    }
+
+    /* Vertically center the intro card in the viewport. Only kicks in while
+       #introCard is present — once runIntro() calls intro.remove() to advance
+       to step 1, the :has() no longer matches and body reverts to flex-start
+       (which is what long-content steps need). */
+    body:has(#introCard:not([hidden])) {
+      justify-content: center;
     }
 
     @keyframes cardIn {
@@ -1815,8 +1823,9 @@
     .day-row {
       display: grid;
       grid-template-columns: 1fr auto auto;
+      grid-template-areas: "day override times";
       align-items: center;
-      gap: 12px;
+      column-gap: 12px;
       padding: 12px 0;
       border-bottom: 1px solid var(--border);
     }
@@ -1826,7 +1835,7 @@
     .day-row.closed .override-cell,
     .day-row.closed .times-cell { opacity: .35; }
 
-    .day-cell { display: flex; align-items: center; gap: 10px; }
+    .day-cell { display: flex; align-items: center; gap: 10px; grid-area: day; }
     .day-cell input[type=checkbox] {
       width: 20px; height: 20px;
       accent-color: var(--accent);
@@ -1854,6 +1863,7 @@
       user-select: none;
       transition: background .15s;
       white-space: nowrap;
+      grid-area: override;
     }
     .override-cell:hover { background: rgba(255,255,255,.04); }
     .override-cell input[type=checkbox] {
@@ -1871,6 +1881,7 @@
     .times-cell {
       display: flex; align-items: center; gap: 8px;
       direction: ltr;
+      grid-area: times;
     }
     .time-block {
       display: flex; align-items: center;
@@ -1929,10 +1940,41 @@
     .closed-summary b { color: var(--text); font-weight: 800; }
     .closed-summary.warn { color: #ff9b8a; }
 
-    @media (max-width: 500px) {
-      .day-row { grid-template-columns: 1fr; gap: 8px; }
-      .times-cell { justify-self: start; }
-      .override-cell { justify-self: start; }
+    /* Narrow: stack day-name + override on the right (in their own column),
+       and let times-cell span both rows on the left. Kicks in before the wide
+       3-column layout runs out of room and pushes times outside the card. */
+    @media (max-width: 560px) {
+      .day-row {
+        grid-template-columns: auto 1fr;
+        grid-template-areas:
+          "day       times"
+          "override  times";
+        column-gap: 12px;
+        row-gap: 4px;
+      }
+      .day-cell      { align-self: end;    justify-self: start; }
+      .override-cell { align-self: start;  justify-self: start; padding-inline: 0; }
+      .times-cell    { align-self: center; justify-self: end; }
+    }
+
+    /* Very narrow (iPhone SE ~375px and below): shrink time inputs so both
+       blocks + arrow still fit alongside the day name. Full-size 3-column
+       here would need ~305px of row area; effective row area at 375px is
+       only ~295px. Downsizing gets us fitting down to 320px viewport. */
+    @media (max-width: 400px) {
+      .day-list { padding: 4px 10px; }
+      .day-row { column-gap: 8px; }
+      .times-cell { gap: 6px; }
+      .time-block { padding: 3px 7px; }
+      .time-block .colon { font-size: 14px; padding: 0 2px; }
+      .time-part { width: 22px; font-size: 14px; }
+      .times-arrow { font-size: 13px; }
+      .day-cell { gap: 8px; }
+      .day-cell input[type=checkbox] { width: 17px; height: 17px; }
+      .day-cell label { font-size: 13px; }
+      .override-cell { gap: 5px; padding: 4px 0; }
+      .override-cell input[type=checkbox] { width: 14px; height: 14px; }
+      .override-cell label { font-size: 11px; }
     }
   </style>
 </head>

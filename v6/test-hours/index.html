@@ -60,8 +60,9 @@
   .day-row {
     display: grid;
     grid-template-columns: 1fr auto auto;
+    grid-template-areas: "day override times";
     align-items: center;
-    gap: 12px;
+    column-gap: 12px;
     padding: 12px 0;
     border-bottom: 1px solid var(--border);
   }
@@ -75,6 +76,7 @@
   /* Column 1 (right in RTL): day checkbox + label */
   .day-cell {
     display: flex; align-items: center; gap: 10px;
+    grid-area: day;
   }
   .day-cell input[type=checkbox] {
     width: 20px; height: 20px;
@@ -105,6 +107,7 @@
     user-select: none;
     transition: background .15s;
     white-space: nowrap;
+    grid-area: override;
   }
   .override-cell:hover { background: rgba(255,255,255,.04); }
   .override-cell input[type=checkbox] {
@@ -127,6 +130,7 @@
   .times-cell {
     display: flex; align-items: center; gap: 8px;
     direction: ltr;
+    grid-area: times;
   }
   .time-block {
     display: flex; align-items: center;
@@ -202,10 +206,39 @@
   .closed-summary b { color: var(--text); font-weight: 800; }
   .closed-summary.warn { color: #ff9b8a; }
 
-  @media (max-width: 500px) {
-    .day-row { grid-template-columns: 1fr; gap: 8px; }
-    .times-cell { justify-self: start; }
-    .override-cell { justify-self: start; }
+  /* Narrow: stack day-name + override on the right (in their own column),
+     and let times-cell span both rows on the left. Kicks in before the wide
+     3-column layout runs out of room and pushes times outside the card. */
+  @media (max-width: 560px) {
+    .day-row {
+      grid-template-columns: auto 1fr;
+      grid-template-areas:
+        "day       times"
+        "override  times";
+      column-gap: 12px;
+      row-gap: 4px;
+    }
+    .day-cell      { align-self: end;    justify-self: start; }
+    .override-cell { align-self: start;  justify-self: start; padding-inline: 0; }
+    .times-cell    { align-self: center; justify-self: end; }
+  }
+
+  /* Very narrow (iPhone SE ~375px and below): shrink time inputs so both
+     blocks + arrow still fit alongside the day name. */
+  @media (max-width: 400px) {
+    .day-list { padding: 4px 10px; }
+    .day-row { column-gap: 8px; }
+    .times-cell { gap: 6px; }
+    .time-block { padding: 3px 7px; }
+    .time-block .colon { font-size: 14px; padding: 0 2px; }
+    .time-part { width: 22px; font-size: 14px; }
+    .times-arrow { font-size: 13px; }
+    .day-cell { gap: 8px; }
+    .day-cell input[type=checkbox] { width: 17px; height: 17px; }
+    .day-cell label { font-size: 13px; }
+    .override-cell { gap: 5px; padding: 4px 0; }
+    .override-cell input[type=checkbox] { width: 14px; height: 14px; }
+    .override-cell label { font-size: 11px; }
   }
 </style>
 </head>

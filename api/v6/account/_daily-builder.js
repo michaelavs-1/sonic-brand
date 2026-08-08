@@ -150,18 +150,64 @@ export async function recordTrackHistory({ businessId, directionKey: key, spotif
   }
 }
 
-async function spotifyCall(origin, action, body) {
-  const r = await fetch(`${origin}/api/new/spotify`, {
-    method: 'POST',
-    headers: {
-      'Content-Type':    'application/json',
-      'x-sonic-internal': INTERNAL_API_KEY,
-    },
-    body: JSON.stringify({ action, ...body }),
-  });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// One HTTP attempt against /api/new/spotify. Distinct from spotifyCall so
+// the retry loop can inspect the failure and decide.
+//   ok=true  → { data }
+//   ok=false → { status, error, retriable }
+async function spotifyAttempt(origin, action, body) {
+  let r;
+  try {
+    r = await fetch(`${origin}/api/new/spotify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type':    'application/json',
+        'x-sonic-internal': INTERNAL_API_KEY,
+      },
+      body: JSON.stringify({ action, ...body }),
+    });
+  } catch (err) {
+    // Network / DNS / socket failure before we got any HTTP response — always
+    // safe to retry (nothing hit Spotify).
+    return { ok: false, status: 0, retriable: true, error: err };
+  }
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d?.error?.message || d?.error || `spotify ${action} ${r.status}`);
-  return d;
+  // api/new/spotify wraps add_tracks: it internally chunks by 100 URIs and
+  // ALWAYS returns HTTP 200 with a results[] array, even when an inner
+  // Spotify call 5xx'd. Detect that hidden failure so we don't build a
+  // partial playlist and then insert its row as if it succeeded.
+  const chunkFail = action === 'add_tracks' && Array.isArray(d?.results)
+    ? d.results.find((x) => x?.status >= 400) : null;
+  if (r.ok && !chunkFail) return { ok: true, data: d };
+  const status = chunkFail ? chunkFail.status : r.status;
+  const errBody = chunkFail ? chunkFail.body : d;
+  const msg = errBody?.error?.message || errBody?.error || `spotify ${action} ${status}`;
+  return {
+    ok: false, status,
+    retriable: status >= 500 || status === 429,
+    error: new Error(msg),
+  };
+}
+
+// Retries on 5xx / 429 / network with exponential-ish backoff (500ms, 1000ms).
+// Safe for both create_playlist (idempotent enough — worst case Spotify has a
+// stray empty playlist we never referenced) and add_tracks (daily-builder
+// chunks by SPOTIFY_ADD_CHUNK=50, so each spotifyCall carries ≤50 URIs and
+// api/new/spotify's internal 100-URI chunking is a no-op — retrying the whole
+// call re-adds the same 50, no dupes vs. partial success).
+async function spotifyCall(origin, action, body) {
+  const MAX_ATTEMPTS = 3;
+  let last;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    last = await spotifyAttempt(origin, action, body);
+    if (last.ok) return last.data;
+    if (!last.retriable || attempt === MAX_ATTEMPTS) throw last.error;
+    const delay = 500 * attempt;
+    console.warn(`[daily-builder] spotify ${action} ${last.status || 'network'} attempt ${attempt} — retrying after ${delay}ms: ${last.error?.message}`);
+    await sleep(delay);
+  }
+  throw last?.error || new Error(`spotify ${action} failed`);
 }
 
 async function addAllTracks(origin, playlistId, spotifyIds) {

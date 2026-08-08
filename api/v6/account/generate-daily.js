@@ -75,12 +75,18 @@ export default async function handler(req, res) {
     // Pull the recent non-event playlist rows so latestDirections can pick
     // the newest batch. 20 rows is enough to cover any single batch (the
     // direction system caps at 8 per batch) with headroom.
+    //
+    // useService: true — business_playlists has RLS keyed on auth.uid(). The
+    // anon-key request path (default) sends no user JWT so the policy sees a
+    // null uid and returns zero rows. Ownership was already verified above
+    // via requireBusinessOwner, so bypassing RLS with the service role here
+    // is safe.
     let recentRows = [];
     try {
       recentRows = await pgrSelect('business_playlists',
         { business_id: `eq.${businessId}`, event_id: 'is.null' },
         { select: 'expansion,event_id,created_at',
-          order: 'created_at.desc', limit: 20 },
+          order: 'created_at.desc', limit: 20, useService: true },
       );
     } catch (e) {
       console.warn('[generate-daily] business_playlists read failed:', e.message);

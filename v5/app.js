@@ -5,7 +5,7 @@
 // playlist per selected direction (10 tracks, BPM+popularity screen only) →
 // show a result accordion per playlist.
 
-import { generateMusicalDirections } from '/v5/generation/musical-directions.js?v=04082026d';
+import { generateMusicalDirections } from '/v5/generation/musical-directions.js?v=05082026e';
 import { runAtmosphereSelection }    from '/v5/atmosphere.js?v=28072026x';
 import { derivePopularityWindow }    from '/v5/generation/popularity-window.js?v=28072026x';
 import { runDirectionPreviewFlow }   from '/v5/preview.js?v=28072026x';

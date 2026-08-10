@@ -11,9 +11,9 @@
 // If you edit either list, edit both. TODO(future): switch musical-directions
 // to interpolate from here once we're ready to re-cache the prompt.
 //
-// Order matches Data Box Tab 2 sheet order (as of 2026-08-04). Keep it that
-// way — the sheet is authoritative and this file mirrors it exactly so future
-// diffs against the sheet are trivial.
+// Order matches Data Box Tab 2 sheet order (last synced 2026-08-XX). Keep it
+// that way — the sheet is authoritative and this file mirrors it exactly so
+// future diffs against the sheet are trivial.
 
 export const GENRES = [
   'Heavy Rock+Metal',
@@ -38,11 +38,13 @@ export const GENRES = [
   'French Ye Ye',
   'Funk',
   'World Funk',
+  'Afro Funk',
   'Ethio-Jazz',
   'Neo Exotica',
   'Baroque',
   'Medieval Music',
   'African Highlife',
+  'Arabic Funk',
   'Tishoumaren',
   'Dabke',
   'Algerian Rai',
@@ -57,6 +59,8 @@ export const GENRES = [
   'Samba',
   'Salsa',
   'Cha Cha Cha',
+  'Bolero',
+  'Argentine Tango',
   'Peruvian Cumbia',
   'Dancehall',
   'Reggaeton',
@@ -67,7 +71,12 @@ export const GENRES = [
   'Acid Jazz',
   'Neo Soul',
   'Rnb',
+  'French RnB',
+  'Japanese RnB',
+  'Korean RnB',
   'Hip Hop',
+  'French Hip Hop',
+  'Icelandic Hip Hop',
   'Trap',
   'Grime & Drill',
   'Thai Molam Funk',
@@ -79,6 +88,7 @@ export const GENRES = [
   'AfroBeats',
   'Afro House',
   'Amapiano',
+  'French DownTempo',
   'DownTempo',
   'Organic House',
   'Deep House',
@@ -98,6 +108,7 @@ export const GENRES = [
   '90\'s pop party',
   'פופ מזרחית',
   'מזרחית ישנה',
+  'רוק ישראלי',
   'שירי ארץ ישראל',
 ];
 

@@ -41,6 +41,8 @@ export const GENRES = [
   'Afro Funk',
   'Ethio-Jazz',
   'Neo Exotica',
+  'Chamber music',
+  'Piano Impressionism',
   'Baroque',
   'Medieval Music',
   'African Highlife',

@@ -18,7 +18,7 @@
 import {
   EDITABLE_PROMPT_SECTION,
   FIXED_PROMPT_SECTION,
-} from '/v5/generation/musical-directions.js?v=12082026a';
+} from '/v5/generation/musical-directions.js?v=13082026a';
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
 import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=04082026a';
 
@@ -147,17 +147,20 @@ function buildUserMessage({ bizName, bizDesc, atmospheres }) {
 function formatDirection(d, idx) {
   const rank = Number(d.rank) || (idx + 1);
   const title = d.title_en || '(no title)';
-  const anchor = d.anchor_genre || '—';
-  const secondary = Array.isArray(d.secondary_genres) && d.secondary_genres.length
-    ? d.secondary_genres.join(', ')
+  // New schema is a flat `genres` list; older responses may still return
+  // anchor + secondaries — fold both into one line if that happens.
+  const genresList = Array.isArray(d.genres) && d.genres.length
+    ? d.genres
+    : [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])].filter(Boolean);
+  const genres = genresList.length ? genresList.join(', ') : '—';
+  const bpm = d.bpm_range && Number.isFinite(d.bpm_range.min) && Number.isFinite(d.bpm_range.max)
+    ? `${d.bpm_range.min}-${d.bpm_range.max}`
     : '—';
   const desc = d.description_he || '';
-  // RTL/LTR mixing: we put the label in Hebrew, values follow. Alignment is
-  // handled by the <pre>'s direction: rtl.
   return [
     `#${rank}  ${title}`,
-    `   Anchor:    ${anchor}`,
-    `   Secondary: ${secondary}`,
+    `   Genres: ${genres}`,
+    `   BPM:    ${bpm}`,
     `   ${desc}`,
   ].join('\n');
 }

@@ -185,7 +185,9 @@ function existingSessionEmail() {
 // having to re-run the atmosphere/directions flow.
 function toAccountPlaylist(r) {
   const d = r.direction || {};
-  const genres = [d.anchor_genre, ...(d.secondary_genres || [])].filter(Boolean);
+  const genres = Array.isArray(d.genres) && d.genres.length
+    ? d.genres
+    : [d.anchor_genre, ...(d.secondary_genres || [])].filter(Boolean);
   return {
     ico: '🎵',
     label: r.name || d.title_en || 'פלייליסט',

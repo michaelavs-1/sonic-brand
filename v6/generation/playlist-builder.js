@@ -2,8 +2,8 @@
 //
 // Input:
 //   {
-//     selectedDirections: [{ rank, title_en, description_he, anchor_genre,
-//                            secondary_genres, bpm_range }, ...],
+//     selectedDirections: [{ rank, title_en, description_he, genres,
+//                            bpm_range }, ...],
 //     bizName:            'שם העסק' | '',
 //     popularityWindow:   [lo, hi] | null,
 //   }
@@ -40,7 +40,11 @@ function playlistName(bizName, direction) {
 }
 
 async function fetchDirectionTracks(direction, popularityWindow) {
-  const genres = [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean);
+  // New shape uses a flat `genres` list; fall back to legacy anchor+secondaries
+  // if this direction came from persisted pre-refactor metadata.
+  const genres = Array.isArray(direction.genres) && direction.genres.length
+    ? direction.genres
+    : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean);
   const body = {
     genres,
     bpm_range:  direction.bpm_range,
@@ -111,14 +115,16 @@ async function buildOne({ direction, bizName, popularityWindow }) {
     requested:  TARGET_TRACKS,
     // Fields carried forward into user_metadata for later expansion + for
     // the "closed day → generate daily" flow which needs title_en +
-    // description_he to name the fresh playlists.
+    // description_he to name the fresh playlists. `genres` replaces the
+    // previous anchor_genre+secondary_genres shape — all genres are equal.
     expansion: {
       direction: {
-        title_en:         direction.title_en,
-        description_he:   direction.description_he,
-        anchor_genre:     direction.anchor_genre,
-        secondary_genres: direction.secondary_genres || [],
-        bpm_range:        direction.bpm_range,
+        title_en:       direction.title_en,
+        description_he: direction.description_he,
+        genres:         Array.isArray(direction.genres) && direction.genres.length
+          ? direction.genres
+          : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
+        bpm_range:      direction.bpm_range,
       },
       popularityWindow,
     },

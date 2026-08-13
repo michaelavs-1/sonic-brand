@@ -329,12 +329,18 @@ Auth: `Authorization: Bearer ${CRON_SECRET}` (same as `expire-playlists`).
 
 To prevent the same tracks appearing in a business's daily playlists day
 after day, every serve is recorded in `v6_daily_track_history (business_id,
-direction_key, spotify_id, served_at)`. Direction key is
-`${anchor_genre}|${bpm_min}-${bpm_max}` — see `directionKey()` in
+direction_key, spotify_id, served_at)`. Direction key is a lowercase-sorted
+join of the direction's `genres` list plus BPM range, e.g.
+`bossa nova|french jazz|jazz (standards)|85-115` — see `directionKey()` in
 [v6/generation/playlist-length.js]. On the next build for that (biz, dir),
 `v6_direction_tracks_recent` RPC excludes tracks served within the last 7
 days. Pool-shortage fallback: if the filtered pool comes back short, caller
 retries with `p_exclude_days=0` and merges — playlists always hit target.
+
+Historical note: pre-2026-08-13 keys were `${anchor_genre}|${bpm_min}-${bpm_max}`
+(anchor genre only, before the anchor concept was removed). Post-refactor
+lookups don't match those old rows — expect a few days of possible track
+repeats before the new-format history fills in.
 
 Applies to auto daily-gen (cron), closed-day manual "המקום פתוח?" flow,
 and the onboarding-day sample expansion. Event playlists are NOT deduped
@@ -371,8 +377,9 @@ Everything the account dashboard reads lives here:
                                      // Event / closed-day = next 04:00 IL.
           "eventId": "<uuid>",       // back-ref for event playlists only
           "expansion": {             // present on onboarding playlists only
-            "direction": { "title_en", "description_he", "anchor_genre",
-                           "secondary_genres", "bpm_range" },
+            "direction": { "title_en", "description_he", "genres", "bpm_range" },
+            // Legacy shape (pre-2026-08-13) also supported by readers:
+            //   "direction": { ..., "anchor_genre", "secondary_genres", ... }
             "popularityWindow": [lo, hi]
           },
           "expandedAt": 1723456789000 // set after expand-playlist finishes (per-playlist)

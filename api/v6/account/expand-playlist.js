@@ -158,8 +158,12 @@ export default async function handler(req, res) {
 
     // We need `expansion.direction` to know what to fetch. Playlists built
     // before this feature was rolled out won't have it — nothing to do.
+    // Accept new shape (`genres` array) OR legacy shape (`anchor_genre`).
     const expansion = row.expansion;
-    if (!expansion?.direction?.anchor_genre || !expansion?.direction?.bpm_range) {
+    const dir = expansion?.direction;
+    const hasGenres = (Array.isArray(dir?.genres) && dir.genres.length)
+      || (typeof dir?.anchor_genre === 'string' && dir.anchor_genre.length);
+    if (!hasGenres || !dir?.bpm_range) {
       return res.status(400).json({ error: 'playlist row has no expansion metadata (built pre-feature)' });
     }
 

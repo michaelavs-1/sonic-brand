@@ -2,9 +2,10 @@
 // Renders one Spotify-embed card per direction, 4 per page across 2 pages.
 // Each card carries data-rank so we know which direction was picked.
 //
-// Anchor tracks come from /api/v5/anchor-tracks (Supabase cache). If a
-// direction's anchor genre has no cached tracks, that direction is dropped
-// from the preview (no card rendered) — the user simply sees fewer options.
+// Preview tracks come from /api/v5/anchor-tracks (Supabase cache) — a random
+// genre is picked from each direction's `genres` list per call. If the
+// picked genre has no cached tracks, the direction is dropped from the
+// preview (no card rendered) — the user simply sees fewer options.
 
 const HEADING = 'בחרו את השירים שאהבתם';
 
@@ -44,13 +45,25 @@ function showLoading(card) {
   );
 }
 
+function directionGenres(d) {
+  if (Array.isArray(d.genres) && d.genres.length) return d.genres;
+  return [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])]
+    .filter((g) => typeof g === 'string' && g.length);
+}
+
+function pickPreviewGenre(d) {
+  const list = directionGenres(d);
+  return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+}
+
 async function fetchAnchorTracks(directions, popularityWindow) {
   const specs = directions.map((d) => ({
     rank:   d.rank,
-    genre:  d.anchor_genre,
+    genre:  pickPreviewGenre(d),
     bpm_lo: Math.floor(d.bpm_range.min),
     bpm_hi: Math.ceil(d.bpm_range.max),
-  }));
+  })).filter((s) => s.genre);
+  if (!specs.length) return {};
   const r = await fetch('/api/v5/anchor-tracks', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -74,18 +87,14 @@ async function renderBatch(container, cards, submitLabel) {
     const mount    = el('div', { class: 'preview-spotify-mount' });
     const checkbox = el('input', { type: 'checkbox', class: 'preview-checkbox' });
 
-    const secondaryList = Array.isArray(d.secondary_genres) && d.secondary_genres.length
-      ? d.secondary_genres.join(', ')
-      : '—';
+    const genresList = directionGenres(d);
+    const genresText = genresList.length ? genresList.join(', ') : '—';
 
     const infoEl = el('div', { class: 'preview-info' },
       el('div', { class: 'preview-info-title' }, d.title_en || '(no title)'),
       el('div', { class: 'preview-info-genres' },
-        el('span', { class: 'preview-info-label' }, 'anchor: '),
-        el('span', {}, d.anchor_genre || '—'),
-        el('span', { class: 'preview-info-sep' }, ' · '),
-        el('span', { class: 'preview-info-label' }, 'with: '),
-        el('span', {}, secondaryList),
+        el('span', { class: 'preview-info-label' }, 'genres: '),
+        el('span', {}, genresText),
       ),
       el('div', { class: 'preview-info-desc' }, d.description_he || ''),
     );

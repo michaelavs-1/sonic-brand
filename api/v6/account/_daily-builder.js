@@ -53,9 +53,18 @@ const SPOTIFY_ADD_CHUNK = 50;
 // business_playlists table rows (snake_case columns). Event playlists
 // (`event_id != null`) are skipped since they don't carry direction
 // expansion. Rows without expansion metadata are also skipped.
+// A direction row is "eligible" if it has a genre list (new shape: `genres`,
+// or legacy: `anchor_genre`) and a BPM range. Event playlists are skipped
+// (no expansion metadata).
+function directionHasGenres(d) {
+  if (!d) return false;
+  if (Array.isArray(d.genres) && d.genres.length) return true;
+  return typeof d.anchor_genre === 'string' && d.anchor_genre.length > 0;
+}
+
 export function latestDirections(rows) {
   const eligible = (rows || []).filter((p) =>
-    p && p.expansion?.direction?.anchor_genre && p.expansion?.direction?.bpm_range && !p.event_id
+    p && directionHasGenres(p.expansion?.direction) && p.expansion?.direction?.bpm_range && !p.event_id
   );
   if (!eligible.length) return { directions: [], popularityWindow: null };
 
@@ -73,7 +82,14 @@ export function latestDirections(rows) {
   let popularityWindow = null;
   for (const p of latestBatch) {
     const d = p.expansion.direction;
-    const key = (d.title_en || '').toLowerCase() + '|' + (d.anchor_genre || '').toLowerCase();
+    // Dedup key: title + sorted genre list. Title alone isn't enough (Ami
+    // may reuse titles across variants); the genre set fingerprints the
+    // direction independently of any "anchor" concept.
+    const genres = Array.isArray(d.genres) && d.genres.length
+      ? d.genres
+      : [d.anchor_genre, ...(d.secondary_genres || [])].filter(Boolean);
+    const genreKey = genres.map((g) => String(g).toLowerCase()).sort().join('|');
+    const key = (d.title_en || '').toLowerCase() + '|' + genreKey;
     if (seen.has(key)) continue;
     seen.add(key);
     directions.push(d);
@@ -92,7 +108,9 @@ export function latestDirections(rows) {
 // from the full pool so the playlist still reaches target length.
 export async function fetchTracksWithHistory({ businessId, direction, popularityWindow, target }) {
   const key = directionKey(direction);
-  const genres = [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean);
+  const genres = Array.isArray(direction.genres) && direction.genres.length
+    ? direction.genres
+    : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean);
   const [pop_lo, pop_hi] = Array.isArray(popularityWindow)
     ? popularityWindow.map((v) => Math.round(v))
     : [0, 100];
@@ -224,7 +242,12 @@ function todayHe() {
 }
 
 function playlistName(bizName, direction) {
-  const title = direction.title_en || direction.anchor_genre || 'Playlist';
+  // Title fallback: direction.title_en, then the first genre (arbitrary but
+  // stable) if title is missing on a legacy row, then a hard default.
+  const firstGenre = Array.isArray(direction.genres) && direction.genres.length
+    ? direction.genres[0]
+    : direction.anchor_genre;
+  const title = direction.title_en || firstGenre || 'Playlist';
   const clean = String(bizName || '').trim();
   return (clean ? `${clean} · ${title} · ${todayHe()}` : `${title} · ${todayHe()}`).slice(0, 100);
 }
@@ -281,18 +304,21 @@ export async function buildOneDailyPlaylist({
     spotify_id:  created.id,
     business_id: businessId,
     url:         created.external_urls?.spotify || '',
-    label:       direction.title_en || direction.anchor_genre || 'פלייליסט',
+    label:       direction.title_en || 'פלייליסט',
     ico:         '🎵',
     track_count: ids.length,
-    genres:      [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
+    genres:      Array.isArray(direction.genres) && direction.genres.length
+      ? direction.genres
+      : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
     bpm_range:   null,
     expansion: {
       direction: {
-        title_en:         direction.title_en,
-        description_he:   direction.description_he,
-        anchor_genre:     direction.anchor_genre,
-        secondary_genres: direction.secondary_genres || [],
-        bpm_range:        direction.bpm_range,
+        title_en:       direction.title_en,
+        description_he: direction.description_he,
+        genres:         Array.isArray(direction.genres) && direction.genres.length
+          ? direction.genres
+          : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
+        bpm_range:      direction.bpm_range,
       },
       popularityWindow,
     },

@@ -73,14 +73,24 @@ export function closedDayTargetTracks() {
 
 // -------- direction key --------
 // Stable string identifier for a musical direction, used to look up per-biz
-// track-serve history in the v6_daily_track_history table. Derived from
-// anchor_genre + BPM range because those two fields uniquely characterize
-// the direction's track pool (secondary_genres widen the pool but don't
-// change its identity, and title_en can be regenerated with wording tweaks).
-// Same direction across days → same key → history lookup works.
+// track-serve history in the v6_daily_track_history table. Derived from the
+// full sorted genre list + BPM range: same direction (same genre set + BPM)
+// across days → same key → history dedup works. Title_en can be regenerated
+// with wording tweaks so it's not part of the key.
+//
+// Backward-compat: legacy directions stored `anchor_genre` + `secondary_genres`
+// instead of a flat `genres` list. We accept either shape and derive the
+// same key. Note: pre-refactor rows in v6_daily_track_history were keyed on
+// anchor_genre alone (no secondaries in the key); after the refactor, keys
+// include the full sorted set. Old history rows won't match new keys — a
+// few days of possible track repeats before the new history fills in.
 export function directionKey(direction) {
   const bpm = direction?.bpm_range || {};
-  return `${direction?.anchor_genre || ''}|${bpm.min ?? '?'}-${bpm.max ?? '?'}`;
+  const genres = Array.isArray(direction?.genres) && direction.genres.length
+    ? direction.genres
+    : [direction?.anchor_genre, ...(direction?.secondary_genres || [])].filter(Boolean);
+  const genrePart = genres.map((g) => String(g).toLowerCase()).sort().join('|');
+  return `${genrePart}|${bpm.min ?? '?'}-${bpm.max ?? '?'}`;
 }
 
 // -------- daily-playlist expiry --------

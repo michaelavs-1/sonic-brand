@@ -60,18 +60,22 @@ async function callGemini({ system, user, maxTokens = 4096, thinkingLevel = THIN
   return { status: r.status, elapsed, data };
 }
 
+function directionGenres(d) {
+  if (Array.isArray(d.genres) && d.genres.length) return d.genres;
+  return [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])]
+    .filter((g) => typeof g === 'string' && g.length);
+}
+
 function summarizeDirection(d, idx) {
-  const secs = Array.isArray(d.secondary_genres) && d.secondary_genres.length
-    ? ` (with: ${d.secondary_genres.join(', ')})` : '';
-  return `${idx + 1}. "${d.title_en}" — anchor: ${d.anchor_genre}${secs}`;
+  const genres = directionGenres(d);
+  return `${idx + 1}. "${d.title_en}" — ${genres.join(', ')}`;
 }
 
 function validateDirection(d) {
   const errs = [];
   if (typeof d.title_en !== 'string' || !d.title_en.length)             errs.push('title_en');
   if (typeof d.description_he !== 'string' || !d.description_he.length) errs.push('description_he');
-  if (typeof d.anchor_genre !== 'string' || !d.anchor_genre.length)     errs.push('anchor_genre');
-  if (!Array.isArray(d.secondary_genres))                               errs.push('secondary_genres');
+  if (!directionGenres(d).length)                                       errs.push('genres (or legacy anchor_genre)');
   const bpm = d.bpm_range;
   if (!bpm || !Number.isFinite(bpm.min) || !Number.isFinite(bpm.max))   errs.push('bpm_range');
   return errs;
@@ -188,7 +192,7 @@ if (page1Parsed) {
   const page2User = baseUser +
     `\n\nALREADY CHOSEN — do not duplicate these 4 directions:\n${priorSummary}` +
     `\n\nTASK VARIANT: Return 4 additional directions that meaningfully broaden the range beyond the 4 above. ` +
-    `Use different anchor genres and different sonic territories. They should complement, not overlap. ` +
+    `Use different genre combinations and different sonic territories. They should complement, not overlap. ` +
     `Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
   const { status, elapsed, data } = await callGemini({ system: SYSTEM_PROMPT, user: page2User });
   console.log(`   status=${status}  elapsed=${elapsed}ms`);
@@ -204,10 +208,25 @@ if (page1Parsed) {
         console.log(`   MODEL RETURNED ERROR: ${parsed.error} — ${parsed.reasoning_en || '(no reason)'}`);
       } else {
         reportDirections(parsed);
-        console.log('\n   overlap check (anchor genres):');
-        const p1Anchors = new Set(page1Parsed.directions.map(d => d.anchor_genre?.toLowerCase()));
-        const overlap = parsed.directions?.filter(d => p1Anchors.has(d.anchor_genre?.toLowerCase())) || [];
-        console.log(`     page 2 anchors reused from page 1: ${overlap.length}${overlap.length ? '  <- WARNING (spec says avoid)' : '  OK'}`);
+        console.log('\n   pair-overlap check (spec: no two directions share >1 genre):');
+        const allDirs = [...(page1Parsed.directions || []), ...(parsed.directions || [])];
+        let maxOverlap = 0;
+        let worstPair = null;
+        for (let i = 0; i < allDirs.length; i++) {
+          for (let j = i + 1; j < allDirs.length; j++) {
+            const gi = new Set(directionGenres(allDirs[i]).map(g => g.toLowerCase()));
+            const gj = directionGenres(allDirs[j]).map(g => g.toLowerCase());
+            const shared = gj.filter(g => gi.has(g));
+            if (shared.length > maxOverlap) {
+              maxOverlap = shared.length;
+              worstPair = { i, j, shared };
+            }
+          }
+        }
+        console.log(`     max shared-genre count between any two directions: ${maxOverlap} ${maxOverlap <= 1 ? 'OK' : '<- WARNING (spec says <=1)'}`);
+        if (maxOverlap > 1 && worstPair) {
+          console.log(`     worst: "${allDirs[worstPair.i].title_en}" vs "${allDirs[worstPair.j].title_en}" → shared: ${worstPair.shared.join(', ')}`);
+        }
       }
     } catch (e) {
       console.log(`   JSON parse FAILED: ${e.message}`);

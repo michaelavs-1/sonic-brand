@@ -23,7 +23,7 @@ if (new URLSearchParams(location.search).has('reset')) {
 }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeTargetForToday } from '../generation/playlist-length.js?v=02082026a';
+import { computeTargetForToday } from '../generation/playlist-length.js?v=13082026a';
 import { mountHoursEditor } from '../hours-selector.js?v=03082026a';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {

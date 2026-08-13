@@ -73,17 +73,36 @@ function spotifyBadge() {
 }
 
 // ---------- v5 anchor tracks (one per direction) ----------
-async function fetchAnchorTracks(directions, popularityWindow) {
-  const specs = directions.map((d) => ({
-    rank:   d.rank,
-    genre:  d.anchor_genre,
-    bpm_lo: Math.floor(d.bpm_range.min),
-    bpm_hi: Math.ceil(d.bpm_range.max),
+// Returns a genre from a direction's `genres` list, picked at random.
+// Backward-compat: falls back to legacy [anchor_genre, ...secondary_genres]
+// if `genres` isn't present (persisted pre-refactor data).
+function directionGenres(d) {
+  if (Array.isArray(d.genres) && d.genres.length) return d.genres;
+  return [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])]
+    .filter((g) => typeof g === 'string' && g.length);
+}
+
+function pickPreviewGenre(d) {
+  const list = directionGenres(d);
+  return list.length ? list[Math.floor(Math.random() * list.length)] : null;
+}
+
+// fetchAnchorTracks — one representative track per (rank, genre, BPM) spec.
+// Endpoint name is legacy ("anchor-tracks") but the concept of a designated
+// anchor genre is gone: each spec passes the specific genre to draw from.
+// Callers construct specs — random pick for the initial preview, explicit
+// per-genre for the swap-track cycler.
+async function fetchAnchorTracks(specs, popularityWindow) {
+  const payload = specs.map((s) => ({
+    rank:   s.rank,
+    genre:  s.genre,
+    bpm_lo: Math.floor(s.bpm_range.min),
+    bpm_hi: Math.ceil(s.bpm_range.max),
   }));
   const r = await fetch('/api/v5/anchor-tracks', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ specs, popularity: popularityWindow }),
+    body:    JSON.stringify({ specs: payload, popularity: popularityWindow }),
   });
   if (!r.ok) {
     const data = await r.json().catch(() => ({}));
@@ -91,6 +110,17 @@ async function fetchAnchorTracks(directions, popularityWindow) {
   }
   const { byRank } = await r.json();
   return byRank || {};
+}
+
+// Initial preview fetch: random genre per direction.
+async function fetchInitialPreviewTracks(directions, popularityWindow) {
+  const specs = directions.map((d) => ({
+    rank:      d.rank,
+    genre:     pickPreviewGenre(d),
+    bpm_range: d.bpm_range,
+  })).filter((s) => s.genre);
+  if (!specs.length) return {};
+  return fetchAnchorTracks(specs, popularityWindow);
 }
 
 // ---------- track metadata (via v4 Spotify proxy — client credentials) ----------
@@ -436,9 +466,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       });
 
       // "Another song from this direction" — cycles through the direction's
-      // genres (secondaries first, then anchor, then loop). The initial
-      // preview track was drawn from the anchor genre, so the first click
-      // moves to secondary_genres[0]. Strategy:
+      // genres. The AI treats all genres as equal weight; the initial preview
+      // track was drawn from a random one. Swap walks the same list starting
+      // from a random position and relies on card-scoped seenIds to avoid
+      // repeats. Strategy:
       //   1. TIGHT PASS: starting at cycleIdx, walk the full genre cycle once
       //      with the original BPM + popularity window. Per genre we retry
       //      twice — random draws from a small pool can return an already-
@@ -456,16 +487,23 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       // to current track" check, which allowed A→B→A over two swaps.
       // (Reported by Ami — small directions like Klezmer or tight BPM ranges
       // exhaust the tight pool within a handful of swaps.)
-      const cycleGenres = [
-        ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : []),
-        d.anchor_genre,
-      ].filter((g) => typeof g === 'string' && g.length);
-      let cycleIdx = 0;
+      const cycleGenres = directionGenres(d);
+      let cycleIdx = cycleGenres.length ? Math.floor(Math.random() * cycleGenres.length) : 0;
       const seenIds = new Set([p.trackId]);
-      const drawUnique = async (dir, pop) => {
+      const drawUnique = async (spec, pop) => {
         for (let attempt = 0; attempt < 2; attempt++) {
-          const byRank = await fetchAnchorTracks([dir], pop);
-          const candidate = byRank[String(dir.rank)];
+          let byRank;
+          try {
+            byRank = await fetchAnchorTracks([spec], pop);
+          } catch (e) {
+            // Server-side failure (usually Postgres 57014 statement timeout on
+            // a cold query plan). Don't block the swap — skip this genre so
+            // walkCycle tries the next one. A subsequent swap on the same
+            // genre often succeeds because the plan is now warm in cache.
+            console.warn(`swap: fetchAnchorTracks failed for genre "${spec.genre}" (attempt ${attempt + 1}):`, e?.message || e);
+            return null;
+          }
+          const candidate = byRank[String(spec.rank)];
           if (candidate && !seenIds.has(candidate)) return candidate;
         }
         return null;
@@ -473,7 +511,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const walkCycle = async (bpmRange, pop) => {
         for (let step = 0; step < cycleGenres.length; step++) {
           const idx = (cycleIdx + step) % cycleGenres.length;
-          const spec = { ...d, anchor_genre: cycleGenres[idx], bpm_range: bpmRange };
+          const spec = { rank: d.rank, genre: cycleGenres[idx], bpm_range: bpmRange };
           const hit = await drawUnique(spec, pop);
           if (hit) { cycleIdx = (idx + 1) % cycleGenres.length; return hit; }
         }
@@ -606,7 +644,7 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
     const prev = anchorSeq;
     const next = (async () => {
       await prev.catch(() => {});
-      return fetchAnchorTracks(dirs, popularityWindow);
+      return fetchInitialPreviewTracks(dirs, popularityWindow);
     })();
     anchorSeq = next;
     return next;

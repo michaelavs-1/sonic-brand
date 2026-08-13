@@ -54,7 +54,7 @@ if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
 const { pgrSelectIn, pgrUpsert } = await import('../../api/v4/supabase-client.js');
 
 // ---------- constants ----------
-const HARDCODED_CEILING   = 50000;    // absolute max for --max-rapidapi-calls (== PRO tier monthly quota)
+const HARDCODED_CEILING   = 1000000;  // absolute max for --max-rapidapi-calls (matches Business-tier monthly quota, upgraded from PRO's 50k on 2026-08-XX)
 const FRESHNESS_HOURS     = 24;       // execution plan must be no older than this
 const DEFAULT_CONCURRENCY = 3;        // overridable via --concurrency=N
 const MAX_CONCURRENCY     = 8;        // refuse anything higher (upstream degrades fast)
@@ -391,11 +391,11 @@ function buildAnalysisRow(spotifyId, raw) {
 async function main() {
     const args = parseArgs();
 
-    // --- Guard 1: --max-rapidapi-calls required and <= HARDCODED_CEILING ---
-    if (!args['max-rapidapi-calls']) {
-        fail('--max-rapidapi-calls=N is required. Pick N <= ' + HARDCODED_CEILING + '.');
-    }
-    const cap = parseInt(args['max-rapidapi-calls'], 10);
+    // --- Guard 1: cap defaults to HARDCODED_CEILING when --max-rapidapi-calls
+    //     is omitted; must be a positive integer no larger than HARDCODED_CEILING.
+    const cap = args['max-rapidapi-calls']
+        ? parseInt(args['max-rapidapi-calls'], 10)
+        : HARDCODED_CEILING;
     if (!Number.isFinite(cap) || cap <= 0) {
         fail('--max-rapidapi-calls must be a positive integer.');
     }

@@ -2,8 +2,8 @@
 //
 // Input:
 //   {
-//     selectedDirections: [{ rank, title_en, description_he, anchor_genre,
-//                            secondary_genres, bpm_range }, ...],
+//     selectedDirections: [{ rank, title_en, description_he, genres,
+//                            bpm_range }, ...],
 //     bizName:            'שם העסק' | '',
 //     popularityWindow:   [lo, hi] | null,
 //   }
@@ -40,7 +40,9 @@ function playlistName(bizName, direction) {
 }
 
 async function fetchDirectionTracks(direction, popularityWindow) {
-  const genres = [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean);
+  const genres = Array.isArray(direction.genres) && direction.genres.length
+    ? direction.genres
+    : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean);
   const body = {
     genres,
     bpm_range:  direction.bpm_range,

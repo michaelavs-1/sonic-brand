@@ -45,14 +45,20 @@ async function fetchAllGenres() {
 function extractPromptGenres() {
   return readFile(resolve(REPO_ROOT, 'v6/generation/musical-directions.js'), 'utf8')
     .then((src) => {
-      // Grab the genre-list paragraph AFTER the "## Genre Universe" heading —
-      // not the JS comment above the export that also mentions "Heavy Rock+Metal".
+      // The genre list is the first non-empty single-line paragraph AFTER
+      // the "## Genre Universe" heading and its intro sentence. Grab it by
+      // section-splitting on the next "##" heading and taking the last
+      // non-empty non-intro line.
       const afterHeading = src.split(/^## Genre Universe\s*$/m)[1];
-      if (!afterHeading) throw new Error('Could not find "## Genre Universe" heading in prompt');
-      // The genre list is the first non-empty paragraph that starts with "Heavy Rock+Metal".
-      const match = afterHeading.match(/(Heavy Rock\+Metal[^\n]*)/);
-      if (!match) throw new Error('Could not find genre list after heading');
-      return match[1].trim().split(',').map((g) => g.trim()).filter(Boolean);
+      if (!afterHeading) throw new Error('Could not find "## Genre Universe" heading');
+      const beforeNext = afterHeading.split(/^## /m)[0];
+      // Find the longest comma-containing line — that's the genre list.
+      const lines = beforeNext.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+      const genreLine = lines
+        .filter((l) => l.includes(','))
+        .sort((a, b) => b.length - a.length)[0];
+      if (!genreLine) throw new Error('Could not find comma-separated genre list');
+      return genreLine.split(',').map((g) => g.trim()).filter(Boolean);
     });
 }
 

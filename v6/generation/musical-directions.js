@@ -45,17 +45,18 @@ const MAX_TOKENS = 16000;
 //   output language / title style / description style.
 // FIXED_PROMPT_SECTION — the schema/error-handling contract that downstream
 //   code depends on (output format, when-not, good/bad examples).
-export const EDITABLE_PROMPT_SECTION = `You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into 8 distinct "musical directions" presented to the business owner. The owner will see one representative song per direction, pick the ones they like, and each picked direction becomes the seed for a real playlist.
+export const EDITABLE_PROMPT_SECTION = `You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into up to 8 distinct "musical directions" presented to the business owner. The owner will see one representative song from the direction, pick the ones they like, and each picked direction becomes the seed for a real playlist.
 
 ## Genre Universe
 
 The ONLY genres you may use are the ones in this list. Do not invent, rename, translate, or combine genres. If a musical style is not in the list, it does not exist for the purposes of this task.
 
-Heavy Rock+Metal, Nu Metal, Grunge, Rock, Indie Rock, IndieTronica, Post Punk, Punk, Indie Folk, Folk, Country, Blues, Jazz (Standards), French Jazz, Gypsy jazz, Smooth Jazz, Late Night jazz, Swing Jazz, Easy Listening, French Ye Ye, Funk, World Funk, Afro Funk, Ethio-Jazz, Neo Exotica, Chamber music, Piano Impressionism, Baroque, Medieval Music, African Highlife, Arabic Funk, Tishoumaren, Dabke, Algerian Rai, Arab Classic, Laiko, Rebetiko, Turk Arabesk, Anatolian Psychedelic Rock, Flamenco, Fado, Bossa Nova, Samba, Salsa, Cha Cha Cha, Bolero, Argentine Tango, Peruvian Cumbia, Dancehall, Reggaeton, Reggae, Lovers Rock, LoFi Bossa, LoFi Beats, Acid Jazz, Neo Soul, Rnb, French RnB, Japanese RnB, Korean RnB, Hip Hop, French Hip Hop, Icelandic Hip Hop, Trap, Grime & Drill, Thai Molam Funk, Japanese City Pop, Disco, Nu Disco, Italo Disco, Indie Dance, AfroBeats, Afro House, Amapiano, French DownTempo, DownTempo, Organic House, Deep House, Soulful House, Electro Swing, Jazz House, Tech House, UKG, Dubstep, Uplifting & Vocal Trance, Progressive & Psy Trance, Modern Pop, Alternative pop, Electro Pop, K-Pop, 80s Pop, 90's pop party, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל
+Alternative pop, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Blues, Bolero, Bossa Nova, Cha Cha Cha, Chamber music, Country, Dabke, Dancehall, Deep House, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Flamenco, Folk, French DownTempo, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, Grunge, Gypsy jazz, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italo Disco, Japanese City Pop, Japanese RnB, Jazz (Standards), Jazz House, K-Pop, Korean RnB, Laiko, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam Funk, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, World Funk, Dubstep, Grime & Drill, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל
 
 ## Inputs
 
 You will receive:
+
 - Free-text description of the business (any language).
 - Optionally: Business name.
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
@@ -73,69 +74,95 @@ Google Places context:
 \`\`\`
 
 ### Processing Rules:
+
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
 - **Google Places Context:** External factual grounding — use it to sharpen or corroborate direction choices, never as a replacement for the description. Examples: \`price_level: PRICE_LEVEL_VERY_EXPENSIVE\` + editorial mentioning "intimate" → lean elegant; \`servesBreakfast: true\` + \`servesDinner: false\` → day-part-biased toward daytime energy; \`liveMusic: true\` → venue expects live-music culture. Don't invent constraints Google didn't state. Absence of the block means Google didn't find the venue; rely on the description alone.
 
-## Energy Cohesion & Curation Principles
+## Energy & Pairing Constraints
 
-1. **Strict Internal Homogeneity:** Every single direction MUST maintain a completely cohesive energy tier and dynamic level across all its genres. NEVER pair genres with conflicting energy levels or mismatched venue vibes in the same direction (e.g., NEVER pair Smooth Jazz with House, or LoFi Beats with Tech House). The anchor and all secondary genres must feel seamless together in a single venue environment.
-2. **Energy is Emergent Across the Set:** Do not output generic energy tags ("calm", "high energy"). Energy is a property of each direction as a whole. If a business calls for both peaceful daytime and lively evening moments, produce individual directions that lean each way so the overall set covers the venue's full operational spectrum.
-3. **Maximize Rich Genre Combinations:** Aim to use 3 to 5 total genres per direction (1 anchor + 2–4 secondaries) whenever musically logical. Combine genres to create a rich, distinct sonic language rather than playing it safe with single-genre or overly obvious pairs.
-4. **Prioritize Unique & Niche Genres:** Actively weave in less common, highly evocative genres from the pool whenever appropriate (e.g., Ethio-Jazz, Anatolian Psychedelic Rock, Fado, Gypsy jazz, Cha Cha Cha, Thai Molam Funk, Tishoumaren, Neo Exotica, Italo Disco, etc.). A direction that seamlessly blends distinct world/niche sounds while maintaining total energy cohesion is the gold standard (e.g., pairing Fado, Gypsy jazz, Anatolian Psychedelic Rock, and Ethio-Jazz under a mid-tempo acoustic/groove identity).
+### 1. Absolute Energy Cohesion (Energy > Geographic Origin / Nomenclature)
+
+- **Energy Over Origin:** Every direction MUST be built around a single, unbroken energy level (1 to 10). Prioritize dynamic venue energy and volume/BPM levels over genre roots, languages, or regional definitions.
+- **Strict Energy Filtering within Regional Blends:** When combining cultural/regional music, remove high-energy outliers that break the room's vibe (e.g., if creating a mid-tempo Mediterranean/Latin direction, pair Flamenco, Arab Classic, and Turk Arabesk, but strictly EXCLUDE high-energy festival genres like Samba, Salsa, or Dabke).
+
+### 2. Multi-Cultural & Cross-Regional Genre Fusion
+
+- **Avoid Monocultural Silos:** Do NOT restrict directions to a single geographic or stylistic domain (e.g., avoid creating a "purely Latin" or "purely Arabic" direction if the energy tier allows for cross-cultural integration).
+- **Maximize Complementary Global Genres:** Proactively weave together genres from different regions and cultural scenes that share the exact same energy and dynamic feel.
+  - *Example 1 (Cross-Cultural Lounge/Dining):* Blend Latin, Middle Eastern, and Anatolian flavors (Flamenco, Arab Classic, Turk Arabesk, Anatolian Psychedelic Rock) under one cohesive mid-tempo vibe.
+  - *Example 2 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, French RnB, Japanese RnB, and Korean RnB.
+
+### 3. Equal Genre Weight & Density (No Anchor Genre)
+
+- **Holistic Direction Composition:** There is NO anchor genre. Every direction is defined as the unified sum of all its constituent genres.
+- **Target Genre Count:** Actively aim for 3 to 5 genres per direction to create rich, varied sonic identities.
+- **Justified Minimal Exceptions (2 Genres):** A direction may contain fewer than 3 genres (1–2 genres) ONLY if it serves an isolated, hyper-specific contextual need (e.g., pure שירי ארץ ישראל or dedicated electronic sub-genres) where adding external genres would destroy dynamic or cultural coherence.
+
+### 4. Strict Pop Isolation (Radio Experience)
+
+- **No Esoteric / Niche Pairings with Pop:** Pop genres of any kind (Modern Pop, 80s Pop, 90's pop party, Electro Pop, Alternative pop, K-Pop, פופ מזרחית) must NEVER be mixed with niche, esoteric, or acoustic sub-genres.
+- **Pure Pop Clusters:** Pop-centric directions must consist exclusively of other Pop sub-genres, paired strictly according to matching energy tiers.
+
+### 5. House & Techno Containment Rule
+
+- **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
+- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.
+
+## Direction Diversity & Non-Overlap Rules
+
+**Maximum Genre Pair Overlap Limit (Strict Uniqueness)**
+
+- **Single Genre Reuse Allowed:** A single genre MAY appear across multiple directions if it suits different vibe concepts.
+- **Max Overlap Constraint (Strictly ≤ 1 Shared Genre):** No two directions may ever share more than one single genre. If Direction A contains both Neo Soul and DownTempo, no other direction across the entire output may contain both Neo Soul and DownTempo together, under any circumstances.
 
 ## Task Workflow
 
-1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand — genres that would clash with any plausible customer, moment, or brand identity. Exclude them from further consideration.
-2. **Build Musical Directions:** Create up to 8 distinct directions from surviving genres. Each direction must include:
-   - **Anchor genre:** Exactly 1 genre from the surviving pool. The system will draw a single representative song from the anchor to show the owner. Choose the anchor because it fairly represents the whole direction to a listener who hears just one track from it — not necessarily because it's the "most important" genre of the mix.
-   - **Secondary genres:** 1 to 4 additional genres from the surviving pool that broaden the direction into a full playlist. They must be sonically and energetically adjacent to the anchor.
-   - **BPM range:** A tight tempo band (min to max BPM). Downstream logic will filter real tracks by this range, so choose it to reflect how the direction actually feels — not theoretical genre extremes. Typical widths are 15–30 BPM; ambient/slow directions may be narrower, dance-floor directions may extend wider. Do not exceed a 40 BPM width.
-3. **Rank Directions:** Rank directions by fit to the business (best fit first). Ranks 1–4 will represent Page 1 (primary options); Ranks 5–8 represent Page 2.
-
-## Coverage & Diversity Rules
-
-- **Generic input** (e.g., "a café", "a bar in Tel Aviv"): Spread directions wide across the plausible sonic spectrum so the owner sees real breadth.
-- **Niche / Hyper-specific input** (e.g., "an underground brutalist techno bar"): Keep directions tightly clustered around shades of that specific identity.
-- **Uniqueness Constraint:** Directions may share genres, but no direction may be a total subset of another. Each must be distinguishable by anchor, secondary combination, or energy/BPM range.
-- **Niche Exception:** If the business genuinely cannot support 8 coherent directions without sacrificing quality, return fewer (minimum 3). It is better to return 3 strong directions than 8 padded ones.
+1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand.
+2. **Build Musical Directions:** Create up to 8 distinct directions from surviving genres, adhering strictly to energy levels, cross-regional integration rules, Pop rules, House enclosure rules, and the Non-Overlap Constraint. Each direction must include:
+   - **Genres list:** 3 to 5 genres from the pool (or 1–2 for justified isolated niche genres) forming an equal, cohesive mix.
+   - **BPM range:** A tight tempo band (width max 40 BPM).
+3. **Rank Directions:** Rank directions by fit to the business (best fit first).
 
 ## Output Language & Formatting
 
-- **Titles (\`title_en\`):** Written in English.
+- **Titles (\`title_en\`):** Written in English (4–7 words).
 - **Descriptions (\`description_he\`):** Written in natural, standard everyday Hebrew.
-- **Genre Names:** Keep genre names strictly in whatever language they appear in the Genre Universe list — do not translate them.
+- **Genre Names:** Keep genre names strictly as listed in the Genre Universe.
 
 ## Rules for English Titles
 
 Each title is 4–7 words in English. Use one of three patterns:
+
 1. *Adjective + Genres:* "Desert Blues & Tropical Grooves"
 2. *Genre Chain:* "Neo-Soul, R&B & Acid Jazz"
 3. *Genre Chain + Flourish:* "Acoustic Bossa, Fado & Iberian Romance"
 
-*Note: Minor genre formatting/abbreviations are allowed in titles (e.g., "Neo-Soul" for "Neo Soul", "R&B" for "Rnb"). Avoid vague titles ("Chill", "Vibes") and never use a bare copy of a single genre string as the whole title.*
+## Rules for Hebrew Descriptions (description_he)
 
-## Rules for Hebrew Descriptions
+The description must capture the full collective blend of all genres in the playlist and the holistic vibe they build together, rather than describing just one dominant genre or region. It must clearly explain to the business owner the combined sound experience, its direct effect on the business, and how best to utilize it.
 
-Each description must be **ONE short sentence (6–14 words)** capturing the overall feel of the direction. Write in plain, standard, everyday Hebrew — as if a knowledgeable friend were describing music to another Israeli, NOT translated from English.
+### Dynamic Structure & Content:
 
-### Structural Priority (Three Beats):
-Open with Beat 1 (required). Add Beat 2 or Beat 3 (optional) if space allows within the word budget:
-1. **Beat 1 (Required):** Overall vibe, energy, or sound statement. Never open with a bare instrument list.
-2. **Beat 2 (Optional):** Concrete flavor details (e.g., instrument family, era, fusion note).
-3. **Beat 3 (Optional):** Functional / fit context (e.g., "מתאים לערב", "לסופ״ש", "מחזיק את הבר בתנועה").
+Write 1–2 concise, impactful sentences (10–25 words total) in plain, natural everyday Hebrew. You must cover two key elements:
+
+1. **Holistic Blend & Atmosphere Effect:** Describe the combined sound generated by the whole genre mixture and how that overall atmosphere influences customer experience or venue dynamics.
+2. **Operational Best Use (How/When to play it):** Provide a concrete recommendation for when or how the owner should use this direction in their workflow.
+
+Examples of tone and utility:
+
+- "שילוב גרובי רך ואורבני שמחבר סאונד נשמה קלילי ומקצבים אקוסטיים – מושלם לכוס יין בשעות השקיעה ומשרה אווירה נינוחה."
+- "תערובת קצבית ונגישה של פופ ומקצבים אלקטרוניים קלים שומרת על אנרגיה שמחה וזורמת, ותגרום ללקוחות להישאר בחנות בכיף."
+- "מיקס עמוק וסקסי של מקצבים אלקטרוניים עדינים, בדיוק לרגעים שבהם הבר מתמלא והתנועה במקום מתחילה לעלות."
 
 ### Mandatory Hebrew Vocabulary Constraints:
-- **Instruments:** ONLY \`פסנתר\`, \`סינתים\`, and \`גיטרה\` may be named directly (never specify guitar types like acoustic/electric). For all others, use family names ONLY:
-  - Winds: \`כלי נשיפה\`
-  - Percussion: \`כלי הקשה\`
-  - Strings: \`כלי מיתר\`
-  - Vocals: \`שירה\`, \`מקהלה\`
+
+- **Instruments:** ONLY \`פסנתר\`, \`סינתים\`, and \`גיטרה\` may be named directly. For others, use family names (\`כלי נשיפה\`, \`כלי הקשה\`, \`כלי מיתר\`, \`שירה\`).
 - **Forbidden Vocabulary:**
   - NO transliterated English (e.g., "פרקשן", "סינתיסייזר").
-  - NO marketing abstractions (e.g., "עומק הרמוני", "מרקם אקוסטי", "אנרגיה פנימית", "צלילים מהפנטים", "סאונד עשיר").
-  - NO overly specific scene-painting (NO city names, NO beverage brands, NO "כמו לשבת ב...").
-- **Language Integrity:** Every word must be real, standard dictionary Hebrew in its normal grammatical form. Never invent or bend Hebrew word forms.`;
+  - NO vague marketing fluff (e.g., "עומק הרמוני", "מרקם אקוסטי", "אנרגיה פנימית", "צלילים מהפנטים").
+  - NO specific city names, beverage brands, or generic clichés ("כמו לשבת ב...").
+- **Language Integrity:** Standard, dictionary Hebrew spoken as a peer to another business owner.`;
 
 export const FIXED_PROMPT_SECTION = `## Output format
 
@@ -146,13 +173,12 @@ Normal case:
   "directions": [
     {
       "rank": 1,
-      "title_en": "English title, 4-7 words (see Title style)",
-      "anchor_genre": "one genre name from the list",
-      "secondary_genres": ["...", "..."],
-      "description_he": "one short Hebrew sentence, 6-14 words (see Description style)",
+      "title_en": "English title, 4-7 words (see Rules for English Titles)",
+      "genres": ["...", "...", "..."],
+      "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
       "bpm_range": {"min": 90, "max": 115}
     }
-    // ... up to rank 8
+    // ... up to 8 directions
   ]
 }
 
@@ -197,10 +223,10 @@ BAD inputs (return an error — do NOT force directions):
 const SYSTEM_PROMPT = EDITABLE_PROMPT_SECTION + '\n\n' + FIXED_PROMPT_SECTION;
 
 function summarizeDirection(d, idx) {
-  const secondaries = Array.isArray(d.secondary_genres) && d.secondary_genres.length
-    ? ` (with: ${d.secondary_genres.join(', ')})`
-    : '';
-  return `${idx + 1}. "${d.title_en}" — anchor: ${d.anchor_genre}${secondaries}`;
+  const genres = Array.isArray(d.genres) && d.genres.length
+    ? d.genres
+    : [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])].filter(Boolean);
+  return `${idx + 1}. "${d.title_en}" — ${genres.join(', ')}`;
 }
 
 // Formats a confirmed Google Places match as a labeled block matching the
@@ -249,7 +275,7 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, place, subset, priorD
     const priorSummary = Array.isArray(priorDirections) && priorDirections.length
       ? `\n\nALREADY CHOSEN — do not duplicate these 4 directions:\n${priorDirections.map(summarizeDirection).join('\n')}`
       : '';
-    return base + priorSummary + `\n\nTASK VARIANT: Return 4 additional directions that meaningfully broaden the range beyond the 4 above. Use different anchor genres and different sonic territories. They should complement, not overlap. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
+    return base + priorSummary + `\n\nTASK VARIANT: Return 4 additional directions that meaningfully broaden the range beyond the 4 above. Use different genre combinations and different sonic territories. They should complement, not overlap. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
   }
   return base;
 }
@@ -275,22 +301,42 @@ function validateBpmRange(bpm) {
 }
 
 function validateDirection(d) {
-  return d
-    && typeof d.title_en === 'string' && d.title_en.length
-    && typeof d.description_he === 'string' && d.description_he.length
-    && typeof d.anchor_genre === 'string' && d.anchor_genre.length
-    && Array.isArray(d.secondary_genres)
-    && validateBpmRange(d.bpm_range);
+  if (!d) return false;
+  if (typeof d.title_en !== 'string' || !d.title_en.length) return false;
+  if (typeof d.description_he !== 'string' || !d.description_he.length) return false;
+  if (!validateBpmRange(d.bpm_range)) return false;
+  // Accept the new equal-weight `genres` array OR the legacy anchor+secondaries
+  // shape (the model may still regress to it on some calls).
+  const hasNew = Array.isArray(d.genres) && d.genres.length
+    && d.genres.every((g) => typeof g === 'string' && g.length);
+  const hasLegacy = typeof d.anchor_genre === 'string' && d.anchor_genre.length;
+  return hasNew || hasLegacy;
 }
 
 // Normalizes a raw model response into an array of validated + sorted
 // directions, and renumbers ranks starting at `rankStart` so the two split
 // calls produce non-colliding ranks (page 1 = 1..4, page 2 = 5..8).
+//
+// If the model regressed to the legacy anchor+secondary shape, we fold it
+// into a flat `genres` list so downstream code has a single source of truth.
+// We do NOT populate `anchor_genre` from `genres` — no genre gets privileged
+// treatment; the preview seed and the swap cycler both pick randomly from
+// `genres`. (Old persisted user_metadata may still contain anchor_genre;
+// reader code has its own legacy fallback.)
 function normalizeDirections(parsed, rankStart) {
   if (!Array.isArray(parsed?.directions)) return [];
   const valid = parsed.directions.filter(validateDirection);
   valid.sort((a, b) => (Number(a.rank) || 999) - (Number(b.rank) || 999));
-  valid.forEach((d, idx) => { d.rank = rankStart + idx; });
+  valid.forEach((d, idx) => {
+    d.rank = rankStart + idx;
+    if (!Array.isArray(d.genres) || !d.genres.length) {
+      d.genres = [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])]
+        .filter((g) => typeof g === 'string' && g.length);
+    }
+    // Strip legacy fields — downstream now reads `genres` only.
+    delete d.anchor_genre;
+    delete d.secondary_genres;
+  });
   return valid;
 }
 

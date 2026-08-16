@@ -74,7 +74,6 @@
     }
   },
   "crons": [
-    { "path": "/api/v4/ami-cron-tick",           "schedule": "* * * * *" },
     { "path": "/api/cron/expire-playlists",      "schedule": "0 * * * *" },
     { "path": "/api/cron/generate-daily",        "schedule": "0 * * * *" }
   ],

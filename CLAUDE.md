@@ -522,6 +522,8 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 ## VERCEL DEPLOYMENT
 
+**Tier:** Vercel Pro (paid). 1M function invocations/month, up to 900s function duration, commercial use allowed. Supabase is also on Pro ($25/mo) — 8GB DB, unlimited API requests, no auto-pause. Assume both when reasoning about limits.
+
 **Prod deploys are MANUAL:** `vercel --prod`. Pushing to `main` does NOT auto-deploy.
 
 `vercel.json` configures:

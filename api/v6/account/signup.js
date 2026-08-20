@@ -35,7 +35,19 @@
    Response: { ok: true, existing_user, business_id, emailed: true, email }
 */
 
-import { pgrSelect, pgrUpsert } from '../../v5/supabase-client.js';
+import { pgrSelect, pgrUpsert, pgrInsert } from '../../v5/supabase-client.js';
+
+// Fingerprint helper — a direction is uniquely identified by (title +
+// normalized-sorted genre set). Same key logic used by _daily-builder.js
+// and the migration script; keep them consistent.
+function directionFingerprint(d) {
+  if (!d) return '';
+  const genres = Array.isArray(d.genres) && d.genres.length
+    ? d.genres
+    : [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])].filter(Boolean);
+  const gk = genres.map((g) => String(g).toLowerCase()).sort().join('|');
+  return (d.title_en || '').toLowerCase() + '|' + gk;
+}
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -295,11 +307,57 @@ export default async function handler(req, res) {
       console.warn('[signup] hours/place upsert failed:', e.message);
     }
 
-    // 4) business_playlists — one row per onboarding sample playlist.
-    //    expires_at comes from the ledger (created_playlists) so both
-    //    tables agree; if the ledger row wasn't found we fall back to
-    //    "24h from now" as a defensive placeholder (expand-playlist
-    //    recomputes expires_at as soon as the user hits the dashboard).
+    // 4) business_directions — insert one row per unique picked
+    //    direction, capture the returned ids in a fingerprint → id map,
+    //    then use it below to tag each business_playlists row with the
+    //    right direction_id. Only picked directions are saved (matches
+    //    the client's swipe-deck output); a future dashboard can add
+    //    fresh directions from scratch.
+    const directionIdByFp = {};
+    if (Array.isArray(playlists) && playlists.length) {
+      const uniqueByFp = new Map();
+      for (const p of playlists) {
+        const d = p?.expansion?.direction;
+        if (!d) continue;
+        const fp = directionFingerprint(d);
+        if (uniqueByFp.has(fp)) continue;
+        const genres = Array.isArray(d.genres) && d.genres.length
+          ? d.genres
+          : [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])].filter(Boolean);
+        uniqueByFp.set(fp, {
+          business_id:       businessId,
+          rank:              Number.isFinite(d.rank) ? d.rank : null,
+          title_en:          d.title_en || null,
+          description_he:    d.description_he || null,
+          genres,
+          bpm_range:         d.bpm_range || null,
+          popularity_window: Array.isArray(p.expansion?.popularityWindow) ? p.expansion.popularityWindow : null,
+          active:            true,
+        });
+      }
+      if (uniqueByFp.size) {
+        try {
+          const fps = [...uniqueByFp.keys()];
+          const inserted = await pgrInsert('business_directions', [...uniqueByFp.values()], { returnRows: true });
+          // PostgREST preserves insert order in the returned representation,
+          // so a positional zip is safe.
+          (inserted || []).forEach((row, i) => {
+            if (row?.id && fps[i]) directionIdByFp[fps[i]] = row.id;
+          });
+        } catch (e) {
+          console.warn('[signup] business_directions insert failed:', e.message);
+        }
+      }
+    }
+
+    // 5) business_playlists — one row per onboarding sample playlist.
+    //    Each row tagged with the source direction_id (from step 4) and
+    //    its actual track_ids (from the client — see playlist-builder.js
+    //    buildOne's `trackIds`). expires_at comes from the ledger
+    //    (created_playlists) so both tables agree; if the ledger row
+    //    wasn't found we fall back to "24h from now" as a defensive
+    //    placeholder (expand-playlist recomputes expires_at as soon as
+    //    the user hits the dashboard).
     if (Array.isArray(playlists) && playlists.length) {
       let ledgerExpiries = {};
       try {
@@ -311,21 +369,26 @@ export default async function handler(req, res) {
         console.warn('[signup] ledger expiry lookup failed:', e.message);
       }
       const fallbackExpiry = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
-      const rows = playlists.map((p) => ({
-        spotify_id:  p.id,
-        business_id: businessId,
-        url:         p.url,
-        label:       p.label   || null,
-        ico:         p.ico     || '🎵',
-        track_count: Number.isFinite(p.trackCount) ? p.trackCount : null,
-        genres:      Array.isArray(p.genres) ? p.genres : null,
-        bpm_range:   null,                         // onboarding playlists inherit bpm from expansion.direction
-        expansion:   p.expansion || null,
-        event_id:    null,
-        expanded_at: null,                         // expand-playlist sets this on first dashboard visit
-        expires_at:  ledgerExpiries[p.id] || fallbackExpiry,
-        created_at:  p.createdAt ? `${p.createdAt}T00:00:00Z` : new Date().toISOString(),
-      })).filter((r) => r.spotify_id);
+      const rows = playlists.map((p) => {
+        const fp = p?.expansion?.direction ? directionFingerprint(p.expansion.direction) : null;
+        return {
+          spotify_id:   p.id,
+          business_id:  businessId,
+          url:          p.url,
+          label:        p.label   || null,
+          ico:          p.ico     || '🎵',
+          track_count:  Number.isFinite(p.trackCount) ? p.trackCount : null,
+          genres:       Array.isArray(p.genres) ? p.genres : null,
+          bpm_range:    null,                         // onboarding playlists inherit bpm from the direction
+          expansion:    p.expansion || null,          // kept during transition; expand-playlist falls back to this when direction_id is null
+          event_id:     null,
+          direction_id: fp ? (directionIdByFp[fp] || null) : null,
+          track_ids:    Array.isArray(p.trackIds) ? p.trackIds : null,
+          expanded_at:  null,                         // expand-playlist sets this on first dashboard visit
+          expires_at:   ledgerExpiries[p.id] || fallbackExpiry,
+          created_at:   p.createdAt ? `${p.createdAt}T00:00:00Z` : new Date().toISOString(),
+        };
+      }).filter((r) => r.spotify_id);
       if (rows.length) {
         try { await pgrUpsert('business_playlists', rows, { onConflict: 'spotify_id' }); }
         catch (e) { console.warn('[signup] business_playlists upsert failed:', e.message); }

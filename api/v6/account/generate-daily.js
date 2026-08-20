@@ -18,10 +18,9 @@
    Response: { ok: true, count, playlists: [...] } | { error }
 */
 
-import { buildDailyBatch, latestDirections } from './_daily-builder.js';
+import { buildDailyBatch, activeDirections } from './_daily-builder.js';
 import { closedDayTargetTracks } from '../../../v6/generation/playlist-length.js';
 import { requireBusinessOwner } from './_require-business-owner.js';
-import { pgrSelect } from '../../v5/supabase-client.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -72,27 +71,11 @@ export default async function handler(req, res) {
       ? Math.min(Math.round(targetTracks), 500)
       : closedDayTargetTracks();
 
-    // Pull the recent non-event playlist rows so latestDirections can pick
-    // the newest batch. 20 rows is enough to cover any single batch (the
-    // direction system caps at 8 per batch) with headroom.
-    //
-    // useService: true — business_playlists has RLS keyed on auth.uid(). The
-    // anon-key request path (default) sends no user JWT so the policy sees a
-    // null uid and returns zero rows. Ownership was already verified above
-    // via requireBusinessOwner, so bypassing RLS with the service role here
-    // is safe.
-    let recentRows = [];
-    try {
-      recentRows = await pgrSelect('business_playlists',
-        { business_id: `eq.${businessId}`, event_id: 'is.null' },
-        { select: 'expansion,event_id,created_at',
-          order: 'created_at.desc', limit: 20, useService: true },
-      );
-    } catch (e) {
-      console.warn('[generate-daily] business_playlists read failed:', e.message);
-    }
-
-    const { directions, popularityWindow } = latestDirections(recentRows);
+    // Direction source is the permanent business_directions table.
+    // Cascade-failure-proof: the direction rotation doesn't depend on any
+    // particular past playlist row surviving. activeDirections uses the
+    // service role internally.
+    const { directions, popularityWindow } = await activeDirections(businessId);
     if (!directions.length) {
       return res.status(400).json({ error: 'לא נמצאו כיוונים מוסיקליים לבניית פלייליסטים' });
     }

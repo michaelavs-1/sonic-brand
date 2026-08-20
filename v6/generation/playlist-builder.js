@@ -113,6 +113,12 @@ async function buildOne({ direction, bizName, popularityWindow }) {
     name,
     trackCount: ids.length,
     requested:  TARGET_TRACKS,
+    // Actual Spotify track IDs used, in the order they were added to the
+    // playlist. Passed through to the DB as business_playlists.track_ids
+    // by signup so each playlist row is a complete snapshot of what was
+    // built. expand-playlist appends the growth IDs on the same column
+    // when the sample gets grown to full length on first dashboard visit.
+    trackIds:   ids,
     // Fields carried forward into user_metadata for later expansion + for
     // the "closed day → generate daily" flow which needs title_en +
     // description_he to name the fresh playlists. `genres` replaces the

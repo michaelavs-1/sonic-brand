@@ -309,6 +309,8 @@ export default async function handler(req, res) {
       bpm_range:   bpmRange,
       expansion:   null,       // event playlists have no direction to re-use
       event_id:    eventId,
+      direction_id: null,      // events aren't a direction; the direction concept doesn't apply
+      track_ids:   spotifyIds, // permanent record of what went into the playlist
       expanded_at: null,
       expires_at:  expiresAtIso,
       created_at:  nowIso,

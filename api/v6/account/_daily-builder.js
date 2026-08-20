@@ -31,7 +31,7 @@
        Postgres.
 */
 
-import { pgrRpc, pgrUpsert, pgrInsert } from '../../v5/supabase-client.js';
+import { pgrRpc, pgrUpsert, pgrInsert, pgrSelect } from '../../v5/supabase-client.js';
 import { nextIl4amIso, directionKey }   from '../../../v6/generation/playlist-length.js';
 
 // Default freshness window for the dedup filter — tracks served to this
@@ -48,64 +48,38 @@ const SPOTIFY_ADD_CHUNK = 50;
 
 // -------- direction selection --------
 
-// Pick the LATEST direction set from a business's playlists — the most
-// recent batch of daily playlists grouped by created_at date. Accepts
-// business_playlists table rows (snake_case columns). Event playlists
-// (`event_id != null`) are skipped since they don't carry direction
-// expansion. Rows without expansion metadata are also skipped.
-// A direction row is "eligible" if it has a genre list (new shape: `genres`,
-// or legacy: `anchor_genre`) and a BPM range. Event playlists are skipped
-// (no expansion metadata).
-function directionHasGenres(d) {
-  if (!d) return false;
-  if (Array.isArray(d.genres) && d.genres.length) return true;
-  return typeof d.anchor_genre === 'string' && d.anchor_genre.length > 0;
-}
-
-export function latestDirections(rows) {
-  const eligible = (rows || []).filter((p) =>
-    p && directionHasGenres(p.expansion?.direction) && p.expansion?.direction?.bpm_range && !p.event_id
-  );
-  if (!eligible.length) return { directions: [], popularityWindow: null };
-
-  // Extract unique directions across the ENTIRE input, not just the newest
-  // day's batch. Callers pass rows sorted `created_at DESC` so the first
-  // occurrence of each unique direction is the most recent instance — that
-  // one wins on dedup.
-  //
-  // Why not just take the newest day's group (previous behavior): if the
-  // cron partially fails on day N (Spotify hiccup, DB timeout, whatever),
-  // day N ends up with fewer playlists than expected. Day N+1 would then
-  // extract only the survivors and build the same reduced set, permanently
-  // losing the failed directions from the recurring cycle. Cascading down
-  // to zero over a few days. Reading across all recent rows gives us the
-  // union of "directions we've been building lately", so a single failed
-  // day doesn't drop a direction from the rotation forever.
-  //
-  // Row-count lookback is controlled by the caller (both generate-daily
-  // callers cap at ~20 rows, which covers roughly the last week for a
-  // 3-direction-per-day business).
-  const seen = new Set();
-  const directions = [];
-  let popularityWindow = null;
-  for (const p of eligible) {
-    const d = p.expansion.direction;
-    // Dedup key: title + sorted genre list. Title alone isn't enough (Ami
-    // may reuse titles across variants); the genre set fingerprints the
-    // direction independently of any "anchor" concept.
-    const genres = Array.isArray(d.genres) && d.genres.length
-      ? d.genres
-      : [d.anchor_genre, ...(d.secondary_genres || [])].filter(Boolean);
-    const genreKey = genres.map((g) => String(g).toLowerCase()).sort().join('|');
-    const key = (d.title_en || '').toLowerCase() + '|' + genreKey;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    directions.push(d);
-    if (!popularityWindow && Array.isArray(p.expansion.popularityWindow)) {
-      popularityWindow = p.expansion.popularityWindow.map((v) => Math.round(v));
-    }
+// Fetch the business's currently-active directions straight from the
+// business_directions table. Replaces the old latestDirections() which
+// reconstructed the direction set by scanning recent business_playlists
+// rows — that approach cascaded to zero when the cron partially failed
+// day-over-day. Since directions are now a first-class permanent entity,
+// the source is unambiguous: "the rows marked active for this business."
+//
+// Return shape kept compatible with buildDailyBatch's expectations:
+// { directions: [directionObj, ...], popularityWindow: [lo, hi] | null }.
+// Each direction has title_en / description_he / genres / bpm_range plus
+// the `id` column (needed to tag freshly-built business_playlists rows
+// with direction_id).
+//
+// popularityWindow: taken from the first direction that has one. In
+// practice all directions for a business share the same window (same
+// atmosphere selection at onboarding). If none do (very old data), null
+// falls through and callers default to [0, 100] via the RPC.
+export async function activeDirections(businessId) {
+  let rows = [];
+  try {
+    rows = await pgrSelect('business_directions',
+      { business_id: `eq.${businessId}`, active: 'is.true' },
+      { select: 'id,rank,title_en,description_he,genres,bpm_range,popularity_window',
+        order: 'rank.asc.nullslast', useService: true },
+    );
+  } catch (e) {
+    console.warn(`[daily-builder] business_directions read failed for biz=${businessId}:`, e.message);
+    return { directions: [], popularityWindow: null };
   }
-  return { directions, popularityWindow };
+  if (!rows?.length) return { directions: [], popularityWindow: null };
+  const popularityWindow = rows.find((r) => Array.isArray(r.popularity_window))?.popularity_window || null;
+  return { directions: rows, popularityWindow };
 }
 
 // -------- Supabase RPC + Spotify helpers --------
@@ -308,31 +282,34 @@ export async function buildOneDailyPlaylist({
   // Row shaped for INSERT INTO business_playlists. `expanded_at` is set
   // eagerly — daily playlists are born at target length; the dashboard's
   // expand-playlist logic short-circuits on any row with expanded_at set.
+  // direction_id + track_ids close the loop: every daily playlist row is
+  // now a complete snapshot linked back to its source direction.
+  const genresList = Array.isArray(direction.genres) && direction.genres.length
+    ? direction.genres
+    : [direction.anchor_genre, ...(Array.isArray(direction.secondary_genres) ? direction.secondary_genres : [])].filter(Boolean);
   const row = {
-    spotify_id:  created.id,
-    business_id: businessId,
-    url:         created.external_urls?.spotify || '',
-    label:       direction.title_en || 'פלייליסט',
-    ico:         '🎵',
-    track_count: ids.length,
-    genres:      Array.isArray(direction.genres) && direction.genres.length
-      ? direction.genres
-      : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
-    bpm_range:   null,
+    spotify_id:   created.id,
+    business_id:  businessId,
+    url:          created.external_urls?.spotify || '',
+    label:        direction.title_en || 'פלייליסט',
+    ico:          '🎵',
+    track_count:  ids.length,
+    genres:       genresList,
+    bpm_range:    null,
     expansion: {
       direction: {
         title_en:       direction.title_en,
         description_he: direction.description_he,
-        genres:         Array.isArray(direction.genres) && direction.genres.length
-          ? direction.genres
-          : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
+        genres:         genresList,
         bpm_range:      direction.bpm_range,
       },
       popularityWindow,
     },
-    event_id:    null,
-    expanded_at: new Date().toISOString(),
-    expires_at:  expiresAtIso,
+    event_id:     null,
+    direction_id: direction.id || null,      // populated when caller passes an activeDirections() row
+    track_ids:    ids,                        // full ordered list of Spotify track IDs added to this playlist
+    expanded_at:  new Date().toISOString(),
+    expires_at:   expiresAtIso,
     created_at:  new Date().toISOString(),
   };
   return { skipped: false, row };

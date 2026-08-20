@@ -16,7 +16,7 @@ import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
 import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=16082026a';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
 import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=13082026b';
-import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=13082026a';
+import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=20082026a';
 import {
   initPlaylistResultsShell,
   updateOnePlaylistResult,

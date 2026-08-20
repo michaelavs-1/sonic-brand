@@ -37,7 +37,7 @@
 */
 
 import { pgrSelect, pgrDelete } from '../v5/supabase-client.js';
-import { buildDailyBatch, latestDirections } from '../v6/account/_daily-builder.js';
+import { buildDailyBatch, activeDirections } from '../v6/account/_daily-builder.js';
 import {
   dailyPlaylistExpiryIso,
   dayMinutesFromHours,
@@ -57,10 +57,6 @@ const SPOTIFY_BASE = process.env.VERCEL_PROJECT_PRODUCTION_URL
 // Fire the generation this many minutes before opening. Cron is hourly so
 // the actual firing lands anywhere in [openIL-120min, openIL-60min].
 const LEAD_MINUTES = 120;
-
-// Enough rows to cover the "most recent batch" — the direction system caps
-// batches at 8 playlists so 20 leaves headroom for a couple of stragglers.
-const RECENT_ROWS_LIMIT = 20;
 
 // Parse "HH:MM" to minutes-since-midnight.
 function hhmmToMins(s) {
@@ -92,17 +88,28 @@ async function fetchBusinessHours(businessId) {
   }
 }
 
-async function fetchRecentPlaylists(businessId) {
+// Check if a live daily playlist for today (IL) already exists for this
+// business — enough to short-circuit before we do direction lookup and
+// Spotify writes. Fetches only the tiny row-set needed (10 newest
+// non-event rows); the JS filter matches "created_at::date = ilIsoDate"
+// via ISO string prefix without complex PostgREST timezone gymnastics.
+async function anyFreshToday(businessId, ilIsoDate, nowMs) {
+  let rows = [];
   try {
-    return await pgrSelect('business_playlists',
+    rows = await pgrSelect('business_playlists',
       { business_id: `eq.${businessId}`, event_id: 'is.null' },
-      { select: 'spotify_id,expansion,event_id,created_at,expires_at',
-        order: 'created_at.desc', limit: RECENT_ROWS_LIMIT, useService: true },
+      { select: 'created_at,expires_at', order: 'created_at.desc', limit: 10, useService: true },
     );
   } catch (e) {
-    console.warn(`[cron daily-gen] business_playlists read failed for biz=${businessId}:`, e.message);
-    return [];
+    console.warn(`[cron daily-gen] freshness read failed for biz=${businessId}:`, e.message);
+    return false;
   }
+  return (rows || []).some((p) => {
+    if (!p?.created_at) return false;
+    if (String(p.created_at).slice(0, 10) !== ilIsoDate) return false;
+    const expMs = p.expires_at ? Date.parse(p.expires_at) : null;
+    return !expMs || expMs > nowMs;
+  });
 }
 
 async function processBusiness({ business, now, ilNow, origin }) {
@@ -125,22 +132,12 @@ async function processBusiness({ business, now, ilNow, origin }) {
     return { id: business.id, skipped: 'closed-today' };
   }
 
-  // Fetch the recent playlist rows for both the "already fresh" check and
-  // the direction extraction. One query serves both.
-  const recentRows = await fetchRecentPlaylists(business.id);
-
   // "Already fresh" — a live daily playlist created today (IL) already
   // exists. Covers both "cron ran an earlier hour today" and "user
   // manually built via closed-day flow earlier today".
-  const nowMs = now.getTime();
-  const alreadyFresh = recentRows.some((p) => {
-    if (!p || !p.created_at) return false;
-    const createdDate = String(p.created_at).slice(0, 10);
-    if (createdDate !== ilNow.isoDate) return false;
-    const expMs = p.expires_at ? Date.parse(p.expires_at) : null;
-    return !expMs || expMs > nowMs;
-  });
-  if (alreadyFresh) return { id: business.id, skipped: 'already-fresh' };
+  if (await anyFreshToday(business.id, ilNow.isoDate, now.getTime())) {
+    return { id: business.id, skipped: 'already-fresh' };
+  }
 
   const minsToOpen = minsUntilILToday(h.open, ilNow);
   if (minsToOpen == null) return { id: business.id, skipped: 'bad-hours' };
@@ -149,7 +146,11 @@ async function processBusiness({ business, now, ilNow, origin }) {
   // for some reason — e.g. app was down). Still generate: better late than
   // no playlist for the day.
 
-  const { directions, popularityWindow } = latestDirections(recentRows);
+  // Direction source is now the permanent business_directions table (not
+  // reconstructed from playlist history). Cascade failures — partial daily
+  // builds shrinking the extractable direction set day-over-day — are
+  // impossible under this model.
+  const { directions, popularityWindow } = await activeDirections(business.id);
   if (!directions.length) {
     return { id: business.id, skipped: 'no-directions' };
   }

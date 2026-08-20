@@ -136,7 +136,7 @@ export default async function handler(req, res) {
     try {
       rowRes = await pgrSelect('business_playlists',
         { spotify_id: `eq.${playlistId}`, business_id: `eq.${businessId}` },
-        { select: 'spotify_id,track_count,expansion,expanded_at,label', limit: 1, useService: true },
+        { select: 'spotify_id,track_count,expansion,expanded_at,label,direction_id,track_ids', limit: 1, useService: true },
       );
     } catch (e) {
       return res.status(500).json({ error: `business_playlists read failed: ${e.message}` });
@@ -156,15 +156,32 @@ export default async function handler(req, res) {
       });
     }
 
-    // We need `expansion.direction` to know what to fetch. Playlists built
-    // before this feature was rolled out won't have it — nothing to do.
-    // Accept new shape (`genres` array) OR legacy shape (`anchor_genre`).
-    const expansion = row.expansion;
-    const dir = expansion?.direction;
-    const hasGenres = (Array.isArray(dir?.genres) && dir.genres.length)
-      || (typeof dir?.anchor_genre === 'string' && dir.anchor_genre.length);
+    // Direction lookup: prefer the canonical row in business_directions via
+    // direction_id (the source of truth going forward). Fall back to the
+    // legacy expansion.direction blob for pre-migration playlist rows that
+    // have direction_id = NULL. Either source yields the same downstream
+    // shape (title_en, genres, bpm_range, etc.) that fetchTracksWithHistory
+    // and playlistName need.
+    let dir = null;
+    if (row.direction_id) {
+      try {
+        const dirRes = await pgrSelect('business_directions',
+          { id: `eq.${row.direction_id}` },
+          { select: 'id,title_en,description_he,genres,bpm_range,popularity_window',
+            limit: 1, useService: true },
+        );
+        dir = dirRes?.[0] || null;
+      } catch (e) {
+        console.warn('[expand-playlist] business_directions read failed:', e.message);
+      }
+    }
+    if (!dir) dir = row.expansion?.direction || null;
+    const hasGenres = dir && (
+      (Array.isArray(dir.genres) && dir.genres.length)
+      || (typeof dir.anchor_genre === 'string' && dir.anchor_genre.length)
+    );
     if (!hasGenres || !dir?.bpm_range) {
-      return res.status(400).json({ error: 'playlist row has no expansion metadata (built pre-feature)' });
+      return res.status(400).json({ error: 'playlist row has no direction metadata (built pre-feature)' });
     }
 
     // Compute the target expiry once — reused by both the short-circuit
@@ -189,10 +206,15 @@ export default async function handler(req, res) {
     // is a no-op on day 1. But if the user reonboards or re-triggers
     // expansion, the helper avoids repeating recent tracks. The helper's
     // internal pool-shortage fallback fills any gap for narrow directions.
+    // popularity_window preference: business_directions column (canonical
+     // per-direction snapshot) → legacy expansion.popularityWindow fallback.
+    const popularityWindow = dir.popularity_window
+      || row.expansion?.popularityWindow
+      || null;
     const { ids: newIds, directionKey: dKey } = await fetchTracksWithHistory({
       businessId,
-      direction:        expansion.direction,
-      popularityWindow: expansion.popularityWindow,
+      direction:        dir,
+      popularityWindow,
       target:           need,
     });
     if (!newIds.length) {
@@ -254,10 +276,18 @@ export default async function handler(req, res) {
     // and we fell back to "next 04:00 IL" — matches the closed-day manual
     // flow and guarantees expires_at is always populated.
     try {
+      // track_ids: append the freshly-added IDs to whatever was already
+      // on the row (~10 initial IDs from the signup sample, or NULL for
+      // pre-migration rows). Merged JS-side because PostgREST doesn't
+      // expose an atomic jsonb || $ append; concurrent expansions of the
+      // same playlist row aren't a real concern (idempotency gate above).
+      const priorIds = Array.isArray(row.track_ids) ? row.track_ids : [];
+      const mergedTrackIds = [...priorIds, ...addedIds];
       await pgrPatch('business_playlists', { spotify_id: `eq.${playlistId}` }, {
         track_count: running,
         expanded_at: new Date().toISOString(),
         expires_at:  expiryIso,
+        track_ids:   mergedTrackIds,
       });
 
       // Overwrite the ledger row so the expire cron unfollows at the same

@@ -200,8 +200,29 @@ async function toggleDictation() {
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch (err) {
     console.error('dictation: getUserMedia failed:', err.name, err.message);
+    if (err.name === 'NotAllowedError') {
+      // Two very different UX cases:
+      //   'denied'    → browser has persistently blocked this origin, so
+      //                 getUserMedia will keep failing silently until the
+      //                 user resets the permission in settings.
+      //   'prompt'/unknown → the user just dismissed this request (or
+      //                 hasn't decided) — clicking again will re-prompt.
+      // Mobile Safari doesn't expose the microphone permission via the
+      // Permissions API at all (query throws), which we treat as "unknown".
+      let denied = false;
+      try {
+        const p = await navigator.permissions?.query?.({ name: 'microphone' });
+        if (p && p.state === 'denied') denied = true;
+      } catch { /* Permissions API unsupported for microphone → unknown */ }
+      setDictMsg(
+        denied
+          ? 'המיקרופון חסום לאתר זה. אפשרו אותו בהגדרות הדפדפן (מובייל: הגדרות → אתר זה → מיקרופון) ורעננו את הדף.'
+          : 'הרשאה למיקרופון נדחתה — לחצו שוב על הכפתור ואשרו את הבקשה שתופיע.',
+        true,
+      );
+      return;
+    }
     const messages = {
-      NotAllowedError: 'הרשאה למיקרופון נדחתה — אפשרו בדפדפן ונסו שוב',
       NotFoundError: 'לא נמצא מיקרופון במכשיר',
       NotReadableError: 'המיקרופון תפוס — סגרו יישום אחר שמשתמש בו ונסו שוב',
       SecurityError: 'הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)',

@@ -60,9 +60,16 @@ STEP 3: Musical directions + hours picker in parallel
   - When user submits hours, everything above is usually already done → swipe deck renders instantly
         ↓
        Preview swipe deck (v6/preview.js runDirectionPreviewFlow)
-  - Michael's Tinder-style swipe UI: album art + custom play button + swap track button
+  - Michael's Tinder-style swipe UI: album art + custom play button (bottom-right of art)
+    + super-like button (bottom-left of art, tilted -12°) + pill-shaped
+    "נסו שיר אחר מהכיוון הזה" (Spotify-green, between artist and reason line)
   - Spotify iframe hidden inside .sw2-artwrap with opacity:.01 (fully offscreen kills media)
   - Custom sw2-play button drives it via IFrame API
+  - Super-like button (.sw2-superlike): toggle. Click 1 → adds trackId to
+    state.superLikedTracks (Set), button paints .saved (bright cyan +
+    breathing halo). Click 2 → removes it, button reverts to default
+    (darker gradient, static). Pointer guard in the swipe handler
+    ignores clicks on it, so super-liking doesn't trigger a swipe.
   - User swipes right = "build a playlist for this direction"
         ↓
 STEP 4: Playlist build (v6/generation/playlist-builder.js buildDirectionPlaylists)
@@ -76,8 +83,11 @@ STEP 4: Playlist build (v6/generation/playlist-builder.js buildDirectionPlaylist
        Results screen (v6/result.js showRubinCTA + showSignupCard)
   - Progressive placeholder cards → real cards as each playlist finishes
   - "אני רוצה את רובין לעסק שלי" CTA gates the signup form
-  - Signup: email + password → /api/v6/account/signup
-  - Signup payload: playlists, hours, longestMinutes, atmospheres, place, business_name
+  - Signup: email → /api/v6/account/signup (magic-link, no password)
+  - Signup payload: playlists, hours, longestMinutes, atmospheres, place,
+    business_name, superLikedTracks (array of spotify_ids the user tapped
+    the super-like button on — persisted to super_liked_tracks table for
+    future taste-tuning; nothing consumes them yet).
   - Redirect → /v6/account
 ```
 

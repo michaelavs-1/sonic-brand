@@ -329,6 +329,11 @@ async function postSignup({ email, business_name, biz, playlists }) {
       place: biz?.place || null,
       hours: biz?.hours || null,
       longestMinutes: biz?.longestMinutes || 0,
+      // Array of spotify_ids the user super-liked in the preview swipe deck.
+      // Server persists to super_liked_tracks table (see the 2026-08-20
+      // migration). Nothing consumes these rows yet — future playlist
+      // tuning will read them.
+      superLikedTracks: Array.isArray(biz?.superLikedTracks) ? biz.superLikedTracks : [],
       playlists,
     }),
   });

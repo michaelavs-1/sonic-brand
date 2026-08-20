@@ -526,28 +526,152 @@
       font-weight: 800;
     }
 
+    /* Pill-shaped "swap track" button — sits between artist and reason
+       line on each preview card. Spotify-green so it reads as related to
+       the Spotify preview it triggers. Inline SVG shuffle icon lives on
+       the far side of the label (source-order: text first, SVG second →
+       icon renders on the LEFT under RTL). */
     .swap-btn {
-      margin-top: 7px;
-      background: none;
-      border: 1px dashed var(--border-2);
-      border-radius: 10px;
-      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      margin: 0 auto 12px;
+      background: rgba(29, 185, 84, .08);
+      border: 1px solid rgba(29, 185, 84, .35);
+      border-radius: 999px;
+      color: #1DB954;
       font-family: inherit;
-      font-size: 11.5px;
-      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 7px 14px;
       cursor: pointer;
-      transition: all .2s;
+      transition: background .2s, border-color .2s, color .2s, transform .12s;
     }
 
     .swap-btn:hover {
-      color: var(--teal-soft);
-      border-color: var(--teal-soft);
-      border-style: solid;
+      background: rgba(29, 185, 84, .18);
+      border-color: #1DB954;
+      color: #26d766;
+      transform: translateY(-1px);
     }
+
+    .swap-btn:active { transform: translateY(0); }
 
     .swap-btn:disabled {
       opacity: .6;
       cursor: default;
+    }
+
+    .swap-btn svg {
+      width: 13px;
+      height: 13px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+
+    /* Ephemeral toast fired by the super-like button click. Fixed at
+       bottom-center; fades in via .show class and out when the class is
+       removed after ~1.8s. */
+    .sl-toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: linear-gradient(135deg, #4dc7ff, #1da4f0);
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 10px 18px;
+      border-radius: 999px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4), 0 0 30px rgba(77, 199, 255, .55);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s, transform .25s;
+      z-index: 100;
+    }
+    .sl-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* ---------- super-like button on preview cards ---------- */
+    /* Bottom-left of the artwork, mirroring the orange play button on the
+       bottom-right. Smaller (44px vs 56px) and tilted -12° for a sticker-
+       like feel. Default = darker gradient; .saved = brighter cyan with
+       a breathing halo animation. Toggle behavior: click to super-like,
+       click again to remove. */
+    .sw2-superlike {
+      position: absolute;
+      z-index: 3;
+      left: -10px;
+      bottom: -10px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #2e9dcc, #0d78ab);
+      color: #fff;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 16px rgba(29, 164, 240, .3);
+      transform: rotate(-12deg);
+      transition: transform .12s, box-shadow .2s, background .25s;
+    }
+
+    .sw2-superlike:hover {
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 24px rgba(29, 164, 240, .45);
+      transform: rotate(-12deg) translateY(-1px);
+    }
+
+    .sw2-superlike:active {
+      transform: rotate(-12deg) scale(.92);
+    }
+
+    .sw2-superlike:disabled { cursor: default; opacity: .55; }
+    .sw2-superlike svg { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
+
+    .sw2-superlike.saved {
+      background: linear-gradient(135deg, #4dc7ff, #1da4f0);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 30px rgba(77, 199, 255, .55);
+    }
+
+    /* Burst ring animation on click — plays via the .burst class which JS
+       adds + removes so a rapid re-click replays it. */
+    .sw2-superlike::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 2px solid #4dc7ff;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sw2-superlike.burst::after {
+      animation: sl-burst .9s ease-out;
+    }
+
+    @keyframes sl-burst {
+      0%   { transform: scale(1);   opacity: .9; }
+      100% { transform: scale(2.2); opacity: 0; }
+    }
+
+    /* Idle "breathing" halo only when saved — signals "you've marked this
+       one" without competing with the orange play button when not saved. */
+    .sw2-superlike.saved:not(:disabled) {
+      animation: sl-idle 2.4s ease-in-out infinite;
+    }
+
+    @keyframes sl-idle {
+      0%, 100% { box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 22px rgba(77, 199, 255, .55); }
+      50%      { box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 34px rgba(77, 199, 255, .55); }
     }
 
     /* ---------- atmospheres ---------- */
@@ -1619,7 +1743,15 @@
       align-items: center;
       justify-content: center;
       cursor: pointer;
-      box-shadow: 0 8px 22px rgba(0, 0, 0, .55)
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .55);
+      transition: transform .12s, box-shadow .2s;
+    }
+
+    /* Mirrors the super-like button's hover treatment: gentle 1px lift +
+       a soft orange halo to match the button's own gradient. */
+    .sw2-play:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .55), 0 0 14px rgba(240, 167, 63, .28);
     }
 
     .sw2-play:active {
@@ -1648,18 +1780,6 @@
       font-size: 15px;
       color: var(--muted);
       margin-bottom: 9px
-    }
-
-    .sw2-chip {
-      display: inline-block;
-      background: #0a1117;
-      border: 1px solid var(--border-2);
-      color: #cfd8dd;
-      font-size: 12px;
-      font-weight: 700;
-      border-radius: 8px;
-      padding: 3px 11px;
-      margin-bottom: 11px
     }
 
     .sw2-reason {
@@ -2313,7 +2433,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=20082026h"></script>
+  <script type="module" src="/v6/app.js?v=20082026j"></script>
 </body>
 
 </html>

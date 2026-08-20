@@ -231,6 +231,7 @@ export default async function handler(req, res) {
       hours,
       longestMinutes,
       playlists,
+      superLikedTracks,
     } = req.body || {};
 
     const cleanEmail = String(email || '').trim().toLowerCase();
@@ -392,6 +393,30 @@ export default async function handler(req, res) {
       if (rows.length) {
         try { await pgrUpsert('business_playlists', rows, { onConflict: 'spotify_id' }); }
         catch (e) { console.warn('[signup] business_playlists upsert failed:', e.message); }
+      }
+    }
+
+    // 6) super_liked_tracks — Spotify IDs the user tapped during the
+    //    preview swipe deck. Upsert on the composite unique key so
+    //    re-signup on the same business no-ops on duplicates instead of
+    //    409-ing the whole batch (pgrInsert's ignoreDuplicates option
+    //    targets the PK and doesn't trigger for the (business_id,
+    //    spotify_id) unique constraint — verified by scripts/test-super-
+    //    liked-tracks.mjs). Silent-fail on error: nothing consumes these
+    //    rows yet, so a botched insert shouldn't block signup itself.
+    if (Array.isArray(superLikedTracks) && superLikedTracks.length) {
+      const uniqueIds = [...new Set(
+        superLikedTracks.filter((s) => typeof s === 'string' && s.length),
+      )];
+      if (uniqueIds.length) {
+        try {
+          await pgrUpsert('super_liked_tracks',
+            uniqueIds.map((spotify_id) => ({ business_id: businessId, spotify_id })),
+            { onConflict: 'business_id,spotify_id' },
+          );
+        } catch (e) {
+          console.warn('[signup] super_liked_tracks upsert failed:', e.message);
+        }
       }
     }
 

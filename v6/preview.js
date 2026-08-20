@@ -10,8 +10,31 @@
 
 const HEADING = 'בחרו כיוונים מוזיקליים שמתאימים לעסק';
 
-const PLAY_ICON  = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
-const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><rect x="6.6" y="5.6" width="3.9" height="12.8" rx="1.2"/><rect x="13.5" y="5.6" width="3.9" height="12.8" rx="1.2"/></svg>';
+// Play/pause glyphs are sized 36×36 (up from 22×22) so they fill more of
+// the 56px button and read as a proper media control rather than a small
+// icon floating in the middle.
+const PLAY_ICON  = '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
+const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><rect x="6.6" y="5.6" width="3.9" height="12.8" rx="1.2"/><rect x="13.5" y="5.6" width="3.9" height="12.8" rx="1.2"/></svg>';
+
+// Star for the super-like button (bottom-left corner of the artwork).
+const SUPERLIKE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 6.4 7 .7-5.3 4.7 1.6 6.9L12 17.7 5.8 21.2l1.6-6.9L2.1 9.6l7-.7L12 2.5z"/></svg>';
+
+// Feather-style shuffle icon shown inside the "נסו שיר אחר..." pill.
+const SHUFFLE_ICON =
+  '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+  '<polyline points="16 3 21 3 21 8"/>' +
+  '<line x1="4" y1="20" x2="21" y2="3"/>' +
+  '<polyline points="21 16 21 21 16 21"/>' +
+  '<line x1="15" y1="15" x2="21" y2="21"/>' +
+  '<line x1="4" y1="4" x2="9" y2="9"/>' +
+  '</svg>';
+
+// Full innerHTML for the swap-button's "resting" state (label + icon).
+// Reused when the button first renders and when the async swap handler
+// resets after a successful/failed swap — previously this used a bare
+// text label constant that got removed in the swap-button restyle, which
+// left the spinner state permanently stuck.
+const SWAP_BUTTON_HTML = '<span>נסו שיר אחר מהכיוון הזה</span>' + SHUFFLE_ICON;
 
 function fmtTime(ms) {
   const s   = Math.floor(Math.max(0, ms) / 1000);
@@ -58,6 +81,24 @@ function showLoading(card, text = 'טוען שירים לדוגמא…') {
       ),
     ),
   );
+}
+
+// Ephemeral toast for the super-like button. Single body-appended pill
+// that shows for ~1.8s and fades. Reused on every click — a new call
+// resets the timer + swaps the label. Style lives in v6/index.html
+// under `.sl-toast`.
+let _slToastEl = null;
+let _slToastTimer = null;
+function showSuperLikeToast(text) {
+  if (!_slToastEl) {
+    _slToastEl = document.createElement('div');
+    _slToastEl.className = 'sl-toast';
+    document.body.append(_slToastEl);
+  }
+  _slToastEl.textContent = text;
+  _slToastEl.classList.add('show');
+  clearTimeout(_slToastTimer);
+  _slToastTimer = setTimeout(() => _slToastEl.classList.remove('show'), 1800);
 }
 
 function spotifyBadge() {
@@ -170,7 +211,7 @@ function directionsToPreviews(directions, byRank) {
 // the same deck so the user can keep swiping seamlessly. If the user
 // reaches the end of page 1 before page 2 arrives, we show a brief
 // "loading more" state until it does.
-async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, popularityWindow, page2Ready) {
+async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, popularityWindow, page2Ready, superLikedTracks) {
   const api = await getSpotifyIframeApi();
 
   return new Promise((resolve) => {
@@ -190,7 +231,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
     const deck      = el('div', { class: 'swipe-deck' });
     const railNo    = el('div', { class: 'sw2-rail no' },
       el('span', { class: 'sw2-chev' }, '‹'),
-      el('span', { class: 'sw2-rail-label' }, 'לא אהבתי'),
+      el('span', { class: 'sw2-rail-label' }, 'לא בשבילי'),
     );
     const railYes = el('div', { class: 'sw2-rail yes' },
       el('span', { class: 'sw2-chev' }, '›'),
@@ -291,22 +332,67 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
 
       const playBtn = el('button', { class: 'sw2-play', type: 'button', 'aria-label': 'נגן' });
       playBtn.innerHTML = PLAY_ICON;
+
+      // Super-like button — bottom-left corner of the artwork, mirroring
+      // the play button on the bottom-right. Toggle behavior: first click
+      // saves the current track's spotify_id into the shared Set, second
+      // click removes it. Persistence to the DB happens at signup time.
+      const superLikeBtn = el('button', {
+        class: 'sw2-superlike',
+        type:  'button',
+        'aria-label': 'Super Like',
+      });
+      superLikeBtn.innerHTML = SUPERLIKE_ICON;
+      // Reflect the initial state — if the user swaps back to a track they
+      // already super-liked earlier in this session, the button paints as
+      // .saved so they see it's already picked.
+      if (superLikedTracks && superLikedTracks.has(p.trackId)) {
+        superLikeBtn.classList.add('saved');
+      }
+      superLikeBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        // Replay the burst ring on every click via remove/reflow/add.
+        superLikeBtn.classList.remove('burst');
+        void superLikeBtn.offsetWidth;
+        superLikeBtn.classList.add('burst');
+
+        if (!superLikedTracks) return;
+        const trackId = superLikeBtn.dataset.trackId || p.trackId;
+        if (superLikedTracks.has(trackId)) {
+          superLikedTracks.delete(trackId);
+          superLikeBtn.classList.remove('saved');
+          showSuperLikeToast('סופר לייק הוסר');
+        } else {
+          superLikedTracks.add(trackId);
+          superLikeBtn.classList.add('saved');
+          showSuperLikeToast('סופר לייק נשמר');
+        }
+      });
+      // The current trackId is captured for the closure above, but swap
+      // mutates `p.trackId` via re-render — we don't re-render on swap,
+      // we build a whole new card. So the closure's `p` reference stays
+      // valid for the lifetime of THIS card, and the fresh next card gets
+      // its own button. Good.
+      superLikeBtn.dataset.trackId = p.trackId;
+
       const artImg = m.art
         ? el('img', { class: 'sw2-art', src: m.art, alt: '' })
         : el('div', { class: 'sw2-art sw2-art-ph' }, '🎵');
-      const artWrap = el('div', { class: 'sw2-artwrap' }, artImg, spotifyBadge(), playBtn, embedWrap);
+      const artWrap = el('div', { class: 'sw2-artwrap' }, artImg, spotifyBadge(), playBtn, superLikeBtn, embedWrap);
 
       const titleEl  = el('div', { class: 'sw2-title',  dir: 'ltr' }, m.name   || '');
       const artistEl = el('div', { class: 'sw2-artist', dir: 'ltr' }, m.artist || '');
 
       // Show the v5 direction's Hebrew description as the reason line — that's
-      // Claude's one-line pitch for the direction.
+      // the model's one-line pitch for the direction.
       const reasonEl = d.description_he
         ? el('div', { class: 'preview-reason sw2-reason' }, d.description_he)
         : null;
 
-      const SWAP_LABEL = '🔀 שיר אחר מהכיוון הזה';
-      const swap = el('button', { class: 'swap-btn', type: 'button' }, SWAP_LABEL);
+      // Swap button — pill CTA with an inline shuffle icon. Text first in
+      // source order so the SVG renders on the LEFT of the label in RTL.
+      const swap = el('button', { class: 'swap-btn', type: 'button' });
+      swap.innerHTML = SWAP_BUTTON_HTML;
 
       // --- Playback progress bar. Interpolates position between the (sparse)
       // playback_update events via a RAF loop, so scrubbing feels smooth. The
@@ -344,10 +430,12 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         artWrap,
         titleEl,
         artistEl,
-        el('div', { class: 'sw2-chip' }, 'Preview'),
+        // Swap CTA lives between artist and reason (used to sit under the
+        // reason with a dashed utility look; the old "Preview" chip that
+        // used to be here is gone — decorative, no data behind it).
+        swap,
         reasonEl,
         pbContainer,
-        el('div', {}, swap),
         el('div', { class: 'sw2-hint' }, '👆 אפשר גם לגרור את הכרטיס לצדדים'),
       );
       deck.replaceChildren(cardEl);
@@ -539,6 +627,15 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           trackMeta[nextId] = m2;
           cardEl.dataset.trackId = nextId;
           cardEl.dataset.uri     = `spotify:track:${nextId}`;
+          // Retarget the super-like button so a click after a swap tags
+          // the NEW track, and repaint .saved to reflect whether the new
+          // track has already been super-liked in this session.
+          superLikeBtn.dataset.trackId = nextId;
+          if (superLikedTracks && superLikedTracks.has(nextId)) {
+            superLikeBtn.classList.add('saved');
+          } else {
+            superLikeBtn.classList.remove('saved');
+          }
           destroyController();
           pendingPlay = false;
           playBtn.classList.remove('waiting');
@@ -552,10 +649,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           const newMount = el('div', { class: 'preview-spotify-mount' });
           embedWrap.append(newMount);
           wireController(newMount);
-          swap.textContent = SWAP_LABEL;
+          swap.innerHTML = SWAP_BUTTON_HTML;
         } catch (err) {
           console.warn('swap failed:', err);
-          swap.textContent = SWAP_LABEL;
+          swap.innerHTML = SWAP_BUTTON_HTML;
         } finally {
           swap.disabled = false;
         }
@@ -586,11 +683,13 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       let dx = 0;
       let dragging = false;
       cardEl.addEventListener('pointerdown', (e) => {
-        // Don't start a swipe on the swap/play buttons or the scrubbable
-        // progress bar — they need their own pointer events.
+        // Don't start a swipe on any of the card's interactive elements —
+        // swap/play/super-like buttons and the scrubbable progress bar
+        // all handle their own pointer events.
         if (busy
             || e.target.closest('.swap-btn')
             || e.target.closest('.sw2-play')
+            || e.target.closest('.sw2-superlike')
             || e.target.closest('.sw2-prog-bar')) return;
         dragging = true;
         startX = e.clientX;
@@ -694,7 +793,7 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
 // background. Otherwise we do the prep synchronously here as a fallback.
 // When the prepared payload is already resolved, `await` returns in the same
 // microtask so the swipe deck appears without a visible loading flash.
-export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow, preparedPromise }) {
+export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow, preparedPromise, superLikedTracks }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('preview: .screen-card not found');
 
@@ -708,13 +807,18 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, popula
   // is handed to renderSwipeDeck, which appends its previews to the deck
   // when it resolves — users can swipe through the first 4 cards while
   // cards 5-8 are still loading behind them.
+  //
+  // `superLikedTracks` is a Set the caller owns (state.superLikedTracks in
+  // app.js). Each card's super-like button toggles items in the same Set,
+  // so navigating back and forward preserves picks and the final list is
+  // ready to hand off to signup at the end of the flow.
   const page1 = await prepared.page1Ready;
   if (!page1.previews.length) {
     // Page 1 empty — fall back to page 2 as a last chance.
     const page2 = await prepared.page2Ready;
     if (!page2.previews.length) return [];
-    return renderSwipeDeck(container, page2.previews, page2.trackMeta, popularityWindow, null);
+    return renderSwipeDeck(container, page2.previews, page2.trackMeta, popularityWindow, null, superLikedTracks);
   }
 
-  return renderSwipeDeck(container, page1.previews, page1.trackMeta, popularityWindow, prepared.page2Ready);
+  return renderSwipeDeck(container, page1.previews, page1.trackMeta, popularityWindow, prepared.page2Ready, superLikedTracks);
 }

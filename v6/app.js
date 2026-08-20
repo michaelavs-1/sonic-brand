@@ -16,7 +16,7 @@ import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
 import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=20082026a';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
-import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=13082026b';
+import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=20082026c';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=20082026a';
 import {
   initPlaylistResultsShell,
@@ -24,7 +24,7 @@ import {
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=20082026a';
+} from '/v6/result.js?v=20082026b';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -45,6 +45,12 @@ const state = {
   atmosphereRows: null,       // cached once per session
   selectedAtmos: [],
   musicalEmphases: '',        // step 3 — free-text preferences (love/hate). Optional.
+  // Spotify IDs the user tapped the super-like button on during the preview
+  // swipe deck. Set (not Array) so add/remove is O(1) and the shared
+  // reference in preview.js can mutate in-place. Persisted to the
+  // super_liked_tracks table at signup. Preserved across step navigation
+  // — users can revise atmospheres or emphases without losing picks.
+  superLikedTracks: new Set(),
   // Opening hours are collected in step 4 alongside the Gemini call. Kept
   // across step re-entry so users don't re-enter them just for changing
   // atmospheres or emphases.
@@ -169,11 +175,11 @@ async function toggleDictation() {
   catch (err) {
     console.error('dictation: getUserMedia failed:', err.name, err.message);
     const messages = {
-      NotAllowedError:    'הרשאה למיקרופון נדחתה — אפשרו במטרת הדפדפן ונסו שוב',
-      NotFoundError:      'לא נמצא מיקרופון במכשיר',
-      NotReadableError:   'המיקרופון תפוס — סגרו יישום אחר שמשתמש בו ונסו שוב',
-      SecurityError:      'הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)',
-      AbortError:         'הגישה למיקרופון נקטעה — נסו שוב',
+      NotAllowedError: 'הרשאה למיקרופון נדחתה — אפשרו במטרת הדפדפן ונסו שוב',
+      NotFoundError: 'לא נמצא מיקרופון במכשיר',
+      NotReadableError: 'המיקרופון תפוס — סגרו יישום אחר שמשתמש בו ונסו שוב',
+      SecurityError: 'הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)',
+      AbortError: 'הגישה למיקרופון נקטעה — נסו שוב',
     };
     $('dictLbl').textContent = messages[err.name] || 'לא ניתן לגשת למיקרופון';
     return;
@@ -459,7 +465,7 @@ function showDirectionsLoading() {
   h.textContent = 'רובין מתאים לכם מוזיקה';
   const sub = document.createElement('p');
   sub.className = 'subtitle';
-  sub.textContent = 'רובין יציג לכן/ם כיוונים מוזיקליים לעסק באמצעות שירים. תקשיבו, ותגידו מה פגע ומה לא. כל כיוון שתאהבו יהיה בסיס לפלייליסט יומי';
+  sub.textContent = 'רובין יציג לכם אפשרויות לכיוונים מוזיקליים לעסק באמצעות שירים. כל כיוון שתאהבו יהיה בסיס לפלייליסט יומי';
   const wrap = document.createElement('div');
   wrap.className = 'preview-load-column';
   wrap.innerHTML =
@@ -675,6 +681,8 @@ async function goToStep(start) {
           page2Promise: state.page2Promise,
           popularityWindow: state.popularityWindow,
           preparedPromise,
+          // Shared reference — the swipe deck mutates this Set directly.
+          superLikedTracks: state.superLikedTracks,
         }), signal);
         if (!picked.length) {
           const card = document.querySelector('.screen-card');
@@ -709,6 +717,8 @@ async function goToStep(start) {
             place: state.confirmedPlace,
             hours: state.hours,
             longestMinutes: state.longestMinutes,
+            // Flatten the Set into an array of spotify_ids for the JSON POST.
+            superLikedTracks: [...state.superLikedTracks],
           });
         });
         return;

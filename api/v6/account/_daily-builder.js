@@ -68,19 +68,27 @@ export function latestDirections(rows) {
   );
   if (!eligible.length) return { directions: [], popularityWindow: null };
 
-  // Group by ISO date (yyyy-mm-dd slice of created_at). Take the newest.
-  const groups = {};
-  for (const p of eligible) {
-    const k = (p.created_at || '').slice(0, 10);
-    (groups[k] = groups[k] || []).push(p);
-  }
-  const keys = Object.keys(groups).sort().reverse();
-  const latestBatch = groups[keys[0]];
-
+  // Extract unique directions across the ENTIRE input, not just the newest
+  // day's batch. Callers pass rows sorted `created_at DESC` so the first
+  // occurrence of each unique direction is the most recent instance — that
+  // one wins on dedup.
+  //
+  // Why not just take the newest day's group (previous behavior): if the
+  // cron partially fails on day N (Spotify hiccup, DB timeout, whatever),
+  // day N ends up with fewer playlists than expected. Day N+1 would then
+  // extract only the survivors and build the same reduced set, permanently
+  // losing the failed directions from the recurring cycle. Cascading down
+  // to zero over a few days. Reading across all recent rows gives us the
+  // union of "directions we've been building lately", so a single failed
+  // day doesn't drop a direction from the rotation forever.
+  //
+  // Row-count lookback is controlled by the caller (both generate-daily
+  // callers cap at ~20 rows, which covers roughly the last week for a
+  // 3-direction-per-day business).
   const seen = new Set();
   const directions = [];
   let popularityWindow = null;
-  for (const p of latestBatch) {
+  for (const p of eligible) {
     const d = p.expansion.direction;
     // Dedup key: title + sorted genre list. Title alone isn't enough (Ami
     // may reuse titles across variants); the genre set fingerprints the

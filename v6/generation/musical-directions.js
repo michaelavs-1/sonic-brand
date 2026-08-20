@@ -323,20 +323,36 @@ function validateDirection(d) {
 // treatment; the preview seed and the swap cycler both pick randomly from
 // `genres`. (Old persisted user_metadata may still contain anchor_genre;
 // reader code has its own legacy fallback.)
+// Any direction whose genre list contains a genre name matching /house/i
+// (Afro House, Deep House, Jazz House, Organic House, Soulful House,
+// Tech House) is demoted to the tail of its page — house-heavy directions
+// tend to be niche fits, so we let owners see the safer picks first.
+function containsHouseGenre(d) {
+  return Array.isArray(d.genres) && d.genres.some((g) => typeof g === 'string' && /house/i.test(g));
+}
+
 function normalizeDirections(parsed, rankStart) {
   if (!Array.isArray(parsed?.directions)) return [];
   const valid = parsed.directions.filter(validateDirection);
-  valid.sort((a, b) => (Number(a.rank) || 999) - (Number(b.rank) || 999));
-  valid.forEach((d, idx) => {
-    d.rank = rankStart + idx;
+  // Fold the legacy anchor+secondary shape into a flat `genres` list first so
+  // the house-detection sort below has a single source of truth to read from.
+  valid.forEach((d) => {
     if (!Array.isArray(d.genres) || !d.genres.length) {
       d.genres = [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])]
         .filter((g) => typeof g === 'string' && g.length);
     }
-    // Strip legacy fields — downstream now reads `genres` only.
     delete d.anchor_genre;
     delete d.secondary_genres;
   });
+  // Primary: by model-assigned rank ascending. Stable sort in ES2019+.
+  valid.sort((a, b) => (Number(a.rank) || 999) - (Number(b.rank) || 999));
+  // Secondary (stable): bump house-containing directions to the tail.
+  // Applied per-page — a house direction in page 1 lands at position 4 of
+  // that page; page 2's house dirs land at 8. Multiple house dirs bunch
+  // at the end with their incoming rank order preserved.
+  valid.sort((a, b) => (containsHouseGenre(a) ? 1 : 0) - (containsHouseGenre(b) ? 1 : 0));
+  // Renumber ranks to match the final visible order.
+  valid.forEach((d, idx) => { d.rank = rankStart + idx; });
   return valid;
 }
 

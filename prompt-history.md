@@ -12,6 +12,30 @@ tightly coupled to downstream parsing code and changes only when the schema chan
 
 ---
 
+## 2026-08-16 — 9 genres added to the universe
+
+Additive change only — no restructure of any prompt section. Nine new genres appended to the Genre Universe list in the alphabetical/Hebrew-appended order the inline `EDITABLE_PROMPT_SECTION` uses. Numbers in parens are Ami's Data-Box track counts, provided for context only (not part of the prompt):
+
+- Peruvian Chicha (628)
+- JazzHop (191)
+- Italian Funk (176)
+- בלדות ישראליות (159)
+- Samba-Choro (100)
+- French Funk (67)
+- Desi LoFi (58)
+- Japanese Folk (53)
+- שירי יום הזיכרון והשואה (48)
+
+Also synced into `v6/generation/genre-list.js` (which drives the event-playlist endpoint's genre menu) in categorical position.
+
+Everything else in `EDITABLE_PROMPT_SECTION` is byte-identical to the 2026-08-13 entry below — only the Genre Universe comma-list changed. New list (v5 + v6 inline musical-directions.js, single line):
+
+```
+Alternative pop, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Blues, Bolero, Bossa Nova, Cha Cha Cha, Chamber music, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, Grunge, Gypsy jazz, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam Funk, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, World Funk, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה
+```
+
+---
+
 ## 2026-08-13 — Anchor genre removed; Ami's dashboard refactor v2
 
 Ami restructured the prompt again in his dashboard and removed the anchor-genre concept entirely — every direction is now a flat, equal-weight `genres` list (3–5 typical, 1–2 for justified niche). Motivation: Hebrew descriptions were over-indexing on the anchor genre and ignoring the rest of the mix. New sections added: "Energy & Pairing Constraints" (with 5 sub-rules: Absolute Energy Cohesion, Multi-Cultural Fusion, Equal Genre Weight, Strict Pop Isolation, House & Techno Containment) and "Direction Diversity & Non-Overlap Rules" (≤ 1 shared genre between any two directions). Hebrew descriptions loosen from "one short sentence, 6–14 words" to "1–2 sentences, 10–25 words total" and must cover holistic blend + operational best-use. Genre universe adds Afro Funk, Arabic Funk, Argentine Tango, Bolero, Chamber music, French DownTempo/Hip Hop/RnB, Icelandic Hip Hop, Japanese RnB, Korean RnB, Piano Impressionism, רוק ישראלי. Heavy Rock+Metal preserved as one entry (Ami's split back to "Heavy Rock" + "Metal" was reverted — the DB has the combined entry).

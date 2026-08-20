@@ -12,8 +12,9 @@
 // re-entered.
 
 import { runAtmosphereSelection } from '/v6/atmosphere.js?v=02082026a';
+import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
-import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=16082026a';
+import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=20082026a';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
 import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=13082026b';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=20082026a';
@@ -43,9 +44,10 @@ const state = {
   confirmedPlace: undefined,  // undefined = never looked up; null = looked up, none found
   atmosphereRows: null,       // cached once per session
   selectedAtmos: [],
-  // Opening hours are collected in step 3 alongside the Claude call. Kept
+  musicalEmphases: '',        // step 3 — free-text preferences (love/hate). Optional.
+  // Opening hours are collected in step 4 alongside the Gemini call. Kept
   // across step re-entry so users don't re-enter them just for changing
-  // atmospheres.
+  // atmospheres or emphases.
   hours: null,                // { 0: { closed: true } | { open, close }, ..., 6: ... }
   longestMinutes: 0,          // longest open window across days — feeds daily-playlist target
   directions: null,
@@ -89,20 +91,25 @@ function invalidateFrom(step) {
     // confirmedPlace is NOT reset here — runBusinessStep's change-detection
     // block invalidates it only when name/description actually change, so
     // clicking back to step 1 without editing keeps the cached place and
-    // skips a redundant Places lookup.
+    // skips a redundant Places lookup. musicalEmphases similarly persists —
+    // returning to step 1 doesn't erase what the user already wrote there.
     state.selectedAtmos = [];
   }
-  if (step <= 2) {
+  // Step 2 (atmospheres) and step 3 (musical emphases) both feed the
+  // Gemini prompt, so navigating back to either invalidates directions.
+  // musicalEmphases itself is preserved across navigation so re-entering
+  // step 3 pre-fills the textarea.
+  if (step <= 3) {
     state.directions = null;
     state.page2Promise = null;
     state.popularityWindow = null;
   }
-  // Step 3 is the hours picker; it doesn't feed anything downstream that
+  // Step 4 is the hours picker; it doesn't feed anything downstream that
   // needs invalidation. Hours themselves persist so re-entering pre-fills.
-  if (step <= 4) {
+  if (step <= 5) {
     state.picked = null;
   }
-  if (step <= 5) {
+  if (step <= 6) {
     state.results = null;
   }
 }
@@ -147,8 +154,30 @@ async function toggleDictation() {
     return;
   }
   let stream;
+  // Common getUserMedia failure modes:
+  //   NotAllowedError    → user (or a Permissions-Policy) denied mic access
+  //   NotFoundError      → no mic device is available
+  //   NotReadableError   → OS/other app is holding the mic
+  //   SecurityError /    → page is loaded over http:// on a mobile browser
+  //     unavailable API    (e.g. LAN IP over vercel dev on the phone)
+  if (!navigator.mediaDevices?.getUserMedia) {
+    console.error('dictation: getUserMedia unavailable — likely non-secure context');
+    $('dictLbl').textContent = 'הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)';
+    return;
+  }
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
-  catch { $('dictLbl').textContent = 'לא ניתן לגשת למיקרופון'; return; }
+  catch (err) {
+    console.error('dictation: getUserMedia failed:', err.name, err.message);
+    const messages = {
+      NotAllowedError:    'הרשאה למיקרופון נדחתה — אפשרו במטרת הדפדפן ונסו שוב',
+      NotFoundError:      'לא נמצא מיקרופון במכשיר',
+      NotReadableError:   'המיקרופון תפוס — סגרו יישום אחר שמשתמש בו ונסו שוב',
+      SecurityError:      'הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)',
+      AbortError:         'הגישה למיקרופון נקטעה — נסו שוב',
+    };
+    $('dictLbl').textContent = messages[err.name] || 'לא ניתן לגשת למיקרופון';
+    return;
+  }
 
   const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
   const mimeType = preferred.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported?.(t)) || '';
@@ -167,7 +196,7 @@ async function toggleDictation() {
     }
     btn.classList.add('busy');
     $('dictIco').innerHTML = '<span class="sb-spinner" style="width:14px;height:14px"></span>';
-    $('dictLbl').textContent = 'מתמללים את מה שסיפרתם…';
+    $('dictLbl').textContent = 'מתמללים...';
     try {
       const b64 = await new Promise((resolve) => {
         const r = new FileReader();
@@ -180,7 +209,9 @@ async function toggleDictation() {
         body: JSON.stringify({ audio_base64: b64, mime: blob.type }),
       });
       const data = await resp.json().catch(() => ({}));
-      if (!resp.ok || !data.text) throw new Error(data?.error || 'transcribe failed');
+      if (!resp.ok || !data.text) {
+        throw new Error(`transcribe ${resp.status}: ${data?.error || '(no error field)'}`);
+      }
       const ta = $('bizDesc');
       ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + data.text;
       ta.focus();
@@ -449,10 +480,10 @@ async function goToStep(start) {
 
   invalidateFrom(start);
 
-  // Cross-step promise handles: Claude directions + preview prep are kicked
-  // off during the hours step (step 3) so they warm in the background while
-  // the user picks hours, then get awaited during the preview step (step 4).
-  // Declared here so they survive the s === 3 → s === 4 boundary inside the
+  // Cross-step promise handles: Gemini directions + preview prep are kicked
+  // off during the hours step (step 4) so they warm in the background while
+  // the user picks hours, then get awaited during the preview step (step 5).
+  // Declared here so they survive the s === 4 → s === 5 boundary inside the
   // while loop.
   let directionsPromise = null;
   let directionsSettled = state.directions != null;
@@ -460,7 +491,7 @@ async function goToStep(start) {
 
   try {
     let s = start;
-    while (s <= 5) {
+    while (s <= 6) {
       setStep(s);
 
       if (s === 1) {
@@ -502,19 +533,46 @@ async function goToStep(start) {
       }
 
       else if (s === 3) {
-        // Fire Claude in the background — don't await yet. The hours picker
+        // Musical emphases — one free-text field for the owner's
+        // preferences (styles they love / hate). Passed to Gemini alongside
+        // description + atmospheres in the next step. Optional; the user
+        // may submit it empty and Gemini falls back to inferring from the
+        // other inputs.
+        const emphases = await abortable(
+          runEmphasesStep({
+            initialValue: state.musicalEmphases,
+            mainCardHtml: mainCardTemplateHtml || '',
+          }),
+          signal,
+        );
+        // If the emphases text changed, invalidate downstream directions —
+        // Gemini needs to re-run with the new signal.
+        if (emphases !== state.musicalEmphases) {
+          state.directions = null;
+          state.page2Promise = null;
+          state.popularityWindow = null;
+          state.picked = null;
+          state.results = null;
+        }
+        state.musicalEmphases = emphases;
+        markReached(4);
+      }
+
+      else if (s === 4) {
+        // Fire Gemini in the background — don't await yet. The hours picker
         // runs while it thinks. Track resolution via a settled flag so we
-        // know whether to show a loading screen after step 4 starts.
+        // know whether to show a loading screen after step 5 starts.
         //
-        // As soon as Claude page 1 lands, we IMMEDIATELY chain preparePreview
+        // As soon as Gemini page 1 lands, we IMMEDIATELY chain preparePreview
         // onto it so anchor-tracks + Spotify get_track metadata also happen
         // in the background — that way when the swipe deck actually needs
-        // to render (step 4), everything is warm and it appears instantly.
+        // to render (step 5), everything is warm and it appears instantly.
         if (!state.directions && !directionsPromise) {
           const rawDirections = generateMusicalDirections({
             bizName: state.bizName,
             bizDesc: state.bizDesc,
             atmospheres: state.selectedAtmos,
+            musicalEmphases: state.musicalEmphases,
             place: state.confirmedPlace,
           });
           directionsPromise = rawDirections.then(
@@ -522,7 +580,7 @@ async function goToStep(start) {
             (e) => { directionsSettled = true; throw e; },
           );
           // Kick off prep as soon as directions land (page 1 anchors fire
-          // immediately; page 2 anchors chain onto Claude's second call).
+          // immediately; page 2 anchors chain onto Gemini's second call).
           preparedPromise = rawDirections.then((r) => {
             if (r?.error) return emptyPreparedPreview();
             const popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
@@ -547,7 +605,7 @@ async function goToStep(start) {
           });
         }
 
-        // Opening hours picker. Runs in the foreground; the Claude call +
+        // Opening hours picker. Runs in the foreground; the Gemini call +
         // preview prep chug along behind it.
         const hoursResult = await abortable(
           runHoursSelection({ prechecked: state.hours ? { hours: state.hours } : null }),
@@ -555,10 +613,10 @@ async function goToStep(start) {
         );
         state.hours = hoursResult.hours;
         state.longestMinutes = hoursResult.longestMinutes;
-        markReached(4);
+        markReached(5);
       }
 
-      else if (s === 4) {
+      else if (s === 5) {
         // Preview swipe. If we jumped straight here (e.g. via the progress
         // bar), the hours step didn't run — so directionsPromise may not
         // exist yet. Kick it off inline in that case.
@@ -567,6 +625,7 @@ async function goToStep(start) {
             bizName: state.bizName,
             bizDesc: state.bizDesc,
             atmospheres: state.selectedAtmos,
+            musicalEmphases: state.musicalEmphases,
             place: state.confirmedPlace,
           });
           directionsPromise = rawDirections.then(
@@ -596,7 +655,7 @@ async function goToStep(start) {
           });
         }
 
-        // If Claude hasn't returned yet, show a progress bar until it does.
+        // If Gemini hasn't returned yet, show a progress bar until it does.
         // Usually already resolved by now if the user spent any real time
         // on the hours picker.
         if (!state.directions && directionsPromise) {
@@ -629,10 +688,10 @@ async function goToStep(start) {
         }
         state.picked = picked;
         state.results = null;   // any new picks → fresh build
-        markReached(5);
+        markReached(6);
       }
 
-      else if (s === 5) {
+      else if (s === 6) {
         initPlaylistResultsShell(state.picked);
         const results = await abortable(buildDirectionPlaylists({
           selectedDirections: state.picked,

@@ -18,7 +18,7 @@
 import {
   EDITABLE_PROMPT_SECTION,
   FIXED_PROMPT_SECTION,
-} from '/v5/generation/musical-directions.js?v=16082026a';
+} from '/v5/generation/musical-directions.js?v=20082026a';
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
 import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=04082026a';
 
@@ -27,18 +27,19 @@ const MAX_TOKENS = 16000;
 const $ = (id) => document.getElementById(id);
 
 const els = {
-  bizName:       $('bizName'),
-  bizDesc:       $('bizDesc'),
-  atmoContainer: $('atmoContainer'),
-  popWindowLine: $('popWindowLine'),
-  promptEditor:  $('promptEditor'),
-  generateBtn:   $('generateBtn'),
-  statusLine:    $('statusLine'),
-  resultsCard:   $('resultsCard'),
-  usageLine:     $('usageLine'),
-  outputText:    $('outputText'),
-  copyBtn:       $('copyBtn'),
-  copyResultBtn: $('copyResultBtn'),
+  bizName:          $('bizName'),
+  bizDesc:          $('bizDesc'),
+  atmoContainer:    $('atmoContainer'),
+  popWindowLine:    $('popWindowLine'),
+  musicalEmphases:  $('musicalEmphases'),
+  promptEditor:     $('promptEditor'),
+  generateBtn:      $('generateBtn'),
+  statusLine:       $('statusLine'),
+  resultsCard:      $('resultsCard'),
+  usageLine:        $('usageLine'),
+  outputText:       $('outputText'),
+  copyBtn:          $('copyBtn'),
+  copyResultBtn:    $('copyResultBtn'),
 };
 
 // Full atmosphere rows fetched from /api/v5/databox-atmospheres, kept at
@@ -136,10 +137,14 @@ function setStatus(text, kind) {
   els.statusLine.className = 'status-line' + (kind ? ' ' + kind : '');
 }
 
-function buildUserMessage({ bizName, bizDesc, atmospheres }) {
+function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases }) {
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
   const atmLine  = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
-  return `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
+  let msg = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
+  if (typeof musicalEmphases === 'string' && musicalEmphases.trim().length) {
+    msg += `\nMusical emphases: ${musicalEmphases.trim()}`;
+  }
+  return msg;
 }
 
 // Format one direction as a text block. Same format is what the copy button
@@ -175,10 +180,11 @@ function formatError(parsed) {
 }
 
 async function onGenerate() {
-  const bizName = els.bizName.value.trim();
-  const bizDesc = els.bizDesc.value.trim();
-  const atmos   = readCheckedAtmospheres();
-  const edited  = els.promptEditor.value;
+  const bizName        = els.bizName.value.trim();
+  const bizDesc        = els.bizDesc.value.trim();
+  const atmos          = readCheckedAtmospheres();
+  const musicalEmphases = els.musicalEmphases.value.trim();
+  const edited         = els.promptEditor.value;
 
   if (bizDesc.length < 4) {
     setStatus('תיאור העסק קצר מדי — הוסף לפחות כמה מילים', 'err');
@@ -197,7 +203,7 @@ async function onGenerate() {
 
   try {
     const system      = edited.trimEnd() + '\n\n' + FIXED_PROMPT_SECTION;
-    const userMessage = buildUserMessage({ bizName, bizDesc, atmospheres: atmos });
+    const userMessage = buildUserMessage({ bizName, bizDesc, atmospheres: atmos, musicalEmphases });
 
     // No caching: Ami's edits change the prompt every call, so Anthropic
     // caching would just add write premium with no hit. No-op on Gemini.

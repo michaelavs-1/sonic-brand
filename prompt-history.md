@@ -12,6 +12,34 @@ tightly coupled to downstream parsing code and changes only when the schema chan
 
 ---
 
+## 2026-08-20 — Musical emphases input added (highest-priority signal)
+
+Structural addition, no other section changed. Onboarding gains a new step 3 ("דגשים מוזיקליים") between atmosphere selection and hours picker — a single free-text field where the owner tells Rubin styles they love / hate / want more of / want less of (e.g. "no electronic at all", "as much R&B as possible", "hits only", "make each playlist adventurous"). The field is optional; when empty, the entire "Musical emphases:" line is omitted from the user message so the prompt-cache prefix stays identical for sessions that don't use it.
+
+Two edits to `EDITABLE_PROMPT_SECTION` (v5 + v6 kept byte-identical per the sync rule):
+
+**1. New bullet in the `## Inputs` list**, positioned between "Selected atmospheres" and "Google Places context":
+
+```
+- Optionally: **Musical emphases** — free-text preferences the owner typed in a dedicated field. Contains styles they explicitly love, styles they want to avoid, general leanings (e.g. "no electronic at all", "as much R&B as possible", "only hits", "make each playlist varied and adventurous"). Usually short (1–3 sentences), any language.
+```
+
+**2. New rule at the TOP of `### Processing Rules:`** — before the existing Atmospheres, Business Name, and Google Places rules. Explicit hierarchy: emphases outrank everything else so exclusions actually stick:
+
+```
+- **Musical Emphases (highest priority signal):** When the owner supplied musical emphases, treat them as the strongest input — above description, atmospheres, and Google context. If they name genres or families to include, at least half your directions should center on those. If they name genres or families to exclude, DROP those entirely from every direction — even if the description or atmosphere would otherwise suggest them. General leanings ("adventurous", "hits only", "familiar", "not too energetic") must shape every direction, not just some. Contradictions between emphases and description resolve in favor of emphases; note the tension briefly in the first direction's reasoning if useful.
+```
+
+Wire-up (not part of the prompt but needed for the input to arrive):
+- New screen module `v6/emphases.js` (brand block + subtitle + one textarea + submit) sits at flow step 3; hours→4, preview→5, results→6.
+- `state.musicalEmphases` added; `invalidateFrom(step ≤ 3)` clears cached directions when the emphases text changes.
+- `buildUserMessage` (v5 + v6) appends `Musical emphases: <text>` when non-empty, right after the Atmospheres line.
+- Ami's dashboard gains a matching "דגשים מוזיקליים (רשות)" textarea under the atmosphere checkboxes and threads it through its local `buildUserMessage` before the call to `callModel`.
+
+Everything else in `EDITABLE_PROMPT_SECTION` (Genre Universe, Energy & Pairing Constraints, Direction Diversity, Task Workflow, Output Language, Titles, Descriptions) is byte-identical to the 2026-08-16 entry.
+
+---
+
 ## 2026-08-16 — 9 genres added to the universe
 
 Additive change only — no restructure of any prompt section. Nine new genres appended to the Genre Universe list in the alphabetical/Hebrew-appended order the inline `EDITABLE_PROMPT_SECTION` uses. Numbers in parens are Ami's Data-Box track counts, provided for context only (not part of the prompt):

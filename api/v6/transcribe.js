@@ -9,7 +9,27 @@ import { requireSite } from './origin-guard.js';
 
 export const config = { api: { bodyParser: { sizeLimit: '6mb' } } };
 
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+// Key source: process.env.OPENAI_API_KEY with Supabase app_settings fallback.
+// .env.local doesn't hold an OPENAI_API_KEY; we read it from app_settings
+// where key='openai_key'. Note: RLS on app_settings blocks the anon role from
+// reading this table (the pattern in api/new/openai.js still uses anon and
+// silently returns nothing today), so we authenticate with the service role.
+const SB_URL = 'https://xhkqrxljncazvbgkmqex.supabase.co';
+
+async function getKeyFromSupabase() {
+  const srk = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!srk) return null;
+  try {
+    const r = await fetch(
+      `${SB_URL}/rest/v1/app_settings?key=eq.openai_key&select=value&limit=1`,
+      { headers: { 'apikey': srk, 'Authorization': `Bearer ${srk}` } }
+    );
+    if (!r.ok) return null;
+    const rows = await r.json();
+    if (Array.isArray(rows) && rows.length > 0 && rows[0].value) return rows[0].value;
+  } catch {}
+  return null;
+}
 
 function extFor(mime) {
   const m = String(mime || '').toLowerCase();
@@ -29,6 +49,7 @@ export default async function handler(req, res) {
   if (!requireSite(req, res)) return; // pilot: block off-site abuse
 
   try {
+    const OPENAI_API_KEY = process.env.OPENAI_API_KEY || (await getKeyFromSupabase());
     if (!OPENAI_API_KEY) return res.status(503).json({ error: 'transcription not configured' });
 
     const { audio_base64, mime } = req.body || {};

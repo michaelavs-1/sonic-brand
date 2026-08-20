@@ -60,6 +60,7 @@ You will receive:
 - Free-text description of the business (any language).
 - Optionally: Business name.
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
+- Optionally: **Musical emphases** — free-text preferences the owner typed in a dedicated field. Contains styles they explicitly love, styles they want to avoid, general leanings (e.g. "no electronic at all", "as much R&B as possible", "only hits", "make each playlist varied and adventurous"). Usually short (1–3 sentences), any language.
 - Optionally: Google Places context — factual metadata about the venue, pulled from Google Maps if the business was matched. Format:
 
 \`\`\`
@@ -75,6 +76,7 @@ Google Places context:
 
 ### Processing Rules:
 
+- **Musical Emphases (highest priority signal):** When the owner supplied musical emphases, treat them as the strongest input — above description, atmospheres, and Google context. If they name genres or families to include, at least half your directions should center on those. If they name genres or families to exclude, DROP those entirely from every direction — even if the description or atmosphere would otherwise suggest them. General leanings ("adventurous", "hits only", "familiar", "not too energetic") must shape every direction, not just some. Contradictions between emphases and description resolve in favor of emphases; note the tension briefly in the first direction's reasoning if useful.
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
 - **Google Places Context:** External factual grounding — use it to sharpen or corroborate direction choices, never as a replacement for the description. Examples: \`price_level: PRICE_LEVEL_VERY_EXPENSIVE\` + editorial mentioning "intimate" → lean elegant; \`servesBreakfast: true\` + \`servesDinner: false\` → day-part-biased toward daytime energy; \`liveMusic: true\` → venue expects live-music culture. Don't invent constraints Google didn't state. Absence of the block means Google didn't find the venue; rely on the description alone.
@@ -258,10 +260,18 @@ function formatPlaceContext(place) {
   ].join('\n');
 }
 
-function buildUserMessage({ bizName, bizDesc, atmospheres, place, subset, priorDirections }) {
+function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections }) {
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
   const atmLine = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
   let base = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
+  // Emphases block is omitted entirely when the user left the field
+  // empty, so the prompt cache prefix stays identical for the majority of
+  // sessions that don't use it. When present, it renders as its own
+  // labeled block so the model can spot it and apply the Musical Emphases
+  // processing rule at the top of the ## Processing Rules list.
+  if (typeof musicalEmphases === 'string' && musicalEmphases.trim().length) {
+    base += `\nMusical emphases: ${musicalEmphases.trim()}`;
+  }
   const placeBlock = formatPlaceContext(place);
   if (placeBlock) base += `\n${placeBlock}`;
 
@@ -283,10 +293,10 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, place, subset, priorD
 // Provider-agnostic call. Caching is on: system prompt is stable across
 // users, so on Anthropic the ~2400-token prefix is served from the ephemeral
 // cache after the first call. No-op on Gemini.
-async function callDirections({ bizName, bizDesc, atmospheres, place, subset, priorDirections, label }) {
+async function callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections, label }) {
   const { text } = await callModel({
     system: SYSTEM_PROMPT,
-    userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, place, subset, priorDirections }),
+    userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections }),
     maxTokens: MAX_TOKENS,
     cache: true,
     label,
@@ -356,7 +366,7 @@ function normalizeDirections(parsed, rankStart) {
   return valid;
 }
 
-export async function generateMusicalDirections({ bizName, bizDesc, atmospheres, place }) {
+export async function generateMusicalDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place }) {
   if (!bizDesc || typeof bizDesc !== 'string' || bizDesc.trim().length < 3) {
     return { error: 'insufficient_description', reasoning_en: 'empty or too-short description' };
   }
@@ -364,7 +374,7 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres,
   // Call 1 — page 1 (top 4 fits). Blocks the user.
   let parsed1;
   try {
-    parsed1 = await callDirections({ bizName, bizDesc, atmospheres, place, subset: 'top', label: 'page1' });
+    parsed1 = await callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset: 'top', label: 'page1' });
   } catch (e) {
     return { error: 'matcher_error', reasoning_en: e.message };
   }
@@ -386,7 +396,7 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres,
   const page2Promise = (async () => {
     try {
       const parsed2 = await callDirections({
-        bizName, bizDesc, atmospheres, place,
+        bizName, bizDesc, atmospheres, musicalEmphases, place,
         subset: 'next',
         priorDirections: page1,
         label: 'page2',

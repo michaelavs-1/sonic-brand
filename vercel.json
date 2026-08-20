@@ -285,6 +285,10 @@
   ],
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/v6/index.html"
+    },
+    {
       "source": "/v2",
       "destination": "/v2/index.html"
     },

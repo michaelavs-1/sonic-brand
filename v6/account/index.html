@@ -1,579 +1,1983 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SonicBrands — האזור האישי</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-<style>
-/* ===== SonicBrands personal area — brand-aligned UI =====
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SonicBrands — האזור האישי</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <style>
+    /* ===== SonicBrands personal area — brand-aligned UI =====
    teal #2c637a · gold #f0a73f · deep navy-teal backgrounds */
-:root{
-  --bg:#0a1117; --bg-2:#0f1c26; --card:#142835; --card-2:#17303f;
-  --border:rgba(255,255,255,.08); --border-2:rgba(255,255,255,.16);
-  --text:#f5f7f8; --muted:#96a7b0;
-  --accent:#f0a73f; --accent-2:#d98a1f;
-  --teal:#2c637a; --teal-soft:#57a3bd;
-  --danger:#e07a6a;
-  --r:16px; --r-lg:24px;
-  --glow:0 0 30px rgba(240,167,63,.12);
-}
-*{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--text)}
-body{
-  font-family:'Heebo',-apple-system,BlinkMacSystemFont,sans-serif;
-  min-height:100vh;display:flex;align-items:flex-start;justify-content:center;
-  padding:20px 12px;
-  background:
-    radial-gradient(900px 500px at 85% -10%, rgba(44,99,122,.35), transparent 60%),
-    radial-gradient(700px 420px at 5% 110%, rgba(240,167,63,.10), transparent 55%),
-    var(--bg);
-}
-.screen{
-  width:100%;max-width:440px;position:relative;overflow:hidden;
-  background:linear-gradient(180deg,var(--card),var(--bg-2));
-  border:1px solid var(--border);border-radius:var(--r-lg);
-  padding:18px 16px 96px;min-height:660px;box-shadow:var(--glow);
-}
-/* Login view is short — override the dashboard-sized min-height + bottom
+    :root {
+      --bg: #0a1117;
+      --bg-2: #0f1c26;
+      --card: #142835;
+      --card-2: #17303f;
+      --border: rgba(255, 255, 255, .08);
+      --border-2: rgba(255, 255, 255, .16);
+      --text: #f5f7f8;
+      --muted: #96a7b0;
+      --accent: #f0a73f;
+      --accent-2: #d98a1f;
+      --teal: #2c637a;
+      --teal-soft: #57a3bd;
+      --danger: #e07a6a;
+      --r: 16px;
+      --r-lg: 24px;
+      --glow: 0 0 30px rgba(240, 167, 63, .12);
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text)
+    }
+
+    body {
+      font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px 12px;
+      background:
+        radial-gradient(900px 500px at 85% -10%, rgba(44, 99, 122, .35), transparent 60%),
+        radial-gradient(700px 420px at 5% 110%, rgba(240, 167, 63, .10), transparent 55%),
+        var(--bg);
+    }
+
+    .screen {
+      width: 100%;
+      max-width: 440px;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 18px 16px 96px;
+      min-height: 660px;
+      box-shadow: var(--glow);
+    }
+
+    /* Login view is short — override the dashboard-sized min-height + bottom
    padding so the card wraps its content tightly, and center the body so it
    sits mid-viewport instead of hanging from the top. */
-#loginView{min-height:0;padding-bottom:22px}
-body:has(#loginView:not(.hide)){align-items:center}
-.hide{display:none!important}
-.center{display:flex;flex-direction:column;align-items:center;gap:8px}
-h1{font-size:23px;font-weight:800;margin:4px 0 0;letter-spacing:.2px}
-h2{font-size:15.5px;font-weight:800;margin:0;display:flex;align-items:center;gap:8px}
-h2 .h-ico{width:30px;height:30px;border-radius:9px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;background:rgba(240,167,63,.12);border:1px solid rgba(240,167,63,.25);flex:0 0 auto}
-.muted{color:var(--muted);font-size:13px}
+    #loginView {
+      min-height: 0;
+      padding-bottom: 22px
+    }
 
-/* ---------- inputs & buttons ---------- */
-.input{
-  width:100%;background:var(--bg-2);border:1px solid var(--border-2);border-radius:13px;
-  padding:13px 14px;color:var(--text);font-size:16px;font-family:inherit;outline:none;
-  transition:border-color .2s, box-shadow .2s;
-}
-.input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,167,63,.12)}
-#email{direction:ltr;text-align:left}
-#email:placeholder-shown:not(:focus){direction:rtl;text-align:right}
-select.input{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(14px) 55%,calc(14px + 5px) 55%;background-size:5px 5px;background-repeat:no-repeat}
-textarea.input{resize:vertical;min-height:74px;line-height:1.6}
-.btn{
-  width:100%;cursor:pointer;border:none;border-radius:13px;padding:13px 16px;
-  font-size:15px;font-weight:800;font-family:inherit;margin-top:10px;
-  background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#1b1508;
-  box-shadow:0 4px 18px rgba(240,167,63,.28);
-  transition:box-shadow .2s, transform .06s, filter .2s;
-}
-.btn:hover{box-shadow:0 6px 22px rgba(240,167,63,.42)}
-.btn:active{transform:translateY(1px)}
-.btn:disabled{opacity:.5;cursor:default;box-shadow:none}
-.btn-ghost{background:none;border:none;color:var(--muted);font-size:13px;cursor:pointer;font-family:inherit;transition:color .2s}
-.btn-ghost:hover{color:var(--text)}
-.btn-small{width:auto;padding:9px 15px;font-size:13.5px;margin-top:0}
-.btn-danger{background:none;border:1.5px solid var(--danger);color:var(--danger);box-shadow:none}
-.btn-danger:hover{box-shadow:0 4px 14px rgba(224,122,106,.25)}
-.btn.sec{background:var(--card-2);color:var(--text);border:1px solid var(--border-2);box-shadow:none;transition:border-color .2s, box-shadow .2s, transform .06s}
-.btn.sec:hover:not(:disabled){border-color:rgba(240,167,63,.55);box-shadow:0 4px 16px rgba(240,167,63,.14)}
+    body:has(#loginView:not(.hide)) {
+      align-items: center
+    }
 
-/* ---------- header ---------- */
-.tophead{display:flex;align-items:center;gap:12px;padding:2px 2px 14px}
-.tophead .logo-svg{width:46px;flex:0 0 auto}
-.tophead .who{flex:1;min-width:0}
-.tophead .hello{font-size:12.5px;color:var(--muted);margin-bottom:1px}
-.bizrow{display:flex;align-items:center;gap:8px}
-.bizrow h1{font-size:20px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.editbtn{cursor:pointer;background:none;border:1px solid var(--border-2);border-radius:8px;color:var(--muted);font-size:12px;padding:3px 7px;font-family:inherit;line-height:1;transition:all .2s;flex:0 0 auto}
-.editbtn:hover{border-color:var(--accent);color:var(--accent)}
-#logout{flex:0 0 auto}
-.name-edit{display:flex;align-items:center;gap:8px;margin:0 0 12px;width:100%}
-.name-edit .input{flex:1;padding:10px 12px}
-.name-edit .btn{width:auto;margin-top:0;padding:10px 14px;white-space:nowrap}
-#bizSwitch{margin:0 0 12px;padding:9px 13px;font-size:14px}
+    .hide {
+      display: none !important
+    }
 
-/* ---------- stats ---------- */
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
-.stat{
-  background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r);
-  padding:13px 14px;position:relative;overflow:hidden;
-}
-.stat::after{content:'';position:absolute;inset-inline-start:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--accent),transparent)}
-.stat .stat-num{font-size:24px;font-weight:900;color:var(--accent);line-height:1.1}
-.stat .stat-lbl{font-size:11.5px;color:var(--muted);margin-top:3px;line-height:1.4}
-.stat.tealish::after{background:linear-gradient(180deg,var(--teal-soft),transparent)}
-.stat .stat-txt{font-size:15px;font-weight:800;color:var(--teal-soft);line-height:1.2;margin-top:4px}
+    .center {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px
+    }
 
-/* ---------- cards / sections ---------- */
-.box{
-  background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r);
-  padding:15px 14px;margin:0 0 12px;
-}
-.box .sub{margin:7px 0 10px;line-height:1.55}
-.setup{
-  border:1px dashed rgba(240,167,63,.55);background:rgba(240,167,63,.07);
-  border-radius:var(--r);padding:13px 14px;margin:0 0 12px;font-size:13px;line-height:1.6;
-}
-.setup .btn{margin-top:9px;padding:10px}
+    h1 {
+      font-size: 23px;
+      font-weight: 800;
+      margin: 4px 0 0;
+      letter-spacing: .2px
+    }
 
-/* ---------- slots & events ---------- */
-.slot{
-  display:flex;align-items:center;gap:10px;background:var(--card);
-  border:1px solid var(--border);border-radius:14px;padding:11px 12px;margin-top:9px;
-  transition:border-color .2s, transform .15s;
-}
-.slot:hover{border-color:rgba(240,167,63,.4)}
-.slot .s-info{flex:1;min-width:0}
-.slot .s-title{font-size:14.5px;font-weight:800}
-.slot .s-meta{font-size:11.5px;color:var(--muted);margin-top:2px}
-.slot .pl-count{font-weight:800;color:var(--text);transition:color .2s}
-.slot .pl-expand-bar{margin-top:6px;height:4px;width:100%;max-width:220px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
-.slot .pl-expand-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));border-radius:2px;transition:width .4s ease}
-.slot .pl-expand-bar.done .pl-expand-fill{background:var(--teal-soft)}
-/* Small inline spinner shown next to "X שירים" while a playlist is populating.
+    h2 {
+      font-size: 15.5px;
+      font-weight: 800;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    h2 .h-ico {
+      width: 30px;
+      height: 30px;
+      border-radius: 9px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      background: rgba(240, 167, 63, .12);
+      border: 1px solid rgba(240, 167, 63, .25);
+      flex: 0 0 auto
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px
+    }
+
+    /* ---------- inputs & buttons ---------- */
+    .input {
+      width: 100%;
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 13px;
+      padding: 13px 14px;
+      color: var(--text);
+      font-size: 16px;
+      font-family: inherit;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    .input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(240, 167, 63, .12)
+    }
+
+    #email {
+      direction: ltr;
+      text-align: left
+    }
+
+    #email:placeholder-shown:not(:focus) {
+      direction: rtl;
+      text-align: right
+    }
+
+    select.input {
+      appearance: none;
+      background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+      background-position: calc(14px) 55%, calc(14px + 5px) 55%;
+      background-size: 5px 5px;
+      background-repeat: no-repeat
+    }
+
+    textarea.input {
+      resize: vertical;
+      min-height: 74px;
+      line-height: 1.6
+    }
+
+    .btn {
+      width: 100%;
+      cursor: pointer;
+      border: none;
+      border-radius: 13px;
+      padding: 13px 16px;
+      font-size: 15px;
+      font-weight: 800;
+      font-family: inherit;
+      margin-top: 10px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #1b1508;
+      box-shadow: 0 4px 18px rgba(240, 167, 63, .28);
+      transition: box-shadow .2s, transform .06s, filter .2s;
+    }
+
+    .btn:hover {
+      box-shadow: 0 6px 22px rgba(240, 167, 63, .42)
+    }
+
+    .btn:active {
+      transform: translateY(1px)
+    }
+
+    .btn:disabled {
+      opacity: .5;
+      cursor: default;
+      box-shadow: none
+    }
+
+    .btn-ghost {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: color .2s
+    }
+
+    .btn-ghost:hover {
+      color: var(--text)
+    }
+
+    .btn-small {
+      width: auto;
+      padding: 9px 15px;
+      font-size: 13.5px;
+      margin-top: 0
+    }
+
+    .btn-danger {
+      background: none;
+      border: 1.5px solid var(--danger);
+      color: var(--danger);
+      box-shadow: none
+    }
+
+    .btn-danger:hover {
+      box-shadow: 0 4px 14px rgba(224, 122, 106, .25)
+    }
+
+    .btn.sec {
+      background: var(--card-2);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+      box-shadow: none;
+      transition: border-color .2s, box-shadow .2s, transform .06s
+    }
+
+    .btn.sec:hover:not(:disabled) {
+      border-color: rgba(240, 167, 63, .55);
+      box-shadow: 0 4px 16px rgba(240, 167, 63, .14)
+    }
+
+    /* ---------- header ---------- */
+    .tophead {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 2px 2px 14px
+    }
+
+    .tophead .logo-svg {
+      width: 46px;
+      flex: 0 0 auto
+    }
+
+    .tophead .who {
+      flex: 1;
+      min-width: 0
+    }
+
+    .tophead .hello {
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-bottom: 1px
+    }
+
+    .bizrow {
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .bizrow h1 {
+      font-size: 20px;
+      margin: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .editbtn {
+      cursor: pointer;
+      background: none;
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      padding: 3px 7px;
+      font-family: inherit;
+      line-height: 1;
+      transition: all .2s;
+      flex: 0 0 auto
+    }
+
+    .editbtn:hover {
+      border-color: var(--accent);
+      color: var(--accent)
+    }
+
+    #logout {
+      flex: 0 0 auto
+    }
+
+    .name-edit {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 12px;
+      width: 100%
+    }
+
+    .name-edit .input {
+      flex: 1;
+      padding: 10px 12px
+    }
+
+    .name-edit .btn {
+      width: auto;
+      margin-top: 0;
+      padding: 10px 14px;
+      white-space: nowrap
+    }
+
+    #bizSwitch {
+      margin: 0 0 12px;
+      padding: 9px 13px;
+      font-size: 14px
+    }
+
+    /* ---------- stats ---------- */
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 14px
+    }
+
+    .stat {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 13px 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .stat::after {
+      content: '';
+      position: absolute;
+      inset-inline-start: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      background: linear-gradient(180deg, var(--accent), transparent)
+    }
+
+    .stat .stat-num {
+      font-size: 24px;
+      font-weight: 900;
+      color: var(--accent);
+      line-height: 1.1
+    }
+
+    .stat .stat-lbl {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 3px;
+      line-height: 1.4
+    }
+
+    .stat.tealish::after {
+      background: linear-gradient(180deg, var(--teal-soft), transparent)
+    }
+
+    .stat .stat-txt {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--teal-soft);
+      line-height: 1.2;
+      margin-top: 4px
+    }
+
+    /* ---------- cards / sections ---------- */
+    .box {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 15px 14px;
+      margin: 0 0 12px;
+    }
+
+    .box .sub {
+      margin: 7px 0 10px;
+      line-height: 1.55
+    }
+
+    .setup {
+      border: 1px dashed rgba(240, 167, 63, .55);
+      background: rgba(240, 167, 63, .07);
+      border-radius: var(--r);
+      padding: 13px 14px;
+      margin: 0 0 12px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .setup .btn {
+      margin-top: 9px;
+      padding: 10px
+    }
+
+    /* ---------- slots & events ---------- */
+    .slot {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 11px 12px;
+      margin-top: 9px;
+      transition: border-color .2s, transform .15s;
+    }
+
+    .slot:hover {
+      border-color: rgba(240, 167, 63, .4)
+    }
+
+    .slot .s-info {
+      flex: 1;
+      min-width: 0
+    }
+
+    .slot .s-title {
+      font-size: 14.5px;
+      font-weight: 800
+    }
+
+    .slot .s-meta {
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 2px
+    }
+
+    .slot .pl-count {
+      font-weight: 800;
+      color: var(--text);
+      transition: color .2s
+    }
+
+    .slot .pl-expand-bar {
+      margin-top: 6px;
+      height: 4px;
+      width: 100%;
+      max-width: 220px;
+      background: rgba(255, 255, 255, .06);
+      border-radius: 2px;
+      overflow: hidden
+    }
+
+    .slot .pl-expand-fill {
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 2px;
+      transition: width .4s ease
+    }
+
+    .slot .pl-expand-bar.done .pl-expand-fill {
+      background: var(--teal-soft)
+    }
+
+    /* Small inline spinner shown next to "X שירים" while a playlist is populating.
    Removed as soon as the expansion stream reports done. */
-.slot .pl-inline-spinner{
-  display:inline-block;width:10px;height:10px;margin-inline-start:6px;
-  border:1.6px solid rgba(255,255,255,.22);border-top-color:var(--accent);
-  border-radius:50%;animation:sb-spin .7s linear infinite;vertical-align:-1px;
-}
+    .slot .pl-inline-spinner {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-inline-start: 6px;
+      border: 1.6px solid rgba(255, 255, 255, .22);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: sb-spin .7s linear infinite;
+      vertical-align: -1px;
+    }
 
-/* Generic project spinner used inside buttons (e.g. modal CTAs). Mirrors the
+    /* Generic project spinner used inside buttons (e.g. modal CTAs). Mirrors the
    one defined in /v6/index.html so the account page can use the same class. */
-.sb-spinner{
-  display:inline-block;width:18px;height:18px;
-  border:2.5px solid rgba(255,255,255,.25);border-top-color:var(--accent);
-  border-radius:50%;animation:sb-spin .7s linear infinite;vertical-align:middle;
-}
-@keyframes sb-spin{to{transform:rotate(360deg)}}
-.slot .btn{width:auto;margin:0;padding:9px 14px;font-size:13px;white-space:nowrap;border-radius:11px}
-.slot a.btn{text-decoration:none;text-align:center}
+    .sb-spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2.5px solid rgba(255, 255, 255, .25);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: sb-spin .7s linear infinite;
+      vertical-align: middle;
+    }
 
-/* Small "המקום פתוח?" link that sits next to the "closed" title on days the
+    @keyframes sb-spin {
+      to {
+        transform: rotate(360deg)
+      }
+    }
+
+    .slot .btn {
+      width: auto;
+      margin: 0;
+      padding: 9px 14px;
+      font-size: 13px;
+      white-space: nowrap;
+      border-radius: 11px
+    }
+
+    .slot a.btn {
+      text-decoration: none;
+      text-align: center
+    }
+
+    /* Small "המקום פתוח?" link that sits next to the "closed" title on days the
    venue is marked closed. Deliberately quiet (muted color, smaller font) so
    it reads as a secondary offer, not a primary action. */
-.closed-open-link{
-  color:var(--muted);font-size:12px;font-weight:500;margin-inline-start:10px;
-  text-decoration:none;cursor:pointer;
-}
-.closed-open-link:hover{color:var(--accent)}
+    .closed-open-link {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+      margin-inline-start: 10px;
+      text-decoration: none;
+      cursor: pointer;
+    }
 
-/* Generate-daily confirmation modal. Matches the overall dashboard aesthetic
+    .closed-open-link:hover {
+      color: var(--accent)
+    }
+
+    /* Generate-daily confirmation modal. Matches the overall dashboard aesthetic
    (dark card on blurred backdrop). */
-.gd-overlay{
-  position:fixed;inset:0;z-index:120;background:rgba(6,12,17,.62);
-  backdrop-filter:blur(4px);display:flex;align-items:center;justify-content:center;
-  padding:20px;animation:fadeIn .2s ease;
-}
-.gd-overlay.hide{display:none}
-.gd-modal{
-  background:var(--card);border:1px solid var(--border-2);border-radius:var(--r-lg);
-  padding:22px 20px;max-width:360px;width:100%;text-align:center;
-  box-shadow:0 24px 60px rgba(0,0,0,.55);
-}
-.gd-modal h3{margin:0 0 10px;font-size:17px;font-weight:800}
-.gd-modal p{margin:0 0 18px;font-size:13.5px;color:var(--muted);line-height:1.55}
-.gd-modal .gd-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-.gd-modal .btn{width:auto;margin:0;padding:10px 18px;font-size:13.5px;border-radius:11px}
-.gd-modal .btn-ghost{width:auto;margin:0;padding:10px 18px;font-size:13.5px;border-radius:11px;background:transparent;color:var(--muted);border:1px solid var(--border-2)}
-.gd-modal .btn-ghost:hover{color:var(--text)}
+    .gd-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      background: rgba(6, 12, 17, .62);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      animation: fadeIn .2s ease;
+    }
 
-/* ---------- profile form ---------- */
-.frow{margin-bottom:12px}
-.flabel{display:block;color:var(--muted);font-size:12.5px;font-weight:700;margin-bottom:6px}
-.day-row{display:flex;align-items:center;gap:6px;margin-top:7px;font-size:13px;background:var(--card);border:1px solid var(--border);border-radius:11px;padding:7px 9px}
-.day-row .dname{width:44px;flex:0 0 auto;color:var(--text);font-weight:700;font-size:12.5px}
-.day-row input[type=time]{background:var(--bg-2);border:1px solid var(--border-2);border-radius:8px;color:var(--text);font-family:inherit;font-size:12.5px;padding:5px 5px;width:84px}
-.day-row select{background:var(--bg-2);border:1px solid var(--border-2);border-radius:8px;color:var(--text);font-family:inherit;font-size:11.5px;padding:5px 3px;flex:1;min-width:0}
-.day-row .closed{width:17px;height:17px;accent-color:var(--accent);flex:0 0 auto}
+    .gd-overlay.hide {
+      display: none
+    }
 
-/* ---------- music lists ---------- */
-.track{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);padding:10px 2px;font-size:13px}
-.track:last-child{border-bottom:none}
-.track .t-info{flex:1;min-width:0}
-.track .t-title{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.track .t-sub{color:var(--muted);font-size:11.5px;margin-top:1px}
-.track .tbtn{cursor:pointer;background:var(--card);border:1px solid var(--border-2);border-radius:9px;color:var(--muted);padding:5px 9px;font-size:12px;font-family:inherit;white-space:nowrap;transition:all .2s}
-.track .tbtn:hover{border-color:var(--accent);color:var(--accent)}
+    .gd-modal {
+      background: var(--card);
+      border: 1px solid var(--border-2);
+      border-radius: var(--r-lg);
+      padding: 22px 20px;
+      max-width: 360px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+    }
 
-/* ---------- plan ---------- */
-.plan-line{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:9px 0;border-bottom:1px solid var(--border)}
-.plan-line:last-child{border-bottom:none}
-.upgrade{border:1px solid var(--border-2);border-radius:14px;padding:13px;margin-top:10px;background:var(--card);transition:border-color .2s}
-.upgrade.rec{border-color:rgba(240,167,63,.6);box-shadow:var(--glow)}
-.upgrade .u-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:15px}
-.upgrade .u-price{color:var(--accent)}
-.upgrade .u-desc{color:var(--muted);font-size:12.5px;margin-top:4px;line-height:1.5}
-.upgrade .btn{padding:10px;font-size:13.5px}
-.soon{font-size:10.5px;border:1px solid var(--border-2);border-radius:999px;padding:2px 8px;color:var(--muted);white-space:nowrap}
-.report-box{white-space:pre-line;font-size:13px;line-height:1.9;color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px}
+    .gd-modal h3 {
+      margin: 0 0 10px;
+      font-size: 17px;
+      font-weight: 800
+    }
 
-/* ---------- mic ---------- */
-.mic-wrap{display:flex;flex-direction:column;align-items:center;margin:20px 0 6px}
-.mic{
-  cursor:pointer;width:150px;height:150px;border-radius:50%;position:relative;
-  background:radial-gradient(circle at 35% 30%, #3a7d97, var(--teal) 65%);
-  border:3px solid var(--accent);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
-  font-family:inherit;transition:transform .15s, box-shadow .3s;
-  box-shadow:0 0 0 0 rgba(240,167,63,.35);
-  animation:mic-pulse 2.6s ease-out infinite;
-}
-.mic:hover{transform:scale(1.03)}
-.mic:active{transform:scale(.97)}
-@keyframes mic-pulse{0%{box-shadow:0 0 0 0 rgba(240,167,63,.35)}70%{box-shadow:0 0 0 18px rgba(240,167,63,0)}100%{box-shadow:0 0 0 0 rgba(240,167,63,0)}}
-.mic .ico{font-size:40px;color:var(--accent)}
-.mic .lbl{color:var(--text);font-size:13.5px;font-weight:700}
-.waves{display:flex;align-items:flex-end;gap:4px;height:38px;justify-content:center}
-.waves .b{width:5px;border-radius:3px;background:var(--accent);transform-origin:bottom;animation:bnc .8s ease-in-out infinite}
-@keyframes bnc{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1)}}
+    .gd-modal p {
+      margin: 0 0 18px;
+      font-size: 13.5px;
+      color: var(--muted);
+      line-height: 1.55
+    }
 
-/* ---------- bottom nav ---------- */
-.nav{
-  position:absolute;bottom:12px;right:14px;left:14px;display:flex;z-index:20;
-  background:rgba(15,28,38,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid var(--border-2);border-radius:18px;padding:6px;gap:4px;
-  box-shadow:0 10px 30px rgba(0,0,0,.45);
-}
-.nav button{
-  flex:1;background:none;border:none;color:var(--muted);font-family:inherit;font-size:10.5px;
-  font-weight:700;padding:8px 2px 7px;cursor:pointer;border-radius:13px;
-  display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .2s;
-}
-.nav button .nico{font-size:19px;transition:transform .2s}
-.nav button.active{color:var(--accent);background:rgba(240,167,63,.10)}
-.nav button.active .nico{transform:translateY(-1px) scale(1.12)}
+    .gd-modal .gd-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap
+    }
 
-/* ---------- overlay / toast ---------- */
-.overlay{
-  position:absolute;inset:0;background:rgba(8,13,18,.94);backdrop-filter:blur(6px);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
-  padding:26px;text-align:center;z-index:30;animation:fadeIn .25s ease;
-}
-.overlay .btn{max-width:280px}
-@keyframes fadeIn{from{opacity:0}to{opacity:1}}
-.toast{
-  position:fixed;bottom:96px;left:50%;transform:translateX(-50%);
-  background:var(--card-2);color:var(--accent);border:1px solid rgba(240,167,63,.5);
-  border-radius:999px;padding:9px 18px;font-size:13px;font-weight:600;opacity:0;
-  transition:opacity .25s;pointer-events:none;white-space:nowrap;z-index:200;
-  box-shadow:0 8px 24px rgba(0,0,0,.4);
-}
+    .gd-modal .btn {
+      width: auto;
+      margin: 0;
+      padding: 10px 18px;
+      font-size: 13.5px;
+      border-radius: 11px
+    }
 
-/* ---------- tab transition ---------- */
-.tabview{animation:fadeUp .28s ease}
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .gd-modal .btn-ghost {
+      width: auto;
+      margin: 0;
+      padding: 10px 18px;
+      font-size: 13.5px;
+      border-radius: 11px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border-2)
+    }
 
-/* ---------- logo animation ---------- */
-.logo-svg{width:64px;height:auto;animation:logo-float 3.2s ease-in-out infinite;filter:drop-shadow(0 6px 14px rgba(0,0,0,.4))}
-.logo-svg .lg-crown{transform-box:fill-box;transform-origin:50% 100%;animation:crown-tilt 2.6s ease-in-out infinite}
-.logo-svg .lg-eye-wink{transform-box:fill-box;transform-origin:50% 50%;animation:eye-wink 4.2s ease-in-out infinite}
-@keyframes logo-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
-@keyframes crown-tilt{0%,100%{transform:rotate(-4deg)}50%{transform:rotate(4deg)}}
-@keyframes eye-wink{0%,86%,94%,100%{transform:scaleY(1)}90%{transform:scaleY(0.08)}}
-@media (prefers-reduced-motion:reduce){.logo-svg,.logo-svg .lg-crown,.logo-svg .lg-eye-wink,.mic,.tabview{animation:none}}
+    .gd-modal .btn-ghost:hover {
+      color: var(--text)
+    }
 
-a.link{color:var(--accent)}
+    /* ---------- profile form ---------- */
+    .frow {
+      margin-bottom: 12px
+    }
 
-/* ---------- place banner ---------- */
-.place-banner{position:relative;border-radius:var(--r);overflow:hidden;margin-bottom:14px;border:1px solid var(--border-2)}
-.place-banner img{width:100%;height:130px;object-fit:cover;display:block}
-.place-banner .pb-cap{position:absolute;bottom:0;right:0;left:0;padding:20px 14px 9px;font-size:12px;color:#fff;background:linear-gradient(0deg,rgba(8,13,18,.85),transparent)}
+    .flabel {
+      display: block;
+      color: var(--muted);
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 6px
+    }
 
-/* ---------- chat agent ---------- */
-.chat-fab{
-  position:absolute;bottom:84px;left:16px;z-index:25;width:52px;height:52px;border-radius:50%;
-  border:none;cursor:pointer;font-size:23px;
-  background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#1b1508;
-  box-shadow:0 8px 24px rgba(240,167,63,.4);transition:transform .15s;
-}
-.chat-fab:hover{transform:scale(1.07)}
-.chat-panel{
-  position:absolute;inset:0;z-index:40;display:flex;flex-direction:column;
-  background:linear-gradient(180deg,var(--card),var(--bg-2));animation:fadeUp .25s ease;
-}
-.chat-head{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border-2);background:var(--bg-2)}
-.chat-head .ch-ava{width:38px;height:38px;border-radius:50%;background:var(--teal);display:flex;align-items:center;justify-content:center;font-size:19px;flex:0 0 auto;border:2px solid var(--accent)}
-.chat-head .ch-name{font-weight:800;font-size:15px}
-.chat-head .ch-sub{font-size:11px;color:var(--teal-soft)}
-.chat-msgs{flex:1;overflow-y:auto;padding:14px 14px 8px;display:flex;flex-direction:column;gap:9px}
-.msg{max-width:82%;padding:10px 13px;border-radius:15px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;animation:fadeUp .2s ease}
-.msg.agent{align-self:flex-start;background:var(--card-2);border:1px solid var(--border-2);border-bottom-right-radius:5px}
-.msg.user{align-self:flex-end;background:linear-gradient(135deg,var(--accent),var(--accent-2));color:#1b1508;font-weight:600;border-bottom-left-radius:5px}
-.msg.typing{color:var(--muted);font-style:italic}
-.chat-inrow{display:flex;gap:8px;padding:10px 12px 14px;border-top:1px solid var(--border);background:var(--bg-2)}
-.chat-inrow .input{flex:1;padding:11px 13px;border-radius:999px}
-.chat-inrow .btn{width:auto;margin:0;padding:11px 16px;border-radius:999px;font-size:14px}
-/* on desktop: bottom sheet instead of full-screen */
-@media (min-width:421px){
-  .chat-panel{top:auto;height:auto;max-height:480px;border-top:1px solid var(--border-2);border-radius:22px 22px 0 0;box-shadow:0 -14px 44px rgba(0,0,0,.55)}
-  .chat-msgs{min-height:200px}
-}
-.chat-back{align-self:center;margin:6px 0 2px;background:none;border:1px solid var(--border-2);border-radius:999px;color:var(--muted);font-family:inherit;font-size:12px;padding:6px 15px;cursor:pointer;transition:all .2s}
-.chat-back:hover{color:var(--accent);border-color:var(--accent)}
-/* tablet / desktop: roomier layout */
-@media (min-width:768px){
-  .screen{max-width:560px}
-  .msg{font-size:14.5px}
-}
-@media (min-width:1100px){
-  .screen{max-width:640px}
-}
-@media (max-width:420px){
-  body{padding:10px 6px}
-  .screen{padding:16px 12px 96px;border-radius:18px}
-  .stats{gap:8px}
-  .day-row input[type=time]{width:78px}
-}
+    .day-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 7px;
+      font-size: 13px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 7px 9px
+    }
 
-/* ===== Time wheel picker (iPhone-style) ===== */
-.t-btn{background:var(--bg-2);border:1px solid var(--border-2);border-radius:8px;color:var(--text);font-family:inherit;font-size:13px;font-weight:700;padding:6px 10px;cursor:pointer;direction:ltr;unicode-bidi:embed;min-width:64px;text-align:center}
-.t-btn:hover{border-color:var(--accent)}
-.tw-overlay{position:fixed;inset:0;z-index:120;background:rgba(6,12,17,.62);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px)}
-.tw-panel{background:#142835;border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:18px 18px 14px;width:min(320px,86vw);box-shadow:0 18px 50px rgba(0,0,0,.5)}
-.tw-title{font-size:13.5px;color:#93a5af;margin:0 0 10px;text-align:center}
-.tw-wheels{direction:ltr;display:flex;align-items:center;justify-content:center;gap:4px;position:relative;height:180px}
-.tw-col{height:180px;width:74px;overflow-y:auto;scroll-snap-type:y mandatory;scrollbar-width:none;position:relative;z-index:2}
-.tw-col::-webkit-scrollbar{display:none}
-.tw-col .tw-pad{height:72px}
-.tw-item{height:36px;line-height:36px;text-align:center;font-size:19px;font-weight:700;color:#e8eef2;scroll-snap-align:center;cursor:pointer;opacity:.85}
-.tw-colon{font-size:20px;font-weight:800;color:#e8eef2;z-index:2}
-.tw-band{position:absolute;left:8px;right:8px;top:72px;height:36px;border-radius:10px;background:rgba(240,167,63,.14);border:1px solid rgba(240,167,63,.35);pointer-events:none;z-index:1}
-.tw-fade{position:absolute;left:0;right:0;height:56px;pointer-events:none;z-index:3}
-.tw-fade.top{top:0;background:linear-gradient(#142835,rgba(20,40,53,0))}
-.tw-fade.bottom{bottom:0;background:linear-gradient(rgba(20,40,53,0),#142835)}
-.tw-actions{display:flex;gap:10px;margin-top:14px}
-.tw-actions .tw-ok{flex:1;background:linear-gradient(135deg,#f0a73f,#d98a1f);color:#1b1508;border:none;border-radius:12px;font-family:inherit;font-weight:800;font-size:15px;padding:11px;cursor:pointer}
-.tw-actions .tw-cancel{background:none;border:1px solid rgba(255,255,255,.18);color:#93a5af;border-radius:12px;font-family:inherit;font-size:13.5px;padding:11px 14px;cursor:pointer}
+    .day-row .dname {
+      width: 44px;
+      flex: 0 0 auto;
+      color: var(--text);
+      font-weight: 700;
+      font-size: 12.5px
+    }
 
-/* ---------- tabs + bottom nav ---------- */
-.tabview{animation:tab-fade .28s ease}
-@keyframes tab-fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+    .day-row input[type=time] {
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12.5px;
+      padding: 5px 5px;
+      width: 84px
+    }
 
-.nav{
-  position:absolute;bottom:12px;right:14px;left:14px;display:flex;z-index:20;
-  background:rgba(15,28,38,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  border:1px solid var(--border-2);border-radius:18px;padding:6px;gap:4px;
-  box-shadow:0 10px 30px rgba(0,0,0,.45);
-}
-.nav button{
-  flex:1;background:none;border:none;color:var(--muted);font-family:inherit;font-size:11px;
-  font-weight:700;padding:8px 2px 7px;cursor:pointer;border-radius:13px;
-  display:flex;flex-direction:column;align-items:center;gap:3px;transition:all .2s;
-}
-.nav button .nico{font-size:19px;transition:transform .2s}
-.nav button.active{color:var(--accent);background:rgba(240,167,63,.10)}
-.nav button.active .nico{transform:translateY(-1px) scale(1.12)}
+    .day-row select {
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 11.5px;
+      padding: 5px 3px;
+      flex: 1;
+      min-width: 0
+    }
 
-/* ---------- profile form ---------- */
-.frow{margin-bottom:12px}
-.frow:last-child{margin-bottom:0}
-.flabel{display:block;color:var(--muted);font-size:12.5px;font-weight:700;margin-bottom:6px}
+    .day-row .closed {
+      width: 17px;
+      height: 17px;
+      accent-color: var(--accent);
+      flex: 0 0 auto
+    }
 
-/* ---------- hours selector (shared with /v6 onboarding) ---------- */
-.day-list{background:rgba(255,255,255,.03);border:1px solid var(--border-2);border-radius:14px;padding:4px 14px;margin-bottom:14px}
-.day-row{display:grid;grid-template-columns:1fr auto auto;grid-template-areas:"day override times";align-items:center;column-gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}
-.day-row:last-child{border-bottom:none}
-.day-row.closed .override-cell,
-.day-row.closed .times-cell{opacity:.35}
-.day-cell{display:flex;align-items:center;gap:10px;grid-area:day}
-.day-cell input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);cursor:pointer;flex-shrink:0}
-.day-cell label{font-size:15px;font-weight:700;cursor:pointer;user-select:none;transition:color .15s}
-.day-row.closed .day-cell{cursor:pointer}
-.day-row.closed .day-cell label{color:var(--muted);text-decoration:line-through;text-decoration-color:rgba(255,255,255,.2)}
-.override-cell{display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;cursor:pointer;user-select:none;transition:background .15s;white-space:nowrap;grid-area:override}
-.override-cell:hover{background:rgba(255,255,255,.04)}
-.override-cell input[type=checkbox]{width:16px;height:16px;accent-color:var(--teal-soft);cursor:pointer}
-.override-cell label{font-size:12px;color:var(--muted);font-weight:600;cursor:pointer}
-.day-row .override-cell.active label{color:var(--teal-soft)}
-.day-row.closed .override-cell{opacity:.3;pointer-events:none}
-.times-cell{display:flex;align-items:center;gap:8px;direction:ltr;grid-area:times}
-.time-block{display:flex;align-items:center;background:#0d1822;border:1.5px solid var(--border-2);border-radius:9px;padding:4px 10px;transition:border-color .15s,box-shadow .15s,color .15s}
-.time-block:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,167,63,.12)}
-.time-block .colon{color:var(--muted);font-size:15px;font-weight:700;padding:0 3px}
-.time-part{background:transparent;border:none;outline:none;font-family:inherit;font-size:15px;font-weight:700;color:var(--text);width:26px;padding:6px 0;text-align:center;caret-color:var(--accent)}
-.time-part::-webkit-outer-spin-button,
-.time-part::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.day-row.override-on .time-block,
-.day-row.override-on .time-block .colon,
-.day-row.override-on .time-part{color:var(--teal-soft);border-color:rgba(87,163,189,.35)}
-.day-row.override-on .time-block:focus-within{border-color:var(--teal-soft);box-shadow:0 0 0 3px rgba(87,163,189,.15)}
-.time-block[data-disabled="true"]{opacity:.4;pointer-events:none}
-.times-arrow{color:var(--muted);font-size:15px}
-.closed-summary{text-align:center;font-size:13px;color:var(--muted);margin-bottom:6px;line-height:1.5;min-height:20px}
-.closed-summary b{color:var(--text);font-weight:800}
-.closed-summary.warn{color:#ff9b8a}
-/* Narrow: stack day-name + override on the right (in their own column),
+    /* ---------- music lists ---------- */
+    .track {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--border);
+      padding: 10px 2px;
+      font-size: 13px
+    }
+
+    .track:last-child {
+      border-bottom: none
+    }
+
+    .track .t-info {
+      flex: 1;
+      min-width: 0
+    }
+
+    .track .t-title {
+      font-weight: 800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis
+    }
+
+    .track .t-sub {
+      color: var(--muted);
+      font-size: 11.5px;
+      margin-top: 1px
+    }
+
+    .track .tbtn {
+      cursor: pointer;
+      background: var(--card);
+      border: 1px solid var(--border-2);
+      border-radius: 9px;
+      color: var(--muted);
+      padding: 5px 9px;
+      font-size: 12px;
+      font-family: inherit;
+      white-space: nowrap;
+      transition: all .2s
+    }
+
+    .track .tbtn:hover {
+      border-color: var(--accent);
+      color: var(--accent)
+    }
+
+    /* ---------- plan ---------- */
+    .plan-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border)
+    }
+
+    .plan-line:last-child {
+      border-bottom: none
+    }
+
+    .upgrade {
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      padding: 13px;
+      margin-top: 10px;
+      background: var(--card);
+      transition: border-color .2s
+    }
+
+    .upgrade.rec {
+      border-color: rgba(240, 167, 63, .6);
+      box-shadow: var(--glow)
+    }
+
+    .upgrade .u-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 800;
+      font-size: 15px
+    }
+
+    .upgrade .u-price {
+      color: var(--accent)
+    }
+
+    .upgrade .u-desc {
+      color: var(--muted);
+      font-size: 12.5px;
+      margin-top: 4px;
+      line-height: 1.5
+    }
+
+    .upgrade .btn {
+      padding: 10px;
+      font-size: 13.5px
+    }
+
+    .soon {
+      font-size: 10.5px;
+      border: 1px solid var(--border-2);
+      border-radius: 999px;
+      padding: 2px 8px;
+      color: var(--muted);
+      white-space: nowrap
+    }
+
+    .report-box {
+      white-space: pre-line;
+      font-size: 13px;
+      line-height: 1.9;
+      color: var(--text);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px
+    }
+
+    /* ---------- mic ---------- */
+    .mic-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 20px 0 6px
+    }
+
+    .mic {
+      cursor: pointer;
+      width: 150px;
+      height: 150px;
+      border-radius: 50%;
+      position: relative;
+      background: radial-gradient(circle at 35% 30%, #3a7d97, var(--teal) 65%);
+      border: 3px solid var(--accent);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-family: inherit;
+      transition: transform .15s, box-shadow .3s;
+      box-shadow: 0 0 0 0 rgba(240, 167, 63, .35);
+      animation: mic-pulse 2.6s ease-out infinite;
+    }
+
+    .mic:hover {
+      transform: scale(1.03)
+    }
+
+    .mic:active {
+      transform: scale(.97)
+    }
+
+    @keyframes mic-pulse {
+      0% {
+        box-shadow: 0 0 0 0 rgba(240, 167, 63, .35)
+      }
+
+      70% {
+        box-shadow: 0 0 0 18px rgba(240, 167, 63, 0)
+      }
+
+      100% {
+        box-shadow: 0 0 0 0 rgba(240, 167, 63, 0)
+      }
+    }
+
+    .mic .ico {
+      font-size: 40px;
+      color: var(--accent)
+    }
+
+    .mic .lbl {
+      color: var(--text);
+      font-size: 13.5px;
+      font-weight: 700
+    }
+
+    .waves {
+      display: flex;
+      align-items: flex-end;
+      gap: 4px;
+      height: 38px;
+      justify-content: center
+    }
+
+    .waves .b {
+      width: 5px;
+      border-radius: 3px;
+      background: var(--accent);
+      transform-origin: bottom;
+      animation: bnc .8s ease-in-out infinite
+    }
+
+    @keyframes bnc {
+
+      0%,
+      100% {
+        transform: scaleY(.35)
+      }
+
+      50% {
+        transform: scaleY(1)
+      }
+    }
+
+    /* ---------- bottom nav ---------- */
+    .nav {
+      position: absolute;
+      bottom: 12px;
+      right: 14px;
+      left: 14px;
+      display: flex;
+      z-index: 20;
+      background: rgba(15, 28, 38, .88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--border-2);
+      border-radius: 18px;
+      padding: 6px;
+      gap: 4px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+    }
+
+    .nav button {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 8px 2px 7px;
+      cursor: pointer;
+      border-radius: 13px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      transition: all .2s;
+    }
+
+    .nav button .nico {
+      font-size: 19px;
+      transition: transform .2s
+    }
+
+    .nav button.active {
+      color: var(--accent);
+      background: rgba(240, 167, 63, .10)
+    }
+
+    .nav button.active .nico {
+      transform: translateY(-1px) scale(1.12)
+    }
+
+    /* ---------- overlay / toast ---------- */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(8, 13, 18, .94);
+      backdrop-filter: blur(6px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 26px;
+      text-align: center;
+      z-index: 30;
+      animation: fadeIn .25s ease;
+    }
+
+    .overlay .btn {
+      max-width: 280px
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0
+      }
+
+      to {
+        opacity: 1
+      }
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 96px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--card-2);
+      color: var(--accent);
+      border: 1px solid rgba(240, 167, 63, .5);
+      border-radius: 999px;
+      padding: 9px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity .25s;
+      pointer-events: none;
+      white-space: nowrap;
+      z-index: 200;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+    }
+
+    /* ---------- tab transition ---------- */
+    .tabview {
+      animation: fadeUp .28s ease
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px)
+      }
+
+      to {
+        opacity: 1;
+        transform: none
+      }
+    }
+
+    /* ---------- logo animation ---------- */
+    .logo-svg {
+      width: 64px;
+      height: auto;
+      animation: logo-float 3.2s ease-in-out infinite;
+      filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .4))
+    }
+
+    .logo-svg .lg-crown {
+      transform-box: fill-box;
+      transform-origin: 50% 100%;
+      animation: crown-tilt 2.6s ease-in-out infinite
+    }
+
+    .logo-svg .lg-eye-wink {
+      transform-box: fill-box;
+      transform-origin: 50% 50%;
+      animation: eye-wink 4.2s ease-in-out infinite
+    }
+
+    @keyframes logo-float {
+
+      0%,
+      100% {
+        transform: translateY(0)
+      }
+
+      50% {
+        transform: translateY(-4px)
+      }
+    }
+
+    @keyframes crown-tilt {
+
+      0%,
+      100% {
+        transform: rotate(-4deg)
+      }
+
+      50% {
+        transform: rotate(4deg)
+      }
+    }
+
+    @keyframes eye-wink {
+
+      0%,
+      86%,
+      94%,
+      100% {
+        transform: scaleY(1)
+      }
+
+      90% {
+        transform: scaleY(0.08)
+      }
+    }
+
+    @media (prefers-reduced-motion:reduce) {
+
+      .logo-svg,
+      .logo-svg .lg-crown,
+      .logo-svg .lg-eye-wink,
+      .mic,
+      .tabview {
+        animation: none
+      }
+    }
+
+    a.link {
+      color: var(--accent)
+    }
+
+    /* ---------- place banner ---------- */
+    .place-banner {
+      position: relative;
+      border-radius: var(--r);
+      overflow: hidden;
+      margin-bottom: 14px;
+      border: 1px solid var(--border-2)
+    }
+
+    .place-banner img {
+      width: 100%;
+      height: 130px;
+      object-fit: cover;
+      display: block
+    }
+
+    .place-banner .pb-cap {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      left: 0;
+      padding: 20px 14px 9px;
+      font-size: 12px;
+      color: #fff;
+      background: linear-gradient(0deg, rgba(8, 13, 18, .85), transparent)
+    }
+
+    /* ---------- chat agent ---------- */
+    .chat-fab {
+      position: absolute;
+      bottom: 84px;
+      left: 16px;
+      z-index: 25;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      border: none;
+      cursor: pointer;
+      font-size: 23px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #1b1508;
+      box-shadow: 0 8px 24px rgba(240, 167, 63, .4);
+      transition: transform .15s;
+    }
+
+    .chat-fab:hover {
+      transform: scale(1.07)
+    }
+
+    .chat-panel {
+      position: absolute;
+      inset: 0;
+      z-index: 40;
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      animation: fadeUp .25s ease;
+    }
+
+    .chat-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-2);
+      background: var(--bg-2)
+    }
+
+    .chat-head .ch-ava {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      background: var(--teal);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 19px;
+      flex: 0 0 auto;
+      border: 2px solid var(--accent)
+    }
+
+    .chat-head .ch-name {
+      font-weight: 800;
+      font-size: 15px
+    }
+
+    .chat-head .ch-sub {
+      font-size: 11px;
+      color: var(--teal-soft)
+    }
+
+    .chat-msgs {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 14px 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px
+    }
+
+    .msg {
+      max-width: 82%;
+      padding: 10px 13px;
+      border-radius: 15px;
+      font-size: 13.5px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      animation: fadeUp .2s ease
+    }
+
+    .msg.agent {
+      align-self: flex-start;
+      background: var(--card-2);
+      border: 1px solid var(--border-2);
+      border-bottom-right-radius: 5px
+    }
+
+    .msg.user {
+      align-self: flex-end;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #1b1508;
+      font-weight: 600;
+      border-bottom-left-radius: 5px
+    }
+
+    .msg.typing {
+      color: var(--muted);
+      font-style: italic
+    }
+
+    .chat-inrow {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px 14px;
+      border-top: 1px solid var(--border);
+      background: var(--bg-2)
+    }
+
+    .chat-inrow .input {
+      flex: 1;
+      padding: 11px 13px;
+      border-radius: 999px
+    }
+
+    .chat-inrow .btn {
+      width: auto;
+      margin: 0;
+      padding: 11px 16px;
+      border-radius: 999px;
+      font-size: 14px
+    }
+
+    /* on desktop: bottom sheet instead of full-screen */
+    @media (min-width:421px) {
+      .chat-panel {
+        top: auto;
+        height: auto;
+        max-height: 480px;
+        border-top: 1px solid var(--border-2);
+        border-radius: 22px 22px 0 0;
+        box-shadow: 0 -14px 44px rgba(0, 0, 0, .55)
+      }
+
+      .chat-msgs {
+        min-height: 200px
+      }
+    }
+
+    .chat-back {
+      align-self: center;
+      margin: 6px 0 2px;
+      background: none;
+      border: 1px solid var(--border-2);
+      border-radius: 999px;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 12px;
+      padding: 6px 15px;
+      cursor: pointer;
+      transition: all .2s
+    }
+
+    .chat-back:hover {
+      color: var(--accent);
+      border-color: var(--accent)
+    }
+
+    /* tablet / desktop: roomier layout */
+    @media (min-width:768px) {
+      .screen {
+        max-width: 560px
+      }
+
+      .msg {
+        font-size: 14.5px
+      }
+    }
+
+    @media (min-width:1100px) {
+      .screen {
+        max-width: 640px
+      }
+    }
+
+    @media (max-width:420px) {
+      body {
+        padding: 10px 6px
+      }
+
+      .screen {
+        padding: 16px 12px 96px;
+        border-radius: 18px
+      }
+
+      .stats {
+        gap: 8px
+      }
+
+      .day-row input[type=time] {
+        width: 78px
+      }
+    }
+
+    /* ===== Time wheel picker (iPhone-style) ===== */
+    .t-btn {
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 6px 10px;
+      cursor: pointer;
+      direction: ltr;
+      unicode-bidi: embed;
+      min-width: 64px;
+      text-align: center
+    }
+
+    .t-btn:hover {
+      border-color: var(--accent)
+    }
+
+    .tw-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 120;
+      background: rgba(6, 12, 17, .62);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(2px)
+    }
+
+    .tw-panel {
+      background: #142835;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 18px;
+      padding: 18px 18px 14px;
+      width: min(320px, 86vw);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, .5)
+    }
+
+    .tw-title {
+      font-size: 13.5px;
+      color: #93a5af;
+      margin: 0 0 10px;
+      text-align: center
+    }
+
+    .tw-wheels {
+      direction: ltr;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      position: relative;
+      height: 180px
+    }
+
+    .tw-col {
+      height: 180px;
+      width: 74px;
+      overflow-y: auto;
+      scroll-snap-type: y mandatory;
+      scrollbar-width: none;
+      position: relative;
+      z-index: 2
+    }
+
+    .tw-col::-webkit-scrollbar {
+      display: none
+    }
+
+    .tw-col .tw-pad {
+      height: 72px
+    }
+
+    .tw-item {
+      height: 36px;
+      line-height: 36px;
+      text-align: center;
+      font-size: 19px;
+      font-weight: 700;
+      color: #e8eef2;
+      scroll-snap-align: center;
+      cursor: pointer;
+      opacity: .85
+    }
+
+    .tw-colon {
+      font-size: 20px;
+      font-weight: 800;
+      color: #e8eef2;
+      z-index: 2
+    }
+
+    .tw-band {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      top: 72px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(240, 167, 63, .14);
+      border: 1px solid rgba(240, 167, 63, .35);
+      pointer-events: none;
+      z-index: 1
+    }
+
+    .tw-fade {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 56px;
+      pointer-events: none;
+      z-index: 3
+    }
+
+    .tw-fade.top {
+      top: 0;
+      background: linear-gradient(#142835, rgba(20, 40, 53, 0))
+    }
+
+    .tw-fade.bottom {
+      bottom: 0;
+      background: linear-gradient(rgba(20, 40, 53, 0), #142835)
+    }
+
+    .tw-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px
+    }
+
+    .tw-actions .tw-ok {
+      flex: 1;
+      background: linear-gradient(135deg, #f0a73f, #d98a1f);
+      color: #1b1508;
+      border: none;
+      border-radius: 12px;
+      font-family: inherit;
+      font-weight: 800;
+      font-size: 15px;
+      padding: 11px;
+      cursor: pointer
+    }
+
+    .tw-actions .tw-cancel {
+      background: none;
+      border: 1px solid rgba(255, 255, 255, .18);
+      color: #93a5af;
+      border-radius: 12px;
+      font-family: inherit;
+      font-size: 13.5px;
+      padding: 11px 14px;
+      cursor: pointer
+    }
+
+    /* ---------- tabs + bottom nav ---------- */
+    .tabview {
+      animation: tab-fade .28s ease
+    }
+
+    @keyframes tab-fade {
+      from {
+        opacity: 0;
+        transform: translateY(8px)
+      }
+
+      to {
+        opacity: 1;
+        transform: none
+      }
+    }
+
+    .nav {
+      position: absolute;
+      bottom: 12px;
+      right: 14px;
+      left: 14px;
+      display: flex;
+      z-index: 20;
+      background: rgba(15, 28, 38, .88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid var(--border-2);
+      border-radius: 18px;
+      padding: 6px;
+      gap: 4px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, .45);
+    }
+
+    .nav button {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 8px 2px 7px;
+      cursor: pointer;
+      border-radius: 13px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      transition: all .2s;
+    }
+
+    .nav button .nico {
+      font-size: 19px;
+      transition: transform .2s
+    }
+
+    .nav button.active {
+      color: var(--accent);
+      background: rgba(240, 167, 63, .10)
+    }
+
+    .nav button.active .nico {
+      transform: translateY(-1px) scale(1.12)
+    }
+
+    /* ---------- profile form ---------- */
+    .frow {
+      margin-bottom: 12px
+    }
+
+    .frow:last-child {
+      margin-bottom: 0
+    }
+
+    .flabel {
+      display: block;
+      color: var(--muted);
+      font-size: 12.5px;
+      font-weight: 700;
+      margin-bottom: 6px
+    }
+
+    /* ---------- hours selector (shared with /v6 onboarding) ---------- */
+    .day-list {
+      background: rgba(255, 255, 255, .03);
+      border: 1px solid var(--border-2);
+      border-radius: 14px;
+      padding: 4px 14px;
+      margin-bottom: 14px
+    }
+
+    .day-row {
+      display: grid;
+      grid-template-columns: 1fr auto auto;
+      grid-template-areas: "day override times";
+      align-items: center;
+      column-gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border)
+    }
+
+    .day-row:last-child {
+      border-bottom: none
+    }
+
+    .day-row.closed .override-cell,
+    .day-row.closed .times-cell {
+      opacity: .35
+    }
+
+    .day-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      grid-area: day
+    }
+
+    .day-cell input[type=checkbox] {
+      width: 20px;
+      height: 20px;
+      accent-color: var(--accent);
+      cursor: pointer;
+      flex-shrink: 0
+    }
+
+    .day-cell label {
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      user-select: none;
+      transition: color .15s
+    }
+
+    .day-row.closed .day-cell {
+      cursor: pointer
+    }
+
+    .day-row.closed .day-cell label {
+      color: var(--muted);
+      text-decoration: line-through;
+      text-decoration-color: rgba(255, 255, 255, .2)
+    }
+
+    .override-cell {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      user-select: none;
+      transition: background .15s;
+      white-space: nowrap;
+      grid-area: override
+    }
+
+    .override-cell:hover {
+      background: rgba(255, 255, 255, .04)
+    }
+
+    .override-cell input[type=checkbox] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--teal-soft);
+      cursor: pointer
+    }
+
+    .override-cell label {
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
+      cursor: pointer
+    }
+
+    .day-row .override-cell.active label {
+      color: var(--teal-soft)
+    }
+
+    .day-row.closed .override-cell {
+      opacity: .3;
+      pointer-events: none
+    }
+
+    .times-cell {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      direction: ltr;
+      grid-area: times
+    }
+
+    .time-block {
+      display: flex;
+      align-items: center;
+      background: #0d1822;
+      border: 1.5px solid var(--border-2);
+      border-radius: 9px;
+      padding: 4px 10px;
+      transition: border-color .15s, box-shadow .15s, color .15s
+    }
+
+    .time-block:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(240, 167, 63, .12)
+    }
+
+    .time-block .colon {
+      color: var(--muted);
+      font-size: 15px;
+      font-weight: 700;
+      padding: 0 3px
+    }
+
+    .time-part {
+      background: transparent;
+      border: none;
+      outline: none;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+      width: 26px;
+      padding: 6px 0;
+      text-align: center;
+      caret-color: var(--accent)
+    }
+
+    .time-part::-webkit-outer-spin-button,
+    .time-part::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0
+    }
+
+    .day-row.override-on .time-block,
+    .day-row.override-on .time-block .colon,
+    .day-row.override-on .time-part {
+      color: var(--teal-soft);
+      border-color: rgba(87, 163, 189, .35)
+    }
+
+    .day-row.override-on .time-block:focus-within {
+      border-color: var(--teal-soft);
+      box-shadow: 0 0 0 3px rgba(87, 163, 189, .15)
+    }
+
+    .time-block[data-disabled="true"] {
+      opacity: .4;
+      pointer-events: none
+    }
+
+    .times-arrow {
+      color: var(--muted);
+      font-size: 15px
+    }
+
+    .closed-summary {
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      line-height: 1.5;
+      min-height: 20px
+    }
+
+    .closed-summary b {
+      color: var(--text);
+      font-weight: 800
+    }
+
+    .closed-summary.warn {
+      color: #ff9b8a
+    }
+
+    /* Narrow: stack day-name + override on the right (in their own column),
    let times-cell span both rows on the left. Kicks in before the wide
    3-column layout runs out of room and pushes times outside the card. */
-@media (max-width:560px){
-  .day-row{
-    grid-template-columns:auto 1fr;
-    grid-template-areas:
-      "day       times"
-      "override  times";
-    column-gap:12px;row-gap:4px;
-  }
-  .day-cell{align-self:end;justify-self:start}
-  .override-cell{align-self:start;justify-self:start;padding-inline:0}
-  .times-cell{align-self:center;justify-self:end}
-}
-/* Very narrow (iPhone SE ~375px and below): shrink time inputs + labels so
+    @media (max-width:560px) {
+      .day-row {
+        grid-template-columns: auto 1fr;
+        grid-template-areas:
+          "day       times"
+          "override  times";
+        column-gap: 12px;
+        row-gap: 4px;
+      }
+
+      .day-cell {
+        align-self: end;
+        justify-self: start
+      }
+
+      .override-cell {
+        align-self: start;
+        justify-self: start;
+        padding-inline: 0
+      }
+
+      .times-cell {
+        align-self: center;
+        justify-self: end
+      }
+    }
+
+    /* Very narrow (iPhone SE ~375px and below): shrink time inputs + labels so
    both blocks + arrow still fit alongside the day name. */
-@media (max-width:400px){
-  .day-list{padding:4px 10px}
-  .day-row{column-gap:8px}
-  .times-cell{gap:6px}
-  .time-block{padding:3px 7px}
-  .time-block .colon{font-size:14px;padding:0 2px}
-  .time-part{width:22px;font-size:14px}
-  .times-arrow{font-size:13px}
-  .day-cell{gap:8px}
-  .day-cell input[type=checkbox]{width:17px;height:17px}
-  .day-cell label{font-size:13px}
-  .override-cell{gap:5px;padding:4px 0}
-  .override-cell input[type=checkbox]{width:14px;height:14px}
-  .override-cell label{font-size:11px}
-}
-</style>
+    @media (max-width:400px) {
+      .day-list {
+        padding: 4px 10px
+      }
+
+      .day-row {
+        column-gap: 8px
+      }
+
+      .times-cell {
+        gap: 6px
+      }
+
+      .time-block {
+        padding: 3px 7px
+      }
+
+      .time-block .colon {
+        font-size: 14px;
+        padding: 0 2px
+      }
+
+      .time-part {
+        width: 22px;
+        font-size: 14px
+      }
+
+      .times-arrow {
+        font-size: 13px
+      }
+
+      .day-cell {
+        gap: 8px
+      }
+
+      .day-cell input[type=checkbox] {
+        width: 17px;
+        height: 17px
+      }
+
+      .day-cell label {
+        font-size: 13px
+      }
+
+      .override-cell {
+        gap: 5px;
+        padding: 4px 0
+      }
+
+      .override-cell input[type=checkbox] {
+        width: 14px;
+        height: 14px
+      }
+
+      .override-cell label {
+        font-size: 11px
+      }
+    }
+  </style>
 </head>
+
 <body>
 
-<!-- LOGIN -->
-<div class="screen hide" id="loginView">
-  <div class="center" style="margin-top:8px">
-    <svg class="logo-svg" style="width:96px" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SonicBrands">
-      <g class="lg-crown">
-        <path d="M70 50 L78 20 L93 34 L102 12 L111 34 L126 20 L134 50 Z" fill="#f0a73f"/>
-        <g fill="#ffffff"><circle cx="95.5" cy="41" r="4.6"/><rect x="98.8" y="21.5" width="2.8" height="20" rx="1.4"/><path d="M99 21.5 q8.5 2.5 8.5 10 q-4 -4.5 -8.5 -4.5 Z"/></g>
-      </g>
-      <path d="M100 52 C 143 52 156 88 156 128 C156 166 132 196 100 196 C68 196 44 166 44 128 C44 88 57 52 100 52 Z" fill="#2c637a"/>
-      <ellipse cx="100" cy="162" rx="27" ry="23" fill="#f0a73f"/>
-      <path d="M100 78 C 111 70 130 80 130 101 C130 119 116 131 100 131 C84 131 70 119 70 101 C70 80 89 70 100 78 Z" fill="#f0a73f"/>
-      <circle cx="86" cy="100" r="6.5" fill="#152a35"/><circle class="lg-eye-wink" cx="114" cy="100" r="6.5" fill="#152a35"/>
-      <path d="M93 113 L107 113 L100 125 Z" fill="#2c637a"/>
-      <path d="M40 115 A 60 60 0 0 1 160 115" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round"/>
-      <rect x="22" y="100" width="26" height="52" rx="13" fill="#f0a73f"/>
-      <rect x="152" y="100" width="26" height="52" rx="13" fill="#f0a73f"/>
-    </svg>
-    <h1 style="font-size:26px">כניסה</h1>
-    <p class="muted">שלחו לעצמכם קישור חד־פעמי לאימייל</p>
-  </div>
-  <div style="margin-top:34px">
-    <form id="emailForm" novalidate>
-      <input class="input" id="email" type="email" placeholder="האימייל שלכם" autocomplete="email">
-      <button class="btn sec" id="sendLink" type="submit">
-        <span class="btn-label">שלחו לי קישור כניסה</span>
-        <span class="sb-spinner hide" id="sendSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
-      </button>
-    </form>
-    <div id="resendRow" class="hide" style="text-align:center">
-      <p style="margin:0 0 14px;font-size:15px">שלחנו קישור כניסה ל־<span id="sentToEmail" dir="ltr" style="unicode-bidi:isolate;font-weight:700;color:var(--text)"></span> ✉️</p>
-      <button class="btn sec" id="resendLink" type="button">
-        <span class="btn-label">שלחו לי קישור חדש</span>
-        <span class="sb-spinner hide" id="resendSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
-      </button>
-      <button class="btn-ghost" id="changeEmail" type="button" style="margin-top:10px">שנו כתובת אימייל</button>
+  <!-- LOGIN -->
+  <div class="screen hide" id="loginView">
+    <div class="center" style="margin-top:8px">
+      <svg class="logo-svg" style="width:96px" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" role="img"
+        aria-label="SonicBrands">
+        <g class="lg-crown">
+          <path d="M70 50 L78 20 L93 34 L102 12 L111 34 L126 20 L134 50 Z" fill="#f0a73f" />
+          <g fill="#ffffff">
+            <circle cx="95.5" cy="41" r="4.6" />
+            <rect x="98.8" y="21.5" width="2.8" height="20" rx="1.4" />
+            <path d="M99 21.5 q8.5 2.5 8.5 10 q-4 -4.5 -8.5 -4.5 Z" />
+          </g>
+        </g>
+        <path d="M100 52 C 143 52 156 88 156 128 C156 166 132 196 100 196 C68 196 44 166 44 128 C44 88 57 52 100 52 Z"
+          fill="#2c637a" />
+        <ellipse cx="100" cy="162" rx="27" ry="23" fill="#f0a73f" />
+        <path d="M100 78 C 111 70 130 80 130 101 C130 119 116 131 100 131 C84 131 70 119 70 101 C70 80 89 70 100 78 Z"
+          fill="#f0a73f" />
+        <circle cx="86" cy="100" r="6.5" fill="#152a35" />
+        <circle class="lg-eye-wink" cx="114" cy="100" r="6.5" fill="#152a35" />
+        <path d="M93 113 L107 113 L100 125 Z" fill="#2c637a" />
+        <path d="M40 115 A 60 60 0 0 1 160 115" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" />
+        <rect x="22" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
+        <rect x="152" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
+      </svg>
+      <h1 style="font-size:26px">כניסה</h1>
+      <p class="muted">שלחו לעצמכם קישור חד־פעמי לאימייל</p>
     </div>
-    <p class="muted" id="loginMsg" style="text-align:center;margin-top:14px"></p>
+    <div style="margin-top:34px">
+      <form id="emailForm" novalidate>
+        <input class="input" id="email" type="email" placeholder="האימייל שלכם" autocomplete="email">
+        <button class="btn sec" id="sendLink" type="submit">
+          <span class="btn-label">שלחו לי קישור כניסה</span>
+          <span class="sb-spinner hide" id="sendSpinner"
+            style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+        </button>
+      </form>
+      <div id="resendRow" class="hide" style="text-align:center">
+        <p style="margin:0 0 14px;font-size:15px">שלחנו קישור כניסה ל־<span id="sentToEmail" dir="ltr"
+            style="unicode-bidi:isolate;font-weight:700;color:var(--text)"></span> ✉️</p>
+        <button class="btn sec" id="resendLink" type="button">
+          <span class="btn-label">שלחו לי קישור חדש</span>
+          <span class="sb-spinner hide" id="resendSpinner"
+            style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+        </button>
+        <button class="btn-ghost" id="changeEmail" type="button" style="margin-top:10px">שנו כתובת אימייל</button>
+      </div>
+      <p class="muted" id="loginMsg" style="text-align:center;margin-top:14px"></p>
+    </div>
   </div>
-</div>
 
-<!-- DASHBOARD -->
-<div class="screen hide" id="dashView">
+  <!-- DASHBOARD -->
+  <div class="screen hide" id="dashView">
 
-  <div class="tophead">
-    <svg class="logo-svg" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-      <g class="lg-crown">
-        <path d="M70 50 L78 20 L93 34 L102 12 L111 34 L126 20 L134 50 Z" fill="#f0a73f"/>
-        <g fill="#ffffff"><circle cx="95.5" cy="41" r="4.6"/><rect x="98.8" y="21.5" width="2.8" height="20" rx="1.4"/><path d="M99 21.5 q8.5 2.5 8.5 10 q-4 -4.5 -8.5 -4.5 Z"/></g>
-      </g>
-      <path d="M100 52 C 143 52 156 88 156 128 C156 166 132 196 100 196 C68 196 44 166 44 128 C44 88 57 52 100 52 Z" fill="#2c637a"/>
-      <ellipse cx="100" cy="162" rx="27" ry="23" fill="#f0a73f"/>
-      <path d="M100 78 C 111 70 130 80 130 101 C130 119 116 131 100 131 C84 131 70 119 70 101 C70 80 89 70 100 78 Z" fill="#f0a73f"/>
-      <circle cx="86" cy="100" r="6.5" fill="#152a35"/><circle class="lg-eye-wink" cx="114" cy="100" r="6.5" fill="#152a35"/>
-      <path d="M93 113 L107 113 L100 125 Z" fill="#2c637a"/>
-      <path d="M40 115 A 60 60 0 0 1 160 115" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round"/>
-      <rect x="22" y="100" width="26" height="52" rx="13" fill="#f0a73f"/>
-      <rect x="152" y="100" width="26" height="52" rx="13" fill="#f0a73f"/>
-    </svg>
-    <div class="who">
-      <div class="hello" id="greeting">ברוכים הבאים 👋</div>
-      <div class="bizrow">
-        <h1 id="bizName">העסק שלי</h1>
+    <div class="tophead">
+      <svg class="logo-svg" viewBox="0 0 200 210" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <g class="lg-crown">
+          <path d="M70 50 L78 20 L93 34 L102 12 L111 34 L126 20 L134 50 Z" fill="#f0a73f" />
+          <g fill="#ffffff">
+            <circle cx="95.5" cy="41" r="4.6" />
+            <rect x="98.8" y="21.5" width="2.8" height="20" rx="1.4" />
+            <path d="M99 21.5 q8.5 2.5 8.5 10 q-4 -4.5 -8.5 -4.5 Z" />
+          </g>
+        </g>
+        <path d="M100 52 C 143 52 156 88 156 128 C156 166 132 196 100 196 C68 196 44 166 44 128 C44 88 57 52 100 52 Z"
+          fill="#2c637a" />
+        <ellipse cx="100" cy="162" rx="27" ry="23" fill="#f0a73f" />
+        <path d="M100 78 C 111 70 130 80 130 101 C130 119 116 131 100 131 C84 131 70 119 70 101 C70 80 89 70 100 78 Z"
+          fill="#f0a73f" />
+        <circle cx="86" cy="100" r="6.5" fill="#152a35" />
+        <circle class="lg-eye-wink" cx="114" cy="100" r="6.5" fill="#152a35" />
+        <path d="M93 113 L107 113 L100 125 Z" fill="#2c637a" />
+        <path d="M40 115 A 60 60 0 0 1 160 115" fill="none" stroke="#ffffff" stroke-width="11" stroke-linecap="round" />
+        <rect x="22" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
+        <rect x="152" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
+      </svg>
+      <div class="who">
+        <div class="hello" id="greeting">ברוכים הבאים 👋</div>
+        <div class="bizrow">
+          <h1 id="bizName">העסק שלי</h1>
+        </div>
+      </div>
+      <button class="btn-ghost" id="logout">יציאה</button>
+    </div>
+
+    <!-- HOME -->
+    <div id="tabHome" class="tabview">
+      <div class="place-banner hide" id="placeBanner">
+        <img id="placeImg" src="" alt="">
+        <div class="pb-cap" id="placeCap"></div>
+      </div>
+
+      <div class="box">
+        <h2 id="playlistsTitle"><span class="h-ico">🎵</span>הפלייליסטים שלכם</h2>
+        <div id="slotsWrap"></div>
+      </div>
+
+      <div class="box">
+        <h2><span class="h-ico">⚡</span>אירועים מיוחדים</h2>
+        <p class="muted sub" id="eventsIntro">יש לעסק שלכם אירועים מיוחדים שבהם תצטרכו מוזיקה אחרת לגמרי? הוסיפו אותם
+          כאן.</p>
+        <div id="eventsWrap"></div>
+        <textarea class="input" id="eventsText" rows="3" maxlength="500" style="margin-top:10px"
+          placeholder="לדוגמה: ערב סטנדאפ בכל יום שלישי — צריך אווירה קלילה, לא רועשת מדי..."></textarea>
+        <button class="btn" id="saveEvents">שמור אירוע</button>
+        <p class="muted" id="eventsMsg" style="text-align:center;margin-top:8px"></p>
       </div>
     </div>
-    <button class="btn-ghost" id="logout">יציאה</button>
-  </div>
 
-  <!-- HOME -->
-  <div id="tabHome" class="tabview">
-    <div class="place-banner hide" id="placeBanner">
-      <img id="placeImg" src="" alt="">
-      <div class="pb-cap" id="placeCap"></div>
-    </div>
-
-    <div class="box">
-      <h2 id="playlistsTitle"><span class="h-ico">🎵</span>הפלייליסטים שלכם</h2>
-      <div id="slotsWrap"></div>
-    </div>
-
-    <div class="box">
-      <h2><span class="h-ico">⚡</span>אירועים מיוחדים</h2>
-      <p class="muted sub" id="eventsIntro">יש לעסק שלכם אירועים מיוחדים שבהם תצטרכו מוזיקה אחרת לגמרי? הוסיפו אותם כאן.</p>
-      <div id="eventsWrap"></div>
-      <textarea class="input" id="eventsText" rows="3" maxlength="500" style="margin-top:10px"
-        placeholder="לדוגמה: ערב סטנדאפ בכל יום שלישי — צריך אווירה קלילה, לא רועשת מדי..."></textarea>
-      <button class="btn" id="saveEvents">שמור אירוע</button>
-      <p class="muted" id="eventsMsg" style="text-align:center;margin-top:8px"></p>
-    </div>
-  </div>
-
-  <!-- PROFILE -->
-  <div id="tabProfile" class="tabview hide">
-    <div class="box">
-      <div class="frow">
-        <label class="flabel" for="profileBizName">שם העסק</label>
-        <input class="input" id="profileBizName" type="text" maxlength="40" placeholder="שם העסק">
+    <!-- PROFILE -->
+    <div id="tabProfile" class="tabview hide">
+      <div class="box">
+        <div class="frow">
+          <label class="flabel" for="profileBizName">שם העסק</label>
+          <input class="input" id="profileBizName" type="text" maxlength="40" placeholder="שם העסק">
+        </div>
       </div>
+
+      <div class="box">
+        <h2><span class="h-ico">🕒</span>שעות פעילות</h2>
+        <p class="muted sub">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן את כולם — סמנו "שעות שונות"
+          ליום מסוים.</p>
+        <div id="hoursHost"></div>
+      </div>
+
+      <button class="btn" id="saveProfile" disabled>שמור</button>
+      <p class="muted" id="profileMsg" style="text-align:center;margin-top:10px"></p>
     </div>
 
-    <div class="box">
-      <h2><span class="h-ico">🕒</span>שעות פתיחה</h2>
-      <p class="muted sub">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן את כולם — סמנו "שעות שונות" ליום מסוים.</p>
-      <div id="hoursHost"></div>
+    <!-- bottom nav -->
+    <div class="nav">
+      <button data-tab="Home" class="active" type="button"><span class="nico">🏠</span>בית</button>
+      <button data-tab="Profile" type="button"><span class="nico">🏪</span>פרופיל</button>
     </div>
 
-    <button class="btn" id="saveProfile" disabled>שמור</button>
-    <p class="muted" id="profileMsg" style="text-align:center;margin-top:10px"></p>
+    <div class="toast" id="toast"></div>
   </div>
 
-  <!-- bottom nav -->
-  <div class="nav">
-    <button data-tab="Home" class="active" type="button"><span class="nico">🏠</span>בית</button>
-    <button data-tab="Profile" type="button"><span class="nico">🏪</span>פרופיל</button>
+  <div class="screen center hide" id="loading" style="justify-content:center">
+    <div class="muted">טוען…</div>
   </div>
 
-  <div class="toast" id="toast"></div>
-</div>
-
-<div class="screen center hide" id="loading" style="justify-content:center">
-  <div class="muted">טוען…</div>
-</div>
-
-<!-- Confirmation modal for the closed-day "המקום פתוח?" flow. Hidden by
+  <!-- Confirmation modal for the closed-day "המקום פתוח?" flow. Hidden by
      default; app.js flips .hide off when the user clicks the link. -->
-<div class="gd-overlay hide" id="genDailyModal">
-  <div class="gd-modal">
-    <h3>צור פלייליסטים יומיים</h3>
-    <p>ניצור לכם סט פלייליסטים באורך של כ־12 שעות לפי הכיוונים המוסיקליים שבחרתם.</p>
-    <div class="gd-actions">
-      <button class="btn"      id="genDailyConfirm" type="button">צור פלייליסטים יומיים</button>
-      <button class="btn-ghost" id="genDailyCancel"  type="button">ביטול</button>
+  <div class="gd-overlay hide" id="genDailyModal">
+    <div class="gd-modal">
+      <h3>צור פלייליסטים יומיים</h3>
+      <p>ניצור לכם סט פלייליסטים באורך של כ־12 שעות לפי הכיוונים המוסיקליים שבחרתם.</p>
+      <div class="gd-actions">
+        <button class="btn" id="genDailyConfirm" type="button">צור פלייליסטים יומיים</button>
+        <button class="btn-ghost" id="genDailyCancel" type="button">ביטול</button>
+      </div>
     </div>
   </div>
-</div>
 
-<script type="module" src="/v6/account/app.js?v=13082026a"></script>
+  <script type="module" src="/v6/account/app.js?v=13082026a"></script>
 </body>
+
 </html>

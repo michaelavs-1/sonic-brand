@@ -32,7 +32,7 @@ function buildingHeadingText(count) {
 
 function readyHeadingText(built, total) {
   if (built === total && built > 0) {
-    return built === 1 ? 'פלייליסט לדוגמה מוכן' : 'פלייליסטים לדוגמה מוכנים';
+    return built === 1 ? 'פלייליסט קצר לדוגמה מוכן' : 'פלייליסטים קצרים לדוגמה מוכנים';
   }
   if (built === 0) return 'הפלייליסטים לא נוצרו';
   return `${built} מתוך ${total} פלייליסטים לדוגמה מוכנים`;
@@ -136,6 +136,20 @@ export function finalizePlaylistResultsHeading(results) {
   const arr = Array.isArray(results) ? results : [];
   const built = arr.filter((r) => r && !r.skipped).length;
   heading.textContent = readyHeadingText(built, arr.length);
+
+  // Insert a subtitle just under the heading only in the "everything built"
+  // case — the "0 built" / partial states already communicate a problem and
+  // a signup nudge would read as tone-deaf there.
+  const existingSub = document.getElementById('pl-results-subtitle');
+  if (built === arr.length && built > 0) {
+    if (!existingSub) {
+      const sub = el('p', { id: 'pl-results-subtitle', class: 'subtitle' },
+        'כדי לקבל גרסאות באורך מלא מדי יום לצד פיצ׳רים נוספים - הרשמו לרובין למטה');
+      heading.after(sub);
+    }
+  } else if (existingSub) {
+    existingSub.remove();
+  }
 }
 
 // Renders the "אני רוצה את רובין לעסק שלי" CTA below the finalized playlist

@@ -3,7 +3,7 @@
 // pre-check (v5 has no Data Box match, so no row-derived defaults). On submit,
 // resolves with the array of selected names.
 
-const HEADING = 'בחרו את האווירות המתאימות לעסק';
+const HEADING = 'אילו תיאורים נכונים לאווירה של העסק?';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -27,7 +27,7 @@ export async function runAtmosphereSelection({ atmosphereRows }) {
 
   for (const row of atmosphereRows) {
     const name = row.atmosphere;
-    const id   = `atmo-${row.row}`;
+    const id = `atmo-${row.row}`;
 
     const checkbox = el('input', {
       type: 'checkbox',

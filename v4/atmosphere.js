@@ -3,7 +3,7 @@
 // checking the ones that appear in the matched Tab 1 row's column D
 // (row.atmospheres). On submit, resolves with the array of selected names.
 
-const HEADING = 'בחרו את האווירות המתאימות לעסק';
+const HEADING = 'אילו תיאורים נכונים לאווירה של העסק?';
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -31,7 +31,7 @@ export async function runAtmosphereSelection({ atmosphereRows, prechecked }) {
 
   for (const row of atmosphereRows) {
     const name = row.atmosphere;
-    const id   = `atmo-${row.row}`;
+    const id = `atmo-${row.row}`;
     const isChecked = presetSet.has(name);
 
     const checkbox = el('input', {

@@ -382,6 +382,7 @@
       flex: 1 1 auto;
       padding: 12px 18px;
     }
+
     /* ===== landing brand header (UI only) ===== */
     .brand {
       display: flex;
@@ -406,25 +407,65 @@
       animation: brand-bounce 1s ease-in-out infinite;
     }
 
-    .brand-eq span:nth-child(1) { height: 42%; animation-delay: 0s;  }
-    .brand-eq span:nth-child(2) { height: 80%; animation-delay: .2s; }
-    .brand-eq span:nth-child(3) { height: 55%; animation-delay: .4s; }
-    .brand-eq span:nth-child(4) { height: 96%; animation-delay: .1s; }
-    .brand-eq span:nth-child(5) { height: 66%; animation-delay: .3s; }
-
-    @keyframes brand-bounce {
-      0%, 100% { transform: scaleY(.35); }
-      50%      { transform: scaleY(1); }
+    .brand-eq span:nth-child(1) {
+      height: 42%;
+      animation-delay: 0s;
     }
 
-    .subtitle { text-align: center; }
+    .brand-eq span:nth-child(2) {
+      height: 80%;
+      animation-delay: .2s;
+    }
+
+    .brand-eq span:nth-child(3) {
+      height: 55%;
+      animation-delay: .4s;
+    }
+
+    .brand-eq span:nth-child(4) {
+      height: 96%;
+      animation-delay: .1s;
+    }
+
+    .brand-eq span:nth-child(5) {
+      height: 66%;
+      animation-delay: .3s;
+    }
+
+    @keyframes brand-bounce {
+
+      0%,
+      100% {
+        transform: scaleY(.35);
+      }
+
+      50% {
+        transform: scaleY(1);
+      }
+    }
+
+    .subtitle {
+      text-align: center;
+    }
 
     /* ===== responsive: small screens (UI only) ===== */
     @media (max-width: 480px) {
-      body { padding: 18px 12px; }
-      .screen-card { padding: 24px 18px; border-radius: var(--r-md); }
-      h1 { font-size: 22px; }
-      .input-textarea { min-height: 150px; }
+      body {
+        padding: 18px 12px;
+      }
+
+      .screen-card {
+        padding: 24px 18px;
+        border-radius: var(--r-md);
+      }
+
+      h1 {
+        font-size: 22px;
+      }
+
+      .input-textarea {
+        min-height: 150px;
+      }
 
       /* On narrow screens the Spotify embed needs the whole card width or
          its play button gets clipped. Move the checkbox to an absolute
@@ -434,9 +475,11 @@
       .preview-card {
         position: relative;
       }
+
       .preview-card-row {
         gap: 0;
       }
+
       .preview-check-wrap {
         position: absolute;
         top: 10px;
@@ -449,6 +492,7 @@
         z-index: 2;
         padding: 0;
       }
+
       .preview-check-wrap .preview-checkbox {
         width: 20px;
         height: 20px;
@@ -464,9 +508,10 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .brand-eq span { animation: none; }
+      .brand-eq span {
+        animation: none;
+      }
     }
-
   </style>
 </head>
 
@@ -490,7 +535,7 @@
       <div class="input-wrap">
         <label class="input-label" for="bizDesc">ספרו לנו על העסק</label>
         <textarea class="input-textarea" id="bizDesc"
-          placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח. אווירה אינטימית, לא רעשנית..."
+          placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בוגר של בני 30+ שיושב בשולחנות בחצר, שותה ומשוחח באווירה אינטימית"
           maxlength="1000"></textarea>
       </div>
 

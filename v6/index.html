@@ -1068,9 +1068,17 @@
     /* Post-logout landing (?intro=1): head script adds html.no-splash before
        body parses. Splash never renders; intro card is shown immediately
        (overrides the base [hidden]{display:none} rule) with no cardIn fade. */
-    html.no-splash .splash { display: none !important; }
-    html.no-splash #introCard[hidden] { display: block !important; }
-    html.no-splash #introCard { animation: none !important; }
+    html.no-splash .splash {
+      display: none !important;
+    }
+
+    html.no-splash #introCard[hidden] {
+      display: block !important;
+    }
+
+    html.no-splash #introCard {
+      animation: none !important;
+    }
 
     /* ---------- welcome splash (Rubin logo draws itself) ---------- */
     .splash {
@@ -1701,12 +1709,14 @@
       max-width: 300px;
       margin: 4px auto 12px
     }
+
     .sw2-prog-bar {
       position: relative;
       height: 14px;
       cursor: pointer;
       touch-action: none
     }
+
     .sw2-prog-track {
       position: absolute;
       left: 0;
@@ -1721,10 +1731,12 @@
       transition: height .15s;
       pointer-events: none
     }
+
     .sw2-prog-bar:hover .sw2-prog-track,
     .sw2-prog-bar.dragging .sw2-prog-track {
       height: 10px
     }
+
     .sw2-prog-fill {
       position: absolute;
       left: 0;
@@ -1735,6 +1747,7 @@
       border-radius: 99px;
       pointer-events: none
     }
+
     .sw2-prog-thumb {
       position: absolute;
       top: 50%;
@@ -1749,10 +1762,12 @@
       transition: opacity .15s;
       pointer-events: none
     }
+
     .sw2-prog-bar:hover .sw2-prog-thumb,
     .sw2-prog-bar.dragging .sw2-prog-thumb {
       opacity: 1
     }
+
     .sw2-timestamps {
       display: flex;
       justify-content: space-between;
@@ -1814,12 +1829,13 @@
 
     /* ---------- hours selector (v6/hours-selector.js) ---------- */
     .day-list {
-      background: rgba(255,255,255,.03);
+      background: rgba(255, 255, 255, .03);
       border: 1px solid var(--border-2);
       border-radius: 14px;
       padding: 4px 14px;
       margin-bottom: 14px;
     }
+
     .day-row {
       display: grid;
       grid-template-columns: 1fr auto auto;
@@ -1829,26 +1845,45 @@
       padding: 12px 0;
       border-bottom: 1px solid var(--border);
     }
-    .day-row:last-child { border-bottom: none; }
+
+    .day-row:last-child {
+      border-bottom: none;
+    }
+
     /* Closed rows: dim the non-interactive columns only. The day-cell stays
        vibrant so users don't misread it as dead UI. */
     .day-row.closed .override-cell,
-    .day-row.closed .times-cell { opacity: .35; }
+    .day-row.closed .times-cell {
+      opacity: .35;
+    }
 
-    .day-cell { display: flex; align-items: center; gap: 10px; grid-area: day; }
+    .day-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      grid-area: day;
+    }
+
     .day-cell input[type=checkbox] {
-      width: 20px; height: 20px;
+      width: 20px;
+      height: 20px;
       accent-color: var(--accent);
       cursor: pointer;
       flex-shrink: 0;
     }
+
     .day-cell label {
-      font-size: 15px; font-weight: 700;
+      font-size: 15px;
+      font-weight: 700;
       cursor: pointer;
       user-select: none;
       transition: color .15s;
     }
-    .day-row.closed .day-cell { cursor: pointer; }
+
+    .day-row.closed .day-cell {
+      cursor: pointer;
+    }
+
     .day-row.closed .day-cell label {
       color: var(--muted);
       text-decoration: line-through;
@@ -1856,7 +1891,9 @@
     }
 
     .override-cell {
-      display: flex; align-items: center; gap: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
       padding: 6px 10px;
       border-radius: 8px;
       cursor: pointer;
@@ -1865,69 +1902,105 @@
       white-space: nowrap;
       grid-area: override;
     }
-    .override-cell:hover { background: rgba(255,255,255,.04); }
+
+    .override-cell:hover {
+      background: rgba(255, 255, 255, .04);
+    }
+
     .override-cell input[type=checkbox] {
-      width: 16px; height: 16px;
+      width: 16px;
+      height: 16px;
       accent-color: var(--teal-soft);
       cursor: pointer;
     }
+
     .override-cell label {
-      font-size: 12px; color: var(--muted); font-weight: 600;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 600;
       cursor: pointer;
     }
-    .day-row .override-cell.active label { color: var(--teal-soft); }
-    .day-row.closed .override-cell { opacity: .3; pointer-events: none; }
+
+    .day-row .override-cell.active label {
+      color: var(--teal-soft);
+    }
+
+    .day-row.closed .override-cell {
+      opacity: .3;
+      pointer-events: none;
+    }
 
     .times-cell {
-      display: flex; align-items: center; gap: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
       direction: ltr;
       grid-area: times;
     }
+
     .time-block {
-      display: flex; align-items: center;
+      display: flex;
+      align-items: center;
       background: #0d1822;
       border: 1.5px solid var(--border-2);
       border-radius: 9px;
       padding: 4px 10px;
       transition: border-color .15s, box-shadow .15s, color .15s;
     }
+
     .time-block:focus-within {
       border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(240,167,63,.12);
+      box-shadow: 0 0 0 3px rgba(240, 167, 63, .12);
     }
+
     .time-block .colon {
       color: var(--muted);
-      font-size: 15px; font-weight: 700;
+      font-size: 15px;
+      font-weight: 700;
       padding: 0 3px;
     }
+
     .time-part {
       background: transparent;
       border: none;
       outline: none;
       font-family: inherit;
-      font-size: 15px; font-weight: 700;
+      font-size: 15px;
+      font-weight: 700;
       color: var(--text);
       width: 26px;
       padding: 6px 0;
       text-align: center;
       caret-color: var(--accent);
     }
+
     .time-part::-webkit-outer-spin-button,
     .time-part::-webkit-inner-spin-button {
-      -webkit-appearance: none; margin: 0;
+      -webkit-appearance: none;
+      margin: 0;
     }
+
     .day-row.override-on .time-block,
     .day-row.override-on .time-block .colon,
     .day-row.override-on .time-part {
       color: var(--teal-soft);
-      border-color: rgba(87,163,189,.35);
+      border-color: rgba(87, 163, 189, .35);
     }
+
     .day-row.override-on .time-block:focus-within {
       border-color: var(--teal-soft);
-      box-shadow: 0 0 0 3px rgba(87,163,189,.15);
+      box-shadow: 0 0 0 3px rgba(87, 163, 189, .15);
     }
-    .time-block[data-disabled="true"] { opacity: .4; pointer-events: none; }
-    .times-arrow { color: var(--muted); font-size: 15px; }
+
+    .time-block[data-disabled="true"] {
+      opacity: .4;
+      pointer-events: none;
+    }
+
+    .times-arrow {
+      color: var(--muted);
+      font-size: 15px;
+    }
 
     .closed-summary {
       text-align: center;
@@ -1937,8 +2010,15 @@
       line-height: 1.5;
       min-height: 20px;
     }
-    .closed-summary b { color: var(--text); font-weight: 800; }
-    .closed-summary.warn { color: #ff9b8a; }
+
+    .closed-summary b {
+      color: var(--text);
+      font-weight: 800;
+    }
+
+    .closed-summary.warn {
+      color: #ff9b8a;
+    }
 
     /* Narrow: stack day-name + override on the right (in their own column),
        and let times-cell span both rows on the left. Kicks in before the wide
@@ -1952,9 +2032,22 @@
         column-gap: 12px;
         row-gap: 4px;
       }
-      .day-cell      { align-self: end;    justify-self: start; }
-      .override-cell { align-self: start;  justify-self: start; padding-inline: 0; }
-      .times-cell    { align-self: center; justify-self: end; }
+
+      .day-cell {
+        align-self: end;
+        justify-self: start;
+      }
+
+      .override-cell {
+        align-self: start;
+        justify-self: start;
+        padding-inline: 0;
+      }
+
+      .times-cell {
+        align-self: center;
+        justify-self: end;
+      }
     }
 
     /* Very narrow (iPhone SE ~375px and below): shrink time inputs so both
@@ -1962,19 +2055,62 @@
        here would need ~305px of row area; effective row area at 375px is
        only ~295px. Downsizing gets us fitting down to 320px viewport. */
     @media (max-width: 400px) {
-      .day-list { padding: 4px 10px; }
-      .day-row { column-gap: 8px; }
-      .times-cell { gap: 6px; }
-      .time-block { padding: 3px 7px; }
-      .time-block .colon { font-size: 14px; padding: 0 2px; }
-      .time-part { width: 22px; font-size: 14px; }
-      .times-arrow { font-size: 13px; }
-      .day-cell { gap: 8px; }
-      .day-cell input[type=checkbox] { width: 17px; height: 17px; }
-      .day-cell label { font-size: 13px; }
-      .override-cell { gap: 5px; padding: 4px 0; }
-      .override-cell input[type=checkbox] { width: 14px; height: 14px; }
-      .override-cell label { font-size: 11px; }
+      .day-list {
+        padding: 4px 10px;
+      }
+
+      .day-row {
+        column-gap: 8px;
+      }
+
+      .times-cell {
+        gap: 6px;
+      }
+
+      .time-block {
+        padding: 3px 7px;
+      }
+
+      .time-block .colon {
+        font-size: 14px;
+        padding: 0 2px;
+      }
+
+      .time-part {
+        width: 22px;
+        font-size: 14px;
+      }
+
+      .times-arrow {
+        font-size: 13px;
+      }
+
+      .day-cell {
+        gap: 8px;
+      }
+
+      .day-cell input[type=checkbox] {
+        width: 17px;
+        height: 17px;
+      }
+
+      .day-cell label {
+        font-size: 13px;
+      }
+
+      .override-cell {
+        gap: 5px;
+        padding: 4px 0;
+      }
+
+      .override-cell input[type=checkbox] {
+        width: 14px;
+        height: 14px;
+      }
+
+      .override-cell label {
+        font-size: 11px;
+      }
     }
   </style>
 </head>
@@ -2044,32 +2180,31 @@
   <div class="flow-progress" id="flowProgress" hidden>
     <div class="fp-step active" data-step="1">
       <div class="fp-bar"></div>
-      <div class="fp-lbl">מספרים על העסק</div>
+      <div class="fp-lbl">תיאור העסק</div>
     </div>
     <div class="fp-step" data-step="2">
       <div class="fp-bar"></div>
-      <div class="fp-lbl">בוחרים אווירה</div>
+      <div class="fp-lbl">בחירת אווירה</div>
     </div>
     <div class="fp-step" data-step="3">
       <div class="fp-bar"></div>
-      <div class="fp-lbl">שעות פתיחה</div>
+      <div class="fp-lbl">שעות פעילות</div>
     </div>
     <div class="fp-step" data-step="4">
       <div class="fp-bar"></div>
-      <div class="fp-lbl">מסמנים שירים</div>
+      <div class="fp-lbl">בחירת כיוונים</div>
     </div>
     <div class="fp-step" data-step="5">
       <div class="fp-bar"></div>
-      <div class="fp-lbl">מקבלים פלייליסט</div>
+      <div class="fp-lbl">פלייליסטים לדוגמה</div>
     </div>
   </div>
 
   <div class="app">
     <!-- ============ screen 1: Spotify account question ============ -->
     <div class="screen-card" id="introCard" hidden>
-      <h1>רגע לפני שמתחילים</h1>
+      <h1>רובין מייצר פלייליסטים יומיים מותאמים וחכמים לעסק</h1>
       <p class="subtitle" style="margin-bottom:6px">
-        רובין מייצר פלייליסטים מותאמים אישית וחכמים לכל עסק.
         תנו לנו לשאול אתכם כמה שאלות כדי שנדע לפגוע בול.
       </p>
       <p class="intro-q">אבל בתור התחלה: האם יש לך כבר חשבון ברובין?</p>
@@ -2147,7 +2282,7 @@
         </div>
         <h1>Sonic<span class="brand-gold">Brands</span></h1>
       </div>
-      <p class="subtitle">פלייליסט מותאם לאישיות העסק שלכם, תוך דקה</p>
+      <p class="subtitle">פלייליסטים מדוייקים לעסק, כל יום</p>
 
       <div class="input-wrap">
         <label class="input-label" for="bizName">שם העסק</label>
@@ -2157,9 +2292,11 @@
       </div>
 
       <div class="input-wrap">
-        <label class="input-label" for="bizDesc">ספרו לנו על העסק <span style="font-weight:400;font-size:11px;letter-spacing:0;opacity:.85">(מיקום, אווירה, גילאים, סגנונות מועדפים…)</span></label>
+        <label class="input-label" for="bizDesc">ספרו לנו על העסק <span
+            style="font-weight:400;font-size:11px;letter-spacing:0;opacity:.85">(סוג עסק, מיקום, טווח גילאים ותיאור
+            החוויה האידיאלית)</span></label>
         <textarea class="input-textarea" id="bizDesc"
-          placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בני 30+ שבא לשבת ולשוחח. אווירה אינטימית, לא רעשנית..."
+          placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בוגר של בני 30+ שיושב בשולחנות בחצר, שותה ומשוחח באווירה אינטימית"
           maxlength="1000"></textarea>
         <p class="field-hint" id="bizDescHint" aria-live="polite"></p>
         <button class="dictate" id="dictateBtn" type="button">
@@ -2172,7 +2309,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=20082026a"></script>
+  <script type="module" src="/v6/app.js?v=20082026c"></script>
 </body>
 
 </html>

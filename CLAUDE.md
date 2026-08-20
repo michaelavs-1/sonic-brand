@@ -227,7 +227,7 @@ sonic-brand/
 ### The state machine — `v6/app.js goToStep(n)`
 
 - One `state` object holds `bizName`, `bizDesc`, `confirmedPlace`, `atmosphereRows`, `selectedAtmos`, `hours`, `longestMinutes`, `directions`, `page2Promise`, `popularityWindow`, `picked`, `results`.
-- Progress bar steps at top of screen ("מספרים על העסק / בוחרים אווירה / מסמנים שירים / מקבלים פלייליסט") are **clickable** for any step the user has reached — clicking navigates back with pre-filled state. Downstream state is invalidated when going back so re-submitting refreshes it.
+- Progress bar steps at top of screen ("תיאור העסק / בחירת אווירה / בחירת כיוונים / פלייליסטים לדוגמה") are **clickable** for any step the user has reached — clicking navigates back with pre-filled state. Downstream state is invalidated when going back so re-submitting refreshes it.
 - Steps use AbortController: clicking back aborts the in-flight step's promise chain and re-enters at the target step.
 
 ### Prefetch pattern (background work during blocking user steps)

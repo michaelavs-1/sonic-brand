@@ -23,7 +23,7 @@ import {
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=13082026a';
+} from '/v6/result.js?v=20082026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -425,13 +425,16 @@ function showDirectionsLoading() {
   const card = document.querySelector('.screen-card');
   if (!card) return;
   const h = document.createElement('h1');
-  h.textContent = 'רובין חושב על העסק שלכם';
+  h.textContent = 'רובין מתאים לכם מוזיקה';
+  const sub = document.createElement('p');
+  sub.className = 'subtitle';
+  sub.textContent = 'רובין יציג לכן/ם כיוונים מוזיקליים לעסק באמצעות שירים. תקשיבו, ותגידו מה פגע ומה לא. כל כיוון שתאהבו יהיה בסיס לפלייליסט יומי';
   const wrap = document.createElement('div');
   wrap.className = 'preview-load-column';
   wrap.innerHTML =
     '<div class="preview-load-label">מתאימים כיוונים מוזיקליים…</div>' +
     '<div class="preview-load-progress"><div class="preview-load-progress-fill"></div></div>';
-  card.replaceChildren(h, wrap);
+  card.replaceChildren(h, sub, wrap);
 }
 
 // ---------- step orchestrator ----------
@@ -469,7 +472,7 @@ async function goToStep(start) {
         state.bizName = bizName;
         state.bizDesc = bizDesc;
         // Google Places confirm sub-step lives inside step 1: same
-        // .screen-card, progress-bar dot stays on "מספרים על העסק". If
+        // .screen-card, progress-bar dot stays on "תיאור העסק". If
         // Google finds nothing (or the key is missing / call fails), the
         // sub-step is silently skipped and we fall through to step 2.
         if (state.confirmedPlace === undefined) {

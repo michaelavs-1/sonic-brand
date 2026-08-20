@@ -3,7 +3,14 @@
    Key source: process.env.GEMINI_API_KEY. No body-supplied keys.
 
    Request shape (client-side, kept small and provider-agnostic-ish):
-     { model, system, user, max_output_tokens?, thinking_budget? }
+     { model, system, user, history?, max_output_tokens?, thinking_budget? }
+
+   `history` (optional): array of prior turns for multi-turn chat, e.g.
+     [{ role: 'user',  text: '...' },
+      { role: 'model', text: '...' }, ...]
+   When present, the request builds a Gemini `contents` sequence with the
+   history first and `user` appended as the final user turn. When absent
+   the original single-turn shape is used (unaffects musical-directions).
 
    Response is Gemini's raw JSON, with an added top-level `usage` field
    normalized from `usageMetadata` for parity with the anthropic proxy.
@@ -20,13 +27,25 @@ export default async function handler(req, res) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
-  const { model, system, user, max_output_tokens, thinking_level, label } = req.body || {};
+  const { model, system, user, history, max_output_tokens, thinking_level, label } = req.body || {};
   if (!model || typeof user !== 'string' || !user.length) {
     return res.status(400).json({ error: 'model and user are required' });
   }
 
+  // Build the contents sequence. Single-turn callers get the original
+  // one-element array; multi-turn callers get history + final user turn.
+  const contents = [];
+  if (Array.isArray(history)) {
+    for (const turn of history) {
+      if (!turn || typeof turn.text !== 'string' || !turn.text.length) continue;
+      const role = turn.role === 'model' ? 'model' : 'user';
+      contents.push({ role, parts: [{ text: turn.text }] });
+    }
+  }
+  contents.push({ role: 'user', parts: [{ text: user }] });
+
   const payload = {
-    contents: [{ role: 'user', parts: [{ text: user }] }],
+    contents,
     generationConfig: {
       maxOutputTokens:  max_output_tokens || 4096,
       // Force pure JSON so we don't have to strip ```json fences.

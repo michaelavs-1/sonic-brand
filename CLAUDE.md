@@ -127,14 +127,31 @@ the 10-track sample playlists each grow to today's opening hours + 1h.
 
 ### Special event playlists
 
-- UI: `v6/account/app.js` renderEvents. Event = { id, name (first line), description }.
-- Trigger: `/api/v6/account/event-playlist`:
-  - Claude Haiku 4.5 receives event description + the 73-genre canonical menu (v6/generation/genre-list.js)
-  - Returns `{ genres: [...menu-subset...], bpm_range: {min, max} }`
-  - Queries `v5_direction_tracks` RPC with genres + BPM (no popularity screen)
-  - Creates Spotify playlist (~40 tracks target, min 5 floor) via `/api/new/spotify`
-  - Prepends to `bmeta().playlists` with `eventId` back-ref + registers 24h expiry
-- Event card auto-updates: shows "▶ פתח" while a live playlist exists; shows "צרו פלייליסט" once expired.
+- **UI — chat, not textarea.** `v6/account/index.html` `#chatMessages` +
+  `#chatInput` + `#chatSend`. Owner describes the event in a chat that
+  goes back and forth with Gemini until Gemini offers a summary + inline
+  "צור פלייליסט" button (see `chatState` and `appendConfirmActions` in
+  `v6/account/app.js`). System prompt lives in
+  `v6/generation/event-chat-prompt.js`; Gemini 3.6-flash, thinking=low,
+  responseMimeType=JSON, multi-turn via the `history` arg on
+  `/api/v6/gemini`. Off-topic messages get a polite redirect. Chat is
+  ephemeral — cleared on refresh and on a successful finalize.
+- **Editing existing events was dropped** with the chat rewrite (no
+  pencil button on cards). Delete + re-chat is the workflow. Restore
+  by adding an "edit this event" chat flow if needed.
+- **Finalize is a two-step client chain** in `finalizeAndGenerate`:
+  1. `POST /api/v6/account/upsert-event` inserts the `business_events`
+     row using Gemini's `proposed.name_he` + `proposed.description_he`.
+  2. `POST /api/v6/account/event-playlist` runs unchanged from the
+     previous UI — Claude Haiku 4.5 extracts genres+BPM from
+     description, queries `v5_direction_tracks` (no popularity screen),
+     creates ~40-track Spotify playlist on Rubin, inserts
+     `business_playlists` with `event_id` back-ref, registers ledger
+     expiry via `/api/v5/record-playlist`.
+- Event card auto-updates: shows "▶ פתח" while a live playlist exists;
+  shows "צרו פלייליסט" once expired. That button (`createEventPlaylist`)
+  hits step 2 only — the `business_events` row already exists, so it
+  reuses the stored description and just rebuilds the Spotify playlist.
 
 ### Auth signup — `api/v6/account/signup.js`
 

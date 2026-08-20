@@ -25,6 +25,7 @@ if (new URLSearchParams(location.search).has('reset')) {
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeTargetForToday } from '../generation/playlist-length.js?v=13082026a';
 import { mountHoursEditor } from '../hours-selector.js?v=03082026a';
+import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=20082026c';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -45,9 +46,16 @@ let meta       = {};
 // where the data comes from.
 const state = { dashboard: null };
 
-// Edit-mode marker for the events textarea. When set, the next save updates
-// this event instead of appending a new one.
-let editingEventId = null;
+// Chat state for the special-events panel. Ephemeral — cleared on refresh
+// and on a successful finalize. `messages` holds the visible transcript
+// (both roles) and doubles as the multi-turn history sent to Gemini.
+// `proposed` is the last confirming-state summary Gemini offered; clicking
+// the inline "צור פלייליסט" button uses it as-is (no extra round trip).
+const chatState = {
+  messages:  [],        // [{ role: 'user' | 'assistant', text: string }]
+  proposed:  null,      // { name_he, description_he } | null
+  busy:      false,     // true while a Gemini round trip is in flight
+};
 
 // ---------- per-business data accessor ----------
 // Kept as a function so all render code can call `bmeta().playlists` etc.
@@ -798,28 +806,59 @@ function renderEvents() {
   const wrap = $('eventsWrap');
   wrap.innerHTML = '';
   const events = bmeta().events || [];
+  // Hide the whole "פלייליסטים אחרים" section when there are no events —
+  // otherwise the user sees a titled but empty box between the daily
+  // playlists section and the chat section.
+  const box = $('specialBox');
+  if (box) box.classList.toggle('hide', events.length === 0);
   for (const ev of events) {
     const row = document.createElement('div');
     row.className = 'slot';
 
     const info = document.createElement('div');
     info.className = 's-info';
-    info.innerHTML =
-      `<div class="s-title">🎪 ${escapeHtml(ev.name || 'אירוע')}</div>` +
-      `<div class="s-meta">${escapeHtml(truncate(ev.description || '', 90))}</div>`;
+
+    const title = document.createElement('div');
+    title.className = 's-title';
+    title.textContent = `🎪 ${ev.name || 'אירוע'}`;
+    info.append(title);
+
+    // Description line: click to toggle between the 90-char truncation and
+    // the full text when it's been cut. truncate() appends '…' as the
+    // visual "there's more" cue; the meta line also gets cursor:pointer +
+    // hover lift via .s-meta-expandable to signal it's interactive.
+    const meta = document.createElement('div');
+    meta.className = 's-meta';
+    const desc  = ev.description || '';
+    const short = truncate(desc, 90);
+    if (desc.length > short.length) {
+      meta.classList.add('s-meta-expandable');
+      meta.textContent = short;
+      meta.title = 'לחצו להרחבה';
+      meta.addEventListener('click', () => {
+        const expanded = meta.classList.toggle('expanded');
+        meta.textContent = expanded ? desc : short;
+      });
+    } else {
+      meta.textContent = desc;
+    }
+    info.append(meta);
+
     row.append(info);
 
-    const editBtn = document.createElement('button');
-    editBtn.className   = 'btn-ghost';
-    editBtn.title       = 'עריכה';
-    editBtn.textContent = '✎';
-    editBtn.addEventListener('click', () => startEditEvent(ev));
-    row.append(editBtn);
-
     const delBtn = document.createElement('button');
-    delBtn.className   = 'btn-ghost';
-    delBtn.title       = 'מחיקה';
-    delBtn.textContent = '🗑';
+    delBtn.className = 'btn btn-danger event-del';
+    delBtn.title     = 'מחיקה';
+    delBtn.setAttribute('aria-label', 'מחיקה');
+    // Generic trash icon (outline). currentColor picks up .btn-danger's red.
+    delBtn.innerHTML =
+      '<svg class="event-del-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M3 6h18"/>' +
+      '<path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2"/>' +
+      '<path d="M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14"/>' +
+      '<path d="M10 11v6"/>' +
+      '<path d="M14 11v6"/>' +
+      '</svg>';
     delBtn.addEventListener('click', () => deleteEvent(ev.id, delBtn));
     row.append(delBtn);
 
@@ -888,26 +927,12 @@ async function createEventPlaylist(ev, btn) {
   }
 }
 
-function startEditEvent(ev) {
-  editingEventId = ev.id;
-  $('eventsText').value = ev.description || '';
-  $('eventsText').focus();
-  $('saveEvents').textContent = 'עדכן אירוע';
-  $('eventsMsg').textContent = `עורכים: ${ev.name || 'אירוע'} — לחצו "עדכן" לשמירה`;
-}
-
-function endEditMode() {
-  editingEventId = null;
-  $('saveEvents').textContent = 'שמור אירוע';
-  $('eventsMsg').textContent = '';
-}
-
 async function deleteEvent(id, btn) {
   if (!confirm('למחוק את האירוע?')) return;
   const origHtml = btn?.innerHTML;
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;vertical-align:-2px;margin-inline-end:4px"></span>מוחק…';
+    btn.innerHTML = '<span class="sb-spinner" style="width:16px;height:16px;display:block"></span>';
   }
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -929,7 +954,6 @@ async function deleteEvent(id, btn) {
       ...(state.dashboard || {}),
       events: (bmeta().events || []).filter((e) => e.id !== id),
     };
-    if (editingEventId === id) endEditMode();
     renderEvents();
     toast('האירוע נמחק');
   } catch (e) {
@@ -939,47 +963,229 @@ async function deleteEvent(id, btn) {
   }
 }
 
-$('saveEvents')?.addEventListener('click', async () => {
-  const text = $('eventsText').value.trim();
-  if (text.length < 5) { $('eventsMsg').textContent = 'כתבו לפחות משפט קצר'; return; }
-  const name = firstLine(text, 40) || 'אירוע';
-  const payload = editingEventId
-    ? { id: editingEventId, name, description: text }
-    : { name, description: text };
-  const btn      = $('saveEvents');
-  const origHtml = btn?.innerHTML;
-  const busyHtml = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>שומרים…';
-  if (btn) { btn.disabled = true; btn.innerHTML = busyHtml; }
+// ---------- events chat ----------
+// Replaces the old textarea + "שמור אירוע" button. The user chats with
+// Gemini until Gemini's reply carries state="confirming" + a `proposed`
+// summary; a "צור פלייליסט" button then appears inline in that reply
+// bubble. Clicking it runs the same upsert-event → event-playlist chain
+// the old handler ran, so the card that lands in #eventsWrap and its
+// downstream generate-daily behavior are identical to before.
+
+const GEMINI_MODEL          = 'gemini-3.6-flash';
+const GEMINI_THINKING_LEVEL = 'low';
+const CHAT_MAX_TOKENS       = 2000;
+
+function scrollChatToBottom() {
+  const box = $('chatMessages');
+  if (box) box.scrollTop = box.scrollHeight;
+}
+
+// Renders one message bubble. `role` is 'user' | 'assistant'. When
+// thinking=true the bubble contains three animated bouncing dots — the
+// standard LLM typing indicator — instead of the text arg. Once the real
+// reply arrives the caller does `bubble.textContent = replyText`, which
+// replaces the dot children with plain text automatically.
+function renderBubble(role, text, { thinking = false } = {}) {
+  const box = $('chatMessages');
+  const b = document.createElement('div');
+  b.className = `chat-bubble ${role}` + (thinking ? ' thinking' : '');
+  if (thinking) {
+    b.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
+  } else {
+    b.textContent = text;
+  }
+  box.append(b);
+  scrollChatToBottom();
+  return b;
+}
+
+// Called after Gemini replies with state="confirming". Adds an inline
+// "הכן פלייליסט" button inside the given bubble. Clicking it hands
+// Gemini's distilled summary off as a business_events row — internally
+// still just an upsert, but the user-facing verb is "prepare" to pair
+// naturally with the card's later "צרו פלייליסט" (create) button. Two
+// stages: prepare → create. If the user isn't ready yet they keep
+// typing in the chat input, so no explicit dismiss button is needed.
+function appendConfirmActions(bubble) {
+  const row = document.createElement('div');
+  row.className = 'chat-actions';
+
+  const goBtn = document.createElement('button');
+  goBtn.className   = 'btn';
+  goBtn.textContent = 'הכן פלייליסט';
+  goBtn.addEventListener('click', () => finalizeAndSaveEvent(goBtn));
+
+  row.append(goBtn);
+  bubble.append(row);
+  scrollChatToBottom();
+}
+
+// Multi-turn Gemini call. Sends the full chat history + system prompt each
+// turn (Gemini is stateless — the transcript is our memory). Returns the
+// parsed JSON reply, or throws on transport / parse failure.
+async function callChatModel(userMessage) {
+  // Convert the visible transcript into Gemini's { role, text } shape.
+  // 'assistant' → 'model' (Gemini's naming). The current user message is
+  // sent as the `user` field, not appended to history.
+  const history = chatState.messages.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    text: m.text,
+  }));
+
+  const r = await fetch('/api/v6/gemini', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({
+      model:             GEMINI_MODEL,
+      max_output_tokens: CHAT_MAX_TOKENS,
+      thinking_level:    GEMINI_THINKING_LEVEL,
+      system:            EVENT_CHAT_SYSTEM_PROMPT,
+      user:              userMessage,
+      history,
+      label:             'event-chat',
+    }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = data?.error?.message || data?.error || r.statusText;
+    throw new Error(`gemini ${r.status}: ${msg}`);
+  }
+  const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
+  const text = Array.isArray(cand?.content?.parts)
+    ? cand.content.parts.find((p) => typeof p?.text === 'string')?.text
+    : null;
+  if (typeof text !== 'string') throw new Error('no text from model');
+
+  // System prompt forces JSON via responseMimeType; be defensive anyway.
+  const trimmed = String(text).trim();
+  const fenced  = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  const body    = fenced ? fenced[1] : trimmed;
+  return JSON.parse(body);
+}
+
+// Send-button handler. Guards against double-fire while a call is in flight.
+async function sendChatMessage() {
+  const input = $('chatInput');
+  const text  = (input.value || '').trim();
+  if (!text || chatState.busy) return;
+  input.value = '';
   $('eventsMsg').textContent = '';
+  // Collapse the textarea to a single line and drop the placeholder once
+  // the chat is live — the initial 3-row hint is only useful before the
+  // conversation starts. Reset in finalizeAndSaveEvent for the next event.
+  input.rows = 1;
+  input.classList.add('compact');
+  input.removeAttribute('placeholder');
+
+  renderBubble('user', text);
+  chatState.messages.push({ role: 'user', text });
+
+  chatState.busy = true;
+  $('chatSend').disabled = true;
+  const thinking = renderBubble('assistant', '…', { thinking: true });
+
+  try {
+    const reply = await callChatModel(text);
+    const replyText = (reply?.reply_he || '').trim() || '(אין תשובה)';
+    thinking.classList.remove('thinking');
+    thinking.textContent = replyText;
+    chatState.messages.push({ role: 'assistant', text: replyText });
+
+    if (reply?.state === 'confirming' && reply?.proposed
+        && typeof reply.proposed.name_he === 'string'
+        && typeof reply.proposed.description_he === 'string'
+        && reply.proposed.description_he.trim().length >= 5) {
+      chatState.proposed = {
+        name_he:        String(reply.proposed.name_he).trim().slice(0, 40),
+        description_he: String(reply.proposed.description_he).trim(),
+      };
+      appendConfirmActions(thinking);
+    } else {
+      // Any other reply (gathering / off_topic / malformed proposed):
+      // clear stale proposed so an old "צור פלייליסט" click can't fire
+      // on a description the user has since revised.
+      chatState.proposed = null;
+    }
+  } catch (err) {
+    console.error('event-chat failed:', err);
+    thinking.classList.remove('thinking');
+    thinking.textContent = 'שגיאה בצ׳אט — נסו שוב.';
+    // Roll back the user's turn from history so they can retry without
+    // the model seeing a dangling user message with no reply.
+    chatState.messages.pop();
+  } finally {
+    chatState.busy = false;
+    $('chatSend').disabled = false;
+    input.focus();
+  }
+}
+
+// Runs when the user clicks "שמור אירוע" inside a confirming reply.
+// Semantics match the old textarea + "שמור אירוע" button exactly:
+//   - POST /api/v6/account/upsert-event with Gemini's distilled summary
+//   - Splice the returned row into state; renderEvents shows the new card
+//     with its own "צרו פלייליסט" button.
+// The actual Spotify playlist is built later, when the user clicks that
+// card button — createEventPlaylist handles that leg. Two separate steps,
+// no coupling between them, and no cold-plan issue at chat-finalize time
+// because we don't call v5_direction_tracks here at all.
+async function finalizeAndSaveEvent(goBtn) {
+  if (!chatState.proposed) {
+    toast('חסר תיאור — כתבו עוד קצת');
+    return;
+  }
+  const { name_he: name, description_he: description } = chatState.proposed;
+  goBtn.disabled = true;
+  const origHtml = goBtn.innerHTML;
+  goBtn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>מכינים…';
+
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
-    const r = await fetch('/api/v6/account/upsert-event', {
+
+    const upsertRes = await fetch('/api/v6/account/upsert-event', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization:  `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ businessId: business.id, event: payload }),
+      body: JSON.stringify({ businessId: business.id, event: { name, description } }),
     });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.ok || !data.event) throw new Error(data?.error || `שגיאה ${r.status}`);
-    // Splice the returned row into local state so renderEvents picks it up
-    // without an extra table round-trip.
-    const events = [...(bmeta().events || [])];
-    const idx = events.findIndex((e) => e.id === data.event.id);
-    if (idx >= 0) events[idx] = data.event;
-    else          events.push(data.event);
+    const upsertData = await upsertRes.json().catch(() => ({}));
+    if (!upsertRes.ok || !upsertData.ok || !upsertData.event) {
+      throw new Error(upsertData?.error || `שגיאה ${upsertRes.status}`);
+    }
+    const ev = upsertData.event;
+
+    // Splice into local state so the card appears immediately with its
+    // "צרו פלייליסט" action — same as the old textarea-based save.
+    const events = [...(bmeta().events || []), ev];
     state.dashboard = { ...(state.dashboard || {}), events };
-    $('eventsText').value = '';
-    endEditMode();               // endEditMode resets the button label to "שמור אירוע"
     renderEvents();
-    if (btn) btn.disabled = false;
-    toast('נשמר ✓');
-  } catch (e) {
-    console.error('saveEvents failed:', e);
-    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
-    $('eventsMsg').textContent = String(e.message || 'שגיאה בשמירה').slice(0, 120);
+    toast('מוכן ✓');
+
+    // Reset the chat for the next event. Restore the textarea to its
+    // initial multi-row + placeholder state so the next event begins fresh.
+    chatState.messages = [];
+    chatState.proposed = null;
+    $('chatMessages').innerHTML = '';
+    const ci = $('chatInput');
+    ci.rows = 3;
+    ci.classList.remove('compact');
+    ci.setAttribute('placeholder', 'לדוגמה: ערב סטנדאפ בכל יום שלישי — קלילה, לא רועשת מדי...');
+  } catch (err) {
+    console.error('finalizeAndSaveEvent failed:', err);
+    goBtn.disabled = false;
+    goBtn.innerHTML = origHtml;
+    toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
+  }
+}
+
+$('chatSend')?.addEventListener('click', sendChatMessage);
+$('chatInput')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendChatMessage();
   }
 });
 

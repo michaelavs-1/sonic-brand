@@ -445,6 +445,20 @@
       margin-top: 2px
     }
 
+    /* Event card description is clickable when the full text was truncated
+       (see renderEvents — truncate() at 90 chars). Click toggles between
+       short and full text; the .slot grows vertically as the text wraps. */
+    .slot .s-meta-expandable {
+      cursor: pointer;
+      transition: color .15s;
+    }
+    .slot .s-meta-expandable:hover {
+      color: var(--text);
+    }
+    .slot .s-meta-expandable.expanded {
+      line-height: 1.5;
+    }
+
     .slot .pl-count {
       font-weight: 800;
       color: var(--text);
@@ -1817,6 +1831,138 @@
         font-size: 11px
       }
     }
+
+    /* Special-event chat. Messages flow directly inside the .box, above the
+       textarea + send button — same visual rhythm as the old textarea UI.
+       Subtle lighter tint distinguishes the transcript from the box body. */
+    .chat-messages {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 320px;
+      overflow-y: auto;
+    }
+
+    /* Empty state = zero space, no visible frame. Once messages appear, the
+       container lifts to a lighter tint and gets padding + margin so the
+       transcript reads as a distinct region above the textarea. */
+    .chat-messages:not(:empty) {
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 13px;
+      padding: 12px 12px;
+      margin-bottom: 10px;
+    }
+
+    .chat-bubble {
+      max-width: 88%;
+      padding: 10px 14px;
+      border-radius: 16px;
+      line-height: 1.45;
+      font-size: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    /* Under direction:rtl the cross-axis "flex-start" is the RIGHT edge and
+       "flex-end" is the LEFT edge. So user (right) = flex-start, assistant
+       (left) = flex-end. */
+    .chat-bubble.user {
+      align-self: flex-start;
+      background: rgba(255, 138, 61, 0.20);
+      color: #fff;
+      border-top-right-radius: 4px;
+    }
+
+    .chat-bubble.assistant {
+      align-self: flex-end;
+      background: rgba(255, 255, 255, 0.06);
+      color: #f1f1f1;
+      border-top-left-radius: 4px;
+    }
+
+    .chat-bubble.assistant.thinking {
+      opacity: 0.9;
+    }
+
+    /* LLM-style "typing…" indicator: three dots bouncing in sequence. */
+    .typing-dots {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      padding: 3px 0;
+    }
+    .typing-dots > span {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.4;
+      animation: typing-bounce 1.2s infinite ease-in-out both;
+    }
+    .typing-dots > span:nth-child(2) { animation-delay: 0.15s; }
+    .typing-dots > span:nth-child(3) { animation-delay: 0.30s; }
+
+    @keyframes typing-bounce {
+      0%, 60%, 100% { transform: translateY(0);    opacity: 0.4; }
+      30%           { transform: translateY(-4px); opacity: 1;   }
+    }
+
+    .chat-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    /* Compact inline buttons — override .btn's width:100% + margin-top:10px
+       from the base rules so they sit side-by-side inside the bubble. */
+    .chat-actions .btn {
+      width: auto;
+      margin-top: 0;
+      font-size: 13px;
+      padding: 8px 14px;
+    }
+
+    .chat-actions .btn-ghost {
+      font-size: 13px;
+      padding: 8px 12px;
+    }
+
+    /* Delete button on event cards — icon-only, .btn-danger outlined red.
+       Overrides the base .btn's width:100% + margin-top:10px + text padding
+       so it sits as a square icon button next to the play/create button. */
+    .event-del {
+      width: auto;
+      margin-top: 0;
+      padding: 9px 11px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .event-del-icon {
+      width: 18px;
+      height: 18px;
+      display: block;
+    }
+
+    /* Once the user has sent a first message, the textarea collapses to a
+       single-line height — the base textarea.input has min-height:74px which
+       we override, and rows="1" is set on the element to match. */
+    #chatInput.compact {
+      min-height: 0;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    /* Chunky solid up-arrow next to "שלח" — inline SVG for reliable weight
+       across OS emoji renderers (which draw ↑ / ⬆ inconsistently). */
+    .send-arrow {
+      width: 15px;
+      height: 15px;
+      vertical-align: -2px;
+      fill: currentColor;
+    }
+
   </style>
 </head>
 
@@ -1919,14 +2065,19 @@
         <div id="slotsWrap"></div>
       </div>
 
-      <div class="box">
-        <h2><span class="h-ico">⚡</span>אירועים מיוחדים</h2>
-        <p class="muted sub" id="eventsIntro">יש לעסק שלכם אירועים מיוחדים שבהם תצטרכו מוזיקה אחרת לגמרי? הוסיפו אותם
-          כאן.</p>
+      <div class="box" id="specialBox">
+        <h2><span class="h-ico">🎪</span>פלייליסטים אחרים</h2>
         <div id="eventsWrap"></div>
-        <textarea class="input" id="eventsText" rows="3" maxlength="500" style="margin-top:10px"
-          placeholder="לדוגמה: ערב סטנדאפ בכל יום שלישי — צריך אווירה קלילה, לא רועשת מדי..."></textarea>
-        <button class="btn" id="saveEvents">שמור אירוע</button>
+      </div>
+
+      <div class="box">
+        <h2><span class="h-ico">⚡</span>צריכים משהו אחר היום?</h2>
+        <p class="muted sub" id="eventsIntro">יש לעסק שלכם אירועים מיוחדים שבהם תצטרכו מוזיקה אחרת לגמרי? ספרו לצ׳אט
+          איזה פלייליסט אתם צריכים והוא יעזור לכם לגבש אותו.</p>
+        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+        <textarea class="input" id="chatInput" rows="3" maxlength="500"
+          placeholder="לדוגמה: ערב סטנדאפ בכל יום שלישי — קלילה, לא רועשת מדי..."></textarea>
+        <button class="btn" id="chatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L22 12H17V22H7V12H2Z"/></svg></button>
         <p class="muted" id="eventsMsg" style="text-align:center;margin-top:8px"></p>
       </div>
     </div>
@@ -1977,7 +2128,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/account/app.js?v=13082026a"></script>
+  <script type="module" src="/v6/account/app.js?v=20082026o"></script>
 </body>
 
 </html>

@@ -149,6 +149,32 @@ function abortable(promise, signal) {
 }
 
 // ---------- voice dictation (record → Whisper transcription) ----------
+// Round mic button that cycles through three visible states:
+//   idle       → blue, mic icon (initial + after success/error/short-clip)
+//   recording  → red + pulse, stop-square icon (click again to stop)
+//   busy       → blue, three bopping dots (transcribing in-flight)
+// Errors surface in the small #dictMsg line below the textarea. Successful
+// transcription appends to the textarea and clears #dictMsg — the appearing
+// text is confirmation enough.
+const MIC_ICON  = '<svg id="dictIco" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
+const STOP_ICON = '<svg id="dictIco" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
+const DOTS_ICON = '<span class="mic-dots" aria-hidden="true"><span></span><span></span><span></span></span>';
+
+function setDictMsg(text, isErr = false) {
+  const msg = $('dictMsg');
+  if (!msg) return;
+  msg.textContent = text || '';
+  msg.classList.toggle('err', !!(text && isErr));
+}
+
+function resetMicBtn() {
+  const btn = $('dictateBtn');
+  if (!btn) return;
+  btn.classList.remove('rec', 'busy');
+  btn.innerHTML = MIC_ICON;
+  btn.setAttribute('aria-label', 'הקלטה קולית — לחצו כדי לדבר');
+}
+
 let dictRec = null;
 let dictTimer = null;
 
@@ -159,7 +185,6 @@ async function toggleDictation() {
     if (dictRec.state !== 'inactive') dictRec.stop();
     return;
   }
-  let stream;
   // Common getUserMedia failure modes:
   //   NotAllowedError    → user (or a Permissions-Policy) denied mic access
   //   NotFoundError      → no mic device is available
@@ -168,22 +193,25 @@ async function toggleDictation() {
   //     unavailable API    (e.g. LAN IP over vercel dev on the phone)
   if (!navigator.mediaDevices?.getUserMedia) {
     console.error('dictation: getUserMedia unavailable — likely non-secure context');
-    $('dictLbl').textContent = 'הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)';
+    setDictMsg('הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)', true);
     return;
   }
+  let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch (err) {
     console.error('dictation: getUserMedia failed:', err.name, err.message);
     const messages = {
-      NotAllowedError: 'הרשאה למיקרופון נדחתה — אפשרו במטרת הדפדפן ונסו שוב',
+      NotAllowedError: 'הרשאה למיקרופון נדחתה — אפשרו בדפדפן ונסו שוב',
       NotFoundError: 'לא נמצא מיקרופון במכשיר',
       NotReadableError: 'המיקרופון תפוס — סגרו יישום אחר שמשתמש בו ונסו שוב',
       SecurityError: 'הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)',
       AbortError: 'הגישה למיקרופון נקטעה — נסו שוב',
     };
-    $('dictLbl').textContent = messages[err.name] || 'לא ניתן לגשת למיקרופון';
+    setDictMsg(messages[err.name] || 'לא ניתן לגשת למיקרופון', true);
     return;
   }
+
+  setDictMsg('');  // clear any previous error
 
   const preferred = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
   const mimeType = preferred.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported?.(t)) || '';
@@ -196,13 +224,12 @@ async function toggleDictation() {
     dictRec = null;
     btn.classList.remove('rec');
     if (blob.size < 3000) {
-      $('dictIco').textContent = '🎤';
-      $('dictLbl').textContent = 'או פשוט ספרו לנו בקול — אנחנו נתמלל';
+      resetMicBtn();
       return;
     }
     btn.classList.add('busy');
-    $('dictIco').innerHTML = '<span class="sb-spinner" style="width:14px;height:14px"></span>';
-    $('dictLbl').textContent = 'מתמללים...';
+    btn.innerHTML = DOTS_ICON;
+    btn.setAttribute('aria-label', 'מתמללים…');
     try {
       const b64 = await new Promise((resolve) => {
         const r = new FileReader();
@@ -221,19 +248,24 @@ async function toggleDictation() {
       const ta = $('bizDesc');
       ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + data.text;
       ta.focus();
-      $('dictLbl').textContent = 'תומלל ✓ אפשר לערוך או להקליט עוד';
+      setDictMsg('');  // the appearing text is confirmation enough
+      // Text just filled bizDesc programmatically — 'input' events don't
+      // fire from value= assignment. Manually clear any error state on the
+      // field so the user isn't stuck in a "required" red border after
+      // dictating a valid description.
+      ta.classList.remove('err');
+      $('bizDescHint')?.replaceChildren();
     } catch (err) {
       console.error('dictation failed:', err);
-      $('dictLbl').textContent = 'התמלול נכשל — נסו שוב';
+      setDictMsg('התמלול נכשל — נסו שוב', true);
     } finally {
-      btn.classList.remove('busy');
-      $('dictIco').textContent = '🎤';
+      resetMicBtn();
     }
   };
   dictRec.start(1000);
   btn.classList.add('rec');
-  $('dictIco').textContent = '⏺';
-  $('dictLbl').textContent = 'מקליטים… לחצו לסיום';
+  btn.innerHTML = STOP_ICON;
+  btn.setAttribute('aria-label', 'עצירת ההקלטה');
   dictTimer = setTimeout(() => { if (dictRec && dictRec.state !== 'inactive') dictRec.stop(); }, 60000);
 }
 

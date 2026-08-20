@@ -293,56 +293,96 @@
       line-height: 1.3;
     }
 
-    /* ---------- voice dictation ---------- */
-    .dictate {
+    /* ---------- voice dictation — round mic button next to the label ---- */
+    .label-row {
       display: flex;
       align-items: center;
-      justify-content: center;
-      gap: 9px;
-      width: 100%;
-      margin-top: 4px;
-      padding: 12px 14px;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .label-row .input-label {
+      margin-bottom: 0;
+    }
+
+    .mic-btn {
+      width: 34px;
+      height: 34px;
+      flex-shrink: 0;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background: var(--teal-soft);
+      color: #fff;
       cursor: pointer;
-      background: rgba(87, 163, 189, .08);
-      border: 1.5px dashed rgba(87, 163, 189, .45);
-      border-radius: 14px;
-      color: var(--teal-soft);
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 700;
-      transition: all .25s var(--ease);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .2s var(--ease), box-shadow .2s var(--ease), transform .1s;
+      box-shadow: 0 2px 8px rgba(87, 163, 189, .28);
     }
 
-    .dictate:hover {
-      background: rgba(87, 163, 189, .14);
-      border-style: solid;
+    .mic-btn:hover:not(.rec):not(.busy) {
+      box-shadow: 0 2px 12px rgba(87, 163, 189, .5);
     }
 
-    .dictate.rec {
-      background: rgba(224, 122, 106, .1);
-      border-color: rgba(224, 122, 106, .6);
-      color: #ff9b8a;
-      animation: rec-pulse 1.6s ease-out infinite;
+    .mic-btn:active { transform: scale(.94); }
+
+    .mic-btn.rec {
+      background: #e07a6a;
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(224, 122, 106, .35);
+      animation: mic-rec-pulse 1.6s ease-out infinite;
     }
 
-    .dictate.busy {
-      opacity: .7;
-      pointer-events: none;
+    .mic-btn.busy {
+      background: var(--teal-soft);
+      cursor: default;
     }
 
-    @keyframes rec-pulse {
-      0% {
-        box-shadow: 0 0 0 0 rgba(224, 122, 106, .3);
-      }
+    .mic-btn svg { display: block; }
 
-      70% {
-        box-shadow: 0 0 0 12px rgba(224, 122, 106, 0);
-      }
-
-      100% {
-        box-shadow: 0 0 0 0 rgba(224, 122, 106, 0);
-      }
+    /* Three bopping dots shown while transcribing. */
+    .mic-dots {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      height: 100%;
     }
+
+    .mic-dots span {
+      display: block;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: #fff;
+      animation: mic-dot-bop 1s ease-in-out infinite;
+    }
+
+    .mic-dots span:nth-child(2) { animation-delay: .15s; }
+    .mic-dots span:nth-child(3) { animation-delay: .3s; }
+
+    @keyframes mic-rec-pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(224, 122, 106, .45); }
+      70%  { box-shadow: 0 0 0 12px rgba(224, 122, 106, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(224, 122, 106, 0); }
+    }
+
+    @keyframes mic-dot-bop {
+      0%, 60%, 100% { transform: translateY(0);   opacity: .55; }
+      30%           { transform: translateY(-4px); opacity: 1;   }
+    }
+
+    .dict-msg {
+      margin: 6px 2px 0;
+      color: var(--muted);
+      font-size: 12px;
+      min-height: 14px;
+      line-height: 1.3;
+    }
+
+    .dict-msg.err { color: #ff9b8a; }
 
     /* ---------- buttons ---------- */
     .btn {
@@ -1512,7 +1552,8 @@
       .brand-logo .lg-crown,
       .brand-logo .lg-cup,
       .brand-logo .lg-eye-wink,
-      .dictate.rec {
+      .mic-btn.rec,
+      .mic-dots span {
         animation: none;
       }
     }
@@ -2416,24 +2457,26 @@
       </div>
 
       <div class="input-wrap">
-        <label class="input-label" for="bizDesc">ספרו לנו על העסק <span
-            style="font-weight:400;font-size:11px;letter-spacing:0;opacity:.85">(סוג עסק, מיקום, טווח גילאים ותיאור
-            החוויה האידיאלית)</span></label>
+        <div class="label-row">
+          <label class="input-label" for="bizDesc">ספרו לנו על העסק <span
+              style="font-weight:400;font-size:11px;letter-spacing:0;opacity:.85">(סוג עסק, מיקום, טווח גילאים ותיאור
+              החוויה האידיאלית)</span></label>
+          <button class="mic-btn" id="dictateBtn" type="button" aria-label="הקלטה קולית — לחצו כדי לדבר">
+            <svg id="dictIco" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+          </button>
+        </div>
         <textarea class="input-textarea" id="bizDesc"
           placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בוגר של בני 30+ שיושב בשולחנות בחצר, שותה ומשוחח באווירה אינטימית"
           maxlength="1000"></textarea>
         <p class="field-hint" id="bizDescHint" aria-live="polite"></p>
-        <button class="dictate" id="dictateBtn" type="button">
-          <span id="dictIco">🎤</span>
-          <span id="dictLbl">או פשוט ספרו לנו בקול — אנחנו נתמלל</span>
-        </button>
+        <p class="dict-msg" id="dictMsg" aria-live="polite"></p>
       </div>
 
       <button class="btn btn-primary btn-block" id="submitBtn">המשך ←</button>
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=20082026j"></script>
+  <script type="module" src="/v6/app.js?v=20082026k"></script>
 </body>
 
 </html>

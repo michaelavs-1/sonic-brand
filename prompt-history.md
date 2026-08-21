@@ -12,6 +12,32 @@ tightly coupled to downstream parsing code and changes only when the schema chan
 
 ---
 
+## 2026-08-21 — Instrumentalness preference sub-rule under Musical Emphases
+
+Additive edit. Extends the existing Musical Emphases processing rule with a new sub-rule that instructs Gemini to detect instrumental-music preferences in the emphases text and emit a new per-direction JSON field, `instrumentalness_preference`, valued `"none" | "soft" | "hard"`. Also extends the FIXED schema with the field.
+
+Rationale: users sometimes write things like _"only instrumentals"_ (hard) vs _"prefer instrumentals"_ / _"a lot of instrumentals"_ (soft). The two intents differ meaningfully — hard = strict WHERE filter that omits vocal tracks; soft = ORDER BY bias so instrumentals bubble up but vocals fill in when the instrumental pool is thin. Anything else = `none` (unchanged behavior). The DB layer (`v5_anchor_tracks`, `v5_direction_tracks`, `v6_direction_tracks_recent`) reads the field via a new `p_inst_pref` parameter and applies the matching WHERE / ORDER BY. Gemini's genre choices are **not** affected — the sub-rule explicitly says so. Gemini keeps picking genres on musical logic; the filter/bias is a pure downstream track-pool operation.
+
+Persistence: `business_directions.instrumentalness_preference TEXT NOT NULL DEFAULT 'none'` added (see migration `2026-08-21-direction-instrumentalness.sql`), populated at signup, read by expand-playlist + daily-gen + cron so the preference is honored for the life of the business.
+
+**Two edits to `EDITABLE_PROMPT_SECTION` (v5 + v6 byte-identical per the sync rule):**
+
+1. New sub-bullet inserted immediately after the existing "Musical Emphases (highest priority signal)" bullet under `### Processing Rules:`:
+
+```
+- **Instrumentalness preference (special sub-rule):** If the emphases text expresses a preference about instrumental (no-vocals) music, set the `instrumentalness_preference` field on every direction accordingly:
+  - `"hard"` — user is emphatic that they want ONLY instrumentals ("only instrumentals", "no vocals", "no singing", "אינסטרומנטלי בלבד", "רק אינסטרומנטלי", "בלי שירה").
+  - `"soft"` — user prefers instrumentals but hasn't ruled out vocals ("prefer instrumentals", "a lot of instrumentals", "mostly instrumental", "less vocals", "יותר אינסטרומנטלי", "פחות שירה", "הרבה אינסטרומנטליים").
+  - `"none"` — the emphases text doesn't mention instrumentals at all (default).
+  Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
+```
+
+**FIXED_PROMPT_SECTION** also gains the `instrumentalness_preference: "none"` field in the per-direction JSON schema, with a brief note pointing to the sub-rule above.
+
+Everything else in `EDITABLE_PROMPT_SECTION` is byte-identical to the 2026-08-20 entry below.
+
+---
+
 ## 2026-08-20 — Musical emphases input added (highest-priority signal)
 
 Structural addition, no other section changed. Onboarding gains a new step 3 ("דגשים מוזיקליים") between atmosphere selection and hours picker — a single free-text field where the owner tells Rubin styles they love / hate / want more of / want less of (e.g. "no electronic at all", "as much R&B as possible", "hits only", "make each playlist adventurous"). The field is optional; when empty, the entire "Musical emphases:" line is omitted from the user message so the prompt-cache prefix stays identical for sessions that don't use it.

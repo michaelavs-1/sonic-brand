@@ -308,7 +308,10 @@
       direction: ltr;
       text-align: start;
     }
-    .pop-window-line.active { color: var(--accent); }
+
+    .pop-window-line.active {
+      color: var(--accent);
+    }
 
     /* Header row inside the results card — puts the copy button right next to
        the title so it's the first thing Ami sees when a result lands. */
@@ -375,7 +378,7 @@
       <div id="popWindowLine" class="pop-window-line">Popularity window: —</div>
       <label for="musicalEmphases" style="margin-top:12px">דגשים מוזיקליים</label>
       <textarea class="txt" id="musicalEmphases" rows="3" maxlength="500"
-        placeholder="ממש לא מוזיקה אלקטרונית / כמה שיותר אר אן בי / שכל פלייליסט יהיה מגוון והרפתקני / להיטים בלבד…"></textarea>
+        placeholder="ממש לא מוזיקה אלקטרונית / כמה שיותר אר אן בי / שכל פלייליסט יהיה מגוון והרפתקני / רק אינסטרומנטלי / להיטים בלבד…"></textarea>
     </div>
 
     <!-- Prompt editor -->
@@ -407,7 +410,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=20082026a"></script>
+  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=21082026a"></script>
 </body>
 
 </html>

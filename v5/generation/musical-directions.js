@@ -76,6 +76,11 @@ Google Places context:
 ### Processing Rules:
 
 - **Musical Emphases (highest priority signal):** When the owner supplied musical emphases, treat them as the strongest input — above description, atmospheres, and Google context. If they name genres or families to include, at least half your directions should center on those. If they name genres or families to exclude, DROP those entirely from every direction — even if the description or atmosphere would otherwise suggest them. General leanings ("adventurous", "hits only", "familiar", "not too energetic") must shape every direction, not just some. Contradictions between emphases and description resolve in favor of emphases; note the tension briefly in the first direction's reasoning if useful.
+- **Instrumentalness preference (special sub-rule):** If the emphases text expresses a preference about instrumental (no-vocals) music, set the \`instrumentalness_preference\` field on every direction accordingly:
+  - \`"hard"\` — user is emphatic that they want ONLY instrumentals ("only instrumentals", "no vocals", "no singing", "אינסטרומנטלי בלבד", "רק אינסטרומנטלי", "בלי שירה").
+  - \`"soft"\` — user prefers instrumentals but hasn't ruled out vocals ("prefer instrumentals", "a lot of instrumentals", "mostly instrumental", "less vocals", "יותר אינסטרומנטלי", "פחות שירה", "הרבה אינסטרומנטליים").
+  - \`"none"\` — the emphases text doesn't mention instrumentals at all (default).
+  Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
 - **Google Places Context:** External factual grounding — use it to sharpen or corroborate direction choices, never as a replacement for the description. Examples: \`price_level: PRICE_LEVEL_VERY_EXPENSIVE\` + editorial mentioning "intimate" → lean elegant; \`servesBreakfast: true\` + \`servesDinner: false\` → day-part-biased toward daytime energy; \`liveMusic: true\` → venue expects live-music culture. Don't invent constraints Google didn't state. Absence of the block means Google didn't find the venue; rely on the description alone.
@@ -177,11 +182,14 @@ Normal case:
       "title_en": "English title, 4-7 words (see Rules for English Titles)",
       "genres": ["...", "...", "..."],
       "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
-      "bpm_range": {"min": 90, "max": 115}
+      "bpm_range": {"min": 90, "max": 115},
+      "instrumentalness_preference": "none"
     }
     // ... up to 8 directions
   ]
 }
+
+The \`instrumentalness_preference\` field is one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Instrumentalness preference" sub-rule under Processing Rules for when to use each. Default is \`"none"\` — that's what you output when the emphases text doesn't mention instrumentals at all.
 
 Error case (return instead of directions):
 {"error": "<code>", "reasoning_en": "one short English sentence"}
@@ -346,6 +354,16 @@ function validateDirection(d) {
 // We do NOT populate `anchor_genre` from `genres` — no genre gets privileged
 // treatment; the preview seed and the swap cycler both pick randomly from
 // `genres`.
+// Coerce Gemini's `instrumentalness_preference` into one of the three
+// values downstream RPCs understand. Missing / garbage / wrong-case all
+// collapse to 'none' — the safe default that leaves queries unfiltered.
+const INST_PREFS = new Set(['none', 'soft', 'hard']);
+function normalizeInstPref(raw) {
+  if (typeof raw !== 'string') return 'none';
+  const v = raw.trim().toLowerCase();
+  return INST_PREFS.has(v) ? v : 'none';
+}
+
 function normalizeDirections(parsed, rankStart) {
   if (!Array.isArray(parsed?.directions)) return [];
   const valid = parsed.directions.filter(validateDirection);
@@ -356,6 +374,7 @@ function normalizeDirections(parsed, rankStart) {
       d.genres = [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])]
         .filter((g) => typeof g === 'string' && g.length);
     }
+    d.instrumentalness_preference = normalizeInstPref(d.instrumentalness_preference);
     // Strip legacy fields — downstream now reads `genres` only.
     delete d.anchor_genre;
     delete d.secondary_genres;

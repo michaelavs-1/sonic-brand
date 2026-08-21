@@ -50,6 +50,9 @@ async function fetchDirectionTracks(direction, popularityWindow) {
     bpm_range:  direction.bpm_range,
     popularity: popularityWindow,
     limit:      TARGET_TRACKS,
+    // 'none' | 'soft' | 'hard' — the SQL RPC applies a strict WHERE
+    // filter (hard) or an ORDER BY bias (soft) on ta.instrumentalness.
+    instrumentalness_preference: direction.instrumentalness_preference || 'none',
   };
   const r = await fetch('/api/v5/direction-tracks', {
     method:  'POST',

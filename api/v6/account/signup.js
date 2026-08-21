@@ -325,15 +325,21 @@ export default async function handler(req, res) {
         const genres = Array.isArray(d.genres) && d.genres.length
           ? d.genres
           : [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])].filter(Boolean);
+        // instrumentalness_preference: normalize to the CHECK-constrained
+        // enum on business_directions. Anything unrecognized falls back to
+        // 'none' so the insert never fails on a bad value from the client.
+        const rawInst = d.instrumentalness_preference;
+        const instPref = (rawInst === 'hard' || rawInst === 'soft') ? rawInst : 'none';
         uniqueByFp.set(fp, {
-          business_id:       businessId,
-          rank:              Number.isFinite(d.rank) ? d.rank : null,
-          title_en:          d.title_en || null,
-          description_he:    d.description_he || null,
+          business_id:                 businessId,
+          rank:                        Number.isFinite(d.rank) ? d.rank : null,
+          title_en:                    d.title_en || null,
+          description_he:              d.description_he || null,
           genres,
-          bpm_range:         d.bpm_range || null,
-          popularity_window: Array.isArray(p.expansion?.popularityWindow) ? p.expansion.popularityWindow : null,
-          active:            true,
+          bpm_range:                   d.bpm_range || null,
+          popularity_window:           Array.isArray(p.expansion?.popularityWindow) ? p.expansion.popularityWindow : null,
+          instrumentalness_preference: instPref,
+          active:                      true,
         });
       }
       if (uniqueByFp.size) {

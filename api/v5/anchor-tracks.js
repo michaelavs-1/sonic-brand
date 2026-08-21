@@ -56,6 +56,10 @@ export default async function handler(req, res) {
       genre:  s.genre,
       bpm_lo: Math.floor(s.bpm_lo),
       bpm_hi: Math.ceil(s.bpm_hi),
+      // Optional per-spec instrumentalness preference (added 2026-08-21).
+      // 'hard' = strict WHERE, 'soft' = ORDER BY bias, 'none' = unfiltered.
+      // Anything unrecognized collapses to 'none' in the RPC.
+      inst_pref: (s.inst_pref === 'hard' || s.inst_pref === 'soft') ? s.inst_pref : 'none',
     }));
     if (!clean.length) {
       return res.status(400).json({ error: 'no valid specs after validation' });

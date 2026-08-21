@@ -167,7 +167,7 @@ export default async function handler(req, res) {
       try {
         const dirRes = await pgrSelect('business_directions',
           { id: `eq.${row.direction_id}` },
-          { select: 'id,title_en,description_he,genres,bpm_range,popularity_window',
+          { select: 'id,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference',
             limit: 1, useService: true },
         );
         dir = dirRes?.[0] || null;

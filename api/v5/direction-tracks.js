@@ -35,7 +35,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
 
   try {
-    const { genres, bpm_range, popularity, limit } = req.body || {};
+    const { genres, bpm_range, popularity, limit, instrumentalness_preference } = req.body || {};
     if (!Array.isArray(genres) || !genres.length) {
       return res.status(400).json({ error: 'genres required (non-empty array)' });
     }
@@ -45,14 +45,19 @@ export default async function handler(req, res) {
 
     const [pop_lo, pop_hi] = intRange(popularity, 0, 100);
     const capped = Number.isFinite(limit) && limit > 0 ? Math.min(Math.round(limit), 100) : 10;
+    // 'hard' = strict WHERE, 'soft' = ORDER BY bias, 'none' = unchanged.
+    // Anything unrecognized collapses to 'none' in the RPC's default.
+    const inst_pref = (instrumentalness_preference === 'hard' || instrumentalness_preference === 'soft')
+      ? instrumentalness_preference : 'none';
 
     const rows = await pgrRpc('v5_direction_tracks', {
-      p_genres: genres,
-      p_bpm_lo: Math.floor(bpm_range.min),
-      p_bpm_hi: Math.ceil(bpm_range.max),
-      p_pop_lo: pop_lo,
-      p_pop_hi: pop_hi,
-      p_limit:  capped,
+      p_genres:    genres,
+      p_bpm_lo:    Math.floor(bpm_range.min),
+      p_bpm_hi:    Math.ceil(bpm_range.max),
+      p_pop_lo:    pop_lo,
+      p_pop_hi:    pop_hi,
+      p_limit:     capped,
+      p_inst_pref: inst_pref,
     });
 
     const spotify_ids = (rows || []).map((r) => r.spotify_id).filter(Boolean);

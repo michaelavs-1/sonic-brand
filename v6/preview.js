@@ -150,6 +150,10 @@ async function fetchAnchorTracks(specs, popularityWindow) {
     genre: s.genre,
     bpm_lo: Math.floor(s.bpm_range.min),
     bpm_hi: Math.ceil(s.bpm_range.max),
+    // Per-spec 'none' | 'soft' | 'hard' from the direction's
+    // Gemini-assigned instrumentalness_preference — the SQL RPC applies
+    // the matching WHERE filter (hard) or ORDER BY bias (soft).
+    inst_pref: s.inst_pref || 'none',
   }));
   const attempt = async () => {
     const r = await fetch('/api/v5/anchor-tracks', {
@@ -179,6 +183,7 @@ async function fetchInitialPreviewTracks(directions, popularityWindow) {
     rank: d.rank,
     genre: pickPreviewGenre(d),
     bpm_range: d.bpm_range,
+    inst_pref: d.instrumentalness_preference || 'none',
   })).filter((s) => s.genre);
   if (!specs.length) return {};
   return fetchAnchorTracks(specs, popularityWindow);
@@ -596,7 +601,12 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const walkCycle = async (bpmRange, pop) => {
         for (let step = 0; step < cycleGenres.length; step++) {
           const idx = (cycleIdx + step) % cycleGenres.length;
-          const spec = { rank: d.rank, genre: cycleGenres[idx], bpm_range: bpmRange };
+          const spec = {
+            rank: d.rank,
+            genre: cycleGenres[idx],
+            bpm_range: bpmRange,
+            inst_pref: d.instrumentalness_preference || 'none',
+          };
           const hit = await drawUnique(spec, pop);
           if (hit) { cycleIdx = (idx + 1) % cycleGenres.length; return hit; }
         }

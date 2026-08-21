@@ -15,7 +15,7 @@ const HEADING_SUBTITLE = 'רובין כבר יודע מה יעשה טוב לעס
 const FIELD_LABEL = 'דגשים מוזיקליים';
 
 const FIELD_PLACEHOLDER =
-  'ממש לא מוזיקה אלקטרונית / כמה שיותר אר אן בי / שכל פלייליסט יהיה מגוון והרפתקני / להיטים בלבד…';
+  'ממש לא מוזיקה אלקטרונית / כמה שיותר אר אן בי / שכל פלייליסט יהיה מגוון והרפתקני / רק אינסטרומנטלי / להיטים בלבד…';
 
 // Extract a fresh copy of the brand block from the mainCard snapshot. We
 // clone rather than move so navigating back to step 1 still finds its

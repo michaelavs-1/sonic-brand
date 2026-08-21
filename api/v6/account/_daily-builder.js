@@ -70,7 +70,7 @@ export async function activeDirections(businessId) {
   try {
     rows = await pgrSelect('business_directions',
       { business_id: `eq.${businessId}`, active: 'is.true' },
-      { select: 'id,rank,title_en,description_he,genres,bpm_range,popularity_window',
+      { select: 'id,rank,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference',
         order: 'rank.asc.nullslast', useService: true },
     );
   } catch (e) {
@@ -96,14 +96,23 @@ export async function fetchTracksWithHistory({ businessId, direction, popularity
   const [pop_lo, pop_hi] = Array.isArray(popularityWindow)
     ? popularityWindow.map((v) => Math.round(v))
     : [0, 100];
+  // Instrumentalness preference travels with the direction — persisted at
+  // signup on business_directions.instrumentalness_preference, read back
+  // by activeDirections above and by expand-playlist's business_directions
+  // SELECT. Legacy expansion.direction blobs (pre-2026-08-21 playlists)
+  // don't carry the field; the || 'none' default keeps them unfiltered.
+  const inst_pref = (direction.instrumentalness_preference === 'hard'
+                     || direction.instrumentalness_preference === 'soft')
+    ? direction.instrumentalness_preference : 'none';
   const baseArgs = {
-    p_genres: genres,
-    p_bpm_lo: Math.floor(direction.bpm_range.min),
-    p_bpm_hi: Math.ceil(direction.bpm_range.max),
-    p_pop_lo: pop_lo,
-    p_pop_hi: pop_hi,
-    p_biz_id: businessId,
+    p_genres:        genres,
+    p_bpm_lo:        Math.floor(direction.bpm_range.min),
+    p_bpm_hi:        Math.ceil(direction.bpm_range.max),
+    p_pop_lo:        pop_lo,
+    p_pop_hi:        pop_hi,
+    p_biz_id:        businessId,
     p_direction_key: key,
+    p_inst_pref:     inst_pref,
   };
 
   // Primary: exclude tracks served in the last 7 days.

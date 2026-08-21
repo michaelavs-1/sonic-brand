@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="he" dir="rtl">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Super-Like — טסט</title>
-<!--
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Super-Like — טסט</title>
+  <!--
   Sandbox for iterating on the Tinder-style "super-like" button that will
   live on the preview swipe card. UI-only right now: click the star and
   the button plays a burst animation + a toast fires with the track's
@@ -14,95 +15,156 @@
   Reference: Tinder's super-like is a solid light-blue circle with a white
   star, sits between the pass/like actions, and pulses briefly on tap.
 -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #0a1117;
-    --bg-2: #0f1c26;
-    --card: #142835;
-    --border: rgba(255,255,255,.07);
-    --border-2: rgba(255,255,255,.14);
-    --text: #f5f7f8;
-    --muted: #93a5af;
-    --accent: #f0a73f;
-    --accent-2: #d98a1f;
-    /* Tinder-ish super-like blue palette. Bright, saturated, distinct
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a1117;
+      --bg-2: #0f1c26;
+      --card: #142835;
+      --border: rgba(255, 255, 255, .07);
+      --border-2: rgba(255, 255, 255, .14);
+      --text: #f5f7f8;
+      --muted: #93a5af;
+      --accent: #f0a73f;
+      --accent-2: #d98a1f;
+      /* Tinder-ish super-like blue palette. Bright, saturated, distinct
        from the orange primary + teal-soft secondary already in the app. */
-    --sl-blue-1: #4dc7ff;
-    --sl-blue-2: #1da4f0;
-    --sl-glow:   rgba(77, 199, 255, .55);
-  }
-  * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
-  body {
-    font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
-    min-height: 100vh;
-    padding: 26px 16px 60px;
-    background:
-      radial-gradient(1000px 560px at 85% -12%, rgba(44,99,122,.38), transparent 62%),
-      radial-gradient(760px 460px at 4% 108%, rgba(240,167,63,.10), transparent 55%),
-      var(--bg);
-    display: flex; flex-direction: column; align-items: center;
-  }
-  .app { width: 100%; max-width: 480px; }
+      --sl-blue-1: #4dc7ff;
+      --sl-blue-2: #1da4f0;
+      --sl-glow: rgba(77, 199, 255, .55);
+    }
 
-  .screen-card {
-    position: relative;
-    background: linear-gradient(180deg, var(--card), var(--bg-2));
-    border: 1px solid var(--border);
-    border-radius: 26px;
-    padding: 24px 20px 20px;
-    box-shadow: 0 0 40px rgba(240,167,63,.10), 0 24px 60px rgba(0,0,0,.35);
-  }
-  h1 {
-    font-size: 20px; font-weight: 900; margin: 0 0 14px;
-    text-align: center; letter-spacing: .2px;
-  }
+    * {
+      box-sizing: border-box;
+    }
 
-  /* ========== Swipe card (mirrors the preview.js layout) ========== */
-  .swipe-card2 { display:block; padding:18px 14px 14px; text-align:center; }
-  .sw2-artwrap { position:relative; width:min(56vw,230px); margin:6px auto 16px; }
-  .sw2-art {
-    position:relative; z-index:2;
-    width:100%; aspect-ratio:1/1; object-fit:cover;
-    border-radius:14px; display:block;
-    box-shadow:0 12px 32px rgba(0,0,0,.5);
-  }
-  .sw2-art-ph {
-    display:flex; align-items:center; justify-content:center;
-    font-size:46px; background:#0a1117; border:1px solid var(--border-2);
-  }
-  .sw2-spbadge {
-    position:absolute; z-index:3;
-    left:-10px; top:-10px;
-    width:40px; height:40px; border-radius:50%;
-    background:#000; border:1px solid rgba(255,255,255,.16);
-    display:flex; align-items:center; justify-content:center;
-    box-shadow:0 6px 18px rgba(0,0,0,.5);
-  }
-  .sw2-play {
-    position:absolute; z-index:3;
-    right:-14px; bottom:-14px;
-    width:56px; height:56px; border-radius:50%;
-    background:linear-gradient(135deg,#f0a73f,#d98a1f);
-    color:#1b1508; border:none;
-    display:flex; align-items:center; justify-content:center;
-    cursor:pointer;
-    box-shadow:0 8px 22px rgba(0,0,0,.55);
-    transition: transform .12s, box-shadow .2s;
-  }
-  /* Same hover treatment as the super-like: gentle upward nudge + a
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    body {
+      font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      padding: 26px 16px 60px;
+      background:
+        radial-gradient(1000px 560px at 85% -12%, rgba(44, 99, 122, .38), transparent 62%),
+        radial-gradient(760px 460px at 4% 108%, rgba(240, 167, 63, .10), transparent 55%),
+        var(--bg);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 480px;
+    }
+
+    .screen-card {
+      position: relative;
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border);
+      border-radius: 26px;
+      padding: 24px 20px 20px;
+      box-shadow: 0 0 40px rgba(240, 167, 63, .10), 0 24px 60px rgba(0, 0, 0, .35);
+    }
+
+    h1 {
+      font-size: 20px;
+      font-weight: 900;
+      margin: 0 0 14px;
+      text-align: center;
+      letter-spacing: .2px;
+    }
+
+    /* ========== Swipe card (mirrors the preview.js layout) ========== */
+    .swipe-card2 {
+      display: block;
+      padding: 18px 14px 14px;
+      text-align: center;
+    }
+
+    .sw2-artwrap {
+      position: relative;
+      width: min(56vw, 230px);
+      margin: 6px auto 16px;
+    }
+
+    .sw2-art {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      aspect-ratio: 1/1;
+      object-fit: cover;
+      border-radius: 14px;
+      display: block;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, .5);
+    }
+
+    .sw2-art-ph {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 46px;
+      background: #0a1117;
+      border: 1px solid var(--border-2);
+    }
+
+    .sw2-spbadge {
+      position: absolute;
+      z-index: 3;
+      left: -10px;
+      top: -10px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, .16);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5);
+    }
+
+    .sw2-play {
+      position: absolute;
+      z-index: 3;
+      right: -14px;
+      bottom: -14px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #f0a73f, #d98a1f);
+      color: #1b1508;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .55);
+      transition: transform .12s, box-shadow .2s;
+    }
+
+    /* Same hover treatment as the super-like: gentle upward nudge + a
      colored glow (orange here to match the button's own gradient). */
-  .sw2-play:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 22px rgba(0,0,0,.55), 0 0 14px rgba(240, 167, 63, .28);
-  }
-  .sw2-play:active { transform:scale(.94); }
+    .sw2-play:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .55), 0 0 14px rgba(240, 167, 63, .28);
+    }
 
-  /* ========== NEW: Super-like button ========== */
-  /* Bottom-left of the artwork, mirroring the play button on the bottom-right.
+    .sw2-play:active {
+      transform: scale(.94);
+    }
+
+    /* ========== NEW: Super-like button ========== */
+    /* Bottom-left of the artwork, mirroring the play button on the bottom-right.
      Smaller than the play button (44 vs 56 px) so it reads as a secondary
      action, and tilted -12° for a playful, sticker-like feel. Blue instead
      of the orange primary to signal a special / distinct action.
@@ -110,151 +172,217 @@
      Every state (hover, active) re-applies the base rotation so the tilt
      stays consistent — a plain `transform: scale(.92)` would otherwise
      override the rotation. */
-  .sw2-superlike {
-    position: absolute; z-index: 3;
-    left: -10px; bottom: -10px;
-    width: 44px; height: 44px; border-radius: 50%;
-    /* Default (un-liked) state — the darker gradient. Reads as "waiting
+    .sw2-superlike {
+      position: absolute;
+      z-index: 3;
+      left: -10px;
+      bottom: -10px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      /* Default (un-liked) state — the darker gradient. Reads as "waiting
        for you", not celebratory yet. Brightens on save. */
-    background: linear-gradient(135deg, #2e9dcc, #0d78ab);
-    color: #fff; border: none;
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 6px 18px rgba(0,0,0,.5), 0 0 16px rgba(29, 164, 240, .3);
-    transform: rotate(-12deg);
-    transition: transform .12s, box-shadow .2s, background .25s;
-  }
-  .sw2-superlike:hover {
-    box-shadow: 0 6px 18px rgba(0,0,0,.5), 0 0 24px rgba(29, 164, 240, .45);
-    transform: rotate(-12deg) translateY(-1px);
-  }
-  .sw2-superlike:active {
-    transform: rotate(-12deg) scale(.92);
-  }
-  .sw2-superlike:disabled { cursor: default; opacity: .55; }
-  .sw2-superlike svg { filter: drop-shadow(0 1px 1px rgba(0,0,0,.35)); }
+      background: linear-gradient(135deg, #2e9dcc, #0d78ab);
+      color: #fff;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 16px rgba(29, 164, 240, .3);
+      transform: rotate(-12deg);
+      transition: transform .12s, box-shadow .2s, background .25s;
+    }
 
-  /* "Saved" state after a click — brighter cyan gradient + more prominent
+    .sw2-superlike:hover {
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 24px rgba(29, 164, 240, .45);
+      transform: rotate(-12deg) translateY(-1px);
+    }
+
+    .sw2-superlike:active {
+      transform: rotate(-12deg) scale(.92);
+    }
+
+    .sw2-superlike:disabled {
+      cursor: default;
+      opacity: .55;
+    }
+
+    .sw2-superlike svg {
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35));
+    }
+
+    /* "Saved" state after a click — brighter cyan gradient + more prominent
      glow so a super-liked card visibly celebrates the choice. Persists
      for the session; a second click removes it and returns to the darker
      default. */
-  .sw2-superlike.saved {
-    background: linear-gradient(135deg, var(--sl-blue-1), var(--sl-blue-2));
-    box-shadow: 0 6px 18px rgba(0,0,0,.5), 0 0 30px var(--sl-glow);
-  }
+    .sw2-superlike.saved {
+      background: linear-gradient(135deg, var(--sl-blue-1), var(--sl-blue-2));
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 30px var(--sl-glow);
+    }
 
-  /* Burst animation played on click — outer ring expands and fades once. */
-  .sw2-superlike::after {
-    content: '';
-    position: absolute; inset: -6px;
-    border-radius: 50%;
-    border: 2px solid var(--sl-blue-1);
-    opacity: 0;
-    pointer-events: none;
-  }
-  .sw2-superlike.burst::after {
-    animation: sl-burst .9s ease-out;
-  }
-  @keyframes sl-burst {
-    0%   { transform: scale(1);   opacity: .9; }
-    100% { transform: scale(2.2); opacity: 0;  }
-  }
-  /* Idle glow on the SAVED state — the brighter gradient breathes a bright
+    /* Burst animation played on click — outer ring expands and fades once. */
+    .sw2-superlike::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 2px solid var(--sl-blue-1);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sw2-superlike.burst::after {
+      animation: sl-burst .9s ease-out;
+    }
+
+    @keyframes sl-burst {
+      0% {
+        transform: scale(1);
+        opacity: .9;
+      }
+
+      100% {
+        transform: scale(2.2);
+        opacity: 0;
+      }
+    }
+
+    /* Idle glow on the SAVED state — the brighter gradient breathes a bright
      cyan halo so a super-liked track is spottable at a glance. The default
      (darker) state stays calm and static so it doesn't compete with the
      orange play button for attention. */
-  .sw2-superlike.saved:not(:disabled) {
-    animation: sl-idle 2.4s ease-in-out infinite;
-  }
-  @keyframes sl-idle {
-    0%, 100% { box-shadow: 0 6px 18px rgba(0,0,0,.5), 0 0 22px var(--sl-glow); }
-    50%      { box-shadow: 0 6px 18px rgba(0,0,0,.5), 0 0 34px var(--sl-glow); }
-  }
+    .sw2-superlike.saved:not(:disabled) {
+      animation: sl-idle 2.4s ease-in-out infinite;
+    }
 
-  .sw2-title { font-size:24px; font-weight:800; color:var(--text); margin:0 0 2px; }
-  .sw2-artist { font-size:15px; color:var(--muted); margin-bottom:10px; }
-  .preview-reason.sw2-reason {
-    text-align:center; max-width:36ch; margin:0 auto 12px;
-    font-size:12px; color:var(--muted); line-height:1.6;
-  }
-  /* Pill-shaped "swap track" button — sits between artist and reason line
+    @keyframes sl-idle {
+
+      0%,
+      100% {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 22px var(--sl-glow);
+      }
+
+      50% {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 34px var(--sl-glow);
+      }
+    }
+
+    .sw2-title {
+      font-size: 24px;
+      font-weight: 800;
+      color: var(--text);
+      margin: 0 0 2px;
+    }
+
+    .sw2-artist {
+      font-size: 15px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .preview-reason.sw2-reason {
+      text-align: center;
+      max-width: 36ch;
+      margin: 0 auto 12px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* Pill-shaped "swap track" button — sits between artist and reason line
      as a real, tappable secondary action. Spotify-green palette so it feels
      related to the Spotify preview it triggers. Icon lives on the OPPOSITE
      side of the text (source-order: text first, SVG second → in RTL the
      icon renders on the left of the label). */
-  .swap-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    margin: 0 auto 12px;
-    background: rgba(29, 185, 84, .08);
-    border: 1px solid rgba(29, 185, 84, .35);
-    border-radius: 999px;
-    color: #1DB954;
-    font-family: inherit;
-    font-size: 12px;
-    font-weight: 700;
-    padding: 7px 14px;
-    cursor: pointer;
-    transition: background .2s, border-color .2s, color .2s, transform .12s;
-  }
-  .swap-btn:hover {
-    background: rgba(29, 185, 84, .18);
-    border-color: #1DB954;
-    color: #26d766;
-    transform: translateY(-1px);
-  }
-  .swap-btn:active { transform: translateY(0); }
-  .swap-btn:disabled { opacity: .5; cursor: not-allowed; }
-  .swap-btn svg {
-    width: 13px;
-    height: 13px;
-    stroke: currentColor;
-    fill: none;
-    stroke-width: 2;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    flex-shrink: 0;
-  }
+    .swap-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      margin: 0 auto 12px;
+      background: rgba(29, 185, 84, .08);
+      border: 1px solid rgba(29, 185, 84, .35);
+      border-radius: 999px;
+      color: #1DB954;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 7px 14px;
+      cursor: pointer;
+      transition: background .2s, border-color .2s, color .2s, transform .12s;
+    }
 
-  .doc-hint {
-    font-size: 11.5px; color: var(--muted);
-    text-align: center; margin-top: 14px; line-height: 1.55;
-  }
-  .doc-hint code {
-    background: #0d1822;
-    padding: 1px 6px;
-    border-radius: 4px;
-    font-size: 11px;
-    color: var(--accent);
-  }
+    .swap-btn:hover {
+      background: rgba(29, 185, 84, .18);
+      border-color: #1DB954;
+      color: #26d766;
+      transform: translateY(-1px);
+    }
 
-  /* Small toast at the bottom to confirm a super-like "fired" — until the
+    .swap-btn:active {
+      transform: translateY(0);
+    }
+
+    .swap-btn:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .swap-btn svg {
+      width: 13px;
+      height: 13px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      flex-shrink: 0;
+    }
+
+    .doc-hint {
+      font-size: 11.5px;
+      color: var(--muted);
+      text-align: center;
+      margin-top: 14px;
+      line-height: 1.55;
+    }
+
+    .doc-hint code {
+      background: #0d1822;
+      padding: 1px 6px;
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--accent);
+    }
+
+    /* Small toast at the bottom to confirm a super-like "fired" — until the
      real backend is wired, this is our only visible acknowledgment. */
-  .sl-toast {
-    position: fixed;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%) translateY(20px);
-    background: linear-gradient(135deg, var(--sl-blue-1), var(--sl-blue-2));
-    color: #fff;
-    font-weight: 700;
-    font-size: 13px;
-    padding: 10px 18px;
-    border-radius: 999px;
-    box-shadow: 0 8px 24px rgba(0,0,0,.4), 0 0 30px var(--sl-glow);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .25s, transform .25s;
-    z-index: 100;
-  }
-  .sl-toast.show {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-  }
-</style>
+    .sl-toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: linear-gradient(135deg, var(--sl-blue-1), var(--sl-blue-2));
+      color: #fff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 10px 18px;
+      border-radius: 999px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4), 0 0 30px var(--sl-glow);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .25s, transform .25s;
+      z-index: 100;
+    }
+
+    .sl-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
 </head>
+
 <body>
   <div class="app">
     <div class="screen-card">
@@ -266,23 +394,28 @@
 
           <span class="sw2-spbadge" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="30" height="30">
-              <circle cx="12" cy="12" r="11.5" fill="#000"/>
-              <path d="M6.4 9.3c3.6-1.1 7.8-.6 10.9 1.2" stroke="#1DB954" stroke-width="1.7" fill="none" stroke-linecap="round"/>
-              <path d="M7 12.2c3.1-.9 6.5-.4 9.2 1.1" stroke="#1DB954" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-              <path d="M7.6 15c2.5-.7 5.2-.3 7.3 1" stroke="#1DB954" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+              <circle cx="12" cy="12" r="11.5" fill="#000" />
+              <path d="M6.4 9.3c3.6-1.1 7.8-.6 10.9 1.2" stroke="#1DB954" stroke-width="1.7" fill="none"
+                stroke-linecap="round" />
+              <path d="M7 12.2c3.1-.9 6.5-.4 9.2 1.1" stroke="#1DB954" stroke-width="1.5" fill="none"
+                stroke-linecap="round" />
+              <path d="M7.6 15c2.5-.7 5.2-.3 7.3 1" stroke="#1DB954" stroke-width="1.3" fill="none"
+                stroke-linecap="round" />
             </svg>
           </span>
 
           <!-- Existing play button (kept for visual reference, does nothing here) -->
           <button class="sw2-play" id="playBtn" type="button" aria-label="נגן">
-            <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor"><path d="M8.2 5.6v12.8L19 12z"/></svg>
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor">
+              <path d="M8.2 5.6v12.8L19 12z" />
+            </svg>
           </button>
 
           <!-- NEW: Super-like button. Bottom-left corner, mirrors the play button
                but smaller (44px) and tilted -12° for a sticker-like feel. -->
           <button class="sw2-superlike" id="superlikeBtn" type="button" aria-label="Super Like">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-              <path d="M12 2.5l2.9 6.4 7 .7-5.3 4.7 1.6 6.9L12 17.7 5.8 21.2l1.6-6.9L2.1 9.6l7-.7L12 2.5z"/>
+              <path d="M12 2.5l2.9 6.4 7 .7-5.3 4.7 1.6 6.9L12 17.7 5.8 21.2l1.6-6.9L2.1 9.6l7-.7L12 2.5z" />
             </svg>
           </button>
         </div>
@@ -294,13 +427,13 @@
              utility look; now sits between artist and reason as a pill CTA
              with an inline shuffle icon on the far side of the label). -->
         <button class="swap-btn" type="button">
-          <span>נסו שיר אחר מהכיוון הזה</span>
+          <span>שמעו שיר אחר מהכיוון הזה</span>
           <svg viewBox="0 0 24 24" aria-hidden="true">
-            <polyline points="16 3 21 3 21 8"/>
-            <line x1="4" y1="20" x2="21" y2="3"/>
-            <polyline points="21 16 21 21 16 21"/>
-            <line x1="15" y1="15" x2="21" y2="21"/>
-            <line x1="4" y1="4" x2="9" y2="9"/>
+            <polyline points="16 3 21 3 21 8" />
+            <line x1="4" y1="20" x2="21" y2="3" />
+            <polyline points="21 16 21 21 16 21" />
+            <line x1="15" y1="15" x2="21" y2="21" />
+            <line x1="4" y1="4" x2="9" y2="9" />
           </svg>
         </button>
 
@@ -318,37 +451,38 @@
 
   <div class="sl-toast" id="slToast">סופר לייק נשמר</div>
 
-<script>
-  // Hardcoded stand-in track. When this ports into preview.js the id will
-  // come from the currently-displayed card's Spotify uri.
-  const DEMO_SPOTIFY_ID = '0VjIjW4GlUZAMYd2vXMi3b'; // Blinding Lights
+  <script>
+    // Hardcoded stand-in track. When this ports into preview.js the id will
+    // come from the currently-displayed card's Spotify uri.
+    const DEMO_SPOTIFY_ID = '0VjIjW4GlUZAMYd2vXMi3b'; // Blinding Lights
 
-  const btn   = document.getElementById('superlikeBtn');
-  const toast = document.getElementById('slToast');
+    const btn = document.getElementById('superlikeBtn');
+    const toast = document.getElementById('slToast');
 
-  btn.addEventListener('click', () => {
-    // Toggle: first click saves, second click removes, and so on. Both
-    // paths replay the burst animation for consistent tactile feedback.
-    const wasSaved = btn.classList.contains('saved');
+    btn.addEventListener('click', () => {
+      // Toggle: first click saves, second click removes, and so on. Both
+      // paths replay the burst animation for consistent tactile feedback.
+      const wasSaved = btn.classList.contains('saved');
 
-    btn.classList.remove('burst');
-    void btn.offsetWidth;
-    btn.classList.add('burst');
+      btn.classList.remove('burst');
+      void btn.offsetWidth;
+      btn.classList.add('burst');
 
-    if (wasSaved) {
-      btn.classList.remove('saved');
-      console.log('[super-like] would REMOVE spotify_id:', DEMO_SPOTIFY_ID);
-      toast.textContent = 'סופר לייק הוסר';
-    } else {
-      btn.classList.add('saved');
-      console.log('[super-like] would SAVE spotify_id:', DEMO_SPOTIFY_ID);
-      toast.textContent = 'סופר לייק נשמר';
-    }
+      if (wasSaved) {
+        btn.classList.remove('saved');
+        console.log('[super-like] would REMOVE spotify_id:', DEMO_SPOTIFY_ID);
+        toast.textContent = 'סופר לייק הוסר';
+      } else {
+        btn.classList.add('saved');
+        console.log('[super-like] would SAVE spotify_id:', DEMO_SPOTIFY_ID);
+        toast.textContent = 'סופר לייק נשמר';
+      }
 
-    toast.classList.add('show');
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => toast.classList.remove('show'), 1800);
-  });
-</script>
+      toast.classList.add('show');
+      clearTimeout(toast._t);
+      toast._t = setTimeout(() => toast.classList.remove('show'), 1800);
+    });
+  </script>
 </body>
+
 </html>

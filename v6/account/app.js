@@ -955,7 +955,6 @@ async function deleteEvent(id, btn) {
       events: (bmeta().events || []).filter((e) => e.id !== id),
     };
     renderEvents();
-    toast('האירוע נמחק');
   } catch (e) {
     console.error('deleteEvent failed:', e);
     if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }

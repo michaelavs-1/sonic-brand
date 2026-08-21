@@ -62,7 +62,7 @@ STEP 3: Musical directions + hours picker in parallel
        Preview swipe deck (v6/preview.js runDirectionPreviewFlow)
   - Michael's Tinder-style swipe UI: album art + custom play button (bottom-right of art)
     + super-like button (bottom-left of art, tilted -12°) + pill-shaped
-    "נסו שיר אחר מהכיוון הזה" (Spotify-green, between artist and reason line)
+    "שמעו שיר אחר מהכיוון הזה" (Spotify-green, between artist and reason line)
   - Spotify iframe hidden inside .sw2-artwrap with opacity:.01 (fully offscreen kills media)
   - Custom sw2-play button drives it via IFrame API
   - Super-like button (.sw2-superlike): toggle. Click 1 → adds trackId to

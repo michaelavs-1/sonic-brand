@@ -13,7 +13,7 @@ const HEADING = 'בחרו כיוונים מוזיקליים שמתאימים ל�
 // Play/pause glyphs are sized 36×36 (up from 22×22) so they fill more of
 // the 56px button and read as a proper media control rather than a small
 // icon floating in the middle.
-const PLAY_ICON  = '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
+const PLAY_ICON = '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><rect x="6.6" y="5.6" width="3.9" height="12.8" rx="1.2"/><rect x="13.5" y="5.6" width="3.9" height="12.8" rx="1.2"/></svg>';
 
 // Star for the super-like button (bottom-left corner of the artwork).
@@ -34,11 +34,11 @@ const SHUFFLE_ICON =
 // resets after a successful/failed swap — previously this used a bare
 // text label constant that got removed in the swap-button restyle, which
 // left the spinner state permanently stuck.
-const SWAP_BUTTON_HTML = '<span>נסו שיר אחר מהכיוון הזה</span>' + SHUFFLE_ICON;
+const SWAP_BUTTON_HTML = '<span>שמעו שיר אחר מהכיוון הזה</span>' + SHUFFLE_ICON;
 
 function fmtTime(ms) {
-  const s   = Math.floor(Math.max(0, ms) / 1000);
-  const m   = Math.floor(s / 60);
+  const s = Math.floor(Math.max(0, ms) / 1000);
+  const m = Math.floor(s / 60);
   const sec = s % 60;
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
@@ -135,15 +135,15 @@ function pickPreviewGenre(d) {
 // per-genre for the swap-track cycler.
 async function fetchAnchorTracks(specs, popularityWindow) {
   const payload = specs.map((s) => ({
-    rank:   s.rank,
-    genre:  s.genre,
+    rank: s.rank,
+    genre: s.genre,
     bpm_lo: Math.floor(s.bpm_range.min),
     bpm_hi: Math.ceil(s.bpm_range.max),
   }));
   const r = await fetch('/api/v5/anchor-tracks', {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ specs: payload, popularity: popularityWindow }),
+    body: JSON.stringify({ specs: payload, popularity: popularityWindow }),
   });
   if (!r.ok) {
     const data = await r.json().catch(() => ({}));
@@ -156,8 +156,8 @@ async function fetchAnchorTracks(specs, popularityWindow) {
 // Initial preview fetch: random genre per direction.
 async function fetchInitialPreviewTracks(directions, popularityWindow) {
   const specs = directions.map((d) => ({
-    rank:      d.rank,
-    genre:     pickPreviewGenre(d),
+    rank: d.rank,
+    genre: pickPreviewGenre(d),
     bpm_range: d.bpm_range,
   })).filter((s) => s.genre);
   if (!specs.length) return {};
@@ -177,9 +177,9 @@ async function fetchTrackMeta(trackIds) {
       const d = await r.json().catch(() => ({}));
       if (d && d.name) {
         meta[id] = {
-          name:   d.name,
+          name: d.name,
           artist: (d.artists || []).map((a) => a.name).filter(Boolean).join(', '),
-          art:    d.album?.images?.[1]?.url || d.album?.images?.[0]?.url || '',
+          art: d.album?.images?.[1]?.url || d.album?.images?.[0]?.url || '',
         };
       }
     } catch (err) { console.warn('get_track failed:', id, err); }
@@ -216,7 +216,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
 
   return new Promise((resolve) => {
     // Mutable so page 2 can push into them once it resolves.
-    const previews  = [...initialPreviews];
+    const previews = [...initialPreviews];
     const trackMeta = { ...initialTrackMeta };
     let page2Settled = false;
 
@@ -226,10 +226,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
     let busy = false;
 
     const progLabel = el('div', { class: 'swipe-progress-label' });
-    const progFill  = el('div', { class: 'swipe-progress-fill' });
-    const progBar   = el('div', { class: 'swipe-progress-bar' }, progFill);
-    const deck      = el('div', { class: 'swipe-deck' });
-    const railNo    = el('div', { class: 'sw2-rail no' },
+    const progFill = el('div', { class: 'swipe-progress-fill' });
+    const progBar = el('div', { class: 'swipe-progress-bar' }, progFill);
+    const deck = el('div', { class: 'swipe-deck' });
+    const railNo = el('div', { class: 'sw2-rail no' },
       el('span', { class: 'sw2-chev' }, '‹'),
       el('span', { class: 'sw2-rail-label' }, 'לא בשבילי'),
     );
@@ -238,9 +238,9 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       el('span', { class: 'sw2-rail-label' }, 'אהבתי'),
     );
     const deckWrap = el('div', { class: 'sw2-deckwrap' }, deck, railNo, railYes);
-    const noBtn    = el('button', { class: 'swipe-btn swipe-no',  type: 'button' }, '👎 לא בשבילי');
-    const yesBtn   = el('button', { class: 'swipe-btn swipe-yes', type: 'button' }, '👍 אהבתי');
-    const btns     = el('div', { class: 'swipe-actions' }, noBtn, yesBtn);
+    const noBtn = el('button', { class: 'swipe-btn swipe-no', type: 'button' }, '👎 לא בשבילי');
+    const yesBtn = el('button', { class: 'swipe-btn swipe-yes', type: 'button' }, '👍 אהבתי');
+    const btns = el('div', { class: 'swipe-actions' }, noBtn, yesBtn);
 
     card.replaceChildren(el('h1', {}, HEADING), progLabel, progBar, deckWrap, btns);
 
@@ -324,7 +324,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const d = p.direction;
       const m = trackMeta[p.trackId] || {};
 
-      const mount     = el('div', { class: 'preview-spotify-mount' });
+      const mount = el('div', { class: 'preview-spotify-mount' });
       // The iframe lives inside .sw2-artwrap as a nearly-invisible overlay
       // (see CSS): the visible viewport keeps the media pipeline active, and
       // the custom play button drives it via the IFrame API.
@@ -339,7 +339,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       // click removes it. Persistence to the DB happens at signup time.
       const superLikeBtn = el('button', {
         class: 'sw2-superlike',
-        type:  'button',
+        type: 'button',
         'aria-label': 'Super Like',
       });
       superLikeBtn.innerHTML = SUPERLIKE_ICON;
@@ -380,7 +380,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         : el('div', { class: 'sw2-art sw2-art-ph' }, '🎵');
       const artWrap = el('div', { class: 'sw2-artwrap' }, artImg, spotifyBadge(), playBtn, superLikeBtn, embedWrap);
 
-      const titleEl  = el('div', { class: 'sw2-title',  dir: 'ltr' }, m.name   || '');
+      const titleEl = el('div', { class: 'sw2-title', dir: 'ltr' }, m.name || '');
       const artistEl = el('div', { class: 'sw2-artist', dir: 'ltr' }, m.artist || '');
 
       // Show the v5 direction's Hebrew description as the reason line — that's
@@ -399,33 +399,33 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       // outer .sw2-prog-bar reserves fixed 14px in the layout so hovering
       // never pushes the swap button / hint downward. ---
       const pbState = {
-        lastPosition:  0,
+        lastPosition: 0,
         lastTimestamp: Date.now(),
-        duration:      0,
-        isPaused:      true,
-        dragging:      false,
-        pendingSeek:   null,     // seconds, set during drag; committed on release
+        duration: 0,
+        isPaused: true,
+        dragging: false,
+        pendingSeek: null,     // seconds, set during drag; committed on release
         // playback_update `position` values are ignored while this timestamp
         // is in the future — after a controller.seek(), Spotify fires one
         // more update with the stale pre-seek position before catching up,
         // which without this guard makes the dot jump back for one frame.
         seekLockUntil: 0,
       };
-      const pbFill      = el('div', { class: 'sw2-prog-fill' });
-      const pbTrack     = el('div', { class: 'sw2-prog-track' }, pbFill);
-      const pbThumb     = el('div', { class: 'sw2-prog-thumb' });
-      const pbBar       = el('div', { class: 'sw2-prog-bar' }, pbTrack, pbThumb);
-      const pbCurrent   = el('span', {}, '0:00');
-      const pbTotal     = el('span', {}, '0:00');
-      const pbTimes     = el('div', { class: 'sw2-timestamps' }, pbCurrent, pbTotal);
+      const pbFill = el('div', { class: 'sw2-prog-fill' });
+      const pbTrack = el('div', { class: 'sw2-prog-track' }, pbFill);
+      const pbThumb = el('div', { class: 'sw2-prog-thumb' });
+      const pbBar = el('div', { class: 'sw2-prog-bar' }, pbTrack, pbThumb);
+      const pbCurrent = el('span', {}, '0:00');
+      const pbTotal = el('span', {}, '0:00');
+      const pbTimes = el('div', { class: 'sw2-timestamps' }, pbCurrent, pbTotal);
       const pbContainer = el('div', { class: 'sw2-progress' }, pbBar, pbTimes);
 
       const cardEl = el('div',
         {
           class: 'preview-card swipe-card swipe-card2',
-          'data-rank':     String(d.rank),
+          'data-rank': String(d.rank),
           'data-track-id': p.trackId,
-          'data-uri':      `spotify:track:${p.trackId}`,
+          'data-uri': `spotify:track:${p.trackId}`,
         },
         artWrap,
         titleEl,
@@ -443,7 +443,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       // Progress bar interactions
       function pbPctFromEvent(e) {
         const rect = pbBar.getBoundingClientRect();
-        const x    = Math.max(rect.left, Math.min(rect.right, e.clientX));
+        const x = Math.max(rect.left, Math.min(rect.right, e.clientX));
         return (x - rect.left) / rect.width;
       }
       function pbSeekTo(seconds) {
@@ -451,7 +451,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         try { controller.seek(seconds); } catch { }
         // Snap the local mirror so the RAF loop doesn't interpolate from the
         // old position for one frame before the next playback_update lands.
-        pbState.lastPosition  = seconds * 1000;
+        pbState.lastPosition = seconds * 1000;
         pbState.lastTimestamp = Date.now();
         // Give Spotify ~500ms to actually process the seek before we accept
         // its position updates again. Without this the first update after
@@ -461,7 +461,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       pbBar.addEventListener('pointerdown', (e) => {
         if (!pbState.duration) return;
         e.stopPropagation();          // don't let the card's swipe handler catch this
-        pbState.dragging    = true;
+        pbState.dragging = true;
         pbState.pendingSeek = pbPctFromEvent(e) * (pbState.duration / 1000);
         pbBar.classList.add('dragging');
         try { pbBar.setPointerCapture(e.pointerId); } catch { }
@@ -473,13 +473,13 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       });
       const endPbDrag = () => {
         if (!pbState.dragging) return;
-        const target        = pbState.pendingSeek;
-        pbState.dragging    = false;
+        const target = pbState.pendingSeek;
+        pbState.dragging = false;
         pbState.pendingSeek = null;
         pbBar.classList.remove('dragging');
         if (target != null) pbSeekTo(target);
       };
-      pbBar.addEventListener('pointerup',     endPbDrag);
+      pbBar.addEventListener('pointerup', endPbDrag);
       pbBar.addEventListener('pointercancel', endPbDrag);
 
       // RAF loop drives the visual fill + timestamps between playback_update
@@ -495,23 +495,23 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         const pos = pbCurrentPosMs();
         const dur = pbState.duration;
         const pct = dur > 0 ? Math.min(1, pos / dur) : 0;
-        pbFill.style.width  = (pct * 100) + '%';
-        pbThumb.style.left  = (pct * 100) + '%';
+        pbFill.style.width = (pct * 100) + '%';
+        pbThumb.style.left = (pct * 100) + '%';
         pbCurrent.textContent = fmtTime(pos);
-        pbTotal.textContent   = fmtTime(dur);
+        pbTotal.textContent = fmtTime(dur);
         requestAnimationFrame(pbTick);
       })();
 
       function resetPbState() {
-        pbState.lastPosition  = 0;
+        pbState.lastPosition = 0;
         pbState.lastTimestamp = Date.now();
-        pbState.duration      = 0;
-        pbState.isPaused      = true;
-        pbState.pendingSeek   = null;
-        pbFill.style.width    = '0%';
-        pbThumb.style.left    = '0%';
+        pbState.duration = 0;
+        pbState.isPaused = true;
+        pbState.pendingSeek = null;
+        pbFill.style.width = '0%';
+        pbThumb.style.left = '0%';
         pbCurrent.textContent = '0:00';
-        pbTotal.textContent   = '0:00';
+        pbTotal.textContent = '0:00';
       }
 
       let pendingPlay = false;
@@ -527,7 +527,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
             // seek/scrub UI reflect the actual iframe state.
             if (typeof dd.duration === 'number' && dd.duration > 0) pbState.duration = dd.duration;
             if (typeof dd.position === 'number' && Date.now() >= pbState.seekLockUntil) {
-              pbState.lastPosition  = dd.position;
+              pbState.lastPosition = dd.position;
               pbState.lastTimestamp = Date.now();
             }
             pbState.isPaused = paused;
@@ -626,7 +626,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           const m2 = (await fetchTrackMeta([nextId]))[nextId] || {};
           trackMeta[nextId] = m2;
           cardEl.dataset.trackId = nextId;
-          cardEl.dataset.uri     = `spotify:track:${nextId}`;
+          cardEl.dataset.uri = `spotify:track:${nextId}`;
           // Retarget the super-like button so a click after a swap tags
           // the NEW track, and repaint .saved to reflect whether the new
           // track has already been super-liked in this session.
@@ -642,7 +642,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           playBtn.innerHTML = PLAY_ICON;
           resetPbState();
           if (artImg.tagName === 'IMG' && m2.art) artImg.src = m2.art;
-          titleEl.textContent  = m2.name   || '';
+          titleEl.textContent = m2.name || '';
           artistEl.textContent = m2.artist || '';
           embedWrap.querySelector('.preview-spotify-mount')?.remove();
           embedWrap.querySelector('iframe')?.remove();
@@ -661,8 +661,8 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const flyOff = (like) => {
         const w = window.innerWidth || 600;
         cardEl.style.transition = 'transform .28s ease, opacity .28s ease';
-        cardEl.style.transform  = 'translateX(' + (like ? w : -w) + 'px) rotate(' + (like ? 18 : -18) + 'deg)';
-        cardEl.style.opacity    = '0';
+        cardEl.style.transform = 'translateX(' + (like ? w : -w) + 'px) rotate(' + (like ? 18 : -18) + 'deg)';
+        cardEl.style.opacity = '0';
       };
 
       const decide = (like) => {
@@ -675,7 +675,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         flyOff(like);
         setTimeout(showCard, 300);
       };
-      noBtn.onclick  = () => decide(false);
+      noBtn.onclick = () => decide(false);
       yesBtn.onclick = () => decide(true);
 
       // Drag anywhere on the card; side rails glow toward the decision.
@@ -687,10 +687,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         // swap/play/super-like buttons and the scrubbable progress bar
         // all handle their own pointer events.
         if (busy
-            || e.target.closest('.swap-btn')
-            || e.target.closest('.sw2-play')
-            || e.target.closest('.sw2-superlike')
-            || e.target.closest('.sw2-prog-bar')) return;
+          || e.target.closest('.swap-btn')
+          || e.target.closest('.sw2-play')
+          || e.target.closest('.sw2-superlike')
+          || e.target.closest('.sw2-prog-bar')) return;
         dragging = true;
         startX = e.clientX;
         dx = 0;
@@ -700,20 +700,20 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       cardEl.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         dx = e.clientX - startX;
-        cardEl.style.transform  = 'translateX(' + dx + 'px) rotate(' + (dx / 22) + 'deg)';
-        railYes.style.opacity   = dx > 0 ? String(Math.min(1, 0.75 + dx / 150)) : '0.35';
-        railNo.style.opacity    = dx < 0 ? String(Math.min(1, 0.75 - dx / 150)) : '0.35';
+        cardEl.style.transform = 'translateX(' + dx + 'px) rotate(' + (dx / 22) + 'deg)';
+        railYes.style.opacity = dx > 0 ? String(Math.min(1, 0.75 + dx / 150)) : '0.35';
+        railNo.style.opacity = dx < 0 ? String(Math.min(1, 0.75 - dx / 150)) : '0.35';
       });
       const endDrag = () => {
         if (!dragging) return;
         dragging = false;
         cardEl.classList.remove('dragging');
-        if (dx > 90)  { decide(true);  railsIdle(); return; }
+        if (dx > 90) { decide(true); railsIdle(); return; }
         if (dx < -90) { decide(false); railsIdle(); return; }
         cardEl.style.transform = '';
         railsIdle();
       };
-      cardEl.addEventListener('pointerup',     endDrag);
+      cardEl.addEventListener('pointerup', endDrag);
       cardEl.addEventListener('pointercancel', endDrag);
     };
 
@@ -742,48 +742,99 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
   const sequencedAnchors = (dirs) => {
     const prev = anchorSeq;
     const next = (async () => {
-      await prev.catch(() => {});
+      await prev.catch(() => { });
       return fetchInitialPreviewTracks(dirs, popularityWindow);
     })();
     anchorSeq = next;
     return next;
   };
 
+  // Diagnostic: log directions that came from the model vs. previews that
+  // actually rendered. Any gap = anchor-tracks returned no cached song for
+  // that direction's genre pool (directionsToPreviews silently drops).
+  const logPageOutcome = (label, dirs, previews, byRank) => {
+    const missing = (dirs || []).filter((d) => !byRank[String(d.rank)]);
+    const missingTitles = missing.map((d) => d.title_en || d.anchor_genre || '(no title)');
+    console.log(`[v6 preview] ${label}: model returned ${dirs.length}, previews rendered ${previews.length}` +
+      (missingTitles.length ? ` — ${missingTitles.length} dropped due to empty anchor pool: ${missingTitles.join(' | ')}` : ''));
+  };
+
   // Page 1: anchors → previews → metadata, chained together.
   const page1Ready = (async () => {
-    console.log('v6 musical directions (page 1):', { directions });
-    const byRank   = await sequencedAnchors(directions);
+    console.log('[v6 preview] page 1 model directions:', directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d), bpm: d.bpm_range })));
+    const byRank = await sequencedAnchors(directions);
     const previews = directionsToPreviews(directions, byRank);
+    logPageOutcome('page 1', directions, previews, byRank);
     const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
     return { previews, trackMeta };
   })().catch((e) => {
-    console.warn('v6 preview: page 1 prep failed', e);
+    console.warn('[v6 preview] page 1 pipeline failed (network / anchor-tracks throw / metadata throw):', e);
     return { previews: [], trackMeta: {} };
   });
 
-  // Page 2: waits for Claude's second call, then hits anchor-tracks (queued
+  // Page 2: waits for Gemini's second call, then hits anchor-tracks (queued
   // behind page 1 via sequencedAnchors), then metadata. Runs concurrently
   // with page 1's metadata fetch — that's the whole point of the refactor.
+  //
+  // The 5 possible failure modes here, each with a distinct log line so
+  // Ami (or whoever's testing) can screenshot and we know exactly which
+  // one fired without having to reproduce:
+  //   1. Gemini's page 2 call throws (network / proxy 5xx / abort)
+  //        → "page 2 model call threw"
+  //   2. Gemini returns a valid response but with an error object
+  //        (matcher_error, off_topic, etc. — usually MAX_TOKENS →
+  //        unparseable → matcher_error before the raise to 65536)
+  //        → "page 2 model returned error"
+  //   3. Gemini returns fewer than 4 valid directions (some got filtered
+  //        by normalizeDirections for missing fields)
+  //        → "page 2 model returned fewer than 4 valid directions"
+  //   4. anchor-tracks returns no rows for any direction (all empty pools)
+  //        → logged by logPageOutcome, previews.length === 0
+  //   5. anchor-tracks throws (Postgres 57014 double-hit, etc.)
+  //        → "page 2 pipeline failed"
   const page2Ready = page2Promise
     ? (async () => {
-        try {
-          const page2Result = await page2Promise;
-          if (!page2Result || page2Result.error
-              || !Array.isArray(page2Result.directions) || !page2Result.directions.length) {
-            if (page2Result?.error) console.warn('v6 preview: page 2 unavailable —', page2Result.error, page2Result.reasoning_en);
-            return { previews: [], trackMeta: {} };
-          }
-          console.log('v6 musical directions (page 2):', { directions: page2Result.directions });
-          const byRank   = await sequencedAnchors(page2Result.directions);
-          const previews = directionsToPreviews(page2Result.directions, byRank);
-          const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
-          return { previews, trackMeta };
-        } catch (e) {
-          console.warn('v6 preview: page 2 promise rejected', e);
-          return { previews: [], trackMeta: {} };
-        }
-      })()
+      let page2Result;
+      try {
+        page2Result = await page2Promise;
+      } catch (e) {
+        console.warn('[v6 preview] page 2 model call threw (network / proxy / abort):', e);
+        return { previews: [], trackMeta: {} };
+      }
+      if (!page2Result) {
+        console.warn('[v6 preview] page 2 model returned null/undefined result');
+        return { previews: [], trackMeta: {} };
+      }
+      if (page2Result.error) {
+        console.warn(`[v6 preview] page 2 model returned error "${page2Result.error}" — ${page2Result.reasoning_en || '(no reason)'}`);
+        return { previews: [], trackMeta: {} };
+      }
+      if (!Array.isArray(page2Result.directions) || !page2Result.directions.length) {
+        console.warn('[v6 preview] page 2 model returned no directions at all (empty array or non-array)');
+        return { previews: [], trackMeta: {} };
+      }
+      if (page2Result.directions.length < 4) {
+        console.warn(`[v6 preview] page 2 model returned fewer than 4 valid directions (got ${page2Result.directions.length}) — some may have been dropped by normalizeDirections for missing required fields`);
+      }
+      console.log('[v6 preview] page 2 model directions:', page2Result.directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d), bpm: d.bpm_range })));
+      try {
+        const byRank = await sequencedAnchors(page2Result.directions);
+        const previews = directionsToPreviews(page2Result.directions, byRank);
+        logPageOutcome('page 2', page2Result.directions, previews, byRank);
+        const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
+        return { previews, trackMeta };
+      } catch (e) {
+        console.warn('[v6 preview] page 2 pipeline failed after model (anchor-tracks throw / metadata throw):', e);
+        return { previews: [], trackMeta: {} };
+      }
+    })()
     : Promise.resolve({ previews: [], trackMeta: {} });
+
+  // Once both pages settle, emit a single summary line so at-a-glance
+  // debugging is one grep away: `[v6 preview] SUMMARY page1=X/4 page2=Y/4`.
+  Promise.all([page1Ready, page2Ready]).then(([p1, p2]) => {
+    console.log(`[v6 preview] SUMMARY page1=${p1.previews.length}/4 page2=${p2.previews.length}/4 total=${p1.previews.length + p2.previews.length}/8`);
+  });
 
   return { page1Ready, page2Ready };
 }

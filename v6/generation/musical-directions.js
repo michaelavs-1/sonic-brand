@@ -24,7 +24,16 @@
 
 import { callModel, parseJSONFromText } from '/v6/generation/ai-provider.js?v=04082026a';
 
-const MAX_TOKENS = 16000;
+// Raised from 16000 → 65536 (Gemini 3.6-flash's hard output-token cap;
+// values above that are silently clamped by Google). Removes our own
+// throttle so the model has full headroom for thinking + output before
+// it truncates. Was causing "sometimes 4 previews instead of 8" for
+// heavy testers: page 2's "broaden the range" task under thinkingLevel
+// 'high' occasionally spent enough thinking tokens to overflow the
+// 16k cap → MAX_TOKENS finish reason → truncated JSON → matcher_error
+// in the client → empty page 2. Only failing calls are affected — you
+// pay per token actually used, so successful calls cost the same.
+const MAX_TOKENS = 65536;
 
 // The genre list below must byte-match the strings stored in
 // playlist_genres.genre — the anchor + direction RPCs lowercase the AI's

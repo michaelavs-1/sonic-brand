@@ -21,6 +21,11 @@
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
     rel="stylesheet">
   <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+  <!-- Warm the bubble picker's deps into HTTP cache during initial load.
+       Reduced-motion users don't need these but the cost is trivial (~90KB
+       Matter.js + ~9KB module) and simplifies the loading logic. -->
+  <link rel="preload" as="script" href="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js" crossorigin>
+  <link rel="modulepreload" href="/v6/atmosphere-bubbles.js?v=21082026a">
   <script>
     // Synchronous pre-body session check. app.js runs as a deferred module and
     // by the time it executes the splash has already painted a frame — so we
@@ -639,79 +644,32 @@
       transform: translateX(-50%) translateY(0);
     }
 
-    /* ---------- super-like button on preview cards ---------- */
-    /* Bottom-left of the artwork, mirroring the orange play button on the
-       bottom-right. Smaller (44px vs 56px) and tilted -12° for a sticker-
-       like feel. Default = darker gradient; .saved = brighter cyan with
-       a breathing halo animation. Toggle behavior: click to super-like,
-       click again to remove. */
-    .sw2-superlike {
-      position: absolute;
-      z-index: 3;
-      left: -10px;
-      bottom: -10px;
-      width: 44px;
-      height: 44px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #2e9dcc, #0d78ab);
-      color: #fff;
-      border: none;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 16px rgba(29, 164, 240, .3);
-      transform: rotate(-12deg);
-      transition: transform .12s, box-shadow .2s, background .25s;
+    /* Tone variants for horizontal-swipe decisions. Same shape/animation
+       as the super-like toast; only the gradient + glow color change so
+       "אהבת" (yes) and "לא בשבילך" (no) read as distinct feedback. */
+    .sl-toast.tone-yes {
+      background: linear-gradient(135deg, #4fe08a, #2ecc71);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4), 0 0 30px rgba(46, 204, 113, .55);
+    }
+    .sl-toast.tone-no {
+      background: linear-gradient(135deg, #ff8578, #e74c3c);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4), 0 0 30px rgba(231, 76, 60, .5);
     }
 
-    .sw2-superlike:hover {
-      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 24px rgba(29, 164, 240, .45);
-      transform: rotate(-12deg) translateY(-1px);
-    }
-
-    .sw2-superlike:active {
-      transform: rotate(-12deg) scale(.92);
-    }
-
-    .sw2-superlike:disabled { cursor: default; opacity: .55; }
-    .sw2-superlike svg { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); }
-
-    .sw2-superlike.saved {
-      background: linear-gradient(135deg, #4dc7ff, #1da4f0);
-      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 30px rgba(77, 199, 255, .55);
-    }
-
-    /* Burst ring animation on click — plays via the .burst class which JS
-       adds + removes so a rapid re-click replays it. */
-    .sw2-superlike::after {
-      content: '';
-      position: absolute;
-      inset: -6px;
-      border-radius: 50%;
-      border: 2px solid #4dc7ff;
-      opacity: 0;
-      pointer-events: none;
-    }
-
-    .sw2-superlike.burst::after {
-      animation: sl-burst .9s ease-out;
-    }
-
-    @keyframes sl-burst {
-      0%   { transform: scale(1);   opacity: .9; }
-      100% { transform: scale(2.2); opacity: 0; }
-    }
-
-    /* Idle "breathing" halo only when saved — signals "you've marked this
-       one" without competing with the orange play button when not saved. */
-    .sw2-superlike.saved:not(:disabled) {
+    /* ---------- super-like state indicator on preview cards ----------
+       The click-to-toggle button is gone; super-like is now a swipe-up
+       gesture. When the currently-visible track is in the super-liked
+       Set, the card artwork breathes a soft cyan halo so the state is
+       visible at a glance even after swapping through other tracks. */
+    .swipe-card2.super-liked .sw2-art {
+      box-shadow: 0 12px 32px rgba(0, 0, 0, .5),
+                  0 0 28px rgba(77, 199, 255, .55);
       animation: sl-idle 2.4s ease-in-out infinite;
     }
 
     @keyframes sl-idle {
-      0%, 100% { box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 22px rgba(77, 199, 255, .55); }
-      50%      { box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 34px rgba(77, 199, 255, .55); }
+      0%, 100% { box-shadow: 0 12px 32px rgba(0, 0, 0, .5), 0 0 22px rgba(77, 199, 255, .5); }
+      50%      { box-shadow: 0 12px 32px rgba(0, 0, 0, .5), 0 0 36px rgba(77, 199, 255, .65); }
     }
 
     /* ---------- atmospheres ---------- */
@@ -766,6 +724,43 @@
       font-size: 14px;
       color: var(--text);
       font-weight: 600;
+    }
+
+    /* ---------- bubble picker (v6/atmosphere-bubbles.js) ---------- */
+    .bp-stage {
+      position: relative;
+      width: 100%;
+      height: 55vh;
+      min-height: 380px;
+      margin: 12px 0 18px;
+      overflow: hidden;
+    }
+
+    .bp-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    /* Visually-hidden a11y layer: real checkboxes carry the semantics for
+       screen readers and keyboard users; the canvas is decorative. */
+    .bp-a11y {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .bp-a11y input,
+    .bp-a11y label {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      white-space: nowrap;
+      border: 0;
     }
 
     /* ---------- results ---------- */
@@ -1592,7 +1587,10 @@
     .swipe-card {
       display: block;
       position: relative;
-      touch-action: pan-y;
+      /* Own all pointer gestures on the card — horizontal drag = yes/no,
+         vertical drag up = super-like. touch-action: none prevents mobile
+         browsers from stealing vertical drags for page scroll. */
+      touch-action: none;
       cursor: grab;
       user-select: none;
       -webkit-user-select: none;
@@ -1699,6 +1697,45 @@
       background: linear-gradient(270deg, rgba(46, 204, 113, .18), transparent)
     }
 
+    /* Top rail for the swipe-up super-like gesture. Overrides the vertical-
+       bar defaults with a horizontal band pinned to the top edge of the
+       deck. Column layout so the chevron sits ABOVE the label — matching
+       the "point + word" arrangement of the horizontal rails, just rotated
+       so the point faces up. Cyan gradient matches the toast + card halo. */
+    .sw2-rail.super {
+      top: 0;
+      bottom: auto;
+      left: 0;
+      right: 0;
+      width: auto;
+      height: 54px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 2px;
+      padding-top: 4px;
+      background: linear-gradient(180deg, rgba(77, 199, 255, .22), transparent)
+    }
+
+    .sw2-rail.super .sw2-chev,
+    .sw2-rail.super .sw2-rail-label {
+      color: #4dc7ff
+    }
+
+    /* Reuse the same '‹' chevron as the horizontal rails, rotated so it
+       points up. Keeps the three rails visually identical apart from
+       orientation and color. */
+    .sw2-rail.super .sw2-chev {
+      font-size: 32px;
+      line-height: 1;
+      transform: rotate(90deg);
+      transform-origin: center
+    }
+
+    .sw2-rail.super .sw2-rail-label {
+      max-width: none
+    }
+
     .sw2-rail .sw2-chev {
       font-size: 32px;
       font-weight: 900;
@@ -1734,7 +1771,10 @@
     .sw2-artwrap {
       position: relative;
       width: min(56vw, 230px);
-      margin: 6px auto 16px
+      /* Extra top margin leaves room for the always-visible "סופר לייק"
+         hint at the top of the deck so the label sits well above the
+         artwork with clear breathing room. */
+      margin: 72px auto 16px
     }
 
     .sw2-art {
@@ -2476,7 +2516,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=21082026a"></script>
+  <script type="module" src="/v6/app.js?v=21082026f"></script>
 </body>
 
 </html>

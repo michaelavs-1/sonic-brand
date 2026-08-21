@@ -11,12 +11,12 @@
 // navigation; downstream state is invalidated when an earlier step is
 // re-entered.
 
-import { runAtmosphereSelection } from '/v6/atmosphere.js?v=02082026a';
+import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v6/atmosphere.js?v=21082026a';
 import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
 import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=21082026a';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
-import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=21082026a';
+import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=21082026f';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=20082026a';
 import {
   initPlaylistResultsShell,
@@ -370,6 +370,11 @@ async function runBusinessStep() {
   // if the network fails here, step 2's own await will surface the error.
   getAtmosphereRows().catch(() => { });
 
+  // Warm the bubble picker: fetches Matter.js (via CDN) + the bubble module
+  // into the HTTP cache so step 2 mounts instantly. Skipped internally when
+  // prefers-reduced-motion is on, so no wasted download in that path.
+  preloadAtmosphereBubbles();
+
   // If we've navigated away from step 1 and are now returning, the mainCard's
   // form was replaced by other screens — restore it from the snapshot.
   if (!card.querySelector('#bizName') && mainCardTemplateHtml) {
@@ -574,7 +579,7 @@ async function goToStep(start) {
       else if (s === 2) {
         const atmosphereRows = await abortable(getAtmosphereRows(), signal);
         const selectedAtmos = await abortable(
-          runAtmosphereSelection({ atmosphereRows }),
+          runAtmosphereSelection({ atmosphereRows, prechecked: state.selectedAtmos }),
           signal,
         );
         // If atmospheres changed, invalidate directions.

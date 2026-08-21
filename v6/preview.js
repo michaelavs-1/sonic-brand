@@ -83,18 +83,21 @@ function showLoading(card, text = 'טוען שירים לדוגמא…') {
   );
 }
 
-// Ephemeral toast for the super-like button. Single body-appended pill
-// that shows for ~1.8s and fades. Reused on every click — a new call
-// resets the timer + swaps the label. Style lives in v6/index.html
-// under `.sl-toast`.
+// Ephemeral swipe-feedback toast. Single body-appended pill that shows
+// for ~1.8s and fades. Reused across super-like / yes / no decisions —
+// each new call resets the timer, swaps the label, and swaps the tone
+// class so the color matches the action. Style lives in v6/index.html
+// under `.sl-toast` (base + `.tone-yes` / `.tone-no` variants).
 let _slToastEl = null;
 let _slToastTimer = null;
-function showSuperLikeToast(text) {
+function showSwipeToast(text, tone = 'super') {
   if (!_slToastEl) {
     _slToastEl = document.createElement('div');
     _slToastEl.className = 'sl-toast';
     document.body.append(_slToastEl);
   }
+  _slToastEl.classList.remove('tone-yes', 'tone-no');
+  if (tone === 'yes' || tone === 'no') _slToastEl.classList.add('tone-' + tone);
   _slToastEl.textContent = text;
   _slToastEl.classList.add('show');
   clearTimeout(_slToastTimer);
@@ -237,12 +240,24 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       el('span', { class: 'sw2-chev' }, '›'),
       el('span', { class: 'sw2-rail-label' }, 'אהבתי'),
     );
-    const deckWrap = el('div', { class: 'sw2-deckwrap' }, deck, railNo, railYes);
+    // Top rail for the swipe-up super-like gesture. Cyan to match the toast
+    // + card glow. Same chevron character as the yes/no rails (rotated 90°
+    // in CSS so it points up) so the three rails read as a set.
+    const railSuper = el('div', { class: 'sw2-rail super' },
+      el('span', { class: 'sw2-chev' }, '‹'),
+      el('span', { class: 'sw2-rail-label' }, 'סופר לייק'),
+    );
+    const deckWrap = el('div', { class: 'sw2-deckwrap' }, deck, railNo, railYes, railSuper);
+    // yes/no buttons are intentionally NOT mounted into the card — the user
+    // decides purely via swipe now. Kept in memory (with their click handlers
+    // wired below) as a one-line-change fallback if we want to bring them
+    // back: append `btns` into card.replaceChildren.
     const noBtn = el('button', { class: 'swipe-btn swipe-no', type: 'button' }, '👎 לא בשבילי');
     const yesBtn = el('button', { class: 'swipe-btn swipe-yes', type: 'button' }, '👍 אהבתי');
     const btns = el('div', { class: 'swipe-actions' }, noBtn, yesBtn);
+    void btns; // eslint: intentionally unused — see comment above
 
-    card.replaceChildren(el('h1', {}, HEADING), progLabel, progBar, deckWrap, btns);
+    card.replaceChildren(el('h1', {}, HEADING), progLabel, progBar, deckWrap);
 
     const setProgress = () => {
       const total = previews.length;
@@ -289,6 +304,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
     const railsIdle = () => {
       railNo.style.opacity = '';
       railYes.style.opacity = '';
+      railSuper.style.opacity = '';
     };
 
     const destroyController = () => {
@@ -333,52 +349,15 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const playBtn = el('button', { class: 'sw2-play', type: 'button', 'aria-label': 'נגן' });
       playBtn.innerHTML = PLAY_ICON;
 
-      // Super-like button — bottom-left corner of the artwork, mirroring
-      // the play button on the bottom-right. Toggle behavior: first click
-      // saves the current track's spotify_id into the shared Set, second
-      // click removes it. Persistence to the DB happens at signup time.
-      const superLikeBtn = el('button', {
-        class: 'sw2-superlike',
-        type: 'button',
-        'aria-label': 'Super Like',
-      });
-      superLikeBtn.innerHTML = SUPERLIKE_ICON;
-      // Reflect the initial state — if the user swaps back to a track they
-      // already super-liked earlier in this session, the button paints as
-      // .saved so they see it's already picked.
-      if (superLikedTracks && superLikedTracks.has(p.trackId)) {
-        superLikeBtn.classList.add('saved');
-      }
-      superLikeBtn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        // Replay the burst ring on every click via remove/reflow/add.
-        superLikeBtn.classList.remove('burst');
-        void superLikeBtn.offsetWidth;
-        superLikeBtn.classList.add('burst');
-
-        if (!superLikedTracks) return;
-        const trackId = superLikeBtn.dataset.trackId || p.trackId;
-        if (superLikedTracks.has(trackId)) {
-          superLikedTracks.delete(trackId);
-          superLikeBtn.classList.remove('saved');
-          showSuperLikeToast('סופר לייק הוסר');
-        } else {
-          superLikedTracks.add(trackId);
-          superLikeBtn.classList.add('saved');
-          showSuperLikeToast('סופר לייק נשמר');
-        }
-      });
-      // The current trackId is captured for the closure above, but swap
-      // mutates `p.trackId` via re-render — we don't re-render on swap,
-      // we build a whole new card. So the closure's `p` reference stays
-      // valid for the lifetime of THIS card, and the fresh next card gets
-      // its own button. Good.
-      superLikeBtn.dataset.trackId = p.trackId;
+      // Super-like input is now a swipe-up gesture on the card (handled in
+      // the pointer block near the bottom of this function). No button on
+      // the artwork; the card gets a .super-liked class when the current
+      // track's spotify_id is in the shared Set.
 
       const artImg = m.art
         ? el('img', { class: 'sw2-art', src: m.art, alt: '' })
         : el('div', { class: 'sw2-art sw2-art-ph' }, '🎵');
-      const artWrap = el('div', { class: 'sw2-artwrap' }, artImg, spotifyBadge(), playBtn, superLikeBtn, embedWrap);
+      const artWrap = el('div', { class: 'sw2-artwrap' }, artImg, spotifyBadge(), playBtn, embedWrap);
 
       const titleEl = el('div', { class: 'sw2-title', dir: 'ltr' }, m.name || '');
       const artistEl = el('div', { class: 'sw2-artist', dir: 'ltr' }, m.artist || '');
@@ -420,9 +399,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const pbTimes = el('div', { class: 'sw2-timestamps' }, pbCurrent, pbTotal);
       const pbContainer = el('div', { class: 'sw2-progress' }, pbBar, pbTimes);
 
+      const initiallySuperLiked = !!(superLikedTracks && superLikedTracks.has(p.trackId));
       const cardEl = el('div',
         {
-          class: 'preview-card swipe-card swipe-card2',
+          class: 'preview-card swipe-card swipe-card2' + (initiallySuperLiked ? ' super-liked' : ''),
           'data-rank': String(d.rank),
           'data-track-id': p.trackId,
           'data-uri': `spotify:track:${p.trackId}`,
@@ -436,7 +416,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         swap,
         reasonEl,
         pbContainer,
-        el('div', { class: 'sw2-hint' }, '👆 אפשר גם לגרור את הכרטיס לצדדים'),
+        el('div', { class: 'sw2-hint' }, '👆 גררו לצדדים · גררו למעלה לסופר לייק'),
       );
       deck.replaceChildren(cardEl);
 
@@ -627,15 +607,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           trackMeta[nextId] = m2;
           cardEl.dataset.trackId = nextId;
           cardEl.dataset.uri = `spotify:track:${nextId}`;
-          // Retarget the super-like button so a click after a swap tags
-          // the NEW track, and repaint .saved to reflect whether the new
-          // track has already been super-liked in this session.
-          superLikeBtn.dataset.trackId = nextId;
-          if (superLikedTracks && superLikedTracks.has(nextId)) {
-            superLikeBtn.classList.add('saved');
-          } else {
-            superLikeBtn.classList.remove('saved');
-          }
+          // Refresh the card's super-liked class for the new track so the
+          // glow reflects whether THIS track was already super-liked earlier
+          // in this session.
+          cardEl.classList.toggle('super-liked', !!(superLikedTracks && superLikedTracks.has(nextId)));
           destroyController();
           pendingPlay = false;
           playBtn.classList.remove('waiting');
@@ -658,10 +633,17 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         }
       });
 
-      const flyOff = (like) => {
+      const flyOff = (dir) => {
+        // dir: 'left' | 'right' | 'up'
         const w = window.innerWidth || 600;
+        const h = window.innerHeight || 800;
         cardEl.style.transition = 'transform .28s ease, opacity .28s ease';
-        cardEl.style.transform = 'translateX(' + (like ? w : -w) + 'px) rotate(' + (like ? 18 : -18) + 'deg)';
+        if (dir === 'up') {
+          cardEl.style.transform = 'translateY(' + (-h) + 'px)';
+        } else {
+          const like = dir === 'right';
+          cardEl.style.transform = 'translateX(' + (like ? w : -w) + 'px) rotate(' + (like ? 18 : -18) + 'deg)';
+        }
         cardEl.style.opacity = '0';
       };
 
@@ -672,43 +654,95 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         if (like) likedDirections.push(d);
         index += 1;
         progFill.style.width = ((index / previews.length) * 100) + '%';
-        flyOff(like);
+        showSwipeToast(like ? 'אהבת' : 'לא בשבילך', like ? 'yes' : 'no');
+        flyOff(like ? 'right' : 'left');
+        setTimeout(showCard, 300);
+      };
+
+      // Super-like = "yes on the direction PLUS save this specific track as
+      // a favorite for future taste-tuning". Semantically a commit + advance,
+      // so we fly the card upward and step to the next preview. Distinct from
+      // plain yes only in that the track's spotify_id also lands in the
+      // shared Set that the signup step persists.
+      const superLike = () => {
+        if (busy) return;
+        busy = true;
+        destroyController();
+        if (superLikedTracks) {
+          const trackId = cardEl.dataset.trackId || p.trackId;
+          superLikedTracks.add(trackId);
+        }
+        likedDirections.push(d);
+        index += 1;
+        progFill.style.width = ((index / previews.length) * 100) + '%';
+        showSwipeToast('סופר לייק', 'super');
+        flyOff('up');
         setTimeout(showCard, 300);
       };
       noBtn.onclick = () => decide(false);
       yesBtn.onclick = () => decide(true);
 
-      // Drag anywhere on the card; side rails glow toward the decision.
+      // Drag anywhere on the card. Horizontal swipe decides yes/no.
+      // Upward swipe past a threshold toggles the current track's
+      // super-like state (equivalent to what the old star button did) and
+      // then snaps the card back — user still swipes left/right for the
+      // direction decision. Rails glow with the dominant axis so the user
+      // sees which gesture they're heading into before releasing.
+      const SUPER_LIKE_THRESHOLD = 100;
       let startX = null;
+      let startY = null;
       let dx = 0;
+      let dy = 0;
       let dragging = false;
       cardEl.addEventListener('pointerdown', (e) => {
         // Don't start a swipe on any of the card's interactive elements —
-        // swap/play/super-like buttons and the scrubbable progress bar
-        // all handle their own pointer events.
+        // swap/play buttons and the scrubbable progress bar handle their
+        // own pointer events.
         if (busy
           || e.target.closest('.swap-btn')
           || e.target.closest('.sw2-play')
-          || e.target.closest('.sw2-superlike')
           || e.target.closest('.sw2-prog-bar')) return;
         dragging = true;
         startX = e.clientX;
+        startY = e.clientY;
         dx = 0;
+        dy = 0;
         cardEl.classList.add('dragging');
         try { cardEl.setPointerCapture(e.pointerId); } catch { }
       });
       cardEl.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         dx = e.clientX - startX;
-        cardEl.style.transform = 'translateX(' + dx + 'px) rotate(' + (dx / 22) + 'deg)';
-        railYes.style.opacity = dx > 0 ? String(Math.min(1, 0.75 + dx / 150)) : '0.35';
-        railNo.style.opacity = dx < 0 ? String(Math.min(1, 0.75 - dx / 150)) : '0.35';
+        dy = e.clientY - startY;
+        // Translate on both axes; rotate is driven only by horizontal
+        // movement so an upward drag doesn't spin the card.
+        cardEl.style.transform =
+          'translate(' + dx + 'px, ' + dy + 'px) rotate(' + (dx / 22) + 'deg)';
+        // Which axis is the user committing to? Bias slightly toward
+        // horizontal (the primary decision) so a diagonal drag with slightly
+        // more vertical movement doesn't accidentally show super-like.
+        const vertDominant = dy < 0 && Math.abs(dy) > Math.abs(dx) * 1.2;
+        if (vertDominant) {
+          railSuper.style.opacity = String(Math.min(1, 0.75 - dy / 150));
+          railYes.style.opacity = '0.35';
+          railNo.style.opacity = '0.35';
+        } else {
+          railYes.style.opacity = dx > 0 ? String(Math.min(1, 0.75 + dx / 150)) : '0.35';
+          railNo.style.opacity = dx < 0 ? String(Math.min(1, 0.75 - dx / 150)) : '0.35';
+          railSuper.style.opacity = '0.35';
+        }
       });
       const endDrag = () => {
         if (!dragging) return;
         dragging = false;
         cardEl.classList.remove('dragging');
-        if (dx > 90) { decide(true); railsIdle(); return; }
+        const vertDominant = dy < 0 && Math.abs(dy) > Math.abs(dx) * 1.2;
+        if (vertDominant && dy <= -SUPER_LIKE_THRESHOLD) {
+          railsIdle();
+          superLike();
+          return;
+        }
+        if (dx > 90)  { decide(true);  railsIdle(); return; }
         if (dx < -90) { decide(false); railsIdle(); return; }
         cardEl.style.transform = '';
         railsIdle();

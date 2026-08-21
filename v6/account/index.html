@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SonicBrands — האזור האישי</title>
+  <title>Robin - פלייליסט מותאם לעסק שלך</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
     rel="stylesheet">
@@ -636,56 +636,6 @@
       margin-bottom: 6px
     }
 
-    .day-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-top: 7px;
-      font-size: 13px;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 11px;
-      padding: 7px 9px
-    }
-
-    .day-row .dname {
-      width: 44px;
-      flex: 0 0 auto;
-      color: var(--text);
-      font-weight: 700;
-      font-size: 12.5px
-    }
-
-    .day-row input[type=time] {
-      background: var(--bg-2);
-      border: 1px solid var(--border-2);
-      border-radius: 8px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 12.5px;
-      padding: 5px 5px;
-      width: 84px
-    }
-
-    .day-row select {
-      background: var(--bg-2);
-      border: 1px solid var(--border-2);
-      border-radius: 8px;
-      color: var(--text);
-      font-family: inherit;
-      font-size: 11.5px;
-      padding: 5px 3px;
-      flex: 1;
-      min-width: 0
-    }
-
-    .day-row .closed {
-      width: 17px;
-      height: 17px;
-      accent-color: var(--accent);
-      flex: 0 0 auto
-    }
-
     /* ---------- music lists ---------- */
     .track {
       display: flex;
@@ -1303,10 +1253,6 @@
 
       .stats {
         gap: 8px
-      }
-
-      .day-row input[type=time] {
-        width: 78px
       }
     }
 
@@ -2091,12 +2037,15 @@
         </div>
       </div>
 
-      <div class="box">
-        <h2><span class="h-ico">🕒</span>שעות פעילות</h2>
-        <p class="muted sub">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן את כולם — סמנו "שעות שונות"
-          ליום מסוים.</p>
-        <div id="hoursHost"></div>
-      </div>
+      <!-- No .box wrapper here: .day-list (rendered by mountHoursEditor)
+           already has its own background+border+radius, so wrapping it in
+           a .box created a card-in-a-card that felt cramped. Matches the
+           onboarding hours screen, which sits heading + picker directly
+           on the card background. -->
+      <h2 style="margin:16px 0 6px"><span class="h-ico">🕒</span>שעות פעילות</h2>
+      <p class="muted sub" style="margin:0 0 12px">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן את כולם — סמנו "שעות שונות"
+        ליום מסוים.</p>
+      <div id="hoursHost"></div>
 
       <button class="btn" id="saveProfile" disabled>שמור</button>
       <p class="muted" id="profileMsg" style="text-align:center;margin-top:10px"></p>

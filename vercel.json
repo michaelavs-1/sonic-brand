@@ -327,22 +327,6 @@
     {
       "source": "/v6/account",
       "destination": "/v6/account/index.html"
-    },
-    {
-      "source": "/v6/test-hours",
-      "destination": "/v6/test-hours/index.html"
-    },
-    {
-      "source": "/v6/test-player",
-      "destination": "/v6/test-player/index.html"
-    },
-    {
-      "source": "/v6/test-superlike",
-      "destination": "/v6/test-superlike/index.html"
-    },
-    {
-      "source": "/v6/test-atmosphere",
-      "destination": "/v6/test-atmosphere/index.html"
     }
   ]
 }

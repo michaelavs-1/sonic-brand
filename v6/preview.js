@@ -16,9 +16,6 @@ const HEADING = 'בחרו כיוונים מוזיקליים שמתאימים ל�
 const PLAY_ICON = '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="36" height="36" fill="currentColor" aria-hidden="true"><rect x="6.6" y="5.6" width="3.9" height="12.8" rx="1.2"/><rect x="13.5" y="5.6" width="3.9" height="12.8" rx="1.2"/></svg>';
 
-// Star for the super-like button (bottom-left corner of the artwork).
-const SUPERLIKE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M12 2.5l2.9 6.4 7 .7-5.3 4.7 1.6 6.9L12 17.7 5.8 21.2l1.6-6.9L2.1 9.6l7-.7L12 2.5z"/></svg>';
-
 // Feather-style shuffle icon shown inside the "נסו שיר אחר..." pill.
 const SHUFFLE_ICON =
   '<svg viewBox="0 0 24 24" aria-hidden="true">' +
@@ -136,6 +133,17 @@ function pickPreviewGenre(d) {
 // anchor genre is gone: each spec passes the specific genre to draw from.
 // Callers construct specs — random pick for the initial preview, explicit
 // per-genre for the swap-track cycler.
+//
+// Retry-once wrapper: the underlying Postgres RPC (v5_anchor_tracks) does
+// a heavy multi-table JOIN with random ordering and its plan can take
+// several seconds to compile on a cold PgBouncer session — long enough
+// to trip Supabase's statement_timeout (57014). supabase-client.js's
+// server-side retry-at-300ms often lands on ANOTHER cold session before
+// the plan can propagate through the pool, so it doesn't help this case.
+// A 2s wait client-side gives whichever session gets the retry time to
+// finish its own plan compile. If the retry still fails, the throw
+// propagates to preparePreview's outer catch and page 2 falls back to
+// empty (existing degradation).
 async function fetchAnchorTracks(specs, popularityWindow) {
   const payload = specs.map((s) => ({
     rank: s.rank,
@@ -143,17 +151,26 @@ async function fetchAnchorTracks(specs, popularityWindow) {
     bpm_lo: Math.floor(s.bpm_range.min),
     bpm_hi: Math.ceil(s.bpm_range.max),
   }));
-  const r = await fetch('/api/v5/anchor-tracks', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ specs: payload, popularity: popularityWindow }),
-  });
-  if (!r.ok) {
-    const data = await r.json().catch(() => ({}));
-    throw new Error(`anchor-tracks ${r.status}: ${data?.error || r.statusText}`);
+  const attempt = async () => {
+    const r = await fetch('/api/v5/anchor-tracks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ specs: payload, popularity: popularityWindow }),
+    });
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(`anchor-tracks ${r.status}: ${data?.error || r.statusText}`);
+    }
+    const { byRank } = await r.json();
+    return byRank || {};
+  };
+  try {
+    return await attempt();
+  } catch (e) {
+    console.warn('[v6 preview] anchor-tracks failed, retrying once in 2s:', e.message);
+    await new Promise((r) => setTimeout(r, 2000));
+    return attempt();
   }
-  const { byRank } = await r.json();
-  return byRank || {};
 }
 
 // Initial preview fetch: random genre per direction.
@@ -260,10 +277,12 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
     card.replaceChildren(el('h1', {}, HEADING), progLabel, progBar, deckWrap);
 
     const setProgress = () => {
-      const total = previews.length;
-      // Show a small spinner next to the count until page 2 has settled
-      // (either resolved with more previews or arrived empty). It signals
-      // to the user that the denominator may still grow.
+      // Pin the denominator to the pipeline's expected total (2 pages × 4)
+      // so the label never flashes "1/4 → 1/8" when page 2 lands. Math.max
+      // guards the theoretical case where more than 8 previews sneak in.
+      const total = Math.max(previews.length, 8);
+      // Spinner next to the count while page 2 is still en route — it means
+      // "more cards are loading", now that the denominator itself is stable.
       const spinner = page2Settled
         ? ''
         : '<span class="sb-spinner" style="width:11px;height:11px;margin-inline-start:6px;vertical-align:-1px"></span>';
@@ -349,10 +368,9 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const playBtn = el('button', { class: 'sw2-play', type: 'button', 'aria-label': 'נגן' });
       playBtn.innerHTML = PLAY_ICON;
 
-      // Super-like input is now a swipe-up gesture on the card (handled in
-      // the pointer block near the bottom of this function). No button on
-      // the artwork; the card gets a .super-liked class when the current
-      // track's spotify_id is in the shared Set.
+      // Super-like input is now a swipe-up gesture (handled in the pointer
+      // block below); it commits the track to the shared Set + advances the
+      // card, so there's no persistent per-card indicator to render here.
 
       const artImg = m.art
         ? el('img', { class: 'sw2-art', src: m.art, alt: '' })
@@ -399,10 +417,9 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const pbTimes = el('div', { class: 'sw2-timestamps' }, pbCurrent, pbTotal);
       const pbContainer = el('div', { class: 'sw2-progress' }, pbBar, pbTimes);
 
-      const initiallySuperLiked = !!(superLikedTracks && superLikedTracks.has(p.trackId));
       const cardEl = el('div',
         {
-          class: 'preview-card swipe-card swipe-card2' + (initiallySuperLiked ? ' super-liked' : ''),
+          class: 'preview-card swipe-card swipe-card2',
           'data-rank': String(d.rank),
           'data-track-id': p.trackId,
           'data-uri': `spotify:track:${p.trackId}`,
@@ -416,7 +433,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         swap,
         reasonEl,
         pbContainer,
-        el('div', { class: 'sw2-hint' }, '👆 גררו לצדדים · גררו למעלה לסופר לייק'),
+        el('div', { class: 'sw2-hint' }, 'גררו לצדדים · גררו למעלה לסופר לייק'),
       );
       deck.replaceChildren(cardEl);
 
@@ -607,10 +624,6 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           trackMeta[nextId] = m2;
           cardEl.dataset.trackId = nextId;
           cardEl.dataset.uri = `spotify:track:${nextId}`;
-          // Refresh the card's super-liked class for the new track so the
-          // glow reflects whether THIS track was already super-liked earlier
-          // in this session.
-          cardEl.classList.toggle('super-liked', !!(superLikedTracks && superLikedTracks.has(nextId)));
           destroyController();
           pendingPlay = false;
           playBtn.classList.remove('waiting');
@@ -742,7 +755,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           superLike();
           return;
         }
-        if (dx > 90)  { decide(true);  railsIdle(); return; }
+        if (dx > 90) { decide(true); railsIdle(); return; }
         if (dx < -90) { decide(false); railsIdle(); return; }
         cardEl.style.transform = '';
         railsIdle();

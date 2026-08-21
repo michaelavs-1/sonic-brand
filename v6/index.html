@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SonicBrands — פלייליסט מותאם לעסק שלך</title>
+  <title>Robin - פלייליסט מותאם לעסק שלך</title>
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://robin-music.com/">
-  <meta property="og:title" content="רובין — פלייליסט מותאם לעסק שלך">
+  <meta property="og:title" content="Robin - פלייליסט מותאם לעסק שלך">
   <meta property="og:description"
     content="רובין בונה לעסק שלך פלייליסטים חכמים, מותאמים לאווירה ולשעות הפעילות — תוך דקות.">
   <meta property="og:image" content="https://robin-music.com/v4/og.png">
@@ -582,10 +582,10 @@
       justify-content: center;
       gap: 7px;
       margin: 0 auto 12px;
-      background: rgba(29, 185, 84, .08);
-      border: 1px solid rgba(29, 185, 84, .35);
+      background: rgba(240, 167, 63, .08);
+      border: 1px solid rgba(240, 167, 63, .35);
       border-radius: 999px;
-      color: #1DB954;
+      color: var(--accent);
       font-family: inherit;
       font-size: 12px;
       font-weight: 700;
@@ -595,9 +595,8 @@
     }
 
     .swap-btn:hover {
-      background: rgba(29, 185, 84, .18);
-      border-color: #1DB954;
-      color: #26d766;
+      background: rgba(240, 167, 63, .18);
+      border-color: var(--accent);
       transform: translateY(-1px);
     }
 
@@ -654,22 +653,6 @@
     .sl-toast.tone-no {
       background: linear-gradient(135deg, #ff8578, #e74c3c);
       box-shadow: 0 8px 24px rgba(0, 0, 0, .4), 0 0 30px rgba(231, 76, 60, .5);
-    }
-
-    /* ---------- super-like state indicator on preview cards ----------
-       The click-to-toggle button is gone; super-like is now a swipe-up
-       gesture. When the currently-visible track is in the super-liked
-       Set, the card artwork breathes a soft cyan halo so the state is
-       visible at a glance even after swapping through other tracks. */
-    .swipe-card2.super-liked .sw2-art {
-      box-shadow: 0 12px 32px rgba(0, 0, 0, .5),
-                  0 0 28px rgba(77, 199, 255, .55);
-      animation: sl-idle 2.4s ease-in-out infinite;
-    }
-
-    @keyframes sl-idle {
-      0%, 100% { box-shadow: 0 12px 32px rgba(0, 0, 0, .5), 0 0 22px rgba(77, 199, 255, .5); }
-      50%      { box-shadow: 0 12px 32px rgba(0, 0, 0, .5), 0 0 36px rgba(77, 199, 255, .65); }
     }
 
     /* ---------- atmospheres ---------- */
@@ -1687,14 +1670,37 @@
       border-radius: 16px
     }
 
+    /* The rail element carries the chev + label and sits 10px in from the
+       deck edge (so the text isn't kissing the border). The gradient still
+       needs to visually start AT the deck edge, so it lives on a pseudo-
+       element that's absolutely positioned to extend 10px past the rail's
+       outer side. Two-layer split lets the two concerns move independently. */
+    .sw2-rail::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      z-index: -1;
+      pointer-events: none;
+      border-radius: inherit;
+    }
+
     .sw2-rail.no {
-      left: -4px;
-      background: linear-gradient(90deg, rgba(231, 76, 60, .18), transparent)
+      left: 10px;
+    }
+    .sw2-rail.no::before {
+      right: 0;
+      left: -10px;
+      background: linear-gradient(90deg, rgba(231, 76, 60, .18), transparent);
     }
 
     .sw2-rail.yes {
-      right: -4px;
-      background: linear-gradient(270deg, rgba(46, 204, 113, .18), transparent)
+      right: 10px;
+    }
+    .sw2-rail.yes::before {
+      left: 0;
+      right: -10px;
+      background: linear-gradient(270deg, rgba(46, 204, 113, .18), transparent);
     }
 
     /* Top rail for the swipe-up super-like gesture. Overrides the vertical-
@@ -2485,7 +2491,7 @@
         <div class="brand-eq" aria-hidden="true">
           <span></span><span></span><span></span><span></span><span></span>
         </div>
-        <h1>Sonic<span class="brand-gold">Brands</span></h1>
+        <h1>Ro<span class="brand-gold">bin</span></h1>
       </div>
       <p class="subtitle">פלייליסטים מדוייקים לעסק, כל יום</p>
 
@@ -2516,7 +2522,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=21082026f"></script>
+  <script type="module" src="/v6/app.js?v=21082026i"></script>
 </body>
 
 </html>

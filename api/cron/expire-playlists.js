@@ -21,6 +21,7 @@
    you can trigger this by hand with that header if you set the same env var.
 */
 
+import { timingSafeEqual } from 'node:crypto';
 import { pgrSelect, pgrPatch } from '../v5/supabase-client.js';
 
 // Prefer the stable prod alias over the deployment-specific VERCEL_URL. The
@@ -98,13 +99,17 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   // Vercel Cron sends Authorization: Bearer <CRON_SECRET>. Reject anything
-  // without the matching bearer.
+  // without the matching bearer. Fail-CLOSED on missing config — if
+  // CRON_SECRET isn't set, this endpoint is fully open to the internet
+  // and can be triggered by anyone.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.authorization || '';
-    if (auth !== `Bearer ${cronSecret}`) {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
+  if (!cronSecret) {
+    return res.status(500).json({ error: 'server misconfigured: CRON_SECRET not set' });
+  }
+  const expected = Buffer.from(`Bearer ${cronSecret}`);
+  const provided = Buffer.from(req.headers.authorization || '');
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    return res.status(401).json({ error: 'unauthorized' });
   }
 
   const t0 = Date.now();

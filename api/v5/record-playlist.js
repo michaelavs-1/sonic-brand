@@ -14,18 +14,28 @@
 */
 
 import { pgrUpsert } from './supabase-client.js';
+import { requireSite, setCors } from '../v6/origin-guard.js';
+import { guard } from '../v6/ratelimit.js';
 
 const DEFAULT_TTL_HOURS = 24;
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireSite(req, res)) return;
+  if (!await guard(req, res, 'record-playlist', 30, 60)) return;
 
   try {
-    const { spotify_id, name, ttl_hours, owner_id, business_id } = req.body || {};
+    const { spotify_id, name, ttl_hours } = req.body || {};
+    // owner_id / business_id INTENTIONALLY not read from the body — this
+    // endpoint is called from the browser during onboarding where no user
+    // account exists yet. Attribution is back-filled by signup.js (which
+    // runs server-side with the service role). Accepting owner_id/business_id
+    // from a client would let anyone pollute the ledger with fake attribution
+    // (attach one victim's business to a foreign spotify_id).
     if (typeof spotify_id !== 'string' || !spotify_id) {
       return res.status(400).json({ error: 'spotify_id required' });
     }
@@ -43,8 +53,8 @@ export default async function handler(req, res) {
       expires_at:  expiresAt,
       deleted_at:  null,
       error:       null,
-      owner_id:    owner_id    || null,
-      business_id: business_id || null,
+      owner_id:    null,
+      business_id: null,
     }, { onConflict: 'spotify_id' });
 
     return res.status(200).json({ ok: true, expires_at: expiresAt });

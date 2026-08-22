@@ -11,6 +11,8 @@
 */
 
 import { pgrSelect } from './supabase-client.js';
+import { requireSite, setCors } from '../v6/origin-guard.js';
+import { guard } from '../v6/ratelimit.js';
 
 const SHEET_ID = '1Ujk7Mb-i1i1LCfQZ31W27pDF66CGobrt9jifRqc0d28';
 const GID      = '0';
@@ -88,12 +90,14 @@ async function loadFromSupabase() {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   // no-store so no browser/CDN caches this either — the whole point of
   // dropping the in-memory cache is that Ami's edits are visible immediately.
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!requireSite(req, res)) return;
+  if (!await guard(req, res, 'databox-atmospheres', 60, 60)) return;
 
   try {
     let rows = [];

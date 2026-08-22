@@ -36,6 +36,8 @@
 */
 
 import { pgrSelect, pgrUpsert, pgrInsert } from '../../v5/supabase-client.js';
+import { requireSite, isAllowedHost, setCors } from '../origin-guard.js';
+import { guard } from '../ratelimit.js';
 
 // Fingerprint helper — a direction is uniquely identified by (title +
 // normalized-sorted genre set). Same key logic used by _daily-builder.js
@@ -57,14 +59,24 @@ const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const DEFAULT_CREDITS = 30;
 
 // Derive the magic-link redirect target from the incoming request so this
-// endpoint works unchanged from `vercel dev` (localhost), preview URLs, and
-// production. Whatever host lands here has to also be on Supabase's
-// Redirect URLs allow-list (Auth → URL Configuration) — otherwise Supabase
-// silently substitutes its Site URL and the link goes to the wrong place.
+// endpoint works unchanged from `vercel dev` (localhost), preview URLs,
+// custom-domain prod (robin-music.com), and Vercel-alias prod
+// (sonic-brand.vercel.app) — each redirects back to where the user came from.
+// SECURITY: the derived host is validated against isAllowedHost(), so a
+// spoofed `x-forwarded-host: attacker.com` cannot coerce the magic link
+// to embed an attacker-controlled URL. V6_ACCOUNT_REDIRECT_URL env var
+// overrides derivation entirely when you need to pin one target.
+// (Whatever URL results still has to be on Supabase's Redirect URLs
+// allow-list — Auth → URL Configuration — or Supabase silently
+// substitutes its Site URL.)
 function accountRedirectUrl(req) {
   if (process.env.V6_ACCOUNT_REDIRECT_URL) return process.env.V6_ACCOUNT_REDIRECT_URL;
-  const host  = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
-  const proto = req.headers['x-forwarded-proto'] || (host.startsWith('localhost') || host.startsWith('127.') ? 'http' : 'https');
+  const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').toLowerCase();
+  if (!isAllowedHost(host)) {
+    throw new Error(`signup redirect blocked: host "${host}" not in allowlist`);
+  }
+  const hostOnly = host.split(':')[0];
+  const proto = (hostOnly === 'localhost' || hostOnly === '127.0.0.1') ? 'http' : 'https';
   return `${proto}://${host}/v6/account`;
 }
 
@@ -211,11 +223,13 @@ async function sendMagicLink(email, redirectTo) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireSite(req, res)) return;
+  if (!await guard(req, res, 'signup', 20, 3600)) return;
 
   try {
     if (!SERVICE_KEY) {

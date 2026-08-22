@@ -22,6 +22,8 @@
 */
 
 import { pgrRpc } from './supabase-client.js';
+import { requireSite, setCors } from '../v6/origin-guard.js';
+import { guard } from '../v6/ratelimit.js';
 
 function intRange(param, dfltLo, dfltHi) {
   if (Array.isArray(param) && param.length === 2 && param.every((v) => Number.isFinite(v))) {
@@ -40,11 +42,13 @@ function validateSpec(s) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireSite(req, res)) return;
+  if (!await guard(req, res, 'anchor-tracks', 60, 60)) return;
 
   try {
     const { specs, popularity } = req.body || {};

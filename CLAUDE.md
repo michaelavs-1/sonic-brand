@@ -24,7 +24,10 @@ The codebase contains multiple parallel "versions" that coexist. **v6 is the cur
 
 AI-powered Spotify playlist builder for physical businesses (cafés, bars, restaurants, stores). A business owner describes their venue, picks atmospheres, sets opening hours, swipes through preview tracks, and gets a set of playlists — one per selected "musical direction" — that will eventually cover their full opening day (~7 hours of music).
 
-**Live URL:** https://sonic-brand.vercel.app (v3 landing) — v6 lives at `/v6` after deploy.
+**Live URLs:**
+- https://sonic-brand.vercel.app (v3 landing) — v6 lives at `/v6` after deploy. Vercel's assigned alias.
+- https://robin-music.com — **custom domain, DNS points at this Vercel project**. Both hostnames serve the same deploy; users may enter from either. The origin guard + magic-link redirect allowlist covers both plus this project's Vercel preview URLs (`sonic-brand-*.vercel.app`).
+
 **Repo:** https://github.com/michaelavs-1/sonic-brand
 **Owner:** Michael Avshalom (avshalom.michael@gmail.com)
 **Developer:** Roni Mark (roni.mark@gmail.com)
@@ -168,6 +171,7 @@ the 10-track sample playlists each grow to today's opening hours + 1h.
 - Uses `SUPABASE_SERVICE_ROLE_KEY` admin API to create user + `businesses` row
 - Writes onboarding context (hours, longestMinutes, atmospheres, place, playlists) to `auth.users.raw_user_meta_data.sonic.b[businessId]`
 - Returns instant login link (magic-link admin API) so client can jump to `/v6/account` without email round-trip
+- **Magic-link redirect** (`accountRedirectUrl`) derives the target from the request host (`x-forwarded-host` || `host`) so signup on localhost / preview / robin-music.com / sonic-brand.vercel.app each redirects back to where the user came from — no per-env config needed. The derived host is validated via `isAllowedHost()` in `api/v6/origin-guard.js` to block `x-forwarded-host: attacker.com` spoofing. Whatever host wins must also be on Supabase's Redirect URLs allowlist (Auth → URL Configuration) — otherwise Supabase silently substitutes its Site URL. `V6_ACCOUNT_REDIRECT_URL` env var overrides derivation entirely if you need a pinned target.
 
 ---
 

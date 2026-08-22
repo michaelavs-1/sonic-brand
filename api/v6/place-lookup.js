@@ -26,7 +26,8 @@
      | { found: false, reason: 'no_key'|'no_match'|'low_confidence'|'search_failed'|'error' }
 */
 
-import { requireSite } from './origin-guard.js';
+import { requireSite, setCors } from './origin-guard.js';
+import { guard } from './ratelimit.js';
 
 const KEY = process.env.GOOGLE_PLACES_API_KEY;
 
@@ -142,12 +143,13 @@ function mapPlace(p) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireSite(req, res)) return;
+  if (!await guard(req, res, 'place-lookup', 20, 60)) return;
 
   try {
     if (!KEY) return res.status(200).json({ found: false, reason: 'no_key' });

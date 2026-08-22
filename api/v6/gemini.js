@@ -1,6 +1,13 @@
+import { requireSiteOrInternal, setCors } from './origin-guard.js';
+import { guard } from './ratelimit.js';
 /* /api/v6/gemini.js
    Google Gemini generateContent proxy for v6.
    Key source: process.env.GEMINI_API_KEY. No body-supplied keys.
+
+   Auth: requireSiteOrInternal — browsers on our site OR server-to-server
+   callers carrying `x-sonic-internal: INTERNAL_API_KEY`. Model +
+   max_output_tokens locked down server-side so a compromised browser
+   can't ask for arbitrary spend.
 
    Request shape (client-side, kept small and provider-agnostic-ish):
      { model, system, user, history?, max_output_tokens?, thinking_budget? }
@@ -16,13 +23,18 @@
    normalized from `usageMetadata` for parity with the anthropic proxy.
 */
 
+const ALLOWED_MODELS = new Set(['gemini-3.6-flash']);
+const MAX_OUTPUT_TOKENS_CAP = 4096;
+
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-sonic-internal');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireSiteOrInternal(req, res)) return;
+  if (!await guard(req, res, 'gemini', 20, 60)) return;
 
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
@@ -30,6 +42,9 @@ export default async function handler(req, res) {
   const { model, system, user, history, max_output_tokens, thinking_level, label } = req.body || {};
   if (!model || typeof user !== 'string' || !user.length) {
     return res.status(400).json({ error: 'model and user are required' });
+  }
+  if (!ALLOWED_MODELS.has(model)) {
+    return res.status(400).json({ error: `model "${model}" not in allowlist` });
   }
 
   // Build the contents sequence. Single-turn callers get the original
@@ -47,7 +62,7 @@ export default async function handler(req, res) {
   const payload = {
     contents,
     generationConfig: {
-      maxOutputTokens:  max_output_tokens || 4096,
+      maxOutputTokens:  Math.min(Number(max_output_tokens) || MAX_OUTPUT_TOKENS_CAP, MAX_OUTPUT_TOKENS_CAP),
       // Force pure JSON so we don't have to strip ```json fences.
       responseMimeType: 'application/json',
     },

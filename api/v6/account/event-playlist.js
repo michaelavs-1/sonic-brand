@@ -25,6 +25,7 @@ import { GENRES, GENRE_SET }              from '../../../v6/generation/genre-lis
 import { pgrRpc, pgrUpsert, pgrInsert }    from '../../v5/supabase-client.js';
 import { nextIl4amIso, closedDayTargetTracks } from '../../../v6/generation/playlist-length.js';
 import { requireBusinessOwner } from './_require-business-owner.js';
+import { setCors } from '../origin-guard.js';
 
 // Uses the same PROVIDER / MODEL_* / GEMINI_THINKING_LEVEL constants that
 // drive musical-directions on the client, so flipping PROVIDER in
@@ -125,7 +126,10 @@ async function askModel(description, origin) {
   if (PROVIDER === 'gemini') {
     const r = await fetch(`${origin}/api/v6/gemini`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type':     'application/json',
+        'x-sonic-internal': INTERNAL_API_KEY,
+      },
       body:    JSON.stringify({
         model:             MODEL_GEMINI,
         max_output_tokens: MODEL_MAX_TOKENS,
@@ -149,7 +153,10 @@ async function askModel(description, origin) {
   if (PROVIDER === 'anthropic') {
     const r = await fetch(`${origin}/api/v5/anthropic`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type':     'application/json',
+        'x-sonic-internal': INTERNAL_API_KEY,
+      },
       body:    JSON.stringify({
         model:      MODEL_ANTHROPIC,
         max_tokens: MODEL_MAX_TOKENS,
@@ -210,7 +217,7 @@ async function createPlaylistOnRubin(origin, name, description, uris) {
 // the daily-generation cleanup or a future prune script drops them.
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin',  '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -253,6 +260,12 @@ export default async function handler(req, res) {
 
     // 2) DB → up to TARGET_TRACKS (~223 for 12h + 1h buffer). BPM only;
     //    no popularity screen (event playlists aren't tied to atmospheres).
+    // useService: true — the anon role has a 3s statement_timeout, which
+    // isn't enough for this query: popularity is unbounded (0..100) so the
+    // candidate pool is much larger than the atmosphere-constrained daily
+    // flow, and ORDER BY random() + LIMIT ~223 tips it past 3s reliably.
+    // The endpoint has already verified the JWT + business ownership above,
+    // so escalating this read to service_role is safe.
     const rows = await pgrRpc('v5_direction_tracks', {
       p_genres: validGenres,
       p_bpm_lo: Math.floor(bpm.min),
@@ -260,7 +273,7 @@ export default async function handler(req, res) {
       p_pop_lo: 0,
       p_pop_hi: 100,
       p_limit:  TARGET_TRACKS,
-    });
+    }, { useService: true });
     const spotifyIds = (rows || []).map((r) => r.spotify_id).filter(Boolean);
     if (spotifyIds.length < MIN_TRACKS) {
       return res.status(400).json({

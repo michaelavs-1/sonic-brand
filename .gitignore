@@ -10,3 +10,15 @@ v4/precompute/state/
 # Reference snapshot of Michael's live v4 (robin-music.com) — read-only material
 # for porting UI into v5. Not our source.
 michael-v4-snapshot/
+
+# Legacy v1/v2/v3 API proxies — kept locally for reference but not deployed.
+# Removed 2026-08-22 during the security-hardening pass. Nothing in
+# v4/v5/v6/cron references them; last active callers were the v2/v3
+# frontends which are also historical. If you ever need to re-enable one:
+#   git checkout <old-commit> -- api/<file>.js
+# and un-ignore it here.
+api/openai.js
+api/spotify.js
+api/databox.js
+api/new/openai.js
+api/new/databox.js

@@ -2003,6 +2003,36 @@
       animation: fadeIn .3s
     }
 
+    /* In-deck variant (page 1 exhausted, page 2 en route). The deck's top
+       rail carries the "סופר לייק" label, so we flex-center the content in
+       the deck's own min-height (200px) and reserve the top ~54px for the
+       rail. Result: the label + progress bar sit visually centered in the
+       area bounded by the four rails' gradients. */
+    .preview-load-column.in-deck {
+      min-height: 200px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 54px 8px 0
+    }
+
+    /* When the load column shows INSIDE the swipe deck (page 1 exhausted,
+       page 2 en route), the top rail's "סופר לייק" label sits at the top of
+       the deck and would overlap the load-column's own label if we kept the
+       standard padding. Flex-center the content vertically in a min-height
+       roughly matching a real swipe card so (a) it lands clear of the rail
+       and (b) the deck doesn't collapse into a jarring layout shift when
+       the last card animates off. */
+    .swipe-deck .preview-load-column {
+      min-height: 460px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 8px
+    }
+
     .preview-load-label {
       color: var(--muted);
       font-size: 14.5px;
@@ -2522,7 +2552,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=21082026j"></script>
+  <script type="module" src="/v6/app.js?v=21082026k"></script>
 </body>
 
 </html>

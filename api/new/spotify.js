@@ -1,3 +1,5 @@
+import { requireSiteOrInternal, setCors } from '../v6/origin-guard.js';
+import { guard } from '../v6/ratelimit.js';
 /* /api/new/spotify.js
    Lean Spotify proxy for the new pipeline. Actions:
      - get_playlist_tracks: read tracks from public playlists (Client Credentials via Michael's app)
@@ -93,11 +95,8 @@ async function getUserToken() {
   return refreshUserToken();
 }
 
-async function spotifyCall(url, init, tokenKind, override = null) {
-  const getToken = async () => {
-    if (override) return override;
-    return tokenKind === 'user' ? getUserToken() : getCCToken();
-  };
+async function spotifyCall(url, init, tokenKind) {
+  const getToken = async () => (tokenKind === 'user' ? getUserToken() : getCCToken());
   const doFetch = (t) => fetch(url, {
     ...(init || {}),
     headers: { ...((init && init.headers) || {}), 'Authorization': `Bearer ${t}` },
@@ -119,8 +118,7 @@ async function spotifyCall(url, init, tokenKind, override = null) {
     r = await doFetch(token);
   }
 
-  // When an override token is supplied (test bypass), don't try to refresh on 401 — bubble up.
-  if (r.status === 401 && !override) {
+  if (r.status === 401) {
     if (tokenKind === 'user') { userToken = null; userExpiry = 0; }
     else                      { ccToken   = null; ccExpiry   = 0; }
     token = await getToken();
@@ -131,11 +129,13 @@ async function spotifyCall(url, init, tokenKind, override = null) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-sonic-internal');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireSiteOrInternal(req, res)) return;
+  if (!await guard(req, res, 'spotify', 60, 60)) return;
 
   try {
     const { action } = req.body || {};
@@ -152,19 +152,19 @@ export default async function handler(req, res) {
     }
 
     if (action === 'create_playlist') {
-      const { name, description, _user_access_token: override } = req.body;
+      const { name, description } = req.body;
       if (!name) return res.status(400).json({ error: 'name required' });
       const r = await spotifyCall(`https://api.spotify.com/v1/me/playlists`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description: description || '', public: false, collaborative: true }),
-      }, 'user', override);
+      }, 'user');
       const data = await r.json().catch(() => ({}));
       return res.status(r.status).json(data);
     }
 
     if (action === 'add_tracks') {
-      const { playlist_id, uris, _user_access_token: override } = req.body;
+      const { playlist_id, uris } = req.body;
       if (!playlist_id || !Array.isArray(uris) || !uris.length) {
         return res.status(400).json({ error: 'playlist_id and non-empty uris required' });
       }
@@ -175,7 +175,7 @@ export default async function handler(req, res) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uris: batch }),
-        }, 'user', override);
+        }, 'user');
         const data = await r.json().catch(() => ({}));
         results.push({ status: r.status, body: data });
       }
@@ -183,7 +183,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'update_playlist') {
-      const { playlist_id, name, description, _user_access_token: override } = req.body;
+      const { playlist_id, name, description } = req.body;
       if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
       const body = {};
       if (typeof name        === 'string') body.name        = name;
@@ -193,15 +193,14 @@ export default async function handler(req, res) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-      }, 'user', override);
-      // 200 with empty body on success
+      }, 'user');
       return res.status(r.status).json(r.status === 200 ? { ok: true } : await r.json().catch(() => ({})));
     }
 
     if (action === 'replace_tracks') {
       // Replaces the entire playlist's items with the given uris. Passing an
       // empty uris array is the supported way to empty a playlist in one call.
-      const { playlist_id, uris = [], _user_access_token: override } = req.body;
+      const { playlist_id, uris = [] } = req.body;
       if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
       if (!Array.isArray(uris))       return res.status(400).json({ error: 'uris must be an array' });
       if (uris.length > 100)          return res.status(400).json({ error: 'replace_tracks supports up to 100 uris in one call' });
@@ -209,18 +208,17 @@ export default async function handler(req, res) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uris }),
-      }, 'user', override);
+      }, 'user');
       const data = await r.json().catch(() => ({}));
       return res.status(r.status).json(data);
     }
 
     if (action === 'unfollow_playlist') {
-      const { playlist_id, _user_access_token: override } = req.body;
+      const { playlist_id } = req.body;
       if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
       const r = await spotifyCall(`https://api.spotify.com/v1/playlists/${playlist_id}/followers`, {
         method: 'DELETE',
-      }, 'user', override);
-      // 200 on success, no body
+      }, 'user');
       return res.status(r.status).json(r.status === 200 ? { ok: true } : await r.json().catch(() => ({})));
     }
 

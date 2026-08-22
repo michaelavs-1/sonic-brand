@@ -8,11 +8,15 @@
 */
 
 import { pgrRpc } from './supabase-client.js';
+import { requireSite, setCors } from '../v6/origin-guard.js';
+import { guard } from '../v6/ratelimit.js';
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!requireSite(req, res)) return;
+  if (!await guard(req, res, 'prewarm', 30, 60)) return;
 
   const t0 = Date.now();
   const results = await Promise.allSettled([

@@ -1,4 +1,5 @@
-import { requireSite } from './origin-guard.js';
+import { requireSite, setCors } from './origin-guard.js';
+import { guard } from './ratelimit.js';
 /* /api/v4/transcribe.js
    Voice-to-text for the business-description field (and anywhere else).
    Takes a short audio clip, returns Hebrew transcription via OpenAI Whisper.
@@ -41,12 +42,13 @@ function extFor(mime) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireSite(req, res)) return; // pilot: block off-site abuse
+  if (!await guard(req, res, 'transcribe', 20, 60)) return;
 
   try {
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY || (await getKeyFromSupabase());

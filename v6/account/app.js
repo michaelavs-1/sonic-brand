@@ -14,7 +14,7 @@
 // generate-daily) so ownership can be enforced with the service role and
 // row-level UPDATEs bypass user_metadata entirely.
 
-const SUPABASE_URL  = 'https://xhkqrxljncazvbgkmqex.supabase.co';
+const SUPABASE_URL = 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
 
 // ?reset=1 → clear any saved session so the account starts fresh.
@@ -34,10 +34,24 @@ const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
 const $ = (id) => document.getElementById(id);
 const show = (id) => { ['loginView', 'dashView', 'loading'].forEach((v) => $(v).classList.add('hide')); $(id).classList.remove('hide'); };
 
+// HTML-escape for the (rare) sites where user- or AI-provided strings need
+// to flow into innerHTML because the surrounding markup is complex enough
+// that createElement + textContent would be a heavier refactor. AI-generated
+// direction titles (p.label) are the concrete concern — a prompt injection
+// could otherwise land an executable <script> in the DOM at render time.
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
 let businesses = [];
-let business   = null;
-let user       = null;
-let meta       = {};
+let business = null;
+let user = null;
+let meta = {};
 
 // Per-business data loaded from tables and refreshed on writes. Shape:
 //   { playlists, events, hours, longestMinutes, place }
@@ -52,9 +66,9 @@ const state = { dashboard: null };
 // `proposed` is the last confirming-state summary Gemini offered; clicking
 // the inline "צור פלייליסט" button uses it as-is (no extra round trip).
 const chatState = {
-  messages:  [],        // [{ role: 'user' | 'assistant', text: string }]
-  proposed:  null,      // { name_he, description_he } | null
-  busy:      false,     // true while a Gemini round trip is in flight
+  messages: [],        // [{ role: 'user' | 'assistant', text: string }]
+  proposed: null,      // { name_he, description_he } | null
+  busy: false,     // true while a Gemini round trip is in flight
 };
 
 // ---------- per-business data accessor ----------
@@ -68,18 +82,18 @@ function bmeta() { return state.dashboard || {}; }
 // playlistIsExpanding, playlistIsLive) already expects.
 function playlistRowToClient(r) {
   return {
-    id:         r.spotify_id,
-    url:        r.url,
-    label:      r.label,
-    ico:        r.ico,
+    id: r.spotify_id,
+    url: r.url,
+    label: r.label,
+    ico: r.ico,
     trackCount: r.track_count,
-    genres:     Array.isArray(r.genres) ? r.genres : [],
-    bpmRange:   r.bpm_range || null,
-    expansion:  r.expansion || null,
-    eventId:    r.event_id || null,
+    genres: Array.isArray(r.genres) ? r.genres : [],
+    bpmRange: r.bpm_range || null,
+    expansion: r.expansion || null,
+    eventId: r.event_id || null,
     expandedAt: r.expanded_at ? Date.parse(r.expanded_at) : null,
-    expiresAt:  r.expires_at  ? Date.parse(r.expires_at)  : null,
-    createdAt:  r.created_at  ? String(r.created_at).slice(0, 10) : null,
+    expiresAt: r.expires_at ? Date.parse(r.expires_at) : null,
+    createdAt: r.created_at ? String(r.created_at).slice(0, 10) : null,
   };
 }
 
@@ -95,16 +109,16 @@ async function loadDashboardData(businessId) {
     sb.from('business_hours').select('hours,longest_minutes').eq('business_id', businessId).limit(1),
     sb.from('business_place').select('*').eq('business_id', businessId).limit(1),
   ]);
-  if (plRes.error)    console.warn('business_playlists load:', plRes.error.message);
-  if (evRes.error)    console.warn('business_events load:',    evRes.error.message);
-  if (hoursRes.error) console.warn('business_hours load:',     hoursRes.error.message);
-  if (placeRes.error) console.warn('business_place load:',     placeRes.error.message);
+  if (plRes.error) console.warn('business_playlists load:', plRes.error.message);
+  if (evRes.error) console.warn('business_events load:', evRes.error.message);
+  if (hoursRes.error) console.warn('business_hours load:', hoursRes.error.message);
+  if (placeRes.error) console.warn('business_place load:', placeRes.error.message);
   state.dashboard = {
-    playlists:      (plRes.data || []).map(playlistRowToClient),
-    events:         evRes.data || [],
-    hours:          hoursRes.data?.[0]?.hours || null,
+    playlists: (plRes.data || []).map(playlistRowToClient),
+    events: evRes.data || [],
+    hours: hoursRes.data?.[0]?.hours || null,
     longestMinutes: hoursRes.data?.[0]?.longest_minutes || null,
-    place:          placeRes.data?.[0] || null,
+    place: placeRes.data?.[0] || null,
   };
 }
 
@@ -303,18 +317,18 @@ function renderPlaylistsTitle() {
   h.replaceChildren();
 
   const ico = document.createElement('span');
-  ico.className   = 'h-ico';
+  ico.className = 'h-ico';
   ico.textContent = '🎵';
   h.append(ico);
 
   const dayLetter = HE_DAY_LETTERS[todayDayIdx()];
-  const dateStr   = todayDdMmYy();
+  const dateStr = todayDdMmYy();
 
   if (todayIsClosed() && !hasPlaylistsForToday()) {
     h.append(document.createTextNode(`יום ${dayLetter}' - המקום סגור`));
     const openLink = document.createElement('a');
-    openLink.href        = '#';
-    openLink.className   = 'closed-open-link';
+    openLink.href = '#';
+    openLink.className = 'closed-open-link';
     openLink.textContent = 'המקום פתוח?';
     openLink.addEventListener('click', (e) => {
       e.preventDefault();
@@ -380,7 +394,7 @@ function renderProfileTab() {
     onChange: () => updateProfileSaveButton(),
   });
   profileSnapshot = {
-    name:  ($('profileBizName').value || '').trim(),
+    name: ($('profileBizName').value || '').trim(),
     hours: JSON.stringify(hoursEditor.getPayload().hours),
   };
   $('profileBizName').oninput = () => updateProfileSaveButton();
@@ -390,17 +404,17 @@ function renderProfileTab() {
 function updateProfileSaveButton() {
   const btn = $('saveProfile');
   if (!btn || !profileSnapshot || !hoursEditor) return;
-  const nameNow  = ($('profileBizName').value || '').trim();
+  const nameNow = ($('profileBizName').value || '').trim();
   const hoursNow = JSON.stringify(hoursEditor.getPayload().hours);
-  const dirty    = nameNow !== profileSnapshot.name || hoursNow !== profileSnapshot.hours;
-  const valid    = !!nameNow && !hoursEditor.isAllClosed();
+  const dirty = nameNow !== profileSnapshot.name || hoursNow !== profileSnapshot.hours;
+  const valid = !!nameNow && !hoursEditor.isAllClosed();
   btn.disabled = !(dirty && valid);
 }
 
 $('saveProfile')?.addEventListener('click', async () => {
   const name = $('profileBizName').value.trim();
-  const msg  = $('profileMsg');
-  const btn  = $('saveProfile');
+  const msg = $('profileMsg');
+  const btn = $('saveProfile');
   msg.style.color = '';
   msg.textContent = '';
 
@@ -427,7 +441,7 @@ $('saveProfile')?.addEventListener('click', async () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization:  `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ businessId: business.id, hours, longestMinutes }),
     });
@@ -471,7 +485,7 @@ const HE_DAY_LETTERS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 function todayDayIdx() { return new Date().getDay(); }
 
 function todayDdMmYy() {
-  const d  = new Date();
+  const d = new Date();
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yy = String(d.getFullYear()).slice(-2);
@@ -518,7 +532,7 @@ function renderPlaylists() {
   // row. Filtering them out here avoids the duplicate listing.
   const playlists = (bmeta().playlists || []).filter((p) => playlistIsLive(p) && !p.eventId);
   if (!playlists.length) {
-    wrap.innerHTML = '<p class="muted">עדיין לא נוצרו פלייליסטים.</p>';
+    wrap.innerHTML = '<p class="muted">לא נוצרו פלייליסטים</p>';
     return;
   }
   const target = dayTargetTracks();
@@ -531,19 +545,24 @@ function renderPlaylists() {
       ? `<div class="pl-expand-bar" data-target="${target}" data-current="${p.trackCount || 0}"><div class="pl-expand-fill"></div></div>`
       : '';
     const spinnerHtml = showBar ? '<span class="pl-inline-spinner" aria-label="בונים"></span>' : '';
+    // p.ico / p.label originate from AI-generated direction data (Gemini /
+    // Claude via musical-directions.js). Escape both before dropping them
+    // into innerHTML — a prompt-injection that produces a `<script>` in a
+    // title would otherwise execute here at render time. p.trackCount is
+    // clamped to a number by `|| 0`, so it doesn't need escaping.
     row.innerHTML =
       `<div class="s-info">` +
-        `<div class="s-title">${p.ico || '🎵'} ${p.label || 'פלייליסט'}</div>` +
-        `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}</div>` +
-        barHtml +
+      `<div class="s-title">${escHtml(p.ico || '🎵')} ${escHtml(p.label || 'פלייליסט')}</div>` +
+      `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}</div>` +
+      barHtml +
       `</div>`;
     if (p.url) {
       const open = document.createElement('a');
       open.className = 'btn';
       open.style.textDecoration = 'none';
-      open.href   = p.url;
+      open.href = p.url;
       open.target = '_blank';
-      open.rel    = 'noopener';
+      open.rel = 'noopener';
       open.textContent = '▶ פתח';
       row.append(open);
     }
@@ -571,7 +590,7 @@ function updateExpandBar(row, current) {
   const bar = row.querySelector('.pl-expand-bar');
   if (!bar) return;
   const target = Number(bar.dataset.target) || dayTargetTracks();
-  const fill   = bar.querySelector('.pl-expand-fill');
+  const fill = bar.querySelector('.pl-expand-fill');
   if (fill) fill.style.width = Math.min(100, Math.round((current / target) * 100)) + '%';
 }
 
@@ -608,8 +627,8 @@ async function expandPendingPlaylists() {
   if (business?.onboarding_expanded) return;
 
   const playlists = bmeta().playlists || [];
-  const target    = dayTargetTracks();
-  const pending   = playlists.filter((p) => playlistIsExpanding(p, target));
+  const target = dayTargetTracks();
+  const pending = playlists.filter((p) => playlistIsExpanding(p, target));
 
   // Even if nothing to expand (pre-flag user with all playlists already
   // marked expandedAt), still stamp the flag so we short-circuit next load.
@@ -661,11 +680,11 @@ async function expandOne(playlist, token, target) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization:  `Bearer ${token}`,
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        businessId:  business.id,
-        playlistId:  playlist.id,
+        businessId: business.id,
+        playlistId: playlist.id,
         targetCount,
       }),
     });
@@ -676,7 +695,7 @@ async function expandOne(playlist, token, target) {
       return;
     }
     if (!r.body) { clearSpinner(); return; }   // fallback for browsers without ReadableStream
-    const reader  = r.body.getReader();
+    const reader = r.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
     let finalCount = playlist.trackCount || 0;
@@ -712,7 +731,7 @@ async function expandOne(playlist, token, target) {
         const bar = row.querySelector('.pl-expand-bar');
         if (bar) {
           bar.style.transition = 'opacity .5s';
-          bar.style.opacity    = '0';
+          bar.style.opacity = '0';
           setTimeout(() => bar.remove(), 550);
         }
       }, 800);
@@ -756,11 +775,11 @@ async function runGenerateDaily() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization:  `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
         businessId: business.id,
-        bizName:    business.name || '',
+        bizName: business.name || '',
       }),
     });
     const data = await r.json().catch(() => ({}));
@@ -782,8 +801,8 @@ async function runGenerateDaily() {
 }
 
 $('genDailyConfirm')?.addEventListener('click', runGenerateDaily);
-$('genDailyCancel') ?.addEventListener('click', closeGenerateDailyModal);
-$('genDailyModal')  ?.addEventListener('click', (e) => {
+$('genDailyCancel')?.addEventListener('click', closeGenerateDailyModal);
+$('genDailyModal')?.addEventListener('click', (e) => {
   // Click on backdrop (the modal wrapper itself) closes.
   if (e.target?.id === 'genDailyModal') closeGenerateDailyModal();
 });
@@ -829,7 +848,7 @@ function renderEvents() {
     // hover lift via .s-meta-expandable to signal it's interactive.
     const meta = document.createElement('div');
     meta.className = 's-meta';
-    const desc  = ev.description || '';
+    const desc = ev.description || '';
     const short = truncate(desc, 90);
     if (desc.length > short.length) {
       meta.classList.add('s-meta-expandable');
@@ -848,7 +867,7 @@ function renderEvents() {
 
     const delBtn = document.createElement('button');
     delBtn.className = 'btn btn-danger event-del';
-    delBtn.title     = 'מחיקה';
+    delBtn.title = 'מחיקה';
     delBtn.setAttribute('aria-label', 'מחיקה');
     // Generic trash icon (outline). currentColor picks up .btn-danger's red.
     delBtn.innerHTML =
@@ -867,16 +886,16 @@ function renderEvents() {
       // Playlist is still within its 24h window — offer to open it, no
       // create button. The button reappears once the playlist expires.
       const openA = document.createElement('a');
-      openA.className    = 'btn';
+      openA.className = 'btn';
       openA.style.textDecoration = 'none';
-      openA.href         = live.url;
-      openA.target       = '_blank';
-      openA.rel          = 'noopener';
-      openA.textContent  = '▶ פתח';
+      openA.href = live.url;
+      openA.target = '_blank';
+      openA.rel = 'noopener';
+      openA.textContent = '▶ פתח';
       row.append(openA);
     } else {
       const makeBtn = document.createElement('button');
-      makeBtn.className   = 'btn';
+      makeBtn.className = 'btn';
       makeBtn.textContent = 'צרו פלייליסט';
       makeBtn.addEventListener('click', () => createEventPlaylist(ev, makeBtn));
       row.append(makeBtn);
@@ -897,14 +916,14 @@ async function createEventPlaylist(ev, btn) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization:  `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
-        businessId:  business.id,
-        eventId:     ev.id,
-        eventName:   ev.name,
+        businessId: business.id,
+        eventId: ev.id,
+        eventName: ev.name,
         description: ev.description,
-        bizName:     business.name || '',
+        bizName: business.name || '',
       }),
     });
     const data = await r.json().catch(() => ({}));
@@ -941,7 +960,7 @@ async function deleteEvent(id, btn) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization:  `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ businessId: business.id, eventId: id }),
     });
@@ -970,9 +989,9 @@ async function deleteEvent(id, btn) {
 // the old handler ran, so the card that lands in #eventsWrap and its
 // downstream generate-daily behavior are identical to before.
 
-const GEMINI_MODEL          = 'gemini-3.6-flash';
+const GEMINI_MODEL = 'gemini-3.6-flash';
 const GEMINI_THINKING_LEVEL = 'low';
-const CHAT_MAX_TOKENS       = 2000;
+const CHAT_MAX_TOKENS = 2000;
 
 function scrollChatToBottom() {
   const box = $('chatMessages');
@@ -1010,7 +1029,7 @@ function appendConfirmActions(bubble) {
   row.className = 'chat-actions';
 
   const goBtn = document.createElement('button');
-  goBtn.className   = 'btn';
+  goBtn.className = 'btn';
   goBtn.textContent = 'הכן פלייליסט';
   goBtn.addEventListener('click', () => finalizeAndSaveEvent(goBtn));
 
@@ -1032,16 +1051,16 @@ async function callChatModel(userMessage) {
   }));
 
   const r = await fetch('/api/v6/gemini', {
-    method:  'POST',
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({
-      model:             GEMINI_MODEL,
+    body: JSON.stringify({
+      model: GEMINI_MODEL,
       max_output_tokens: CHAT_MAX_TOKENS,
-      thinking_level:    GEMINI_THINKING_LEVEL,
-      system:            EVENT_CHAT_SYSTEM_PROMPT,
-      user:              userMessage,
+      thinking_level: GEMINI_THINKING_LEVEL,
+      system: EVENT_CHAT_SYSTEM_PROMPT,
+      user: userMessage,
       history,
-      label:             'event-chat',
+      label: 'event-chat',
     }),
   });
   const data = await r.json().catch(() => ({}));
@@ -1057,15 +1076,15 @@ async function callChatModel(userMessage) {
 
   // System prompt forces JSON via responseMimeType; be defensive anyway.
   const trimmed = String(text).trim();
-  const fenced  = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  const body    = fenced ? fenced[1] : trimmed;
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
+  const body = fenced ? fenced[1] : trimmed;
   return JSON.parse(body);
 }
 
 // Send-button handler. Guards against double-fire while a call is in flight.
 async function sendChatMessage() {
   const input = $('chatInput');
-  const text  = (input.value || '').trim();
+  const text = (input.value || '').trim();
   if (!text || chatState.busy) return;
   input.value = '';
   $('eventsMsg').textContent = '';
@@ -1091,11 +1110,11 @@ async function sendChatMessage() {
     chatState.messages.push({ role: 'assistant', text: replyText });
 
     if (reply?.state === 'confirming' && reply?.proposed
-        && typeof reply.proposed.name_he === 'string'
-        && typeof reply.proposed.description_he === 'string'
-        && reply.proposed.description_he.trim().length >= 5) {
+      && typeof reply.proposed.name_he === 'string'
+      && typeof reply.proposed.description_he === 'string'
+      && reply.proposed.description_he.trim().length >= 5) {
       chatState.proposed = {
-        name_he:        String(reply.proposed.name_he).trim().slice(0, 40),
+        name_he: String(reply.proposed.name_he).trim().slice(0, 40),
         description_he: String(reply.proposed.description_he).trim(),
       };
       appendConfirmActions(thinking);
@@ -1146,7 +1165,7 @@ async function finalizeAndSaveEvent(goBtn) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization:  `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ businessId: business.id, event: { name, description } }),
     });

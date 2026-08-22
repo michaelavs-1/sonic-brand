@@ -44,6 +44,7 @@
    https://vercel.com/dashboard when debugging.
 */
 
+import { timingSafeEqual } from 'node:crypto';
 import { pgrSelect, pgrDelete } from '../v5/supabase-client.js';
 import { buildDailyBatch, activeDirections } from '../v6/account/_daily-builder.js';
 import {
@@ -211,11 +212,13 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const auth = req.headers.authorization || '';
-    if (auth !== `Bearer ${cronSecret}`) {
-      return res.status(401).json({ error: 'unauthorized' });
-    }
+  if (!cronSecret) {
+    return res.status(500).json({ error: 'server misconfigured: CRON_SECRET not set' });
+  }
+  const expected = Buffer.from(`Bearer ${cronSecret}`);
+  const provided = Buffer.from(req.headers.authorization || '');
+  if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+    return res.status(401).json({ error: 'unauthorized' });
   }
 
   const t0    = Date.now();

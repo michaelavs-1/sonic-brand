@@ -345,8 +345,15 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
           // resume when page2Ready resolves (see waitingResume above).
           destroyController();
           deck.replaceChildren(
-            el('div', { class: 'preview-load-column' },
-              el('div', { class: 'preview-load-label' }, 'מכינים עוד שירים…'),
+            // .in-deck modifier flex-centers the content vertically INSIDE
+            // the deck's bounds and adds top padding equal to the swipe-up
+            // rail height, so "טוענים עוד שירים…" lands mid-deck instead of
+            // being pinned to the top where the "סופר לייק" rail sits.
+            // Other preview-load-column callers (initial preview load,
+            // direction generation) don't get the class so their layout
+            // stays as-is.
+            el('div', { class: 'preview-load-column in-deck' },
+              el('div', { class: 'preview-load-label' }, 'טוענים עוד שירים…'),
               el('div', { class: 'preview-load-progress' },
                 el('div', { class: 'preview-load-progress-fill' }),
               ),

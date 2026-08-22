@@ -107,8 +107,15 @@ async function spotifyCall(url, init, tokenKind, override = null) {
   let r = await doFetch(token);
 
   if (r.status === 429) {
+    // Cap the sleep at 5s (down from 30s) — this function's Vercel
+    // maxDuration is 30s, so honoring a large Retry-After header meant a
+    // single 429 could eat the entire execution budget and produce a 504
+    // (see 2026-08-22 cron alert). 5s is enough to let a normal short
+    // rate-limit window clear while leaving budget for the retry + the
+    // rest of the request. If the retry ALSO 429s the caller (with its
+    // own outer retry loop) will get a real 429 response fast and back off.
     const retryAfter = parseInt(r.headers.get('retry-after') || '1', 10);
-    await sleep(Math.min(retryAfter, 30) * 1000);
+    await sleep(Math.min(retryAfter, 5) * 1000);
     r = await doFetch(token);
   }
 

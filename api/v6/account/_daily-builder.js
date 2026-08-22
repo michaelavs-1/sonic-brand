@@ -326,6 +326,17 @@ export async function buildOneDailyPlaylist({
 
 // -------- batch: N directions → N INSERTs into business_playlists --------
 
+// Concurrency cap for the direction fan-out below. Each buildOneDailyPlaylist
+// fires ONE Spotify create_playlist on Rubin's user account, and Spotify's
+// per-user rate limit for create_playlist is tight and burst-sensitive —
+// firing 6-8 in parallel reliably tripped 429s that then blew out the
+// Vercel function budget on api/new/spotify.js (see 2026-08-22 alert).
+// Value tuned low enough to stay well under the burst threshold in
+// practice; the cross-business outer loop is already serial, so this cap
+// is the total in-flight ceiling across the whole cron tick.
+const BUILD_CONCURRENCY = 2;
+const BUILD_STAGGER_MS  = 300;
+
 export async function buildDailyBatch({
   ownerId, businessId, bizName,
   directions, popularityWindow, target, expiryIso, origin,
@@ -334,14 +345,37 @@ export async function buildDailyBatch({
     return { built: [], failures: [] };
   }
 
-  const results = await Promise.all(
-    directions.map((direction) =>
-      buildOneDailyPlaylist({ origin, ownerId, businessId, direction, popularityWindow, target, bizName, expiryIso })
-        .catch((err) => {
-          console.warn(`[daily-builder] "${direction.title_en}" failed:`, err.message);
-          return { skipped: true, reason: err.message, title: direction.title_en };
-        }),
-    ),
+  // Bounded-concurrency worker pool. Each worker pulls the next unclaimed
+  // direction, waits BUILD_STAGGER_MS between starts to smooth the burst
+  // toward Spotify, and swallows errors into a skipped-result shape so
+  // one bad direction doesn't tank the batch.
+  const jobs   = directions.map((direction) => ({ direction }));
+  const results = new Array(jobs.length);
+  let cursor   = 0;
+
+  async function runOne(idx) {
+    const { direction } = jobs[idx];
+    try {
+      results[idx] = await buildOneDailyPlaylist({
+        origin, ownerId, businessId, direction, popularityWindow, target, bizName, expiryIso,
+      });
+    } catch (err) {
+      console.warn(`[daily-builder] "${direction.title_en}" failed:`, err.message);
+      results[idx] = { skipped: true, reason: err.message, title: direction.title_en };
+    }
+  }
+
+  async function worker() {
+    while (true) {
+      const idx = cursor++;
+      if (idx >= jobs.length) return;
+      if (idx > 0) await sleep(BUILD_STAGGER_MS);
+      await runOne(idx);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(BUILD_CONCURRENCY, jobs.length) }, worker),
   );
 
   const built    = results.filter((r) => r && !r.skipped && r.row).map((r) => r.row);

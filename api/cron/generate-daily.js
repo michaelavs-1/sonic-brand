@@ -21,11 +21,19 @@
      - closed-today          (hours[dayIdx].closed = true → user-triggered
                               "המקום פתוח?" flow is the only path on
                               closed days)
-     - already-fresh         (a live playlist with created_at::date = today
-                              already exists — usually because the previous
-                              cron tick built it, but also true when a user
-                              manually built via the closed-day flow
-                              earlier today)
+     - past-close            (now > today's close + 2h in IL — the window
+                              for today's daily playlist has already ended.
+                              Prevents the cron from creating a born-expired
+                              playlist and then re-creating it every hour
+                              until midnight IL.)
+     - already-built-today   (any playlist with created_at::date = today
+                              exists for this business — usually because the
+                              previous cron tick built it, but also true
+                              when a user manually built via the closed-day
+                              flow earlier today. Dedupe by build date, NOT
+                              by live-status: even a same-day playlist
+                              that's already expired counts as "we already
+                              built today, don't re-build".)
      - too-early             (now < today's opening - 2h)
      - no-directions         (business row exists but no direction set is
                               carried forward — happens if the user
@@ -88,28 +96,31 @@ async function fetchBusinessHours(businessId) {
   }
 }
 
-// Check if a live daily playlist for today (IL) already exists for this
-// business — enough to short-circuit before we do direction lookup and
-// Spotify writes. Fetches only the tiny row-set needed (10 newest
-// non-event rows); the JS filter matches "created_at::date = ilIsoDate"
-// via ISO string prefix without complex PostgREST timezone gymnastics.
-async function anyFreshToday(businessId, ilIsoDate, nowMs) {
+// Check if ANY daily playlist for today (IL) exists for this business —
+// live OR expired. Dedup key is build DATE, not live-status: if the cron
+// has already built today, don't build again, period.
+//
+// Historical note: this used to also require `expires_at > now`. That
+// meant a business whose window had already ended (close + 2h < now)
+// would fail the "fresh" check every hour after close — its playlist
+// was born already-expired since expires_at = close + 2h — and the
+// cron would rebuild every hour until midnight IL. Each rebuild fired
+// N parallel Spotify create_playlist calls that tripped 429s and blew
+// out the /api/new/spotify function budget (see 2026-08-22 alert).
+// Now the past-close skip prevents even the first pointless build.
+async function anyBuiltToday(businessId, ilIsoDate) {
   let rows = [];
   try {
     rows = await pgrSelect('business_playlists',
       { business_id: `eq.${businessId}`, event_id: 'is.null' },
-      { select: 'created_at,expires_at', order: 'created_at.desc', limit: 10, useService: true },
+      { select: 'created_at', order: 'created_at.desc', limit: 10, useService: true },
     );
   } catch (e) {
     console.warn(`[cron daily-gen] freshness read failed for biz=${businessId}:`, e.message);
     return false;
   }
-  return (rows || []).some((p) => {
-    if (!p?.created_at) return false;
-    if (String(p.created_at).slice(0, 10) !== ilIsoDate) return false;
-    const expMs = p.expires_at ? Date.parse(p.expires_at) : null;
-    return !expMs || expMs > nowMs;
-  });
+  return (rows || []).some((p) => p?.created_at
+    && String(p.created_at).slice(0, 10) === ilIsoDate);
 }
 
 async function processBusiness({ business, now, ilNow, origin }) {
@@ -132,11 +143,22 @@ async function processBusiness({ business, now, ilNow, origin }) {
     return { id: business.id, skipped: 'closed-today' };
   }
 
-  // "Already fresh" — a live daily playlist created today (IL) already
-  // exists. Covers both "cron ran an earlier hour today" and "user
-  // manually built via closed-day flow earlier today".
-  if (await anyFreshToday(business.id, ilNow.isoDate, now.getTime())) {
-    return { id: business.id, skipped: 'already-fresh' };
+  // Past-close: today's window is over (now > close + 2h in IL). Reuses
+  // dailyPlaylistExpiryIso — same helper that stamps expires_at on the
+  // built row — so "past-close" here matches "expires_at in the past for
+  // today's build" by construction. Overnight-wrap venues (close ≤ open)
+  // are handled inside the helper. Without this skip we'd build a playlist
+  // that's born already-expired.
+  const todaysExpiryIso = dailyPlaylistExpiryIso({ hours, now });
+  if (todaysExpiryIso && Date.parse(todaysExpiryIso) <= now.getTime()) {
+    return { id: business.id, skipped: 'past-close' };
+  }
+
+  // "Already built today" — a daily playlist with created_at::date = today
+  // (IL) already exists. Dedup by DATE, not by live-status; see the note
+  // on anyBuiltToday for why.
+  if (await anyBuiltToday(business.id, ilNow.isoDate)) {
+    return { id: business.id, skipped: 'already-built-today' };
   }
 
   const minsToOpen = minsUntilILToday(h.open, ilNow);
@@ -157,7 +179,7 @@ async function processBusiness({ business, now, ilNow, origin }) {
 
   const dayMins = dayMinutesFromHours(hours, ilNow.dayIdx);
   const target  = computeTargetTracks(dayMins);
-  const expiryIso = dailyPlaylistExpiryIso({ hours, now });
+  // todaysExpiryIso was already computed above (past-close skip); reuse it.
 
   try {
     const { built, failures } = await buildDailyBatch({
@@ -167,10 +189,10 @@ async function processBusiness({ business, now, ilNow, origin }) {
       directions,
       popularityWindow,
       target,
-      expiryIso,
+      expiryIso:  todaysExpiryIso,
       origin,
     });
-    console.log(`[cron daily-gen] ${label} built=${built.length}/${directions.length} target=${target} expires=${expiryIso}${failures.length ? ' failures=' + JSON.stringify(failures) : ''}`);
+    console.log(`[cron daily-gen] ${label} built=${built.length}/${directions.length} target=${target} expires=${todaysExpiryIso}${failures.length ? ' failures=' + JSON.stringify(failures) : ''}`);
     return {
       id: business.id,
       built: built.length,

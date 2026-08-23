@@ -49,9 +49,15 @@ export default async function handler(req, res) {
 
         // Serialize Spotify → DB: the DB queries need the market-canonical ID
         // that Spotify returns (relinking), so we can't parallelize them.
+        // x-sonic-internal: /api/v4/spotify is guarded by requireSiteOrInternal
+        // — server-to-server calls from another Vercel function carry no
+        // Origin header, so we pass the shared secret to satisfy the guard.
         const spotifyRes = await fetch(sameOriginUrl(req, '/api/v4/spotify'), {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type':     'application/json',
+                'x-sonic-internal': process.env.INTERNAL_API_KEY || '',
+            },
             body:    JSON.stringify({ action: 'get_track', track_id: spotifyId, market: 'IL' }),
         });
         const spotifyData = await spotifyRes.json().catch(() => ({}));

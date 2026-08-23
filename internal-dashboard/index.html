@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Robin Internal Dashboard (test)</title>
+  <style>
+    :root {
+      --bg: #0d1218;
+      --panel: #151c25;
+      --panel-2: #1c2531;
+      --border: #263140;
+      --text: #e6ecf3;
+      --text-dim: #8ea0b4;
+      --accent: #ff8a4c;
+      --accent-dim: #4a2a1a;
+      --good: #6ee7b7;
+      --danger: #ff9b8a;
+      --link: #7dd3fc;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    a { color: var(--link); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    button {
+      font: inherit;
+      background: var(--accent);
+      color: #0a1117;
+      border: 0;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { filter: brightness(1.1); }
+    button.ghost {
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+    button.ghost:hover { color: var(--text); border-color: var(--text-dim); }
+    input[type="password"], input[type="text"] {
+      font: inherit;
+      background: var(--panel);
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      border-radius: 6px;
+      width: 100%;
+    }
+    input:focus { outline: 0; border-color: var(--accent); }
+
+    header.appbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 20px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header .title { font-weight: 700; font-size: 16px; }
+    header .title small { color: var(--text-dim); font-weight: 400; margin-left: 8px; }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+
+    /* Login card */
+    .login-wrap {
+      min-height: calc(100vh - 60px);
+      display: grid;
+      place-items: center;
+    }
+    .login-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 28px;
+      width: min(420px, 100%);
+    }
+    .login-card h1 { margin: 0 0 6px; font-size: 20px; }
+    .login-card p { color: var(--text-dim); margin: 0 0 18px; }
+    .login-card .row { display: flex; gap: 10px; margin-top: 12px; }
+    .login-card .row button { white-space: nowrap; }
+    .login-err { color: var(--danger); margin-top: 10px; font-size: 13px; min-height: 18px; }
+
+    /* Table */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .card + .card { margin-top: 20px; }
+    .card-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+    .card-head .meta { color: var(--text-dim); font-size: 13px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-2);
+      font-weight: 600;
+      color: var(--text-dim);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: var(--panel-2); }
+
+    .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      color: var(--text-dim);
+    }
+    .pill.good  { color: var(--good);   border-color: #234a3d; background: #0f2a24; }
+    .pill.dim   { color: var(--text-dim); }
+    .pill.warn  { color: var(--danger); border-color: #4a2a26; background: #2a1614; }
+
+    .empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-dim);
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: minmax(180px, 240px) 1fr;
+      gap: 4px 20px;
+      padding: 16px 18px;
+    }
+    .kv .k { color: var(--text-dim); }
+    .kv .v { word-break: break-word; }
+    .kv .v.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+
+    pre.dump {
+      margin: 0;
+      padding: 14px 18px;
+      background: var(--panel-2);
+      color: var(--text);
+      overflow-x: auto;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .track-list {
+      padding: 10px 14px;
+      font-family: ui-monospace, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--text-dim);
+      word-break: break-all;
+    }
+    .track-list code {
+      background: var(--panel-2);
+      padding: 1px 5px;
+      border-radius: 3px;
+      color: var(--text);
+      margin: 0 2px 2px 0;
+      display: inline-block;
+    }
+
+    details.tracks { border-top: 1px solid var(--border); }
+    details.tracks summary {
+      padding: 8px 18px;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 12px;
+    }
+    details.tracks summary:hover { color: var(--text); }
+    details.tracks[open] summary { color: var(--text); }
+
+    .back-row { margin-bottom: 14px; }
+    .back-row a { color: var(--text-dim); }
+    .back-row a:hover { color: var(--text); }
+
+    .banner {
+      background: var(--accent-dim);
+      color: #ffb08a;
+      padding: 10px 20px;
+      font-size: 13px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: -3px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/internal-dashboard/app.js"></script>
+</body>
+</html>

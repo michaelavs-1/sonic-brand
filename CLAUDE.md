@@ -170,6 +170,7 @@ the 10-track sample playlists each grow to today's opening hours + 1h.
 
 - Uses `SUPABASE_SERVICE_ROLE_KEY` admin API to create user + `businesses` row
 - Writes onboarding context (hours, longestMinutes, atmospheres, place, playlists) to `auth.users.raw_user_meta_data.sonic.b[businessId]`
+- Persists the free-text prompt inputs (`business_description`, `musical_emphases`) as columns on the `businesses` row itself. Read back by the internal admin API. PATCH path skips blanks so a repeat-onboarding with an empty field doesn't wipe a previously-recorded prompt.
 - Returns instant login link (magic-link admin API) so client can jump to `/v6/account` without email round-trip
 - **Magic-link redirect** (`accountRedirectUrl`) derives the target from the request host (`x-forwarded-host` || `host`) so signup on localhost / preview / robin-music.com / sonic-brand.vercel.app each redirects back to where the user came from — no per-env config needed. The derived host is validated via `isAllowedHost()` in `api/v6/origin-guard.js` to block `x-forwarded-host: attacker.com` spoofing. Whatever host wins must also be on Supabase's Redirect URLs allowlist (Auth → URL Configuration) — otherwise Supabase silently substitutes its Site URL. `V6_ACCOUNT_REDIRECT_URL` env var overrides derivation entirely if you need a pinned target.
 
@@ -237,6 +238,10 @@ sonic-brand/
 │   │   │                                      Tolerates 404 (isGone helper) so purged playlists don't loop.
 │   │   └── generate-daily.js               ← Hourly cron. For each business, 2h before that day's opening,
 │   │                                          builds one daily playlist per direction (Israel-local time).
+│   ├── internal/
+│   │   ├── _guard.js                       ← Shared bearer-token guard for the /api/internal/* admin surface
+│   │   ├── users.js                        ← GET list of businesses + owner emails (Michael's dashboard)
+│   │   └── business.js                     ← GET one business's full onboarding prompt + directions + playlists
 │   ├── openai.js, spotify.js, databox.js   ← Root-level legacy proxies (v1/v2/v3-era)
 ├── scripts/
 │   ├── benchmark-directions.mjs            ← OpenAI vs Anthropic timing/quality benchmark
@@ -440,7 +445,7 @@ Everything the account dashboard reads lives here:
 - `playlist_tracks` — playlist_id ↔ spotify_id + position.
 - `track_analyses` — spotify_id + typed audio-feature columns (tempo, popularity, energy, etc.) + raw_analysis jsonb.
 - `created_playlists` — the expiry ledger. Columns: `spotify_id` (PK), `name`, `expires_at`, `deleted_at`, `error`, `owner_id` (nullable FK → auth.users), `business_id` (nullable FK → businesses). Both FKs use ON DELETE SET NULL so the cron can still unfollow expired playlists after their owner/business is deleted. Rows written by onboarding (via /api/v5/record-playlist) start with NULL owner/business — signup.js back-fills them. Renamed from `v5_created_playlists` on 2026-08-02; migration in `v5/precompute/migrations/`.
-- `businesses` — { id, owner_id, name, monthly_credits, credits_remaining }. Written by signup.
+- `businesses` — { id, owner_id, name, monthly_credits, credits_remaining, business_description, musical_emphases, onboarding_expanded }. Written by signup. `business_description` + `musical_emphases` are the free-text prompt inputs the owner typed during onboarding (bizDesc + step-3 emphases); added 2026-08-23 for the internal admin API. PATCH path in signup.js skips blank values so repeat-onboarding with an empty field doesn't clobber a previously-recorded prompt.
 - Historical: `analyses`, `track_feedback`, `app_settings` (old OpenAI key storage), `spotify_tokens` (v1 era).
 
 ### Track pool coverage
@@ -531,6 +536,20 @@ Because the atmospheres endpoint has no server cache, Ami's scan is immediately 
 
 ---
 
+## INTERNAL ADMIN API (Michael's dashboard)
+
+Read-only endpoints under `api/internal/*` for Michael's forthcoming admin dashboard (his own repo, host TBD — not in this repo). Auth: single shared bearer token in `INTERNAL_ADMIN_API_KEY` env var, presented as `Authorization: Bearer <key>` or `x-internal-admin-key: <key>`. CORS is `*` because the bearer token IS the security boundary (no cookies, so cross-origin attacks can't attach it). Fail-CLOSED on missing env — misconfig 500s loudly, same philosophy as `requireSiteOrInternal`.
+
+- `GET /api/internal/users` → `{ count, businesses: [ { business_id, name, owner_id, owner_email, created_at, has_prompt } ] }`. `has_prompt` is true iff `business_description` or `musical_emphases` is non-null (rows signed up after the 2026-08-23 migration).
+- `GET /api/internal/business?id=<uuid>` → full detail: `{ business, onboarding: { business_description, musical_emphases, atmospheres }, place, hours, directions[], playlists[] }`. `playlists[].track_ids` is the ordered Spotify-ID array as of build time (null for pre-2026-08-20 rows — see the business-directions migration).
+
+Notes on the data shape:
+- `onboarding.atmospheres` is read from `auth.users.raw_user_meta_data.sonic.onboarding.atmospheres`. That field only gets written on FIRST signup for a given email, so a user who did a second onboarding under the same email still shows the atmospheres from their first flow.
+- `playlists[]` includes both live and expired rows (nothing deletes `business_playlists`; `expires_at` only gates dashboard visibility). Michael's dashboard should filter itself if it only wants live playlists.
+- Michael's dashboard is expected to iterate: `GET /users` for the list, `GET /business?id=<row.business_id>` per user for detail. No server-side pagination — pilot scale.
+
+---
+
 ## ENVIRONMENT VARIABLES
 
 All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel dev` reads from cloud, but scripts and one-off tools use `.env.local`).
@@ -544,6 +563,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 | `RUBIN_REFRESH_TOKEN` | `api/new/spotify.js` refreshUserToken | Scope: `playlist-modify-private` only. Re-seed for wider scopes. |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | All v5/v6 endpoints via api/v5/supabase-client.js | Anon safe to expose client-side; service role server-only |
 | `INTERNAL_API_KEY` | `api/v6/origin-guard.js requireSiteOrInternal`; passed as `x-sonic-internal` header for server-to-server calls into `api/new/spotify.js` | Fail-open if not set (audit surface for later) |
+| `INTERNAL_ADMIN_API_KEY` | `api/internal/_guard.js requireAdmin` — Michael's dashboard bearer token | Fail-CLOSED if unset (500s the endpoint). Must be set in Vercel prod + `.env.local`; share the value with Michael out-of-band. |
 | `GOOGLE_PLACES_API_KEY` | `api/v6/place-lookup.js` | Optional — endpoint silently skips if unset. Currently sensitive in Vercel + set to empty on some environments. |
 | `CRON_SECRET` | `api/cron/expire-playlists.js` auth check | Vercel Cron sets `Authorization: Bearer <secret>` header |
 | `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json` |

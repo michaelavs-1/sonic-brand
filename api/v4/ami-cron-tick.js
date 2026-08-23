@@ -134,7 +134,10 @@ async function fetchAllPlaylistTracks(req, playlistId) {
     for (let offset = 0; offset < 500; offset += 100) {
         const r = await fetch(sameOriginUrl(req, '/api/v4/spotify'), {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type':     'application/json',
+                'x-sonic-internal': process.env.INTERNAL_API_KEY || '',
+            },
             body:    JSON.stringify({
                 action:      'get_playlist_tracks',
                 playlist_id: playlistId,

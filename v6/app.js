@@ -24,7 +24,7 @@ import {
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=21082026a';
+} from '/v6/result.js?v=23082026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -771,6 +771,8 @@ async function goToStep(start) {
           if (signal.aborted) return;
           showSignupCard(results, {
             name: state.bizName,
+            description: state.bizDesc,
+            musicalEmphases: state.musicalEmphases,
             atmospheres: state.selectedAtmos,
             place: state.confirmedPlace,
             hours: state.hours,

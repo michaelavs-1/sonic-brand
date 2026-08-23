@@ -62,6 +62,12 @@
     },
     "api/cron/generate-daily.js": {
       "maxDuration": 300
+    },
+    "api/internal/users.js": {
+      "maxDuration": 30
+    },
+    "api/internal/business.js": {
+      "maxDuration": 30
     }
   },
   "crons": [
@@ -328,6 +334,10 @@
     {
       "source": "/v6/account",
       "destination": "/v6/account/index.html"
+    },
+    {
+      "source": "/internal-dashboard",
+      "destination": "/internal-dashboard/index.html"
     }
   ]
 }

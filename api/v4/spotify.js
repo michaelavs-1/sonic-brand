@@ -1,4 +1,4 @@
-import { requireSite, setCors } from '../v6/origin-guard.js';
+import { requireSiteOrInternal, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
 /* /api/v4/spotify.js
    Lean Spotify proxy for v4 preview phase. One action:
@@ -62,7 +62,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
-  if (!requireSite(req, res)) return;
+  if (!requireSiteOrInternal(req, res)) return;
   if (!await guard(req, res, 'v4-spotify', 60, 60)) return;
 
   try {

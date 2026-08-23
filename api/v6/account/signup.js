@@ -122,7 +122,13 @@ async function findOrCreateUser(email) {
 // Ensure a businesses row exists for the owner. Returns the business row's id.
 // Reuses the first existing business (updating its name if provided); creates
 // a new one if none exist.
-async function ensureBusiness(ownerId, name, credits) {
+//
+// `promptInputs = { description, musicalEmphases }` capture the free-text
+// onboarding prompt so the internal dashboard can reconstruct what each
+// owner typed. null values are skipped on the PATCH path (repeat-onboarding
+// with a blank field should NOT wipe a previously-recorded prompt); the
+// INSERT path writes them verbatim (nulls included).
+async function ensureBusiness(ownerId, name, credits, promptInputs = {}) {
   const q = `${SUPABASE_URL}/rest/v1/businesses?owner_id=eq.${ownerId}&select=id,name`;
   const existingRes = await fetch(q, { headers: adminHeaders() });
   const rows = await existingRes.json().catch(() => []);
@@ -132,6 +138,8 @@ async function ensureBusiness(ownerId, name, credits) {
     const match = rows[0];
     const patch = { monthly_credits: credits, credits_remaining: credits };
     if (name) patch.name = name;
+    if (promptInputs.description)     patch.business_description = promptInputs.description;
+    if (promptInputs.musicalEmphases) patch.musical_emphases     = promptInputs.musicalEmphases;
     const r = await fetch(`${SUPABASE_URL}/rest/v1/businesses?id=eq.${match.id}`, {
       method: 'PATCH',
       headers: { ...adminHeaders(), Prefer: 'return=minimal' },
@@ -149,6 +157,8 @@ async function ensureBusiness(ownerId, name, credits) {
       name: name || '',
       monthly_credits: credits,
       credits_remaining: credits,
+      business_description: promptInputs.description     || null,
+      musical_emphases:     promptInputs.musicalEmphases || null,
     }),
   });
   if (!r.ok) {
@@ -240,6 +250,8 @@ export default async function handler(req, res) {
       email,
       business_name,
       business_type,
+      business_description,
+      musical_emphases,
       atmospheres,
       place,
       hours,
@@ -254,8 +266,18 @@ export default async function handler(req, res) {
     }
 
     const name = String(business_name || '').trim().slice(0, 80);
+    // Trim + upper-bound the two free-text prompt inputs so a malicious /
+    // pasted-in payload can't stuff arbitrary blobs into a text column.
+    // Emphases has an implicit 500-char client cap (see v6/emphases.js);
+    // description has no client cap, but 4000 covers a normal owner's
+    // dictation with plenty of headroom.
+    const desc     = String(business_description || '').trim().slice(0, 4000);
+    const emphases = String(musical_emphases     || '').trim().slice(0, 2000);
     const { user, existing } = await findOrCreateUser(cleanEmail);
-    const businessId = await ensureBusiness(user.id, name, DEFAULT_CREDITS);
+    const businessId = await ensureBusiness(user.id, name, DEFAULT_CREDITS, {
+      description:     desc || null,
+      musicalEmphases: emphases || null,
+    });
 
     // 1) user_metadata gets ONLY the small identity flags. currentBizId
     //    is needed by the account dashboard on load; onboarding.* is a

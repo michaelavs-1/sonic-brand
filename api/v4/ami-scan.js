@@ -248,7 +248,10 @@ async function poolMap(items, worker, concurrency = 5) {
 async function fetchPlaylistMeta(req, playlistId) {
     const r = await fetch(sameOriginUrl(req, '/api/v4/spotify'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type':     'application/json',
+            'x-sonic-internal': process.env.INTERNAL_API_KEY || '',
+        },
         body: JSON.stringify({ action: 'get_playlist', playlist_id: playlistId }),
     });
     const data = await r.json().catch(() => ({}));

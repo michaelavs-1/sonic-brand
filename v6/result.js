@@ -333,6 +333,11 @@ async function postSignup({ email, business_name, biz, playlists }) {
       email,
       business_name: business_name || null,
       business_type: null,
+      // Free-text prompt inputs — persisted to businesses.business_description
+      // and businesses.musical_emphases so the internal dashboard can show
+      // the exact prompt each owner used to produce their directions.
+      business_description: biz?.description || null,
+      musical_emphases:     biz?.musicalEmphases || null,
       atmospheres: biz?.atmospheres || [],
       place: biz?.place || null,
       hours: biz?.hours || null,

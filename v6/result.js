@@ -250,7 +250,8 @@ export function showSignupCard(results, biz) {
   const msg = el('p', { class: 'hint', style: 'color:#ff9b8a;font-size:13px' }, '');
   const goBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'שלחו לי קישור לאימייל ←');
 
-  goBtn.addEventListener('click', async () => {
+  const submit = async () => {
+    if (goBtn.disabled) return;
     const email = emailInput.value.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       msg.textContent = 'הזינו כתובת אימייל תקינה';
@@ -269,6 +270,13 @@ export function showSignupCard(results, biz) {
       goBtn.innerHTML = origHtml;
       msg.textContent = String(err?.message || 'משהו השתבש — נסו שוב');
     }
+  };
+
+  goBtn.addEventListener('click', submit);
+  // Enter in the email input submits — the input isn't wrapped in a <form>,
+  // so browsers won't do this for us.
+  emailInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); submit(); }
   });
 
   card.replaceChildren(

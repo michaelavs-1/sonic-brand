@@ -116,9 +116,16 @@ export async function fetchTracksWithHistory({ businessId, direction, popularity
   };
 
   // Primary: exclude tracks served in the last 7 days.
+  // useService: true — this helper is called from expand-playlist, the
+  // user-triggered generate-daily, and the hourly cron. Each of those has
+  // already verified JWT/CRON_SECRET upstream, so escalating this read to
+  // service_role is safe. Without it, the RPC runs as anon (3s
+  // statement_timeout) — for expand-playlist growing to ~120 tracks the
+  // ORDER BY random() + LIMIT reliably tripped 3s and the strict one-time
+  // onboardingExpanded flag left playlists stuck at their sample size.
   const primary = await pgrRpc('v6_direction_tracks_recent', {
     ...baseArgs, p_limit: target, p_exclude_days: DEDUP_WINDOW_DAYS,
-  });
+  }, { useService: true });
   const ids = (primary || []).map((r) => r.spotify_id).filter(Boolean);
 
   // Pool-shortage fallback: refill from the full pool. Ask for extra so we
@@ -130,7 +137,7 @@ export async function fetchTracksWithHistory({ businessId, direction, popularity
     const need = target - ids.length;
     const fill = await pgrRpc('v6_direction_tracks_recent', {
       ...baseArgs, p_limit: (need + ids.length) * 2, p_exclude_days: 0,
-    });
+    }, { useService: true });
     for (const r of (fill || [])) {
       if (r?.spotify_id && !seen.has(r.spotify_id)) {
         ids.push(r.spotify_id);

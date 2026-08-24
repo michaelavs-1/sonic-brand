@@ -64,18 +64,58 @@ async function fetchDirectionTracks(direction, popularityWindow) {
   return data.spotify_ids || [];
 }
 
-async function postSpotify(action, body) {
-  const r = await fetch('/api/new/spotify', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ action, ...body }),
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = data?.error?.message || data?.error || r.statusText;
-    throw new Error(`spotify ${action} ${r.status}: ${msg}`);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// One fetch attempt against /api/new/spotify. Detects the wrapped
+// 200-with-inner-error case that api/new/spotify uses for add_tracks
+// (it ALWAYS returns 200 with a results[] array even when an inner
+// Spotify call 4xx/5xx'd — without this check, a partial add_tracks
+// failure would silently be treated as success). Returns a shape the
+// retry loop can inspect: { ok:true, data } | { ok:false, status,
+// retriable, error }.
+async function postSpotifyOnce(action, body) {
+  let r;
+  try {
+    r = await fetch('/api/new/spotify', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ action, ...body }),
+    });
+  } catch (err) {
+    // Network / socket failure before any HTTP response — always retriable.
+    return { ok: false, status: 0, retriable: true, error: err };
   }
-  return data;
+  const data = await r.json().catch(() => ({}));
+  const chunkFail = action === 'add_tracks' && Array.isArray(data?.results)
+    ? data.results.find((x) => !x || x.status >= 400) : null;
+  if (r.ok && !chunkFail) return { ok: true, data };
+  const status  = chunkFail ? chunkFail.status : r.status;
+  const errBody = chunkFail ? chunkFail.body   : data;
+  const msg     = errBody?.error?.message || errBody?.error || `${action} ${status}`;
+  return {
+    ok: false,
+    status,
+    retriable: status >= 500 || status === 429,
+    error: new Error(`spotify ${action}: ${msg}`),
+  };
+}
+
+// 3 attempts with 500ms / 1000ms backoff on 5xx / 429 / network. Terminal
+// failure (bad request, wrong token, unretriable) throws immediately.
+// After MAX_ATTEMPTS the last error is thrown so the outer catch in
+// buildDirectionPlaylists marks the whole playlist as skipped rather
+// than lying about a success that never actually landed on Spotify.
+async function postSpotify(action, body) {
+  const MAX_ATTEMPTS = 3;
+  let last;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    last = await postSpotifyOnce(action, body);
+    if (last.ok) return last.data;
+    if (!last.retriable || attempt === MAX_ATTEMPTS) throw last.error;
+    console.warn(`spotify ${action} attempt ${attempt} failed (${last.status || 'network'}), retrying in ${500 * attempt}ms:`, last.error?.message);
+    await sleep(500 * attempt);
+  }
+  throw last?.error || new Error(`spotify ${action} failed`);
 }
 
 async function buildOne({ direction, bizName, popularityWindow }) {

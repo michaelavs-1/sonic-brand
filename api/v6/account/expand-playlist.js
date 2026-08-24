@@ -190,7 +190,16 @@ export default async function handler(req, res) {
     const hoursForExpiry = await fetchBusinessHours(businessId);
     const expiryIso      = dailyPlaylistExpiryIso({ hours: hoursForExpiry }) || nextIl4amIso();
 
-    const current = Number.isFinite(row.track_count) ? row.track_count : 0;
+    // Prefer track_ids.length as the source of truth — it reflects what
+    // we actually added to Spotify. track_count can drift optimistically
+    // if a partial add_tracks failure at signup was masked by the wrapped
+    // /api/new/spotify 200-with-inner-error behavior (fixed on 2026-08-24
+    // in playlist-builder.js, but historical rows may still show the
+    // mismatch). track_ids === null (rather than []) means "pre-migration
+    // row" and we trust track_count instead.
+    const current = Array.isArray(row.track_ids)
+      ? row.track_ids.length
+      : (Number.isFinite(row.track_count) ? row.track_count : 0);
     const need    = Math.max(0, target - current);
     if (need <= 0) {
       // Already at or above target — mark expanded so we don't retry.

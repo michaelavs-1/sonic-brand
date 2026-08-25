@@ -17,16 +17,22 @@
          musical_emphases:     string | null,
          atmospheres:          string[]         // from user_metadata
        },
-       place:      <business_place row>  | null,
-       hours:      <business_hours row>  | null,
-       directions: <business_directions[]>,
-       playlists:  <business_playlists[]>   // all rows (live + expired)
+       place:            <business_place row>  | null,
+       hours:            <business_hours row>  | null,
+       directions:       <business_directions[]>,   // both active + inactive
+       playlists:        <business_playlists[]>,    // all rows (live + expired)
+       direction_changes: <business_direction_changes[]>,  // most recent first
+       chat_transcript:  <business_direction_chats[]>      // ascending time
      }
 
    All playlist rows carry `track_ids` (array of Spotify track IDs) as
    stored at build time — see the 2026-08-20-business-directions.sql
    migration. Rows created before that migration will have `track_ids:
    null` (unrecoverable from other sources).
+
+   direction_changes and chat_transcript come from the 2026-08-25-direction-
+   chat.sql migration. Rows only exist for businesses whose owner has
+   used the profile-page direction-edit chat.
 */
 
 import { pgrSelect } from '../v5/supabase-client.js';
@@ -76,7 +82,7 @@ export default async function handler(req, res) {
 
     // Fetch the owner + all per-business tables in parallel — no ordering
     // dependency between them.
-    const [ownerUser, placeRows, hoursRows, directionRows, playlistRows] = await Promise.all([
+    const [ownerUser, placeRows, hoursRows, directionRows, playlistRows, changeRows, chatRows] = await Promise.all([
       fetchAuthUser(business.owner_id),
       pgrSelect('business_place',      { business_id: `eq.${id}` }, { useService: true }),
       pgrSelect('business_hours',      { business_id: `eq.${id}` }, { useService: true }),
@@ -88,6 +94,16 @@ export default async function handler(req, res) {
       pgrSelect('business_playlists', { business_id: `eq.${id}` }, {
         select: 'spotify_id,url,label,ico,track_count,genres,bpm_range,event_id,direction_id,track_ids,expanded_at,expires_at,created_at',
         order: 'created_at.desc',
+        useService: true,
+      }),
+      pgrSelect('business_direction_changes', { business_id: `eq.${id}` }, {
+        select: 'id,kind,direction_id,before,after,playlist_action,message_id_first,message_id_last,applied_at',
+        order: 'applied_at.desc',
+        useService: true,
+      }),
+      pgrSelect('business_direction_chats', { business_id: `eq.${id}` }, {
+        select: 'id,role,content,proposal,selected_direction_id,created_at',
+        order: 'created_at.asc',
         useService: true,
       }),
     ]);
@@ -114,10 +130,12 @@ export default async function handler(req, res) {
         musical_emphases:     business.musical_emphases,
         atmospheres,
       },
-      place:      (Array.isArray(placeRows) && placeRows[0]) || null,
-      hours:      (Array.isArray(hoursRows) && hoursRows[0]) || null,
-      directions: Array.isArray(directionRows) ? directionRows : [],
-      playlists:  Array.isArray(playlistRows)  ? playlistRows  : [],
+      place:              (Array.isArray(placeRows) && placeRows[0]) || null,
+      hours:              (Array.isArray(hoursRows) && hoursRows[0]) || null,
+      directions:         Array.isArray(directionRows) ? directionRows : [],
+      playlists:          Array.isArray(playlistRows)  ? playlistRows  : [],
+      direction_changes:  Array.isArray(changeRows)    ? changeRows    : [],
+      chat_transcript:    Array.isArray(chatRows)      ? chatRows      : [],
     });
   } catch (err) {
     console.error('[internal:business] failed:', err.message);

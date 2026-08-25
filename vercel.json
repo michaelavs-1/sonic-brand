@@ -60,6 +60,18 @@
     "api/v6/account/generate-daily.js": {
       "maxDuration": 60
     },
+    "api/v6/account/direction-chat.js": {
+      "maxDuration": 60
+    },
+    "api/v6/account/preview-direction.js": {
+      "maxDuration": 30
+    },
+    "api/v6/account/apply-direction-change.js": {
+      "maxDuration": 60
+    },
+    "api/v6/account/toggle-super-like.js": {
+      "maxDuration": 10
+    },
     "api/cron/generate-daily.js": {
       "maxDuration": 300
     },
@@ -334,10 +346,6 @@
     {
       "source": "/v6/account",
       "destination": "/v6/account/index.html"
-    },
-    {
-      "source": "/internal-dashboard",
-      "destination": "/internal-dashboard/index.html"
     }
   ]
 }

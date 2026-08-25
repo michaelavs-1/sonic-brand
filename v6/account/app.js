@@ -26,6 +26,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeTargetForToday } from '../generation/playlist-length.js?v=13082026a';
 import { mountHoursEditor } from '../hours-selector.js?v=03082026a';
 import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=20082026c';
+import { mountDirectionChat, openDirectionChat } from './direction-chat.js?v=25082026h';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -281,12 +282,32 @@ async function enterDashboardInner() {
   renderAll();
   show('dashView');
 
+  // Mount the direction-edit chat module (idempotent). It doesn't hit
+  // the network until the user opens the Profile tab — see openDirectionChat
+  // in switchTab below.
+  mountDirectionChat({ supabase: sb, getBusiness: () => business });
+
   // Background expansion of any onboarding playlists that are still at
   // sample size. The endpoint streams progress and updateCountInRow ticks
   // the count live. Fire-and-forget so the dashboard is interactive
   // immediately.
   expandPendingPlaylists().catch((e) => console.warn('expandPendingPlaylists:', e));
 }
+
+// The direction-edit chat fires this custom event after any successful
+// commit (add/edit/remove). Reload the dashboard's dashboard-data mirror
+// so the Home tab's playlist list picks up the newly-built playlist,
+// removes the expired one, etc., without a page refresh.
+document.addEventListener('direction-change-applied', async (e) => {
+  if (!business || e.detail?.businessId !== business.id) return;
+  try {
+    await loadDashboardData(business.id);
+    renderPlaylistsTitle();
+    renderPlaylists();
+  } catch (err) {
+    console.warn('post direction-change reload failed:', err);
+  }
+});
 
 // Businesses table read — includes onboarding_expanded (moved off user_metadata
 // in the tables migration), used by expandPendingPlaylists as its one-time gate.
@@ -382,7 +403,12 @@ function switchTab(tab) {
   document.querySelectorAll('.nav button[data-tab]').forEach((b) => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
-  if (tab === 'Profile') renderProfileTab();
+  if (tab === 'Profile') {
+    renderProfileTab();
+    // Kick off the direction-edit chat's boot (transcript + directions
+    // load). Idempotent — first call fetches, later calls are no-ops.
+    openDirectionChat();
+  }
 }
 
 function renderProfileTab() {
@@ -399,7 +425,29 @@ function renderProfileTab() {
   };
   $('profileBizName').oninput = () => updateProfileSaveButton();
   updateProfileSaveButton();
+
+  // Reset the collapsible hours section to closed on every tab open.
+  // The editor above stays mounted so its state + dirty-tracking are
+  // ready if the owner expands.
+  const toggle = $('hoursToggle');
+  const body   = $('hoursBody');
+  if (toggle && body) {
+    toggle.setAttribute('aria-expanded', 'false');
+    body.classList.add('hide');
+  }
 }
+
+// Toggle the collapsible hours section. Wired once at module load so it
+// survives tab switches (renderProfileTab resets the state on each open
+// but the click handler doesn't need re-binding).
+document.getElementById('hoursToggle')?.addEventListener('click', () => {
+  const toggle = document.getElementById('hoursToggle');
+  const body   = document.getElementById('hoursBody');
+  if (!toggle || !body) return;
+  const open = toggle.getAttribute('aria-expanded') === 'true';
+  toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+  body.classList.toggle('hide', open);
+});
 
 function updateProfileSaveButton() {
   const btn = $('saveProfile');

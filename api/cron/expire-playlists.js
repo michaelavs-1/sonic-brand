@@ -23,6 +23,7 @@
 
 import { timingSafeEqual } from 'node:crypto';
 import { pgrSelect, pgrPatch } from '../v5/supabase-client.js';
+import { expirePlaylistNow } from '../v6/account/_expire-playlist.js';
 
 // Prefer the stable prod alias over the deployment-specific VERCEL_URL. The
 // deployment URL is subject to Vercel Deployment Protection and would return
@@ -31,69 +32,6 @@ import { pgrSelect, pgrPatch } from '../v5/supabase-client.js';
 const SPOTIFY_BASE = process.env.VERCEL_PROJECT_PRODUCTION_URL
   ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
   : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://127.0.0.1:3000');
-
-async function postSpotify(action, body) {
-  const r = await fetch(`${SPOTIFY_BASE}/api/new/spotify`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ action, ...body }),
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = data?.error?.message || data?.error || r.statusText;
-    throw new Error(`spotify ${action} ${r.status}: ${msg}`);
-  }
-  return data;
-}
-
-async function expireOne(row) {
-  const label = `${row.spotify_id} ("${row.name}")`;
-  const originalName = row.name || 'playlist';
-  // Guard against re-adding the prefix if a retry happens after rename succeeded
-  // on a previous tick but empty/unfollow failed.
-  const newName = originalName.startsWith('(expired) ')
-    ? originalName
-    : `(expired) ${originalName}`;
-
-  // 1. Rename (best-effort; not fatal if Spotify rejects — playlist may have
-  //    been renamed by hand or deleted-and-recreated with a different name).
-  try {
-    await postSpotify('update_playlist', { playlist_id: row.spotify_id, name: newName });
-  } catch (e) {
-    console.warn(`[cron] ${label} rename failed (continuing):`, e.message);
-  }
-
-  // 2. Empty tracks. 404 means the playlist entity is gone from Spotify's
-  //    side (e.g. someone ran the purge script) — treat as already-deleted
-  //    so we still mark the row and stop retrying. Any other error bubbles
-  //    up so the next tick retries.
-  try {
-    await postSpotify('replace_tracks', { playlist_id: row.spotify_id, uris: [] });
-  } catch (e) {
-    if (isGone(e)) {
-      console.warn(`[cron] ${label} tracks already gone (404) — marking deleted:`, e.message);
-    } else {
-      throw e;
-    }
-  }
-
-  // 3. Unfollow (best-effort; if Spotify has already removed the playlist for
-  //    some reason, this may 404 — we still mark deleted).
-  try {
-    await postSpotify('unfollow_playlist', { playlist_id: row.spotify_id });
-  } catch (e) {
-    console.warn(`[cron] ${label} unfollow failed (continuing):`, e.message);
-  }
-}
-
-// Detect Spotify "playlist entity no longer exists" errors. postSpotify
-// includes the HTTP status in its error message, so the substring check is
-// stable enough here — Spotify's own responses use these codes for
-// "not found" / "resource unavailable".
-function isGone(err) {
-  const msg = String(err?.message || '');
-  return /\b(404|410)\b/.test(msg);
-}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -130,12 +68,13 @@ export default async function handler(req, res) {
   const results = { succeeded: 0, failed: 0, details: [] };
   for (const row of expired) {
     try {
-      await expireOne(row);
-      await pgrPatch(
-        'created_playlists',
-        { spotify_id: `eq.${row.spotify_id}` },
-        { deleted_at: new Date().toISOString(), error: null },
-      );
+      // expirePlaylistNow handles rename + empty + unfollow (404-tolerant)
+      // and marks created_playlists.deleted_at on success.
+      await expirePlaylistNow({
+        origin:    SPOTIFY_BASE,
+        spotifyId: row.spotify_id,
+        name:      row.name,
+      });
       results.succeeded += 1;
       results.details.push({ spotify_id: row.spotify_id, ok: true });
     } catch (e) {

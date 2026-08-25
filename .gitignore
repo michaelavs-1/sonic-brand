@@ -11,6 +11,11 @@ v4/precompute/state/
 # for porting UI into v5. Not our source.
 michael-v4-snapshot/
 
+# Local test-only scaffolding for eyeballing /api/internal/* responses.
+# Michael's real dashboard lives in his own repo — this is a placeholder
+# used against `vercel dev` and should not ship to production.
+internal-dashboard/
+
 # Legacy v1/v2/v3 API proxies — kept locally for reference but not deployed.
 # Removed 2026-08-22 during the security-hardening pass. Nothing in
 # v4/v5/v6/cron references them; last active callers were the v2/v3

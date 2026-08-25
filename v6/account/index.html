@@ -8,6 +8,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap"
     rel="stylesheet">
+  <!-- Spotify IFrame API — used by the direction-edit preview modal to
+       drive audio playback under a custom play button (same pattern as
+       the onboarding swipe deck). Loaded async; getSpotifyIframeApi()
+       in direction-chat.js awaits window.__sbIframeApi before first use. -->
+  <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
   <style>
     /* ===== SonicBrands personal area — brand-aligned UI =====
    teal #2c637a · gold #f0a73f · deep navy-teal backgrounds */
@@ -452,9 +457,11 @@
       cursor: pointer;
       transition: color .15s;
     }
+
     .slot .s-meta-expandable:hover {
       color: var(--text);
     }
+
     .slot .s-meta-expandable.expanded {
       line-height: 1.5;
     }
@@ -1496,6 +1503,38 @@
       margin-bottom: 6px
     }
 
+    /* ---------- collapsible section (hours) ---------- */
+    /* Header row: h2 + chevron, full-width clickable. Chevron points
+       down when collapsed (rotate 0), rotates 180° to point up when
+       expanded. Aria-expanded on the button drives the arrow. */
+    .hours-section { margin: 16px 0 6px; }
+    .hours-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 4px 0;
+      cursor: pointer;
+      color: var(--text);
+      font-family: inherit;
+      text-align: right;
+      transition: color .15s;
+    }
+    .hours-toggle:hover { color: var(--accent); }
+    .hours-toggle:hover .hours-chev { color: var(--accent); }
+    .hours-chev {
+      color: var(--muted);
+      transition: transform .2s, color .15s;
+      transform: rotate(0);
+      flex: 0 0 auto;
+    }
+    .hours-toggle[aria-expanded="true"] .hours-chev {
+      transform: rotate(180deg);
+    }
+
     /* ---------- hours selector (shared with /v6 onboarding) ---------- */
     .day-list {
       background: rgba(255, 255, 255, .03);
@@ -1837,7 +1876,8 @@
       align-items: center;
       padding: 3px 0;
     }
-    .typing-dots > span {
+
+    .typing-dots>span {
       width: 5px;
       height: 5px;
       border-radius: 50%;
@@ -1845,12 +1885,28 @@
       opacity: 0.4;
       animation: typing-bounce 1.2s infinite ease-in-out both;
     }
-    .typing-dots > span:nth-child(2) { animation-delay: 0.15s; }
-    .typing-dots > span:nth-child(3) { animation-delay: 0.30s; }
+
+    .typing-dots>span:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    .typing-dots>span:nth-child(3) {
+      animation-delay: 0.30s;
+    }
 
     @keyframes typing-bounce {
-      0%, 60%, 100% { transform: translateY(0);    opacity: 0.4; }
-      30%           { transform: translateY(-4px); opacity: 1;   }
+
+      0%,
+      60%,
+      100% {
+        transform: translateY(0);
+        opacity: 0.4;
+      }
+
+      30% {
+        transform: translateY(-4px);
+        opacity: 1;
+      }
     }
 
     .chat-actions {
@@ -1885,6 +1941,7 @@
       align-items: center;
       justify-content: center;
     }
+
     .event-del-icon {
       width: 18px;
       height: 18px;
@@ -1909,6 +1966,556 @@
       fill: currentColor;
     }
 
+    /* ---------- direction-edit chat: card selector ---------- */
+    /* Row of clickable current-direction cards above the chat. Card click
+       toggles that direction as the "selected" scope biasing the next
+       chat turn. Layout: horizontal scroll on narrow, wrapping on wide. */
+    .dir-cards {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .dir-cards:empty {
+      display: none;
+    }
+
+    .dir-card {
+      /* flex-grow: 0 — an odd number of cards leaves the last one alone
+         on its row; without this it would stretch full-width. Shrink is
+         kept at 1 so cards can still narrow on tiny screens. */
+      flex: 0 1 calc(50% - 4px);
+      min-width: 0;
+      max-width: calc(50% - 4px);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 10px 12px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, box-shadow .15s;
+      text-align: right;
+      font-family: inherit;
+      color: var(--text);
+    }
+
+    .dir-card:hover {
+      border-color: rgba(240, 167, 63, .55);
+    }
+
+    .dir-card.selected {
+      border-color: var(--accent);
+      background: rgba(240, 167, 63, .08);
+      box-shadow: 0 0 0 2px rgba(240, 167, 63, .18);
+    }
+
+    .dir-card .dc-title {
+      font-size: 13.5px;
+      font-weight: 800;
+      line-height: 1.3;
+      margin-bottom: 3px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dir-card .dc-desc {
+      font-size: 11.5px;
+      color: var(--muted);
+      line-height: 1.45;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    /* Direction-chat's message box is its own component but reuses the
+       .chat-messages / .chat-bubble styles from the event chat. Only add
+       overrides here, not duplicates. */
+    .dir-chat-box #dirChatMessages {
+      max-height: 360px;
+    }
+
+    /* Inline direction-selector chip inside a chat prompt (e.g. "which
+       direction do you mean — the mediterranean one or the electronic
+       one?" → chat renders picker chips). */
+    .dir-picker-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .dir-picker-chip {
+      background: var(--card-2);
+      border: 1px solid var(--border-2);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: border-color .15s, color .15s;
+    }
+
+    .dir-picker-chip:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ---------- direction-edit preview modal ---------- */
+    /* One-card modal shown when the chat proposes an edit or an add. The
+       owner plays the preview, optionally swaps to another song from the
+       direction (round-robin over genres), and swipes right / super-like
+       to commit — or swipes left / dismisses to return to the chat. */
+    .dp-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 130;
+      background: rgba(6, 12, 17, .72);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      animation: fadeIn .2s ease;
+    }
+
+    .dp-overlay.hide {
+      display: none;
+    }
+
+    .dp-modal {
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border-2);
+      border-radius: 22px;
+      padding: 18px 16px 16px;
+      max-width: 380px;
+      width: 100%;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .dp-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .dp-head .dp-title {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+
+    .dp-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+      transition: color .15s;
+    }
+
+    .dp-close:hover {
+      color: var(--text);
+    }
+
+    .dp-desc {
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* The preview card mirrors the onboarding swipe card visual, minus
+       the multi-card deck rails — this modal only ever holds one card. */
+    .dp-card {
+      background: var(--card);
+      border: 1px solid var(--border-2);
+      border-radius: 18px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+
+    /* The wrap itself does NOT clip — the super-like + play buttons are
+       positioned with negative offsets to sit ON TOP of the artwork's
+       edges (sticker-style). Clipping is moved onto the img/placeholder
+       so the album art still shows rounded corners. */
+    .dp-art-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 14px;
+      background: #0d1822;
+    }
+
+    .dp-art {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 14px;
+    }
+
+    .dp-art-ph {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 56px;
+      color: var(--muted);
+      border-radius: 14px;
+    }
+
+    .dp-play {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #1b1508;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(240, 167, 63, .38);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform .1s;
+    }
+
+    .dp-play:hover {
+      transform: scale(1.05);
+    }
+
+    .dp-play:active {
+      transform: scale(.95);
+    }
+
+    /* Super-like button. Mirrors the earlier onboarding-swipe pattern:
+       resting = darker cyan gradient, .saved = brighter cyan gradient
+       with a breathing halo, .burst = one-shot expanding ring animation
+       replayed on every click via remove/reflow/add. Toggle-only —
+       clicking does NOT commit the direction change; the confirm button
+       below the card is the sole commit path. */
+    .dp-super {
+      position: absolute;
+      z-index: 3;
+      left: -8px;
+      bottom: -8px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #2e9dcc, #0d78ab);
+      color: #fff;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 16px rgba(29, 164, 240, .3);
+      transform: rotate(-12deg);
+      transition: transform .12s, box-shadow .2s, background .25s;
+    }
+
+    .dp-super:hover {
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 24px rgba(29, 164, 240, .45);
+      transform: rotate(-12deg) translateY(-1px);
+    }
+
+    .dp-super:active {
+      transform: rotate(-12deg) scale(.92);
+    }
+
+    .dp-super:disabled {
+      cursor: default;
+      opacity: .55;
+    }
+
+    .dp-super svg {
+      filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35));
+    }
+
+    .dp-super.saved {
+      background: linear-gradient(135deg, #4dc7ff, #1da4f0);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 30px rgba(77, 199, 255, .55);
+    }
+
+    /* Burst ring — added by JS on every click via remove/reflow/add so a
+       rapid re-click replays it cleanly. */
+    .dp-super::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+      border-radius: 50%;
+      border: 2px solid #4dc7ff;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .dp-super.burst::after {
+      animation: dp-sl-burst .9s ease-out;
+    }
+
+    @keyframes dp-sl-burst {
+      0% {
+        transform: scale(1);
+        opacity: .9;
+      }
+
+      100% {
+        transform: scale(2.2);
+        opacity: 0;
+      }
+    }
+
+    /* Idle breathing halo — only when saved, so unsaved buttons don't
+       compete visually with the orange play button. */
+    .dp-super.saved:not(:disabled) {
+      animation: dp-sl-idle 2.4s ease-in-out infinite;
+    }
+
+    @keyframes dp-sl-idle {
+
+      0%,
+      100% {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 22px rgba(77, 199, 255, .55);
+      }
+
+      50% {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .5), 0 0 34px rgba(77, 199, 255, .55);
+      }
+    }
+
+    .dp-super-icon {
+      width: 20px;
+      height: 20px;
+      fill: currentColor;
+    }
+
+    .dp-title-row {
+      text-align: center;
+      direction: ltr;
+    }
+
+    .dp-track-name {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dp-track-artist {
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dp-swap {
+      background: rgba(29, 185, 84, .12);
+      border: 1px solid rgba(29, 185, 84, .5);
+      color: #1DB954;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      align-self: center;
+      transition: background .15s;
+    }
+
+    .dp-swap:hover:not(:disabled) {
+      background: rgba(29, 185, 84, .2);
+    }
+
+    .dp-swap:disabled {
+      opacity: .6;
+      cursor: default;
+    }
+
+    .dp-swap svg {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    /* Scrubbable playback progress bar. Same visual language as the
+       onboarding preview's `.sw2-progress` block — a slim track that
+       grows on hover, a fill that tracks playback, a draggable thumb
+       that appears on hover/drag. Layout is fixed-height so hovering
+       doesn't shove the swap button downward. */
+    .dp-progress {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      width: 100%;
+    }
+
+    .dp-prog-bar {
+      position: relative;
+      height: 14px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .dp-prog-track {
+      position: relative;
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.10);
+      border-radius: 3px;
+      transition: height .12s;
+    }
+
+    .dp-prog-bar:hover .dp-prog-track,
+    .dp-prog-bar.dragging .dp-prog-track {
+      height: 10px;
+    }
+
+    .dp-prog-fill {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 0%;
+      background: var(--accent);
+      border-radius: 3px;
+    }
+
+    .dp-prog-thumb {
+      position: absolute;
+      top: 50%;
+      left: 0%;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--accent);
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 0 3px rgba(240, 167, 63, .22);
+      opacity: 0;
+      transition: opacity .12s;
+      pointer-events: none;
+    }
+
+    .dp-prog-bar:hover .dp-prog-thumb,
+    .dp-prog-bar.dragging .dp-prog-thumb {
+      opacity: 1;
+    }
+
+    .dp-timestamps {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: var(--muted);
+      direction: ltr;
+      font-variant-numeric: tabular-nums;
+      padding: 0 2px;
+    }
+
+    .dp-hidden-embed {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0.01;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .dp-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .dp-actions .btn,
+    .dp-actions .btn-ghost {
+      width: auto;
+      flex: 1;
+      margin: 0;
+      padding: 12px;
+      font-size: 13.5px;
+      border-radius: 12px;
+    }
+
+    .dp-actions .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border-2);
+      font-weight: 700;
+    }
+
+    .dp-actions .btn-ghost:hover {
+      color: var(--text);
+      border-color: var(--text);
+    }
+
+    .dp-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 30px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dp-empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.55;
+      padding: 20px 0;
+    }
+
+    .dp-toast {
+      position: fixed;
+      bottom: 30px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--teal);
+      color: #fff;
+      border: 1px solid rgba(87, 163, 189, .7);
+      border-radius: 999px;
+      padding: 9px 18px;
+      font-size: 13px;
+      font-weight: 700;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity .25s;
+      pointer-events: none;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+    }
+
+    .dp-toast.show {
+      opacity: 1;
+    }
   </style>
 </head>
 
@@ -2023,7 +2630,9 @@
         <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
         <textarea class="input" id="chatInput" rows="3" maxlength="500"
           placeholder="לדוגמה: ערב סטנדאפ בכל יום שלישי — קלילה, לא רועשת מדי..."></textarea>
-        <button class="btn" id="chatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L22 12H17V22H7V12H2Z"/></svg></button>
+        <button class="btn" id="chatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2L22 12H17V22H7V12H2Z" />
+          </svg></button>
         <p class="muted" id="eventsMsg" style="text-align:center;margin-top:8px"></p>
       </div>
     </div>
@@ -2037,15 +2646,49 @@
         </div>
       </div>
 
+      <!-- Direction-edit chat: cards of current active directions above
+           a chat transcript + input. Card click biases the chat toward
+           that direction; the chat can also address a direction by name.
+           Everything below the h2 is populated by v6/account/direction-chat.js. -->
+      <h2 style="margin:16px 0 6px"><span class="h-ico">🎚️</span>עריכת כיוונים מוזיקליים</h2>
+      <p class="muted sub" style="margin:0 0 12px">רוצים לשנות משהו בכיוונים? להוסיף, להסיר, או לחדד אחד? לחצו על כיוון
+        או פשוט כתבו לצ׳אט.</p>
+      <div id="dirCards" class="dir-cards"></div>
+      <div class="box dir-chat-box">
+        <div id="dirChatMessages" class="chat-messages" aria-live="polite"></div>
+        <textarea class="input" id="dirChatInput" rows="3" maxlength="500"
+          placeholder="לדוגמה: אני רוצה כיוון חדש של רוק אנרגטי / אני אוהב את הכיוון הזה אבל רוצה להוריד את כל הבוסה נובה ..."></textarea>
+        <button class="btn" id="dirChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2L22 12H17V22H7V12H2Z" />
+          </svg></button>
+        <p class="muted" id="dirChatMsg" style="text-align:center;margin-top:8px"></p>
+      </div>
+
       <!-- No .box wrapper here: .day-list (rendered by mountHoursEditor)
            already has its own background+border+radius, so wrapping it in
            a .box created a card-in-a-card that felt cramped. Matches the
            onboarding hours screen, which sits heading + picker directly
-           on the card background. -->
-      <h2 style="margin:16px 0 6px"><span class="h-ico">🕒</span>שעות פעילות</h2>
-      <p class="muted sub" style="margin:0 0 12px">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן את כולם — סמנו "שעות שונות"
-        ליום מסוים.</p>
-      <div id="hoursHost"></div>
+           on the card background.
+
+           The whole hours section is collapsible — the header is a
+           clickable row with an arrow that toggles the subtitle +
+           hoursHost. Default collapsed on tab open. mountHoursEditor
+           still runs on tab open so dirty-tracking + save-button state
+           work identically to before — hoursHost is just hidden. -->
+      <div class="hours-section">
+        <button type="button" class="hours-toggle" id="hoursToggle" aria-expanded="false" aria-controls="hoursBody">
+          <h2 style="margin:0"><span class="h-ico">🕒</span>שעות פעילות</h2>
+          <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+        <div class="hours-body hide" id="hoursBody">
+          <p class="muted sub" style="margin:6px 0 12px">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן את
+            כולם — סמנו "שעות שונות"
+            ליום מסוים.</p>
+          <div id="hoursHost"></div>
+        </div>
+      </div>
 
       <button class="btn" id="saveProfile" disabled>שמור</button>
       <p class="muted" id="profileMsg" style="text-align:center;margin-top:10px"></p>
@@ -2064,6 +2707,23 @@
     <div class="muted">טוען…</div>
   </div>
 
+  <!-- Direction-edit preview modal. Shown when the chat proposes an edit
+       or an add. Owner plays the preview, taps "שמעו שיר אחר..." to swap,
+       and confirms (right/super-like) or dismisses (left/close). Populated
+       by v6/account/direction-chat.js. -->
+  <div class="dp-overlay hide" id="dirPreviewModal">
+    <div class="dp-modal">
+      <div class="dp-head">
+        <div class="dp-title" id="dpTitle"></div>
+        <button class="dp-close" id="dpClose" type="button" aria-label="סגור">×</button>
+      </div>
+      <div class="dp-desc" id="dpDesc"></div>
+      <div id="dpBody"></div>
+      <div class="dp-actions" id="dpActions"></div>
+    </div>
+  </div>
+  <div class="dp-toast" id="dpToast"></div>
+
   <!-- Confirmation modal for the closed-day "המקום פתוח?" flow. Hidden by
      default; app.js flips .hide off when the user clicks the link. -->
   <div class="gd-overlay hide" id="genDailyModal">
@@ -2077,7 +2737,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/account/app.js?v=21082026a"></script>
+  <script type="module" src="/v6/account/app.js?v=25082026c"></script>
 </body>
 
 </html>

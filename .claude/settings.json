@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const{execSync}=require('child_process');try{const out=execSync('git diff --shortstat HEAD',{encoding:'utf8',stdio:['ignore','pipe','ignore']});const m=out.match(/(\\d+)\\s+files?\\s+changed/);const n=m?parseInt(m[1],10):0;if(n>=5){process.stdout.write('\\n\\ud83d\\udcdd Session touched '+n+' files. Consider /claude-md-audit to check if CLAUDE.md needs updates.\\n');}}catch(e){/* not a git repo or git failed; stay quiet */}\""
+          }
+        ]
+      }
+    ]
+  }
+}

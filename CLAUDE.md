@@ -146,16 +146,19 @@ STEP 6: Playlist build (v6/generation/playlist-builder.js buildDirectionPlaylist
 ```
 Auth: Supabase Auth (JWT in localStorage). Access via /v6/account.
         ↓
-Boot: loads user, businesses, meta.b[businessId]
+Boot: loads user, businesses, then fans out four parallel Postgres reads
+      (business_playlists / business_events / business_hours / business_place)
+      via `loadDashboardData(businessId)` — cached on `state.dashboard`.
+      RLS gates each SELECT to the caller's own businesses.
         ↓
 renderAll:
   - Greeting + business name
   - Place banner (if Google Places was confirmed during onboarding)
-  - renderPlaylists: reads bmeta().playlists
+  - renderPlaylists: reads bmeta().playlists (mirror of business_playlists rows)
     - Playlist entries with expansion:{...} and !expandedAt get an animated
       progress bar and a background expansion kicks off
-  - renderEvents: reads bmeta().events. Per-row layout is
-    [🎪 name/description] [red trash SVG button (btn-danger)] [action button].
+  - renderEvents: reads bmeta().events (mirror of business_events rows).
+    Per-row layout is [🎪 name/description] [red trash SVG button (btn-danger)] [action button].
     The pencil edit icon was dropped in the 2026-08-20 chat rewrite —
     workflow is now delete + re-chat. Trash uses a Feather-style outline
     SVG in a red `.btn.btn-danger.event-del` button (no emoji), spinner
@@ -165,18 +168,19 @@ renderAll:
 Background: expandPendingPlaylists (v6/account/app.js) — STRICT one-time
 per-business event. Runs on the very first dashboard visit after onboarding:
 the 10-track sample playlists each grow to today's opening hours + 1h.
-  - Enforcement: business-level flag `b[bizId].onboardingExpanded = true`
-    is set BEFORE any expansion work starts, so a mid-pass tab close /
-    refresh / crash never causes a second pass. Even if some playlists
-    end up under-populated, they are never re-populated. Daily-gen
-    (separate future task) handles fresh playlists on subsequent days.
+  - Enforcement: `businesses.onboarding_expanded` column (a proper
+    per-business row-level flag, not user_metadata) is set BEFORE any
+    expansion work starts, so a mid-pass tab close / refresh / crash
+    never causes a second pass. Even if some playlists end up under-
+    populated, they are never re-populated. Daily-gen (separate future
+    task) handles fresh playlists on subsequent days.
   - Expansions run SEQUENTIALLY (not Promise.all). Parallel writes to
-    user_metadata previously caused a last-writer-wins race that clobbered
-    sibling expandedAt fields and led to real duplicate tracks piling up
-    in Spotify on refresh. Cost: total time ≈ Σ per-playlist expansions.
-  - Server: /api/v6/account/expand-playlist re-reads user_metadata just
-    before writing so unrelated concurrent writes (name edit, event
-    playlist prepend) are preserved.
+    the same business_playlists rows could theoretically race — sequential
+    keeps things simple. Cost: total time ≈ Σ per-playlist expansions.
+  - Server: /api/v6/account/expand-playlist writes go through row-level
+    PATCH on business_playlists (PK = spotify_id), so the read-modify-write
+    dance on user_metadata is gone. Unrelated concurrent writes (name
+    edit, event playlist insert) never collide with expansion writes.
   - Client computes per-day target via v6/generation/playlist-length.js:
     computeTargetForToday({ hours }) → (todaysOpenMinutes + 60) / 3.5min
     Closed day / hours missing → CLOSED_DAY_MINUTES (12h) + 1h ≈ 223 tracks.
@@ -185,9 +189,10 @@ the 10-track sample playlists each grow to today's opening hours + 1h.
   - Example (closed day, no playlists for today): title flips to
     "יום ש' - המקום סגור  [המקום פתוח?]" — link opens a confirm modal
     that POSTs /api/v6/account/generate-daily. That endpoint reuses the
-    LATEST direction set (grouped by createdAt) and builds one 12h playlist
-    per direction, prepending them to user_metadata.b[bizId].playlists
-    with today's createdAt so the closed-day title flips back to normal.
+    LATEST direction set (from business_directions where active=true)
+    and builds one 12h playlist per direction, INSERTing them into
+    business_playlists with today's created_at so the closed-day title
+    flips back to normal.
 ```
 
 ### Direction-edit chat (profile tab)
@@ -195,7 +200,7 @@ the 10-track sample playlists each grow to today's opening hours + 1h.
 Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעות פעילות. Lets the owner refine their `business_directions` after onboarding: add (up to the 8-active cap), remove (soft-disable — the row is preserved with `active=false`), or fine-tune an existing direction (exclude/add genres, adjust BPM, flip inst_pref, rename, reshape description_he).
 
 - **UI** (`v6/account/index.html` + `v6/account/direction-chat.js`):
-  - Row of clickable direction cards (`.dir-card`, title + description_he) above the chat. Clicking a card sets `state.selectedDirectionId` — the next chat turn is scoped to that direction unless the message names a different one. Click the same card again to deselect.
+  - Row of clickable direction cards (`.dir-card`, title + description_he) above the chat. Clicking a card sets `state.selectedDirectionId` AND appends a synthetic assistant bubble to the transcript ("מה תרצו לשנות בכיוון X?" using the direction's `title_en`) so the owner sees the scope shift immediately. The next chat turn is scoped to that direction unless the message names a different one. Click the same card again to deselect (no synthetic bubble on deselect). Synthetic bubbles are not persisted — Gemini gets the target via `selectedDirectionId` in the context block anyway.
   - Chat transcript (`#dirChatMessages`) + textarea (`#dirChatInput`) + send button (`#dirChatSend`), reusing the events-chat `.chat-messages` / `.chat-bubble` CSS. Transcript **starts empty on every hard refresh** — the client generates a `SESSION_START_AT_ISO` at module load and sends it with every chat turn; the server filters `business_direction_chats` to `created_at >= SESSION_START_AT_ISO` when building Gemini's context, so Gemini's memory and the owner's on-screen transcript stay in sync. Messages are still persisted to `business_direction_chats` (admin API + change-audit refs) — only the client display and Gemini's context window are per-session.
   - Assistant messages carrying a `proposal` render inline confirm buttons: "שמעו את הכיוון החדש" (edit or add → preview modal), or "הסירו את הכיוון" (remove → inline "expire live playlist too?" follow-up with two buttons).
   - Preview modal (`#dirPreviewModal`, `.dp-*` CSS): single-card variant of the onboarding swipe deck. Album art + hidden Spotify iframe + play button + scrubbable playback progress bar (`.dp-progress` — same seek-lock/RAF-interpolation pattern as onboarding's `.sw2-progress`) + "שמעו עוד שיר מהכיוון הזה" swap (round-robin over the merged direction's genres via `/api/v6/account/preview-direction`) + rotated cyan super-like button (bottom-left of art, positioned OUTSIDE the art-wrap's clip so it visually protrudes over the corner) + two action buttons (dismiss / confirm).
@@ -235,6 +240,10 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
 
 - **Rate limits**: `direction-chat` 20/min per IP, `preview-direction` shares the `anchor-tracks` bucket (60/min), `apply-direction-change` 10/min per IP, `toggle-super-like` 60/min per IP.
 
+### Profile tab UI (`v6/account/` Profile tab)
+
+- **שעות פעילות is a collapsible section.** Header row = h2 title + chevron; clicking the header toggles the subtitle + hours picker via `aria-expanded` on `#hoursToggle` and `.hide` on `#hoursBody`. Chevron points down when closed, rotates 180° to point up when open. State resets to closed on every tab open — `renderProfileTab` in [v6/account/app.js](v6/account/app.js) sets `aria-expanded="false"` and re-adds `.hide` to the body. `mountHoursEditor` still runs on tab open even while collapsed, so dirty-tracking + the save button behave identically to when the section was always visible. The single "שמור" button at the bottom of the tab still handles both business-name and hours edits — there's no separate save inside the collapsible.
+
 ### Special event playlists
 
 - **UI — chat, not textarea.** `v6/account/index.html` `#chatMessages` +
@@ -268,6 +277,7 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
 - Uses `SUPABASE_SERVICE_ROLE_KEY` admin API to create user + `businesses` row
 - Writes onboarding context (hours, longestMinutes, atmospheres, place, playlists) to `auth.users.raw_user_meta_data.sonic.b[businessId]`
 - Persists the free-text prompt inputs (`business_description`, `musical_emphases`) as columns on the `businesses` row itself. Read back by the internal admin API. PATCH path skips blanks so a repeat-onboarding with an empty field doesn't wipe a previously-recorded prompt.
+- Backfills `gemini_call_log` rows: `UPDATE gemini_call_log SET business_id = <new>, onboarding_session_id = NULL WHERE onboarding_session_id = <session>`. The client mints a tab-lifetime session id at v6/app.js boot and threads it through every onboarding Gemini call; this UPDATE re-attributes those pre-signup rows to the new business so per-business spend rollups include them. Sessions that never sign up stay unattributed and form the "abandoned onboarding" bucket in the internal admin spend endpoint.
 - Returns instant login link (magic-link admin API) so client can jump to `/v6/account` without email round-trip
 - **Magic-link redirect** (`accountRedirectUrl`) derives the target from the request host (`x-forwarded-host` || `host`) so signup on localhost / preview / robin-music.com / sonic-brand.vercel.app each redirects back to where the user came from — no per-env config needed. The derived host is validated via `isAllowedHost()` in `api/v6/origin-guard.js` to block `x-forwarded-host: attacker.com` spoofing. Whatever host wins must also be on Supabase's Redirect URLs allowlist (Auth → URL Configuration) — otherwise Supabase silently substitutes its Site URL. `V6_ACCOUNT_REDIRECT_URL` env var overrides derivation entirely if you need a pinned target.
 
@@ -318,14 +328,15 @@ sonic-brand/
 │   ├── v6/
 │   │   ├── origin-guard.js                 ← requireSite / requireSiteOrInternal helpers
 │   │   ├── ratelimit.js                    ← Upstash-Redis fixed-window guard (see mechanism section)
-│   │   ├── gemini.js                       ← Google Gemini generateContent proxy (multi-turn via `history`)
+│   │   ├── gemini.js                       ← Google Gemini generateContent proxy (multi-turn via `history`); writes gemini_call_log after every call
+│   │   ├── gemini-pricing.js               ← Date-aware per-model rates; computes cost_usd for the log writer
 │   │   ├── place-lookup.js                 ← Google Places (New) v1 textsearch
 │   │   ├── transcribe.js                   ← Whisper (OpenAI)
 │   │   └── account/
 │   │       ├── _daily-builder.js           ← Shared build+persist module: buildDailyBatch, activeDirections
 │   │       ├── _expire-playlist.js         ← Shared expirePlaylistNow() — rename + empty + unfollow + mark deleted.
 │   │       │                                  Used by both the hourly cron and direction-chat's apply endpoint.
-│   │       ├── signup.js                   ← Supabase admin user + business + business_directions + super_liked_tracks
+│   │       ├── signup.js                   ← Supabase admin user + business + business_directions + super_liked_tracks; backfills gemini_call_log with new business_id via onboarding_session_id
 │   │       ├── event-playlist.js           ← Claude Haiku → direction-tracks → Spotify create+add + ledger
 │   │       ├── expand-playlist.js          ← Streaming ndjson: grow onboarding playlists to per-day target
 │   │       ├── generate-daily.js           ← Closed-day "המקום פתוח?" flow (delegates to _daily-builder)
@@ -364,7 +375,8 @@ sonic-brand/
 │   ├── internal/
 │   │   ├── _guard.js                       ← Shared bearer-token guard for the /api/internal/* admin surface
 │   │   ├── users.js                        ← GET list of businesses + owner emails (Michael's dashboard)
-│   │   └── business.js                     ← GET one business's full onboarding prompt + directions + playlists
+│   │   ├── business.js                     ← GET one business's full onboarding prompt + directions + playlists + Gemini spend
+│   │   └── gemini-spend.js                 ← GET site-wide Gemini cost totals (attributed + abandoned onboarding)
 │   ├── openai.js, spotify.js, databox.js   ← Root-level legacy proxies (v1/v2/v3-era)
 ├── scripts/
 │   ├── benchmark-directions.mjs            ← OpenAI vs Anthropic timing/quality benchmark
@@ -586,6 +598,10 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 - `/api/v5/record-playlist` — 30/min
 - `/api/new/spotify`, `/api/v4/spotify` — 60/min
 - `/api/v6/account/signup` — 20/hour (per IP; abuse-mitigation)
+- `/api/v6/account/direction-chat` — 20/min (profile-tab chat turn)
+- `/api/v6/account/preview-direction` — shares the `anchor-tracks` bucket (60/min)
+- `/api/v6/account/apply-direction-change` — 10/min (commits add/edit/remove)
+- `/api/v6/account/toggle-super-like` — 60/min (super-like button toggle in the preview modal)
 
 **Behavior notes:**
 - Keyed by client IP (via `x-forwarded-for` first-hop, `x-real-ip`, or
@@ -751,6 +767,7 @@ Everything the account dashboard reads lives here:
 **Ledgers + operational state:**
 - `created_playlists` — the expiry ledger. Columns: `spotify_id` (PK), `name`, `expires_at`, `deleted_at`, `error`, `owner_id` (nullable FK → auth.users), `business_id` (nullable FK → businesses). Both FKs use ON DELETE SET NULL so the cron can still unfollow expired playlists after their owner/business is deleted. Rows written by onboarding (via /api/v5/record-playlist) start with NULL owner/business — signup.js back-fills them. Renamed from `v5_created_playlists` on 2026-08-02; migration in `v5/precompute/migrations/`.
 - `v6_daily_track_history` — { business_id, direction_key, spotify_id, served_at }. Per-(biz, direction) served-track history for cross-day dedup. See "Cross-day track dedup" mechanism below. Cron opportunistically prunes rows older than 14 days.
+- `gemini_call_log` — one row per Gemini API call. Columns: { id, created_at, model, label, input_tokens, output_tokens (includes thinking tokens for cost purposes), thinking_tokens (broken out for analytics), total_tokens, cost_usd (numeric 12,8), business_id (nullable FK), onboarding_session_id (nullable text), http_status, finish_reason }. Written fire-and-forget by `api/v6/gemini.js` after every call — success OR failure. Cost computed server-side via `api/v6/gemini-pricing.js` using date-aware per-model rates (Google's paid Standard tier; auto-switches on 2027-01-01 when the price doubles). Attribution: post-signup callers pass `business_id` directly; onboarding callers pass a client-generated tab-lifetime `onboarding_session_id` which `signup.js` backfills into `business_id` (and clears the session id) on account creation. Rows with `onboarding_session_id` set but no `business_id` = "abandoned onboarding" bucket surfaced by the internal admin spend endpoint. Added 2026-08-25; RLS on with no policies (writes go through service_role).
 
 **Historical / vestigial:** `analyses`, `track_feedback`, `app_settings` (old OpenAI key storage — the `openai_key` row + its permissive RLS were removed during the 2026-08-14 security audit), `spotify_tokens` (v1 era).
 
@@ -863,12 +880,14 @@ expiry.
 Read-only endpoints under `api/internal/*` for Michael's forthcoming admin dashboard (his own repo, host TBD — not in this repo). Auth: single shared bearer token in `INTERNAL_ADMIN_API_KEY` env var, presented as `Authorization: Bearer <key>` or `x-internal-admin-key: <key>`. CORS is `*` because the bearer token IS the security boundary (no cookies, so cross-origin attacks can't attach it). Fail-CLOSED on missing env — misconfig 500s loudly, same philosophy as `requireSiteOrInternal`.
 
 - `GET /api/internal/users` → `{ count, businesses: [ { business_id, name, owner_id, owner_email, created_at, has_prompt } ] }`. `has_prompt` is true iff `business_description` or `musical_emphases` is non-null (rows signed up after the 2026-08-23 migration).
-- `GET /api/internal/business?id=<uuid>` → full detail: `{ business, onboarding: { business_description, musical_emphases, atmospheres }, place, hours, directions[], playlists[], direction_changes[], chat_transcript[] }`. `playlists[].track_ids` is the ordered Spotify-ID array as of build time (null for pre-2026-08-20 rows — see the business-directions migration). `direction_changes[]` and `chat_transcript[]` are the profile-tab direction-edit chat's audit + full message log (empty for owners who haven't used the chat yet — see the 2026-08-25-direction-chat migration).
+- `GET /api/internal/business?id=<uuid>` → full detail: `{ business, onboarding: { business_description, musical_emphases, atmospheres }, place, hours, directions[], playlists[], direction_changes[], chat_transcript[], gemini_spend: { total_usd, call_count, by_label[] }, gemini_calls[] }`. `playlists[].track_ids` is the ordered Spotify-ID array as of build time (null for pre-2026-08-20 rows). `direction_changes[]` and `chat_transcript[]` are the profile-tab direction-edit chat's audit + full message log (empty for owners who haven't used the chat yet). `gemini_spend` + `gemini_calls[]` are this business's Gemini API cost rollup + every logged call (both onboarding calls backfilled at signup and post-signup chat calls) — both zero/empty for businesses that signed up before 2026-08-25 when call logging started.
+- `GET /api/internal/gemini-spend` → site-wide Gemini API cost totals: `{ totals: { all_time_usd, all_time_calls, attributed_usd, attributed_calls, abandoned_usd, abandoned_calls }, by_day[], by_label[], recent[] }`. `abandoned_*` = rows with `onboarding_session_id` set but no `business_id` (user started onboarding, Gemini spent money, they never signed up). Aggregations done in server memory over up to 10k rows — move to a Postgres RPC if the log ever grows past that.
 
 Notes on the data shape:
 - `onboarding.atmospheres` is read from `auth.users.raw_user_meta_data.sonic.onboarding.atmospheres`. That field only gets written on FIRST signup for a given email, so a user who did a second onboarding under the same email still shows the atmospheres from their first flow.
 - `playlists[]` includes both live and expired rows (nothing deletes `business_playlists`; `expires_at` only gates dashboard visibility). Michael's dashboard should filter itself if it only wants live playlists.
 - Michael's dashboard is expected to iterate: `GET /users` for the list, `GET /business?id=<row.business_id>` per user for detail. No server-side pagination — pilot scale.
+- Michael's Claude-facing reference doc lives at `docs/admin-api-for-michael.md` — keep it in sync when the endpoint shape changes.
 
 ---
 

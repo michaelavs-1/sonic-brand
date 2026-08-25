@@ -26,12 +26,12 @@ function fmtTime(ms) {
 }
 
 // Play/pause icons — reuse the same 36×36 SVGs the onboarding preview uses.
-const PLAY_ICON  = '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
+const PLAY_ICON = '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><rect x="6.6" y="5.6" width="3.9" height="12.8" rx="1.2"/><rect x="13.5" y="5.6" width="3.9" height="12.8" rx="1.2"/></svg>';
-const SWAP_ICON  = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>';
+const SWAP_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>';
 // Star icon for the super-like button — same visual style as the
 // onboarding swipe deck's super-like.
-const STAR_ICON  = '<svg class="dp-super-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
+const STAR_ICON = '<svg class="dp-super-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>';
 
 function escHtml(s) {
   return String(s == null ? '' : s)
@@ -80,11 +80,11 @@ const SESSION_START_AT_ISO = new Date().toISOString();
 // Transcript + directions + changes, cached client-side after first load.
 // Refreshed after any successful apply-direction-change commit.
 let state = {
-  directions:  [],   // rows from business_directions (active + inactive)
-  messages:    [],   // rows from business_direction_chats (ascending)
-  changes:     [],   // rows from business_direction_changes (descending, tail)
+  directions: [],   // rows from business_directions (active + inactive)
+  messages: [],   // rows from business_direction_chats (ascending)
+  changes: [],   // rows from business_direction_changes (descending, tail)
   selectedDirectionId: null,
-  busy:        false,
+  busy: false,
 };
 
 // ---- public API ---------------------------------------------------------
@@ -113,6 +113,56 @@ export function openDirectionChat() {
   if (!biz) return;
   if (!bootPromise) bootPromise = bootOnce(biz.id);
   return bootPromise;
+}
+
+// Programmatic entry point used by the Home tab's per-playlist edit
+// icon: awaits the boot (loads directions if needed), then selects the
+// given direction and fires the synthetic "מה תרצו לשנות בכיוון X?"
+// prompt. Always ends in the "selected" state — repeated calls on the
+// same id re-fire the prompt for visibility rather than toggling off.
+export async function selectDirectionInChat(directionId) {
+  const biz = getBusiness();
+  if (!biz || !directionId) return;
+  if (!bootPromise) bootPromise = bootOnce(biz.id);
+  await bootPromise;
+  state.selectedDirectionId = directionId;
+  renderDirectionCards();
+  const dir = (state.directions || []).find((d) => d.id === directionId);
+  const title = dir?.title_en || 'הכיוון הזה';
+  appendSyntheticAssistantMessage(`מה תרצו לשנות בכיוון "${title}"?`);
+  const input = $('dirChatInput');
+  if (input) input.focus();
+}
+
+// Programmatic entry point used by the Home tab's per-playlist trash
+// confirmation modal. Posts kind='remove' to the apply endpoint,
+// refreshes the direction-chat's local cache so the Profile tab
+// reflects the change, and dispatches direction-change-applied so the
+// Home tab reruns loadDashboardData + renderPlaylists. Caller handles
+// its own UI (toast, button spinner). Returns the shape callApply
+// returns — { ok, error?, code? }.
+export async function removeDirectionFromCard(directionId, { expireLive = true } = {}) {
+  const biz = getBusiness();
+  if (!biz || !directionId) return { ok: false, error: 'no business' };
+  const result = await callApply({
+    kind: 'remove',
+    directionId,
+    expireLivePlaylist: expireLive,
+  });
+  if (!result.ok) return result;
+  // Sync the profile-tab chat's cached direction list so a follow-up
+  // switch to Profile shows the removed direction as inactive without
+  // a hard refresh. Best-effort.
+  try {
+    await reloadState(biz.id);
+    renderDirectionCards();
+  } catch { }
+  // Fire the same event runApplyWithSpinnerBubble does so the Home tab's
+  // listener refreshes its playlist mirror + re-renders.
+  document.dispatchEvent(new CustomEvent('direction-change-applied', {
+    detail: { businessId: biz.id },
+  }));
+  return result;
 }
 
 // ---- boot / load --------------------------------------------------------
@@ -154,7 +204,7 @@ async function reloadState(businessId) {
     ...state,
     directions: dirRes.data || [],
     // messages left as whatever's in state (in-session only; empty on boot).
-    changes:    chgRes.data || [],
+    changes: chgRes.data || [],
   };
 }
 
@@ -219,8 +269,8 @@ function parseAssistant(m) {
   try {
     const j = JSON.parse(m.content);
     return {
-      reply:    typeof j.reply_he === 'string' ? j.reply_he : String(m.content),
-      state:    j.state || 'gathering',
+      reply: typeof j.reply_he === 'string' ? j.reply_he : String(m.content),
+      state: j.state || 'gathering',
       proposal: m.proposal || j.proposal || null,
     };
   } catch {
@@ -264,6 +314,20 @@ function appendProposalActions(bubble, messageId, proposal) {
       messageId,
     }));
     row.append(previewBtn);
+
+    // Skip-preview shortcut: same eventual outcome as swiping right in
+    // the modal, minus the listening step. Goes straight to the "החליפו
+    // עכשיו / השאירו עד סגירה" follow-up so the owner still gets to
+    // decide about today's live playlist.
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'btn btn-ghost';
+    skipBtn.textContent = 'דלג על ההאזנה ואשר';
+    skipBtn.addEventListener('click', () => {
+      previewBtn.disabled = true;
+      skipBtn.disabled = true;
+      askEditPlaylistOption(proposal.direction_id, proposal.updates || {}, messageId);
+    });
+    row.append(skipBtn);
   } else if (proposal.kind === 'add') {
     // Prefetch even when the owner is at the cap — the cap check may
     // change (they might remove one first) and a wasted preview-direction
@@ -291,6 +355,35 @@ function appendProposalActions(bubble, messageId, proposal) {
       });
     });
     row.append(previewBtn);
+
+    // Skip-preview shortcut for add: no "keep old vs replace now" step
+    // (add has no old playlist), so this goes directly to the apply +
+    // spinner-in-chat path. Same cap check as the preview button so a
+    // stale proposal doesn't bypass it.
+    const skipBtn = document.createElement('button');
+    skipBtn.className = 'btn btn-ghost';
+    skipBtn.textContent = 'דלג על ההאזנה ואשר';
+    skipBtn.addEventListener('click', () => {
+      if (activeDirectionCount() >= MAX_ACTIVE_DIRECTIONS) {
+        appendSyntheticAssistantMessage(
+          `אי אפשר להוסיף עוד כיוון — כבר יש ${MAX_ACTIVE_DIRECTIONS} כיוונים פעילים, שזה המקסימום. הסירו כיוון קיים קודם ואז נוכל להוסיף את החדש.`,
+        );
+        return;
+      }
+      previewBtn.disabled = true;
+      skipBtn.disabled = true;
+      runApplyWithSpinnerBubble({
+        body: {
+          kind: 'add',
+          spec: proposal.spec,
+          messageIdFirst: messageId || null,
+          messageIdLast: messageId || null,
+        },
+        inProgressLabel: 'בונים את הכיוון החדש…',
+        successLabel: '✓ נוסף כיוון חדש',
+      });
+    });
+    row.append(skipBtn);
   } else if (proposal.kind === 'remove') {
     const goBtn = document.createElement('button');
     goBtn.className = 'btn btn-danger';
@@ -314,12 +407,12 @@ function askRemoveOptions(directionId, messageId) {
   if (!box) return;
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble assistant';
-  bubble.textContent = 'לכבות את הפלייליסט הפעיל עכשיו או להשאיר עד סגירה?';
+  bubble.textContent = 'למחוק את הפלייליסט הפעיל עכשיו או להשאיר עד הסגירה?';
   const row = document.createElement('div');
   row.className = 'chat-actions';
   const off = document.createElement('button');
   off.className = 'btn';
-  off.textContent = 'כבו עכשיו';
+  off.textContent = 'מחק עכשיו';
   const keep = document.createElement('button');
   keep.className = 'btn btn-ghost';
   keep.textContent = 'השאירו עד סגירה';
@@ -337,7 +430,7 @@ function askRemoveOptions(directionId, messageId) {
     spinnerSpan.style.cssText = 'width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px';
     bubble.append(spinnerSpan);
     bubble.append(document.createTextNode(
-      expireLive ? 'מסירים את הכיוון וכבים את הפלייליסט…' : 'מסירים את הכיוון…',
+      expireLive ? 'מסירים את הכיוון ומכבים את הפלייליסט…' : 'מסירים את הכיוון…',
     ));
     runApplyWithSpinnerBubble({
       body: {
@@ -345,11 +438,11 @@ function askRemoveOptions(directionId, messageId) {
         directionId,
         expireLivePlaylist: expireLive,
         messageIdFirst: messageId || null,
-        messageIdLast:  messageId || null,
+        messageIdLast: messageId || null,
       },
       inProgressLabel: null,
-      successLabel:    expireLive ? '✓ הכיוון הוסר והפלייליסט כובה' : '✓ הכיוון הוסר',
-      existingBubble:  bubble,
+      successLabel: expireLive ? '✓ הכיוון הוסר והפלייליסט כובה' : '✓ הכיוון הוסר',
+      existingBubble: bubble,
     });
   };
   off.addEventListener('click', () => pick(true));
@@ -580,7 +673,7 @@ function ensurePreviewPrefetch(messageId, proposal) {
 function proposalFromCtx(ctx) {
   if (!ctx) return null;
   if (ctx.kind === 'edit') return { kind: 'edit', direction_id: ctx.directionId, updates: ctx.updates || {} };
-  if (ctx.kind === 'add')  return { kind: 'add',  spec: ctx.spec };
+  if (ctx.kind === 'add') return { kind: 'add', spec: ctx.spec };
   return null;
 }
 
@@ -596,7 +689,7 @@ async function fetchPreviewOnce({ proposal, excludeSpotifyIds = [], cycleIndex =
     if (!session?.access_token) return { ok: false, error: 'לא מחוברים' };
     const body = { businessId: biz.id, excludeSpotifyIds, cycleIndex };
     if (proposal.kind === 'edit') { body.directionId = proposal.direction_id; body.updates = proposal.updates || {}; }
-    if (proposal.kind === 'add')  { body.inlineSpec = proposal.spec; }
+    if (proposal.kind === 'add') { body.inlineSpec = proposal.spec; }
     const r = await fetch('/api/v6/account/preview-direction', {
       method: 'POST',
       headers: {
@@ -612,10 +705,10 @@ async function fetchPreviewOnce({ proposal, excludeSpotifyIds = [], cycleIndex =
     }
     const meta = await fetchTrackMeta(data.spotifyId).catch(() => ({}));
     return {
-      ok:             true,
-      spotifyId:      data.spotifyId,
-      meta:           meta || {},
-      mergedSpec:     data.mergedSpec,
+      ok: true,
+      spotifyId: data.spotifyId,
+      meta: meta || {},
+      mergedSpec: data.mergedSpec,
       nextCycleIndex: data.nextCycleIndex,
     };
   } catch (e) {
@@ -684,9 +777,9 @@ async function fetchTrackMeta(spotifyId) {
   const d = await r.json().catch(() => ({}));
   if (!d?.name) return {};
   return {
-    name:   d.name,
+    name: d.name,
     artist: (d.artists || []).map((a) => a.name).filter(Boolean).join(', '),
-    art:    d.album?.images?.[1]?.url || d.album?.images?.[0]?.url || '',
+    art: d.album?.images?.[1]?.url || d.album?.images?.[0]?.url || '',
   };
 }
 
@@ -711,20 +804,20 @@ async function renderCard(spotifyId, meta, mergedSpec) {
   inner.className = 'dp-card';
   inner.innerHTML =
     `<div class="dp-art-wrap">${art}` +
-      `<button class="dp-super" type="button" title="סופר לייק — נשמור את השיר">${STAR_ICON}</button>` +
-      `<button class="dp-play" type="button" aria-label="נגן">${PLAY_ICON}</button>` +
-      `<div class="dp-hidden-embed"><div class="dp-embed-mount"></div></div>` +
+    `<button class="dp-super" type="button" title="סופר לייק — נשמור את השיר">${STAR_ICON}</button>` +
+    `<button class="dp-play" type="button" aria-label="נגן">${PLAY_ICON}</button>` +
+    `<div class="dp-hidden-embed"><div class="dp-embed-mount"></div></div>` +
     `</div>` +
     `<div class="dp-title-row">` +
-      `<div class="dp-track-name">${escHtml(meta.name || '')}</div>` +
-      `<div class="dp-track-artist">${escHtml(meta.artist || '')}</div>` +
+    `<div class="dp-track-name">${escHtml(meta.name || '')}</div>` +
+    `<div class="dp-track-artist">${escHtml(meta.artist || '')}</div>` +
     `</div>` +
     `<div class="dp-progress">` +
-      `<div class="dp-prog-bar">` +
-        `<div class="dp-prog-track"><div class="dp-prog-fill"></div></div>` +
-        `<div class="dp-prog-thumb"></div>` +
-      `</div>` +
-      `<div class="dp-timestamps"><span class="dp-prog-current">0:00</span><span class="dp-prog-total">0:00</span></div>` +
+    `<div class="dp-prog-bar">` +
+    `<div class="dp-prog-track"><div class="dp-prog-fill"></div></div>` +
+    `<div class="dp-prog-thumb"></div>` +
+    `</div>` +
+    `<div class="dp-timestamps"><span class="dp-prog-current">0:00</span><span class="dp-prog-total">0:00</span></div>` +
     `</div>` +
     `<button class="dp-swap" type="button">${SWAP_ICON}<span>שמעו עוד שיר מהכיוון הזה</span></button>`;
   body.append(inner);
@@ -752,12 +845,12 @@ async function renderCard(spotifyId, meta, mergedSpec) {
   //     briefly jerks the dot backward
   //   - Click or drag on the bar → controller.seek(seconds)
   const pbState = {
-    lastPosition:  0,
+    lastPosition: 0,
     lastTimestamp: Date.now(),
-    duration:      0,
-    isPaused:      true,
-    dragging:      false,
-    pendingSeek:   null,
+    duration: 0,
+    isPaused: true,
+    dragging: false,
+    pendingSeek: null,
     seekLockUntil: 0,
   };
 
@@ -770,7 +863,7 @@ async function renderCard(spotifyId, meta, mergedSpec) {
     const c = currentModalCtx?.controller;
     if (!c) return;
     try { c.seek(seconds); } catch { }
-    pbState.lastPosition  = seconds * 1000;
+    pbState.lastPosition = seconds * 1000;
     pbState.lastTimestamp = Date.now();
     pbState.seekLockUntil = Date.now() + 500;
   }
@@ -811,10 +904,10 @@ async function renderCard(spotifyId, meta, mergedSpec) {
     const pos = pbCurrentPosMs();
     const dur = pbState.duration;
     const pct = dur > 0 ? Math.min(1, pos / dur) : 0;
-    pbFill.style.width  = (pct * 100) + '%';
-    pbThumb.style.left  = (pct * 100) + '%';
+    pbFill.style.width = (pct * 100) + '%';
+    pbThumb.style.left = (pct * 100) + '%';
     pbCurrent.textContent = fmtTime(pos);
-    pbTotal.textContent   = fmtTime(dur);
+    pbTotal.textContent = fmtTime(dur);
     requestAnimationFrame(pbTick);
   })();
 
@@ -842,7 +935,7 @@ async function renderCard(spotifyId, meta, mergedSpec) {
       // right after seek() with the pre-seek position.
       if (typeof dd.duration === 'number' && dd.duration > 0) pbState.duration = dd.duration;
       if (typeof dd.position === 'number' && Date.now() >= pbState.seekLockUntil) {
-        pbState.lastPosition  = dd.position;
+        pbState.lastPosition = dd.position;
         pbState.lastTimestamp = Date.now();
       }
       pbState.isPaused = paused;
@@ -965,10 +1058,10 @@ async function commitCurrent() {
       kind: 'add',
       spec,
       messageIdFirst: messageId || null,
-      messageIdLast:  messageId || null,
+      messageIdLast: messageId || null,
     },
     inProgressLabel: 'בונים את הכיוון החדש…',
-    successLabel:    '✓ נוסף כיוון חדש',
+    successLabel: '✓ נוסף כיוון חדש',
   });
 }
 
@@ -996,7 +1089,7 @@ function askEditPlaylistOption(directionId, updates, messageId) {
 
   const pick = (expireLive) => {
     replaceBtn.disabled = true;
-    keepBtn.disabled    = true;
+    keepBtn.disabled = true;
     // Rewrite the bubble to the in-progress state (drops the buttons).
     bubble.textContent = '';
     const spinnerSpan = document.createElement('span');
@@ -1013,17 +1106,17 @@ function askEditPlaylistOption(directionId, updates, messageId) {
         updates,
         expireLivePlaylist: expireLive,
         messageIdFirst: messageId || null,
-        messageIdLast:  messageId || null,
+        messageIdLast: messageId || null,
       },
       inProgressLabel: null,       // bubble already shows the label
-      successLabel:    expireLive
+      successLabel: expireLive
         ? '✓ הכיוון עודכן ופלייליסט חדש נבנה'
         : '✓ הכיוון עודכן — הפלייליסט החדש יופיע מחר',
-      existingBubble:  bubble,
+      existingBubble: bubble,
     });
   };
   replaceBtn.addEventListener('click', () => pick(true));
-  keepBtn.addEventListener('click',    () => pick(false));
+  keepBtn.addEventListener('click', () => pick(false));
 }
 
 // Shared spinner-bubble commit path. Either appends a new bubble with the

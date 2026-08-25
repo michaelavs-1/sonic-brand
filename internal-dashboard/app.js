@@ -58,10 +58,14 @@ function renderAppbar(showSignOut) {
   return el('header', { class: 'appbar' },
     el('div', { class: 'title' }, 'Robin Internal Dashboard', el('small', {}, '· test scaffolding')),
     showSignOut
-      ? el('button', {
-          class: 'ghost',
-          onclick: () => { clearKey(); location.hash = '#/'; route(); },
-        }, 'Sign out')
+      ? el('div', { style: 'display:flex;gap:10px;align-items:center' },
+          el('a', { href: '#/',      style: 'color:var(--text-dim)' }, 'Users'),
+          el('a', { href: '#/spend', style: 'color:var(--text-dim)' }, 'Gemini spend'),
+          el('button', {
+            class: 'ghost',
+            onclick: () => { clearKey(); location.hash = '#/'; route(); },
+          }, 'Sign out'),
+        )
       : null,
   );
 }
@@ -269,8 +273,12 @@ async function renderDetail(id) {
   const b = data.business || {};
   const o = data.onboarding || {};
   const p = data.place || {};
-  const directions = data.directions || [];
-  const playlists  = data.playlists  || [];
+  const directions       = data.directions         || [];
+  const playlists        = data.playlists          || [];
+  const directionChanges = data.direction_changes  || [];
+  const chatTranscript   = data.chat_transcript    || [];
+  const geminiSpend      = data.gemini_spend       || { total_usd: 0, call_count: 0, by_label: [] };
+  const geminiCalls      = data.gemini_calls       || [];
 
   const header = el('div', { class: 'card' },
     el('div', { class: 'card-head' },
@@ -371,6 +379,84 @@ async function renderDetail(id) {
 
   const playlistCards = playlists.map(renderPlaylistCard);
 
+  // Build lookup so change rows can show the direction's current title
+  // instead of just a bare UUID.
+  const directionById = new Map(directions.map((d) => [d.id, d]));
+
+  const changesCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' },
+      el('h2', {}, 'Direction-edit changes'),
+      el('span', { class: 'meta' }, `${directionChanges.length} rows (newest first)`),
+    ),
+    directionChanges.length === 0
+      ? el('div', { class: 'empty' }, 'Owner has not edited directions via the chat.')
+      : el('table', {},
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'When'),
+            el('th', {}, 'Kind'),
+            el('th', {}, 'Direction'),
+            el('th', {}, 'Playlist'),
+            el('th', {}, 'Snapshot'),
+          )),
+          el('tbody', {}, ...directionChanges.map(renderChangeRow.bind(null, directionById))),
+        ),
+  );
+
+  const chatCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' },
+      el('h2', {}, 'Direction-edit chat transcript'),
+      el('span', { class: 'meta' }, `${chatTranscript.length} messages`),
+    ),
+    chatTranscript.length === 0
+      ? el('div', { class: 'empty' }, 'No chat transcript for this business.')
+      : renderChatTranscript(chatTranscript, directionById),
+  );
+
+  const geminiCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' },
+      el('h2', {}, 'Gemini spend'),
+      el('span', { class: 'meta' },
+        `${fmtUsd(geminiSpend.total_usd)} · ${geminiSpend.call_count} calls`),
+    ),
+    geminiCalls.length === 0
+      ? el('div', { class: 'empty' }, 'No Gemini calls attributed to this business.')
+      : el('div', {},
+          (geminiSpend.by_label && geminiSpend.by_label.length
+            ? el('table', {},
+                el('thead', {}, el('tr', {},
+                  el('th', {}, 'Label'),
+                  el('th', {}, 'Spend'),
+                  el('th', {}, 'Calls'),
+                )),
+                el('tbody', {}, ...geminiSpend.by_label.map((l) => el('tr', {},
+                  el('td', {}, l.label),
+                  el('td', {}, fmtUsd(l.usd)),
+                  el('td', {}, String(l.calls)),
+                ))),
+              )
+            : null),
+          el('details', { class: 'tracks' },
+            el('summary', {}, `Individual calls (${geminiCalls.length})`),
+            el('div', { style: 'padding:0 14px 14px' },
+              el('table', {},
+                el('thead', {}, el('tr', {},
+                  el('th', {}, 'When'),
+                  el('th', {}, 'Label'),
+                  el('th', {}, 'Tokens (in / out / think)'),
+                  el('th', {}, 'Cost'),
+                )),
+                el('tbody', {}, ...geminiCalls.map((c) => el('tr', {},
+                  el('td', {}, fmtDate(c.created_at)),
+                  el('td', {}, c.label || '(unlabeled)'),
+                  el('td', {}, `${c.input_tokens ?? '?'} / ${c.output_tokens ?? '?'} / ${c.thinking_tokens ?? 0}`),
+                  el('td', {}, fmtUsd(c.cost_usd)),
+                ))),
+              ),
+            ),
+          ),
+        ),
+  );
+
   app.replaceChildren(
     renderAppbar(true),
     el('main', {},
@@ -382,8 +468,87 @@ async function renderDetail(id) {
       directionsCard,
       playlistsHeader,
       ...playlistCards,
+      changesCard,
+      chatCard,
+      geminiCard,
     ),
   );
+}
+
+function kindPill(kind) {
+  const cls = kind === 'add' ? 'good' : kind === 'remove' ? 'warn' : '';
+  return el('span', { class: `pill ${cls}` }, kind || '?');
+}
+
+function directionLabel(directionById, dirId) {
+  if (!dirId) return '—';
+  const d = directionById.get(dirId);
+  if (d) return d.title_en || `(${dirId.slice(0, 8)}…)`;
+  return `(${dirId.slice(0, 8)}…)`;
+}
+
+function renderChangeRow(directionById, c) {
+  const jsonBlock = (obj) => obj
+    ? el('pre', { class: 'dump' }, JSON.stringify(obj, null, 2))
+    : el('div', { class: 'empty', style: 'padding:10px' }, '(none)');
+  return el('tr', {},
+    el('td', {}, fmtDate(c.applied_at)),
+    el('td', {}, kindPill(c.kind)),
+    el('td', {}, directionLabel(directionById, c.direction_id)),
+    el('td', {}, c.playlist_action
+      ? el('span', { class: 'pill' }, c.playlist_action)
+      : el('span', { class: 'pill dim' }, '—')),
+    el('td', {},
+      el('details', {},
+        el('summary', { style: 'cursor:pointer;color:var(--text-dim)' }, 'before / after'),
+        el('div', { style: 'display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px' },
+          el('div', {}, el('div', { class: 'k', style: 'padding:4px 0' }, 'before'), jsonBlock(c.before)),
+          el('div', {}, el('div', { class: 'k', style: 'padding:4px 0' }, 'after'),  jsonBlock(c.after)),
+        ),
+      ),
+    ),
+  );
+}
+
+function renderChatTranscript(messages, directionById) {
+  const wrap = el('div', {
+    style: 'display:flex;flex-direction:column;gap:10px;padding:14px 18px;max-height:600px;overflow-y:auto',
+  });
+  for (const m of messages) {
+    const isUser = m.role === 'user';
+    const align = isUser ? 'flex-end' : 'flex-start';
+    const bg = isUser ? 'var(--accent-dim)' : 'var(--panel-2)';
+    const border = isUser ? '1px solid #4a2a1a' : '1px solid var(--border)';
+
+    const meta = el('div', {
+      style: 'font-size:11px;color:var(--text-dim);margin-bottom:4px',
+    }, `${m.role} · ${fmtDate(m.created_at)}`
+       + (m.selected_direction_id
+         ? ` · targeting ${directionLabel(directionById, m.selected_direction_id)}`
+         : ''));
+
+    const content = el('div', {
+      style: `background:${bg};border:${border};border-radius:8px;padding:10px 12px;`
+           + 'max-width:70%;white-space:pre-wrap;word-break:break-word;font-size:13px',
+    }, m.content || '(empty)');
+
+    const bubbleChildren = [meta, content];
+    if (m.proposal) {
+      bubbleChildren.push(
+        el('details', { style: 'margin-top:6px;max-width:70%' },
+          el('summary', { style: 'cursor:pointer;color:var(--text-dim);font-size:11px' },
+            `proposal (${m.proposal.kind || 'unknown'})`),
+          el('pre', { class: 'dump', style: 'margin-top:6px' },
+            JSON.stringify(m.proposal, null, 2)),
+        ),
+      );
+    }
+
+    wrap.append(el('div', {
+      style: `display:flex;flex-direction:column;align-items:${align}`,
+    }, ...bubbleChildren));
+  }
+  return wrap;
 }
 
 function renderError(msg) {
@@ -398,10 +563,167 @@ function renderError(msg) {
   );
 }
 
+// ---------- gemini spend view ----------
+function fmtUsd(n) {
+  const v = Number(n) || 0;
+  // Small totals display more precision so tiny values don't collapse to $0.00.
+  if (v < 0.01) return '$' + v.toFixed(6);
+  return '$' + v.toFixed(4);
+}
+
+async function renderSpend() {
+  app.replaceChildren(
+    renderAppbar(true),
+    el('main', {},
+      el('div', { class: 'card' },
+        el('div', { class: 'card-head' },
+          el('h2', {}, 'Gemini spend'),
+          el('span', { class: 'meta' }, el('span', { class: 'spinner' }), ' loading…'),
+        ),
+      ),
+    ),
+  );
+
+  let data;
+  try { data = await api('/api/internal/gemini-spend'); }
+  catch (e) {
+    if (e.authFailed) return renderLogin(e.message);
+    return renderError(e.message);
+  }
+
+  const t = data.totals || {};
+  const totalsCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' }, el('h2', {}, 'Totals')),
+    renderKV([
+      ['All-time spend',           fmtUsd(t.all_time_usd)],
+      ['Pre-logging baseline',     `${fmtUsd(t.baseline_usd)} (from Google Cloud Billing pre-2026-08-25)`],
+      ['Since logging started',    `${fmtUsd(t.since_logging_usd)} · ${t.all_time_calls ?? 0} calls`],
+      ['Attributed to a business', `${fmtUsd(t.attributed_usd)} · ${t.attributed_calls ?? 0} calls`],
+      ['Abandoned onboarding',     `${fmtUsd(t.abandoned_usd)} · ${t.abandoned_calls ?? 0} calls`],
+    ]),
+  );
+
+  const byDay = Array.isArray(data.by_day) ? data.by_day : [];
+  const dayCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' },
+      el('h2', {}, 'By day'),
+      el('span', { class: 'meta' }, `${byDay.length} days (newest first)`),
+    ),
+    byDay.length === 0
+      ? el('div', { class: 'empty' }, 'No calls logged yet.')
+      : el('table', {},
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'Day (UTC)'),
+            el('th', {}, 'Spend'),
+            el('th', {}, 'Calls'),
+          )),
+          el('tbody', {}, ...byDay.map((d) => el('tr', {},
+            el('td', {}, d.day),
+            el('td', {}, fmtUsd(d.usd)),
+            el('td', {}, String(d.calls)),
+          ))),
+        ),
+  );
+
+  const byLabel = Array.isArray(data.by_label) ? data.by_label : [];
+  const labelCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' },
+      el('h2', {}, 'By label'),
+      el('span', { class: 'meta' }, `${byLabel.length} labels`),
+    ),
+    byLabel.length === 0
+      ? el('div', { class: 'empty' }, '—')
+      : el('table', {},
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'Label'),
+            el('th', {}, 'Spend'),
+            el('th', {}, 'Calls'),
+          )),
+          el('tbody', {}, ...byLabel.map((l) => el('tr', {},
+            el('td', {}, l.label),
+            el('td', {}, fmtUsd(l.usd)),
+            el('td', {}, String(l.calls)),
+          ))),
+        ),
+  );
+
+  const byBusiness = Array.isArray(data.by_business) ? data.by_business : [];
+  const businessCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' },
+      el('h2', {}, 'By business'),
+      el('span', { class: 'meta' }, `${byBusiness.length} businesses (attributed calls only)`),
+    ),
+    byBusiness.length === 0
+      ? el('div', { class: 'empty' }, 'No attributed spend yet.')
+      : el('table', {},
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'Owner email'),
+            el('th', {}, 'Business name'),
+            el('th', {}, 'Spend'),
+            el('th', {}, 'Calls'),
+            el('th', {}, ''),
+          )),
+          el('tbody', {}, ...byBusiness.map((b) => el('tr', {},
+            el('td', {}, b.owner_email
+              ? el('a', { href: `#/business/${b.business_id}` }, b.owner_email)
+              : el('span', { class: 'pill warn' }, '(no email)')),
+            el('td', {}, b.business_name || el('span', { class: 'pill dim' }, '(unnamed)')),
+            el('td', {}, fmtUsd(b.usd)),
+            el('td', {}, String(b.calls)),
+            el('td', {}, el('a', { href: `#/business/${b.business_id}` }, 'view →')),
+          ))),
+        ),
+  );
+
+  const recent = Array.isArray(data.recent) ? data.recent : [];
+  const recentCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' },
+      el('h2', {}, 'Recent calls'),
+      el('span', { class: 'meta' }, `last ${recent.length}`),
+    ),
+    recent.length === 0
+      ? el('div', { class: 'empty' }, '—')
+      : el('table', {},
+          el('thead', {}, el('tr', {},
+            el('th', {}, 'When'),
+            el('th', {}, 'Label'),
+            el('th', {}, 'Model'),
+            el('th', {}, 'Tokens (in / out / think)'),
+            el('th', {}, 'Cost'),
+            el('th', {}, 'Attribution'),
+          )),
+          el('tbody', {}, ...recent.map((r) => el('tr', {},
+            el('td', {}, fmtDate(r.created_at)),
+            el('td', {}, r.label || '(unlabeled)'),
+            el('td', {}, r.model),
+            el('td', {}, `${r.input_tokens ?? '?'} / ${r.output_tokens ?? '?'} / ${r.thinking_tokens ?? 0}`),
+            el('td', {}, fmtUsd(r.cost_usd)),
+            el('td', {}, r.business_id
+              ? el('a', { href: `#/business/${r.business_id}` }, `biz ${r.business_id.slice(0, 8)}…`)
+              : r.onboarding_session_id
+                ? el('span', { class: 'pill dim' }, 'onboarding (abandoned)')
+                : el('span', { class: 'pill dim' }, '—')),
+          ))),
+        ),
+  );
+
+  app.replaceChildren(
+    renderAppbar(true),
+    el('main', {},
+      totalsCard,
+      dayCard,
+      labelCard,
+      businessCard,
+      recentCard,
+    ),
+  );
+}
+
 // ---------- router ----------
 function route() {
   if (!getKey()) return renderLogin();
   const hash = location.hash || '#/';
+  if (hash === '#/spend' || hash === '#/spend/') return renderSpend();
   const m = hash.match(/^#\/business\/([0-9a-f-]{36})$/i);
   if (m) return renderDetail(m[1]);
   return renderList();

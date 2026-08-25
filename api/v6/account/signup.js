@@ -35,7 +35,7 @@
    Response: { ok: true, existing_user, business_id, emailed: true, email }
 */
 
-import { pgrSelect, pgrUpsert, pgrInsert } from '../../v5/supabase-client.js';
+import { pgrSelect, pgrUpsert, pgrInsert, pgrPatch } from '../../v5/supabase-client.js';
 import { requireSite, isAllowedHost, setCors } from '../origin-guard.js';
 import { guard } from '../ratelimit.js';
 
@@ -258,6 +258,7 @@ export default async function handler(req, res) {
       longestMinutes,
       playlists,
       superLikedTracks,
+      onboarding_session_id,
     } = req.body || {};
 
     const cleanEmail = String(email || '').trim().toLowerCase();
@@ -310,6 +311,23 @@ export default async function handler(req, res) {
     if (spotifyIds.length) {
       try { await backfillLedgerOwnership(spotifyIds, user.id, businessId); }
       catch (e) { console.warn('[signup] ledger backfill failed:', e.message); }
+    }
+
+    // 2b) Gemini spend back-fill — the onboarding Gemini calls (musical
+    //     directions × 2) were logged with `onboarding_session_id` set
+    //     and `business_id` null. Attach them to the newly-created
+    //     business now so per-business rollups in the internal admin API
+    //     include pre-signup spend. Clear the session id afterwards so
+    //     the "abandoned onboarding" query stays clean.
+    if (typeof onboarding_session_id === 'string' && onboarding_session_id.length) {
+      try {
+        await pgrPatch('gemini_call_log',
+          { onboarding_session_id: `eq.${onboarding_session_id}` },
+          { business_id: businessId, onboarding_session_id: null },
+        );
+      } catch (e) {
+        console.warn('[signup] gemini spend backfill failed:', e.message);
+      }
     }
 
     // 3) business_hours + business_place — one row each per business.

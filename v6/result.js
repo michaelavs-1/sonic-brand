@@ -347,6 +347,11 @@ async function postSignup({ email, business_name, biz, playlists }) {
       // migration). Nothing consumes these rows yet — future playlist
       // tuning will read them.
       superLikedTracks: Array.isArray(biz?.superLikedTracks) ? biz.superLikedTracks : [],
+      // Onboarding session id — client-generated UUID that tagged every
+      // Gemini call made during onboarding. Server uses it to backfill
+      // business_id onto gemini_call_log rows so pre-signup spend is
+      // attributed to this newly-created business.
+      onboarding_session_id: biz?.onboardingSessionId || null,
       playlists,
     }),
   });

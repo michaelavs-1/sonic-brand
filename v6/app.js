@@ -14,7 +14,7 @@
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v6/atmosphere.js?v=21082026a';
 import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
-import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=21082026b';
+import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=25082026b';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
 import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=21082026k';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=21082026a';
@@ -24,7 +24,7 @@ import {
   finalizePlaylistResultsHeading,
   showRubinCTA,
   showSignupCard,
-} from '/v6/result.js?v=23082026a';
+} from '/v6/result.js?v=25082026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -41,6 +41,16 @@ const $ = (id) => document.getElementById(id);
 const state = {
   bizName: '',
   bizDesc: '',
+  // Random UUID minted on first load. Passed to every Gemini call during
+  // onboarding so /api/v6/gemini can log spend against it, and included
+  // in the signup POST so the server can retroactively attribute those
+  // rows to the newly-created business_id. Survives step navigation but
+  // NOT hard refresh — a refreshed flow is a fresh session and its
+  // earlier costs land in the "abandoned onboarding" bucket. Acceptable
+  // at pilot scale.
+  onboardingSessionId: (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : String(Date.now()) + '-' + Math.random().toString(36).slice(2),
   confirmedPlace: undefined,  // undefined = never looked up; null = looked up, none found
   atmosphereRows: null,       // cached once per session
   selectedAtmos: [],
@@ -638,6 +648,7 @@ async function goToStep(start) {
             atmospheres: state.selectedAtmos,
             musicalEmphases: state.musicalEmphases,
             place: state.confirmedPlace,
+            onboardingSessionId: state.onboardingSessionId,
           });
           directionsPromise = rawDirections.then(
             (r) => { directionsSettled = true; return r; },
@@ -691,6 +702,7 @@ async function goToStep(start) {
             atmospheres: state.selectedAtmos,
             musicalEmphases: state.musicalEmphases,
             place: state.confirmedPlace,
+            onboardingSessionId: state.onboardingSessionId,
           });
           directionsPromise = rawDirections.then(
             (r) => { directionsSettled = true; return r; },
@@ -779,6 +791,9 @@ async function goToStep(start) {
             longestMinutes: state.longestMinutes,
             // Flatten the Set into an array of spotify_ids for the JSON POST.
             superLikedTracks: [...state.superLikedTracks],
+            // Threaded to signup so the server can backfill business_id
+            // onto the gemini_call_log rows this session produced.
+            onboardingSessionId: state.onboardingSessionId,
           });
         });
         return;

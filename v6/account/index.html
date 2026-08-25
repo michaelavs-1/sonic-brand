@@ -1948,6 +1948,40 @@
       display: block;
     }
 
+    /* Icon-only edit + trash buttons on Home tab daily-playlist rows.
+       Base .slot-icon = neutral outlined square; .slot-edit hover paints
+       accent-yellow; .slot-trash paints red on hover. Sits between .s-info
+       and the "▶ פתח" button so all three actions live in one row. */
+    .slot-icon {
+      width: auto;
+      margin: 0;
+      padding: 9px 10px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--card-2);
+      border: 1px solid var(--border-2);
+      border-radius: 11px;
+      color: var(--muted);
+      cursor: pointer;
+      font-family: inherit;
+      transition: color .15s, border-color .15s, background .15s, box-shadow .15s, transform .06s;
+    }
+    .slot-icon:hover { transform: translateY(-1px); }
+    .slot-icon:active { transform: translateY(0); }
+    .slot-icon:disabled { opacity: .55; cursor: default; transform: none; }
+    .slot-icon svg { width: 17px; height: 17px; display: block; }
+    .slot-edit:hover:not(:disabled) {
+      color: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 4px 14px rgba(240, 167, 63, .18);
+    }
+    .slot-trash:hover:not(:disabled) {
+      color: var(--danger);
+      border-color: var(--danger);
+      box-shadow: 0 4px 14px rgba(224, 122, 106, .22);
+    }
+
     /* Once the user has sent a first message, the textarea collapses to a
        single-line height — the base textarea.input has min-height:74px which
        we override, and rows="1" is set on the element to match. */
@@ -2724,6 +2758,23 @@
   </div>
   <div class="dp-toast" id="dpToast"></div>
 
+  <!-- Confirmation modal for the Home tab's per-playlist trash icon.
+       Opens with the direction id staged in pendingTrashDirectionId
+       (see app.js). Three-way choice: edit (jumps to the direction-edit
+       chat with the direction selected), remove (soft-disables the
+       direction AND expires today's live playlist), or cancel. -->
+  <div class="gd-overlay hide" id="trashDirModal">
+    <div class="gd-modal">
+      <h3>למחוק את הכיוון?</h3>
+      <p>לפני שמוחקים אותו לחלוטין, אולי כדאי לנסות לערוך אותו כדי שיתאים יותר לטעם שלכם?</p>
+      <div class="gd-actions">
+        <button class="btn" id="trashDirEdit" type="button">בואו נערוך</button>
+        <button class="btn btn-danger" id="trashDirRemove" type="button">כן, למחוק</button>
+        <button class="btn-ghost" id="trashDirCancel" type="button">ביטול</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirmation modal for the closed-day "המקום פתוח?" flow. Hidden by
      default; app.js flips .hide off when the user clicks the link. -->
   <div class="gd-overlay hide" id="genDailyModal">
@@ -2737,7 +2788,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/account/app.js?v=25082026c"></script>
+  <script type="module" src="/v6/account/app.js?v=25082026f"></script>
 </body>
 
 </html>

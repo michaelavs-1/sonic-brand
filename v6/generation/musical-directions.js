@@ -22,7 +22,7 @@
 //            'matcher_error',
 //     reasoning_en: '...' }
 
-import { callModel, parseJSONFromText } from '/v6/generation/ai-provider.js?v=04082026a';
+import { callModel, parseJSONFromText } from '/v6/generation/ai-provider.js?v=25082026a';
 
 // Raised from 16000 → 65536 (Gemini 3.6-flash's hard output-token cap;
 // values above that are silently clamped by Google). Removes our own
@@ -310,13 +310,14 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, plac
 // Provider-agnostic call. Caching is on: system prompt is stable across
 // users, so on Anthropic the ~2400-token prefix is served from the ephemeral
 // cache after the first call. No-op on Gemini.
-async function callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections, label }) {
+async function callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections, label, onboardingSessionId }) {
   const { text } = await callModel({
     system: SYSTEM_PROMPT,
     userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections }),
     maxTokens: MAX_TOKENS,
     cache: true,
     label,
+    onboardingSessionId,
   });
   return parseJSONFromText(text);
 }
@@ -396,7 +397,7 @@ function normalizeDirections(parsed, rankStart) {
   return valid;
 }
 
-export async function generateMusicalDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place }) {
+export async function generateMusicalDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, onboardingSessionId }) {
   if (!bizDesc || typeof bizDesc !== 'string' || bizDesc.trim().length < 3) {
     return { error: 'insufficient_description', reasoning_en: 'empty or too-short description' };
   }
@@ -404,7 +405,7 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres,
   // Call 1 — page 1 (top 4 fits). Blocks the user.
   let parsed1;
   try {
-    parsed1 = await callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset: 'top', label: 'page1' });
+    parsed1 = await callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset: 'top', label: 'onboarding', onboardingSessionId });
   } catch (e) {
     return { error: 'matcher_error', reasoning_en: e.message };
   }
@@ -429,7 +430,8 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres,
         bizName, bizDesc, atmospheres, musicalEmphases, place,
         subset: 'next',
         priorDirections: page1,
-        label: 'page2',
+        label: 'onboarding',
+        onboardingSessionId,
       });
       if (parsed2?.error) {
         return {

@@ -293,7 +293,7 @@ function sanitizeAddSpec(s) {
 
 // --- Gemini call via our own proxy (server-to-server with x-sonic-internal
 // bypasses the proxy's origin guard + rate limiter). ---
-async function callGemini(origin, systemPrompt, contextBlock, history, currentUserText) {
+async function callGemini(origin, systemPrompt, contextBlock, history, currentUserText, businessId) {
   // The context block goes as the very first user turn ahead of the
   // transcript. Gemini's chat is stateless — we replay the whole thing
   // every call, which is why the tail caps above matter.
@@ -327,6 +327,7 @@ async function callGemini(origin, systemPrompt, contextBlock, history, currentUs
       user:              userPayload,
       history:           historyPayload,
       label:             'direction-chat',
+      business_id:       businessId || null,
     }),
   });
   const data = await r.json().catch(() => ({}));
@@ -439,7 +440,7 @@ export default async function handler(req, res) {
 
     let raw;
     try {
-      raw = await callGemini(origin, DIRECTION_EDIT_CHAT_SYSTEM_PROMPT, contextBlock, history, text);
+      raw = await callGemini(origin, DIRECTION_EDIT_CHAT_SYSTEM_PROMPT, contextBlock, history, text, businessId);
     } catch (err) {
       console.error('[direction-chat] gemini call failed:', err.message);
       // Persist a fallback assistant turn so the transcript stays coherent

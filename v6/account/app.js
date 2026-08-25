@@ -26,7 +26,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeTargetForToday } from '../generation/playlist-length.js?v=13082026a';
 import { mountHoursEditor } from '../hours-selector.js?v=03082026a';
 import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=20082026c';
-import { mountDirectionChat, openDirectionChat } from './direction-chat.js?v=25082026h';
+import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard } from './direction-chat.js?v=25082026j';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -92,6 +92,11 @@ function playlistRowToClient(r) {
     bpmRange: r.bpm_range || null,
     expansion: r.expansion || null,
     eventId: r.event_id || null,
+    // Nullable back-ref used by the Home tab's per-playlist edit + trash
+    // icons to send the owner to the profile-tab direction-edit chat
+    // for that specific direction. Set at signup + on every daily-gen /
+    // apply-direction-change build; NULL for pre-migration rows.
+    directionId: r.direction_id || null,
     expandedAt: r.expanded_at ? Date.parse(r.expanded_at) : null,
     expiresAt: r.expires_at ? Date.parse(r.expires_at) : null,
     createdAt: r.created_at ? String(r.created_at).slice(0, 10) : null,
@@ -604,6 +609,39 @@ function renderPlaylists() {
       `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}</div>` +
       barHtml +
       `</div>`;
+    // Edit + trash icon buttons — one each per row, only when the row
+    // has a direction_id back-ref (missing on pre-migration rows). Sit
+    // between the info column and the "▶ פתח" button.
+    if (p.directionId) {
+      const editBtn = document.createElement('button');
+      editBtn.type = 'button';
+      editBtn.className = 'slot-icon slot-edit';
+      editBtn.title = 'עריכת הכיוון';
+      editBtn.setAttribute('aria-label', 'עריכת הכיוון');
+      editBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>' +
+        '</svg>';
+      editBtn.addEventListener('click', () => editDirectionFromCard(p.directionId));
+      row.append(editBtn);
+
+      const trashBtn = document.createElement('button');
+      trashBtn.type = 'button';
+      trashBtn.className = 'slot-icon slot-trash';
+      trashBtn.title = 'מחיקת הכיוון';
+      trashBtn.setAttribute('aria-label', 'מחיקת הכיוון');
+      trashBtn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+        '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2"/>' +
+        '<path d="M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14"/>' +
+        '<path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+      trashBtn.addEventListener('click', () => openTrashDirectionModal(p.directionId));
+      row.append(trashBtn);
+      // Direction id also lives on the row itself so the delete flow can
+      // find the correct trash button by directionId after the modal has
+      // closed (the modal doesn't hold a reference to the row).
+      row.dataset.directionId = p.directionId;
+    }
     if (p.url) {
       const open = document.createElement('a');
       open.className = 'btn';
@@ -618,6 +656,86 @@ function renderPlaylists() {
     if (showBar) updateExpandBar(row, p.trackCount || 0);
   }
 }
+
+// Edit icon on a playlist row → jump to the Profile tab and prime the
+// direction-edit chat with the corresponding direction selected. The
+// chat itself fires the "מה תרצו לשנות בכיוון X?" synthetic prompt.
+async function editDirectionFromCard(directionId) {
+  if (!directionId) return;
+  switchTab('Profile');
+  try { await selectDirectionInChat(directionId); }
+  catch (e) { console.warn('editDirectionFromCard failed:', e); }
+}
+
+// Trash icon on a playlist row → open the confirmation modal. The
+// caller then picks between editing (same path as the edit icon) and
+// removing (fires apply-direction-change with expireLive=true).
+let pendingTrashDirectionId = null;
+function openTrashDirectionModal(directionId) {
+  if (!directionId) return;
+  pendingTrashDirectionId = directionId;
+  const btn = $('trashDirRemove');
+  if (btn) { btn.disabled = false; btn.textContent = 'כן, למחוק'; }
+  $('trashDirModal')?.classList.remove('hide');
+}
+
+function closeTrashDirectionModal() {
+  pendingTrashDirectionId = null;
+  $('trashDirModal')?.classList.add('hide');
+}
+
+async function confirmTrashDirectionRemove() {
+  const id = pendingTrashDirectionId;
+  if (!id) return;
+  // Close the modal RIGHT AWAY. The actual expire+unfollow round-trip
+  // takes a few seconds; we don't want the owner stuck staring at a
+  // modal spinner for that time. Instead the trash icon on the row
+  // rotates in place, giving the same "something's happening" signal
+  // without blocking the rest of the UI.
+  closeTrashDirectionModal();
+
+  const row      = document.querySelector(`#slotsWrap .slot[data-direction-id="${cssEscape(id)}"]`);
+  const trashBtn = row?.querySelector('.slot-trash');
+  const editBtn  = row?.querySelector('.slot-edit');
+  const origTrashHtml = trashBtn?.innerHTML;
+  if (trashBtn) {
+    trashBtn.disabled = true;
+    trashBtn.innerHTML = '<span class="sb-spinner" style="width:16px;height:16px;display:block"></span>';
+  }
+  if (editBtn) editBtn.disabled = true;
+
+  try {
+    // Trash from the Home card carries "expire the live playlist too"
+    // as the default — the owner is looking at the card that's playing
+    // right now and hit trash on it. If they wanted to keep today's
+    // music running, they'd have used the chat.
+    const res = await removeDirectionFromCard(id, { expireLive: true });
+    if (!res.ok) throw new Error(res.error || 'לא הצלחנו למחוק');
+    // direction-change-applied event (fired inside removeDirectionFromCard)
+    // triggers the app.js listener → loadDashboardData + renderPlaylists,
+    // and the row disappears naturally. No explicit re-render needed here.
+    toast('הכיוון הוסר');
+  } catch (e) {
+    console.error('confirmTrashDirectionRemove failed:', e);
+    toast(String(e.message || 'שגיאה במחיקה'));
+    // Restore the row buttons so the owner can retry.
+    if (trashBtn) { trashBtn.disabled = false; trashBtn.innerHTML = origTrashHtml || ''; }
+    if (editBtn) editBtn.disabled = false;
+  }
+}
+
+function pickEditFromTrashModal() {
+  const id = pendingTrashDirectionId;
+  closeTrashDirectionModal();
+  if (id) editDirectionFromCard(id);
+}
+
+$('trashDirEdit')?.addEventListener('click', pickEditFromTrashModal);
+$('trashDirRemove')?.addEventListener('click', confirmTrashDirectionRemove);
+$('trashDirCancel')?.addEventListener('click', closeTrashDirectionModal);
+$('trashDirModal')?.addEventListener('click', (e) => {
+  if (e.target?.id === 'trashDirModal') closeTrashDirectionModal();
+});
 
 // A playlist should show the expansion progress bar when it's an onboarding
 // playlist that still needs expanding. Two conditions:
@@ -1109,6 +1227,7 @@ async function callChatModel(userMessage) {
       user: userMessage,
       history,
       label: 'event-chat',
+      business_id: business?.id || null,
     }),
   });
   const data = await r.json().catch(() => ({}));

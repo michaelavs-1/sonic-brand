@@ -17,12 +17,18 @@
          musical_emphases:     string | null,
          atmospheres:          string[]         // from user_metadata
        },
-       place:            <business_place row>  | null,
-       hours:            <business_hours row>  | null,
-       directions:       <business_directions[]>,   // both active + inactive
-       playlists:        <business_playlists[]>,    // all rows (live + expired)
+       place:             <business_place row>  | null,
+       hours:             <business_hours row>  | null,
+       directions:        <business_directions[]>,   // both active + inactive
+       playlists:         <business_playlists[]>,    // all rows (live + expired)
        direction_changes: <business_direction_changes[]>,  // most recent first
-       chat_transcript:  <business_direction_chats[]>      // ascending time
+       chat_transcript:   <business_direction_chats[]>,    // ascending time
+       gemini_spend: {                                     // per-business rollup
+         total_usd, call_count,
+         by_label: [{ label, usd, calls }]                 //   sorted by usd desc
+       },
+       gemini_calls:      <gemini_call_log[]>              // all rows for this
+                                                           //   business, newest first
      }
 
    All playlist rows carry `track_ids` (array of Spotify track IDs) as
@@ -82,7 +88,7 @@ export default async function handler(req, res) {
 
     // Fetch the owner + all per-business tables in parallel — no ordering
     // dependency between them.
-    const [ownerUser, placeRows, hoursRows, directionRows, playlistRows, changeRows, chatRows] = await Promise.all([
+    const [ownerUser, placeRows, hoursRows, directionRows, playlistRows, changeRows, chatRows, geminiRows] = await Promise.all([
       fetchAuthUser(business.owner_id),
       pgrSelect('business_place',      { business_id: `eq.${id}` }, { useService: true }),
       pgrSelect('business_hours',      { business_id: `eq.${id}` }, { useService: true }),
@@ -106,7 +112,36 @@ export default async function handler(req, res) {
         order: 'created_at.asc',
         useService: true,
       }),
+      pgrSelect('gemini_call_log', { business_id: `eq.${id}` }, {
+        select: 'id,created_at,model,label,input_tokens,output_tokens,thinking_tokens,total_tokens,cost_usd,finish_reason,http_status',
+        order: 'created_at.desc',
+        useService: true,
+      }),
     ]);
+
+    // Roll up this business's Gemini spend from its log rows. Same idea
+    // as /api/internal/gemini-spend but scoped to a single business_id
+    // — includes any pre-signup onboarding rows that got backfilled at
+    // signup time.
+    const geminiCalls = Array.isArray(geminiRows) ? geminiRows : [];
+    let geminiTotalUsd = 0;
+    const geminiByLabel = new Map();
+    for (const c of geminiCalls) {
+      const cost = Number(c.cost_usd) || 0;
+      geminiTotalUsd += cost;
+      const lbl = c.label || '(unlabeled)';
+      const bucket = geminiByLabel.get(lbl) || { label: lbl, usd: 0, calls: 0 };
+      bucket.usd   += cost;
+      bucket.calls += 1;
+      geminiByLabel.set(lbl, bucket);
+    }
+    const geminiSpend = {
+      total_usd: Number(geminiTotalUsd.toFixed(6)),
+      call_count: geminiCalls.length,
+      by_label: [...geminiByLabel.values()]
+        .sort((a, b) => b.usd - a.usd)
+        .map((l) => ({ label: l.label, usd: Number(l.usd.toFixed(6)), calls: l.calls })),
+    };
 
     const sonic = ownerUser?.user_metadata?.sonic || {};
     const atmospheres = Array.isArray(sonic?.onboarding?.atmospheres)
@@ -136,6 +171,8 @@ export default async function handler(req, res) {
       playlists:          Array.isArray(playlistRows)  ? playlistRows  : [],
       direction_changes:  Array.isArray(changeRows)    ? changeRows    : [],
       chat_transcript:    Array.isArray(chatRows)      ? chatRows      : [],
+      gemini_spend:       geminiSpend,
+      gemini_calls:       geminiCalls,
     });
   } catch (err) {
     console.error('[internal:business] failed:', err.message);

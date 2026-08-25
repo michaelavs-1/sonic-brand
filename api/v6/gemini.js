@@ -1,5 +1,7 @@
 import { requireSiteOrInternal, setCors } from './origin-guard.js';
 import { guard } from './ratelimit.js';
+import { computeCostUsd } from './gemini-pricing.js';
+import { pgrInsert } from '../v5/supabase-client.js';
 /* /api/v6/gemini.js
    Google Gemini generateContent proxy for v6.
    Key source: process.env.GEMINI_API_KEY. No body-supplied keys.
@@ -39,7 +41,10 @@ export default async function handler(req, res) {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return res.status(500).json({ error: 'GEMINI_API_KEY not set' });
 
-  const { model, system, user, history, max_output_tokens, thinking_level, label } = req.body || {};
+  const {
+    model, system, user, history, max_output_tokens, thinking_level, label,
+    business_id, onboarding_session_id,
+  } = req.body || {};
   if (!model || typeof user !== 'string' || !user.length) {
     return res.status(400).json({ error: 'model and user are required' });
   }
@@ -102,8 +107,8 @@ export default async function handler(req, res) {
           total:    data.usageMetadata.totalTokenCount,
         };
       }
+      const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
       try {
-        const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
         const text = Array.isArray(cand?.content?.parts)
           ? cand.content.parts.find((p) => typeof p?.text === 'string')?.text
           : null;
@@ -129,6 +134,36 @@ export default async function handler(req, res) {
       } catch (logErr) {
         console.log('[gemini] log failed:', logErr?.message);
       }
+
+      // Spend-log write. AWAITED (was fire-and-forget in the first pass
+      // — that dropped rows on Vercel because the function suspends
+      // immediately after res.json() and any in-flight fetch gets
+      // killed). Adds ~50-200ms per call which is negligible next to
+      // Gemini's own latency. Failures here must NEVER surface to the
+      // client so we swallow with a warning.
+      const usage = data?.usage;
+      if (usage) {
+        const row = {
+          model,
+          label:                  label || null,
+          input_tokens:           usage.input    || 0,
+          output_tokens:          usage.output   || 0,
+          thinking_tokens:        usage.thinking || 0,
+          total_tokens:           usage.total    || 0,
+          cost_usd:               computeCostUsd(model, usage),
+          business_id:            typeof business_id === 'string' ? business_id : null,
+          onboarding_session_id:  typeof onboarding_session_id === 'string' ? onboarding_session_id : null,
+          http_status:            r.status,
+          finish_reason:          cand?.finishReason || null,
+        };
+        try {
+          await pgrInsert('gemini_call_log', row);
+          console.log('[gemini] spend-log OK cost=', row.cost_usd, 'label=', row.label);
+        } catch (err) {
+          console.warn('[gemini] spend-log insert failed:', err?.message || err);
+        }
+      }
+
       return { r, data };
     }
 

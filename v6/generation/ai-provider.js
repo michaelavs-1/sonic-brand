@@ -12,17 +12,23 @@ export const MODEL_GEMINI           = 'gemini-3.6-flash';
 export const GEMINI_THINKING_LEVEL  = 'high';             // 'low' | 'medium' | 'high'
 
 // Unified call entry point.
-//   system:      full system prompt string
-//   userMessage: user turn string
-//   maxTokens:   output cap (default 4000)
-//   cache:       true → apply Anthropic ephemeral cache to the system prompt.
-//                No-op for Gemini. Default false. v6 onboarding sets true
-//                (2400-token stable prompt reused across users); Ami's
-//                dashboard sets false (prompt changes on every edit).
-//   label:       string used in the console log line
+//   system:              full system prompt string
+//   userMessage:         user turn string
+//   maxTokens:           output cap (default 4000)
+//   cache:               true → apply Anthropic ephemeral cache to the system prompt.
+//                        No-op for Gemini. Default false. v6 onboarding sets true
+//                        (2400-token stable prompt reused across users); Ami's
+//                        dashboard sets false (prompt changes on every edit).
+//   label:               string used in the console log line
+//   businessId:          optional — passed to Gemini proxy for spend attribution.
+//   onboardingSessionId: optional — passed to Gemini proxy for spend attribution
+//                        during onboarding (backfilled to business_id on signup).
 // Returns { text, usage, elapsed, provider }.
-export async function callModel({ system, userMessage, maxTokens = 4000, cache = false, label = 'call' }) {
-  if (PROVIDER === 'gemini')    return callGemini   ({ system, userMessage, maxTokens, label });
+export async function callModel({
+  system, userMessage, maxTokens = 4000, cache = false, label = 'call',
+  businessId = null, onboardingSessionId = null,
+}) {
+  if (PROVIDER === 'gemini')    return callGemini   ({ system, userMessage, maxTokens, label, businessId, onboardingSessionId });
   if (PROVIDER === 'anthropic') return callAnthropic({ system, userMessage, maxTokens, cache, label });
   throw new Error(`ai-provider: unknown PROVIDER "${PROVIDER}"`);
 }
@@ -64,18 +70,20 @@ async function callAnthropic({ system, userMessage, maxTokens, cache, label }) {
   return { text, usage: data?.usage || null, elapsed, provider: 'anthropic' };
 }
 
-async function callGemini({ system, userMessage, maxTokens, label }) {
+async function callGemini({ system, userMessage, maxTokens, label, businessId, onboardingSessionId }) {
   const t0 = Date.now();
   const r = await fetch('/api/v6/gemini', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({
-      model:             MODEL_GEMINI,
-      max_output_tokens: maxTokens,
-      thinking_level:    GEMINI_THINKING_LEVEL,
+      model:                  MODEL_GEMINI,
+      max_output_tokens:      maxTokens,
+      thinking_level:         GEMINI_THINKING_LEVEL,
       system,
-      user:              userMessage,
+      user:                   userMessage,
       label,
+      business_id:            businessId || null,
+      onboarding_session_id:  onboardingSessionId || null,
     }),
   });
   const elapsed = Date.now() - t0;

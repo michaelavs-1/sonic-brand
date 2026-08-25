@@ -80,6 +80,9 @@
     },
     "api/internal/business.js": {
       "maxDuration": 30
+    },
+    "api/internal/gemini-spend.js": {
+      "maxDuration": 30
     }
   },
   "crons": [

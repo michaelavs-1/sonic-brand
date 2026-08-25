@@ -122,7 +122,7 @@ function parseModelJson(text) {
   }
 }
 
-async function askModel(description, origin) {
+async function askModel(description, origin, businessId) {
   if (PROVIDER === 'gemini') {
     const r = await fetch(`${origin}/api/v6/gemini`, {
       method:  'POST',
@@ -137,6 +137,7 @@ async function askModel(description, origin) {
         system:            SYSTEM_PROMPT,
         user:              description,
         label:             'event-playlist',
+        business_id:       businessId || null,
       }),
     });
     const j = await r.json().catch(() => ({}));
@@ -244,7 +245,7 @@ export default async function handler(req, res) {
     //    PROVIDER in ai-provider.js so this endpoint tracks the same
     //    switch as the client-side musical-directions call.
     const origin = selfOrigin(req);
-    const parsed = await askModel(desc, origin);
+    const parsed = await askModel(desc, origin, businessId);
     if (parsed?.error === 'not_an_event') {
       return res.status(400).json({ error: 'לא הצלחנו להבין את התיאור. נסחו שוב.' });
     }

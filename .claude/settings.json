@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(node --check d:/Projects/algorithm/sonic-brand/api/v4/spotify.js)"
+    ]
+  },
   "hooks": {
     "Stop": [
       {

@@ -101,6 +101,39 @@ function showSwipeToast(text, tone = 'super') {
   _slToastTimer = setTimeout(() => _slToastEl.classList.remove('show'), 1800);
 }
 
+// Gray "undo" pill shown for 3s after every yes/no/super-like decision.
+// Whole toast IS the button — clicking it invokes the passed rollback fn.
+// A new call replaces the previous action (the previous card is already
+// gone from the deck; only the most recent decision is reversible).
+let _undoToastEl = null;
+let _undoToastTimer = null;
+function showUndoToast(undoFn) {
+  if (!_undoToastEl) {
+    _undoToastEl = document.createElement('button');
+    _undoToastEl.type = 'button';
+    _undoToastEl.className = 'undo-toast';
+    _undoToastEl.setAttribute('aria-label', 'ביטול הפעולה האחרונה');
+    _undoToastEl.innerHTML =
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M9 14 L4 9 L9 4"/><path d="M4 9 h10 a6 6 0 0 1 6 6 v1 a4 4 0 0 1 -4 4 h-3"/>' +
+      '</svg>' +
+      '<span>בטל</span>';
+    document.body.append(_undoToastEl);
+  }
+  _undoToastEl.onclick = () => {
+    clearTimeout(_undoToastTimer);
+    _undoToastEl.classList.remove('show');
+    _undoToastEl.onclick = null;
+    undoFn();
+  };
+  _undoToastEl.classList.add('show');
+  clearTimeout(_undoToastTimer);
+  _undoToastTimer = setTimeout(() => {
+    _undoToastEl.classList.remove('show');
+    _undoToastEl.onclick = null;
+  }, 3000);
+}
+
 function spotifyBadge() {
   const s = el('span', { class: 'sw2-spbadge', 'aria-hidden': 'true' });
   s.innerHTML =
@@ -686,6 +719,17 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         progFill.style.width = ((index / previews.length) * 100) + '%';
         showSwipeToast(like ? 'אהבת' : 'לא בשבילך', like ? 'yes' : 'no');
         flyOff(like ? 'right' : 'left');
+        // Undo rolls this exact swipe back: pop the direction from likes
+        // (if applicable), rewind the index, re-render the previous card.
+        showUndoToast(() => {
+          if (like) {
+            const idx = likedDirections.lastIndexOf(d);
+            if (idx !== -1) likedDirections.splice(idx, 1);
+          }
+          index -= 1;
+          progFill.style.width = ((index / previews.length) * 100) + '%';
+          showCard();
+        });
         setTimeout(showCard, 300);
       };
 
@@ -698,49 +742,59 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         if (busy) return;
         busy = true;
         destroyController();
-        if (superLikedTracks) {
-          const trackId = cardEl.dataset.trackId || p.trackId;
-          superLikedTracks.add(trackId);
-        }
+        const trackId = cardEl.dataset.trackId || p.trackId;
+        // Only .delete on undo if this call was the one that added it;
+        // otherwise we'd clobber a previous super-like of the same track.
+        const trackWasAlreadyLiked = !!(superLikedTracks && superLikedTracks.has(trackId));
+        if (superLikedTracks) superLikedTracks.add(trackId);
         likedDirections.push(d);
         index += 1;
         progFill.style.width = ((index / previews.length) * 100) + '%';
         showSwipeToast('סופר לייק', 'super');
         flyOff('up');
+        showUndoToast(() => {
+          if (superLikedTracks && !trackWasAlreadyLiked) superLikedTracks.delete(trackId);
+          const idx = likedDirections.lastIndexOf(d);
+          if (idx !== -1) likedDirections.splice(idx, 1);
+          index -= 1;
+          progFill.style.width = ((index / previews.length) * 100) + '%';
+          showCard();
+        });
         setTimeout(showCard, 300);
       };
       noBtn.onclick = () => decide(false);
       yesBtn.onclick = () => decide(true);
 
-      // Drag anywhere on the card. Horizontal swipe decides yes/no.
-      // Upward swipe past a threshold toggles the current track's
-      // super-like state (equivalent to what the old star button did) and
-      // then snaps the card back — user still swipes left/right for the
-      // direction decision. Rails glow with the dominant axis so the user
-      // sees which gesture they're heading into before releasing.
+      // Swipe hit-area is the album art (artWrap) ONLY. Everywhere else on
+      // the card (title, artist, swap button, description, progress bar)
+      // scrolls the page normally on touch — the card is often taller than
+      // the viewport on smaller phones, so hijacking every pixel for swipe
+      // would break vertical page scrolling. The card as a whole still
+      // animates on swipe (transform lives on cardEl); only the input
+      // surface is scoped down.
+      // Horizontal swipe decides yes/no; upward swipe past the threshold
+      // super-likes and advances. Rails glow with the dominant axis so the
+      // user sees which gesture they're heading into before releasing.
       const SUPER_LIKE_THRESHOLD = 100;
       let startX = null;
       let startY = null;
       let dx = 0;
       let dy = 0;
       let dragging = false;
-      cardEl.addEventListener('pointerdown', (e) => {
-        // Don't start a swipe on any of the card's interactive elements —
-        // swap/play buttons and the scrubbable progress bar handle their
-        // own pointer events.
-        if (busy
-          || e.target.closest('.swap-btn')
-          || e.target.closest('.sw2-play')
-          || e.target.closest('.sw2-prog-bar')) return;
+      artWrap.addEventListener('pointerdown', (e) => {
+        // Play button lives INSIDE artWrap and handles its own click — don't
+        // start a swipe on it. (The swap/prog-bar guards from the previous
+        // version are gone because those elements are outside artWrap.)
+        if (busy || e.target.closest('.sw2-play')) return;
         dragging = true;
         startX = e.clientX;
         startY = e.clientY;
         dx = 0;
         dy = 0;
         cardEl.classList.add('dragging');
-        try { cardEl.setPointerCapture(e.pointerId); } catch { }
+        try { artWrap.setPointerCapture(e.pointerId); } catch { }
       });
-      cardEl.addEventListener('pointermove', (e) => {
+      artWrap.addEventListener('pointermove', (e) => {
         if (!dragging) return;
         dx = e.clientX - startX;
         dy = e.clientY - startY;
@@ -777,8 +831,8 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         cardEl.style.transform = '';
         railsIdle();
       };
-      cardEl.addEventListener('pointerup', endDrag);
-      cardEl.addEventListener('pointercancel', endDrag);
+      artWrap.addEventListener('pointerup', endDrag);
+      artWrap.addEventListener('pointercancel', endDrag);
     };
 
     showCard();

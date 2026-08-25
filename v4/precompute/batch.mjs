@@ -67,28 +67,6 @@ const HTML_RETRY_LIMIT          = 2;   // 2 HTML responses in one track's retry 
 const TERMINAL_STORM_WINDOW     = 10;  // size of rolling window of recent outcomes
 const TERMINAL_STORM_THRESHOLD  = 8;   // 8/10 must be terminal failures to trigger storm abort
 
-// By-name fallback: /pktx/analysis?song=X&artist=Y queries the provider's
-// internal catalog directly (bypassing spotify_id lookup). Recovers tracks
-// that fail on the spotify_id path — especially remaster/reissue variants
-// whose Spotify IDs the provider can't resolve.
-// Two entry points:
-//   Path A (pre-check): tracks with variant markers in their title skip the
-//                       spotify_id retry loop entirely and go straight to
-//                       by-name. Rationale: 6-retry cycle on remaster IDs is
-//                       deterministic wasted quota per historical data.
-//   Path B (fallback):  after all 6 spotify_id attempts fail, try by-name
-//                       once. Pure additive — never worse than current.
-// VARIANT_SUFFIX_RE captures suffixes that indicate a variant of the same
-// recording — safe to strip. Deliberately excludes "Live", "Acoustic",
-// "Radio Edit", "Instrumental" (genuinely different recordings).
-const VARIANT_SUFFIX_RE = /\s*[-–—(]\s*((19|20)?\d{0,2}\s*)?(Remaster(ed)?|Anniversary Edition|Deluxe Edition|Digital Remaster|Bonus Track)(\s*[-–—]?\s*(19|20)?\d{2})?\)?\s*$/i;
-function stripVariantSuffix(name) {
-    return String(name || '').replace(VARIANT_SUFFIX_RE, '').trim();
-}
-function isVariantTitle(name) {
-    return VARIANT_SUFFIX_RE.test(String(name || ''));
-}
-
 const PLAN_PATH      = path.join(STATE_DIR, 'dry-run.json');
 const COUNTER_PATH   = path.join(STATE_DIR, 'rapidapi-call-count.json');
 const PROGRESS_PATH  = path.join(STATE_DIR, 'progress.json');
@@ -251,42 +229,6 @@ function queueProgressWrite(progress) {
     return progressWriteQueue;
 }
 
-// ---------- Spotify metadata prefetch (for by-name fallback) ----------
-// vercel dev is needed only to pre-fetch track metadata (name+artist). If the
-// proxy is unreachable we log a warning and continue without by-name fallback
-// (existing behavior is preserved — degrades gracefully to spotify_id only).
-const SPOTIFY_PROXY_BASE = process.env.DEV_BASE || 'http://localhost:3000';
-
-async function fetchTrackMetadataMap(spotifyIds) {
-    const map = new Map();  // spotify_id → { name, artist }
-    if (spotifyIds.length === 0) return map;
-    const CHUNK = 50;  // Spotify API cap: 50 ids per /v1/tracks call
-    for (let i = 0; i < spotifyIds.length; i += CHUNK) {
-        const slice = spotifyIds.slice(i, i + CHUNK);
-        try {
-            const r = await fetch(`${SPOTIFY_PROXY_BASE}/api/v4/spotify`, {
-                method:  'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ action: 'get_tracks_batch', track_ids: slice, market: 'IL' }),
-            });
-            if (!r.ok) {
-                warn(`metadata fetch chunk ${i}-${i + slice.length} HTTP ${r.status}: ${(await r.text().catch(() => '')).slice(0, 200)}`);
-                continue;
-            }
-            const data = await r.json();
-            const tracks = Array.isArray(data.tracks) ? data.tracks : [];
-            for (const t of tracks) {
-                if (!t?.id) continue;
-                const artist = (t.artists || []).map((a) => a.name).filter(Boolean).join(', ');
-                map.set(t.id, { name: t.name || '', artist });
-            }
-        } catch (err) {
-            warn(`metadata fetch chunk ${i} failed (continuing without by-name fallback for these): ${err.message}`);
-        }
-    }
-    return map;
-}
-
 // ---------- RapidAPI call with retries ----------
 const RETRY_429_BACKOFF_MS = [10000, 30000, 60000, 120000, 300000];
 const RETRY_5XX_BACKOFF_MS = [5000, 15000, 45000, 120000, 300000, 600000];
@@ -356,92 +298,7 @@ async function callRapidApiOnce(spotifyId, apiKey) {
     return { kind: 'ok', data };
 }
 
-// The by-name endpoint queries the provider's internal catalog directly
-// (bypassing spotify_id lookup). Same host, same headers, different path.
-// Response shape is close to the spotify_id endpoint but with two known
-// differences: `id` is a base64 slug (not a spotify_id), and `valence` is
-// named `happiness`. buildAnalysisRow normalizes.
-async function callByNameOnce(song, artist, apiKey) {
-    const qs = new URLSearchParams({ song });
-    if (artist) qs.set('artist', artist);
-    const r = await fetch(`https://${RAPIDAPI_HOST}/pktx/analysis?${qs}`, {
-        method:  'GET',
-        headers: { 'x-rapidapi-key': apiKey, 'x-rapidapi-host': RAPIDAPI_HOST },
-    });
-    if (r.status === 404) return { kind: 'not_found' };
-    if (r.status === 429) return { kind: 'rate_limited', retryAfter: parseInt(r.headers.get('retry-after') || '0', 10) };
-    if (r.status === 401 || r.status === 403) {
-        const text = await r.text().catch(() => '');
-        return { kind: 'fatal_auth', status: r.status, body: text.slice(0, 300) };
-    }
-    const text = await r.text().catch(() => '');
-    if (!r.ok) {
-        if (looksLikeHtml(text)) return { kind: 'gateway_html', status: r.status, bodyLen: text.length };
-        return { kind: 'server_error', status: r.status, body: text.slice(0, 300) };
-    }
-    if (looksLikeHtml(text)) return { kind: 'gateway_html', status: 200, bodyLen: text.length };
-    let data = null;
-    try { data = JSON.parse(text); } catch {}
-    if (!data) return { kind: 'server_error', status: 200, body: 'invalid JSON' };
-    if (data.error) return { kind: 'server_error', status: 200, body: `error payload: ${String(data.error).slice(0, 200)}` };
-    const hasAtmosphericFields =
-        data.energy != null || data.danceability != null || data.popularity != null;
-    if (!hasAtmosphericFields) return { kind: 'not_found' };
-    return { kind: 'ok', data };
-}
-
-// Single by-name attempt with cap check + counter bump. Returns:
-//   { kind: 'ok', data } | not_found | aborted_by_cap | aborted_by_auth
-//   | aborted_by_gateway | gave_up (any other failure — no retries)
-// Note: no retry loop here; by-name is used sparingly as a shortcut/fallback.
-async function tryByName(apiKey, cap, metadata) {
-    if (!metadata?.name) return { kind: 'gave_up', reason: 'no_metadata' };
-    const stripped = stripVariantSuffix(metadata.name);
-    if (!stripped) return { kind: 'gave_up', reason: 'stripped_to_empty' };
-    const projected = readCurrentCycleCount() + 1;
-    if (projected > cap) return { kind: 'aborted_by_cap', projected, cap };
-    bumpCounter(1);
-    let result;
-    try { result = await callByNameOnce(stripped, metadata.artist, apiKey); }
-    catch (err) { result = { kind: 'network_error', message: err.message }; }
-    if (result.kind === 'ok' || result.kind === 'not_found') return result;
-    if (result.kind === 'fatal_auth')  return { kind: 'aborted_by_auth', status: result.status, body: result.body };
-    if (result.kind === 'gateway_html') return { kind: 'aborted_by_gateway', status: result.status, bodyLen: result.bodyLen };
-    return { kind: 'gave_up', reason: result.kind, detail: result.body || result.message || '' };
-}
-
-// Two-tier RapidAPI call: (A) if track has a variant-suffix title, skip
-// spotify_id entirely and try by-name first; (B) if spotify_id path exhausts
-// its retries, fall back to by-name. Both paths preserve auto-abort semantics.
-async function callWithRetries(spotifyId, apiKey, cap, isAborted, metadata) {
-    // Path A: variant title → by-name first
-    if (metadata?.name && isVariantTitle(metadata.name)) {
-        if (isAborted && isAborted()) return { kind: 'aborted_externally' };
-        const r = await tryByName(apiKey, cap, metadata);
-        if (r.kind === 'ok')                 return { ...r, source: 'by_name_precheck' };
-        if (r.kind === 'aborted_by_cap')     return r;
-        if (r.kind === 'aborted_by_auth')    return r;
-        if (r.kind === 'aborted_by_gateway') return r;
-        // by-name failed → drop through to spotify_id path as a backup
-    }
-
-    const idResult = await callWithRetriesById(spotifyId, apiKey, cap, isAborted);
-
-    // Path B: fallback on terminal — try by-name once
-    if (idResult.kind === 'terminal' && metadata?.name && !isVariantTitle(metadata.name)) {
-        // (variant titles already tried by-name in Path A; don't retry it)
-        if (isAborted && isAborted()) return { kind: 'aborted_externally' };
-        const r = await tryByName(apiKey, cap, metadata);
-        if (r.kind === 'ok')                 return { ...r, source: 'by_name_fallback' };
-        if (r.kind === 'aborted_by_cap')     return r;
-        if (r.kind === 'aborted_by_auth')    return r;
-        if (r.kind === 'aborted_by_gateway') return r;
-        // by-name also failed → keep the original terminal
-    }
-    return idResult;
-}
-
-async function callWithRetriesById(spotifyId, apiKey, cap, isAborted) {
+async function callWithRetries(spotifyId, apiKey, cap, isAborted) {
     let rate429Idx = 0;
     let serr5xxIdx = 0;
     let htmlSeen   = 0;
@@ -521,9 +378,7 @@ function buildAnalysisRow(spotifyId, raw) {
         danceability:     num(raw.danceability),
         popularity:       num(raw.popularity),
         tempo:            num(raw.tempo),
-        // The by-name endpoint returns `happiness` where the spotify_id
-        // endpoint returns `valence`. Same underlying field.
-        valence:          num(raw.valence ?? raw.happiness),
+        valence:          num(raw.valence),
         acousticness:     num(raw.acousticness),
         instrumentalness: num(raw.instrumentalness),
         raw_analysis:     raw,
@@ -674,15 +529,6 @@ async function main() {
         return;
     }
 
-    // --- Phase 2b: prefetch Spotify metadata for by-name fallback path ---
-    // Best-effort — if the proxy is unreachable or a chunk fails, we log a
-    // warning and continue; tracks without metadata use spotify_id only.
-    log(`prefetching Spotify metadata for ${toAnalyze.length} tracks (via ${SPOTIFY_PROXY_BASE})...`);
-    const trackMetadata = await fetchTrackMetadataMap(toAnalyze);
-    const variantCount = [...trackMetadata.values()].filter((m) => m?.name && isVariantTitle(m.name)).length;
-    log(`  metadata fetched: ${trackMetadata.size}/${toAnalyze.length}`);
-    log(`  variant-title tracks (will use by-name Path A): ${variantCount}`);
-
     // --- Phase 3: per-id RapidAPI calls (rate-limited, retried, persisted) ---
     log(`starting RapidAPI phase...`);
     const t0 = Date.now();
@@ -730,14 +576,9 @@ async function main() {
         }
     }
 
-    // By-name fallback stats — tracked so end-of-run summary can report yield.
-    let byNamePrecheckOks = 0;   // Path A wins (variant-title skip → ok)
-    let byNameFallbackOks = 0;   // Path B wins (spotify_id exhausted → by-name → ok)
-
     async function processOne(spotifyId) {
         const t1 = Date.now();
-        const metadata = trackMetadata.get(spotifyId);
-        const result = await callWithRetries(spotifyId, apiKey, cap, () => aborted, metadata);
+        const result = await callWithRetries(spotifyId, apiKey, cap, () => aborted);
         const ms = Date.now() - t1;
 
         // Batch was aborted by another worker while we were mid-retry. Bail
@@ -775,10 +616,7 @@ async function main() {
                 analyzed++;
                 progress.done.push(spotifyId);
                 dirtyDoneSinceLastWrite++;
-                if (result.source === 'by_name_precheck') byNamePrecheckOks++;
-                else if (result.source === 'by_name_fallback') byNameFallbackOks++;
-                const suffix = result.source ? ` [${result.source}]` : '';
-                log(`ok ${spotifyId} ${ms}ms (analyzed=${analyzed})${suffix}`);
+                log(`ok ${spotifyId} ${ms}ms (analyzed=${analyzed})`);
                 maybeWriteProgress();
                 recordOutcome('ok');
             } catch (err) {
@@ -843,7 +681,6 @@ async function main() {
     const monthAfter = readCurrentCycleCount();
     log(`=== batch end ===`);
     log(`analyzed=${analyzed}  not_found=${notFound}  errored=${errored}`);
-    log(`by-name path recoveries: precheck=${byNamePrecheckOks}  fallback=${byNameFallbackOks}`);
     log(`monthly counter after run: ${monthAfter} (cap=${cap})`);
     log(`elapsed: ${elapsedMin} min`);
     if (aborted) {

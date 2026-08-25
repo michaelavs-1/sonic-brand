@@ -100,21 +100,6 @@ export default async function handler(req, res) {
       return res.status(r.status).json(data);
     }
 
-    // Batch metadata fetch (up to 50 spotify_ids per call). Used by
-    // batch.mjs to pre-fetch track name+artist for the by-name RapidAPI
-    // fallback path.
-    if (action === 'get_tracks_batch') {
-      const { track_ids, market } = req.body;
-      if (!Array.isArray(track_ids) || track_ids.length === 0) return res.status(400).json({ error: 'track_ids array required' });
-      if (track_ids.length > 50) return res.status(400).json({ error: 'max 50 track_ids per call' });
-      const qs = new URLSearchParams({ ids: track_ids.join(',') });
-      if (market) qs.set('market', market);
-      const url = `https://api.spotify.com/v1/tracks?${qs}`;
-      const r = await spotifyCall(url, { method: 'GET' });
-      const data = await r.json().catch(() => ({}));
-      return res.status(r.status).json(data);
-    }
-
     return res.status(400).json({ error: `Unknown action: ${action}` });
   } catch (err) {
     return res.status(500).json({ error: err.message || 'Server error' });

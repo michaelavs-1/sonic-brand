@@ -298,7 +298,18 @@
       line-height: 1.3;
     }
 
-    /* ---------- voice dictation — round mic button next to the label ---- */
+    /* ---------- voice dictation — round mic button below the textarea ---- */
+    /* Sits immediately below the textarea, aligned to the start (right in
+       RTL). Small top margin so the button reads as "attached" to the
+       field rather than floating below the validation hints. */
+    .mic-row {
+      display: flex;
+      justify-content: flex-start;
+      margin-top: 6px;
+    }
+
+    /* .label-row kept for any future inline label+control layouts. Not used
+       on the business input page anymore since the mic button moved below. */
     .label-row {
       display: flex;
       align-items: center;
@@ -623,7 +634,7 @@
        removed after ~1.8s. */
     .sl-toast {
       position: fixed;
-      bottom: 24px;
+      bottom: 74px;
       left: 50%;
       transform: translateX(-50%) translateY(20px);
       background: linear-gradient(135deg, #4dc7ff, #1da4f0);
@@ -653,6 +664,49 @@
     .sl-toast.tone-no {
       background: linear-gradient(135deg, #ff8578, #e74c3c);
       box-shadow: 0 8px 24px rgba(0, 0, 0, .4), 0 0 30px rgba(231, 76, 60, .5);
+    }
+
+    /* Gray undo pill shown for 3s after every swipe decision. Whole toast
+       is a <button>; the entire chip is clickable. Sits just below the
+       colored feedback toast so both are visible together for the ~1.8s
+       overlap window. */
+    .undo-toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: rgba(76, 90, 102, .95);
+      color: #f5f7f8;
+      font-family: inherit;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 9px 16px;
+      border: 1px solid rgba(255, 255, 255, .14);
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity .22s, transform .22s, background .18s;
+      z-index: 100;
+    }
+    .undo-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+      pointer-events: auto;
+    }
+    .undo-toast:hover {
+      background: rgba(96, 108, 118, .98);
+    }
+    .undo-toast:active {
+      transform: translateX(-50%) translateY(1px);
+    }
+    .undo-toast svg {
+      flex-shrink: 0;
+      opacity: .9;
     }
 
     /* ---------- atmospheres ---------- */
@@ -818,8 +872,12 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 8px;
+      gap: 6px;
+      /* Negative top margin tightens the space between the card's top edge
+         and the brand logo (the card itself has 34px top padding which we
+         can't reduce without shifting every other screen). */
+      margin-top: -14px;
+      margin-bottom: 2px;
     }
 
     .brand-logo-orbit {
@@ -827,7 +885,7 @@
     }
 
     .brand-logo {
-      width: 148px;
+      width: 118px;
       height: auto;
       filter: drop-shadow(0 12px 26px rgba(0, 0, 0, .5));
       animation: drift-y 6s ease-in-out infinite;
@@ -1570,18 +1628,10 @@
     .swipe-card {
       display: block;
       position: relative;
-      /* Own all pointer gestures on the card — horizontal drag = yes/no,
-         vertical drag up = super-like. touch-action: none prevents mobile
-         browsers from stealing vertical drags for page scroll. */
-      touch-action: none;
-      cursor: grab;
-      user-select: none;
-      -webkit-user-select: none;
+      /* touch-action stays default (auto): everything on the card that isn't
+         the album art should scroll the page normally on mobile. The art
+         itself is the swipe surface — see .sw2-artwrap below. */
       will-change: transform
-    }
-
-    .swipe-card.dragging {
-      cursor: grabbing
     }
 
     .swipe-hint {
@@ -1685,6 +1735,18 @@
       border-radius: inherit;
     }
 
+    /* Yes/no rails keep the base top:0/bottom:0 so the gradient stripe
+       spans the full deck height (its original look). Only the chev+label
+       content is nudged upward so it lines up with the album art's vertical
+       midline: art center = 90px (art top offset: swipe-card padding 18 +
+       artwrap margin 72) + art-height / 2 (art-height matches artwrap width
+       via aspect-ratio: 1/1). Subtract ~24px (roughly half the chev+label
+       stack) to put the visual center of the content on that line. */
+    .sw2-rail.no, .sw2-rail.yes {
+      justify-content: flex-start;
+      padding-top: calc(90px + min(56vw, 230px) / 2 - 24px);
+    }
+
     .sw2-rail.no {
       left: 10px;
     }
@@ -1780,7 +1842,18 @@
       /* Extra top margin leaves room for the always-visible "סופר לייק"
          hint at the top of the deck so the label sits well above the
          artwork with clear breathing room. */
-      margin: 72px auto 16px
+      margin: 72px auto 16px;
+      /* The artwork is the swipe input surface (see preview.js pointerdown
+         on artWrap). touch-action: none keeps mobile browsers from
+         swallowing vertical drags for page scroll. */
+      touch-action: none;
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none
+    }
+
+    .swipe-card.dragging .sw2-artwrap {
+      cursor: grabbing
     }
 
     .sw2-art {
@@ -2523,7 +2596,7 @@
         </div>
         <h1>Ro<span class="brand-gold">bin</span></h1>
       </div>
-      <p class="subtitle">פלייליסטים מדוייקים לעסק, כל יום</p>
+      <p class="subtitle" style="margin-bottom:12px">פלייליסטים מדוייקים לעסק, כל יום</p>
 
       <div class="input-wrap">
         <label class="input-label" for="bizName">שם העסק</label>
@@ -2532,27 +2605,27 @@
         <p class="field-hint" id="bizNameHint" aria-live="polite"></p>
       </div>
 
-      <div class="input-wrap">
-        <div class="label-row">
-          <label class="input-label" for="bizDesc">ספרו לנו על העסק <span
-              style="font-weight:400;font-size:11px;letter-spacing:0;opacity:.85">(סוג עסק, מיקום, טווח גילאים ותיאור
-              החוויה האידיאלית)</span></label>
+      <div class="input-wrap" style="margin-bottom:6px">
+        <label class="input-label" for="bizDesc">ספרו לנו על העסק <span
+            style="font-weight:400;font-size:11px;letter-spacing:0;opacity:.85">(סוג עסק, מיקום, טווח גילאים ותיאור
+            החוויה האידיאלית)</span></label>
+        <textarea class="input-textarea" id="bizDesc"
+          placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בוגר של בני 30+ שיושב בשולחנות בחצר, שותה ומשוחח באווירה אינטימית"
+          maxlength="1000"></textarea>
+        <div class="mic-row">
           <button class="mic-btn" id="dictateBtn" type="button" aria-label="הקלטה קולית — לחצו כדי לדבר">
             <svg id="dictIco" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
           </button>
         </div>
-        <textarea class="input-textarea" id="bizDesc"
-          placeholder="לדוגמה: בר יין שכונתי בלב תל אביב, עם קהל בוגר של בני 30+ שיושב בשולחנות בחצר, שותה ומשוחח באווירה אינטימית"
-          maxlength="1000"></textarea>
         <p class="field-hint" id="bizDescHint" aria-live="polite"></p>
         <p class="dict-msg" id="dictMsg" aria-live="polite"></p>
       </div>
 
-      <button class="btn btn-primary btn-block" id="submitBtn">המשך ←</button>
+      <button class="btn btn-primary btn-block" id="submitBtn" style="margin-top:0">המשך ←</button>
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=25082026b"></script>
+  <script type="module" src="/v6/app.js?v=25082026d"></script>
 </body>
 
 </html>

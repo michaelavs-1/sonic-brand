@@ -1,5 +1,15 @@
 import { requireSiteOrInternal, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
+
+// Emergency kill switch for Spotify WRITE operations. Flip to `true` to
+// freeze all writes (create_playlist / add_tracks / update_playlist /
+// replace_tracks / unfollow_playlist). Reads keep working — they use
+// Michael's Client Credentials token which is independent of Rubin's user
+// token and doesn't affect any cooldown Rubin might be in.
+// Added 2026-08-26 after Rubin's token was pushed into a 403 block by a
+// cron pileup. Kept in place because the check has zero runtime cost when
+// the flag is `false`.
+const SPOTIFY_WRITES_DISABLED = true;
 /* /api/new/spotify.js
    Lean Spotify proxy for the new pipeline. Actions:
      - get_playlist_tracks: read tracks from public playlists (Client Credentials via Michael's app)
@@ -140,24 +150,16 @@ export default async function handler(req, res) {
   try {
     const { action } = req.body || {};
 
-    // Emergency kill switch for Spotify WRITE operations. Set env var
-    // SPOTIFY_DISABLED=1 in Vercel to freeze all writes without touching
-    // code (reads stay live — they use Michael's Client Credentials token,
-    // which is independent of Rubin's user token and doesn't affect any
-    // cooldown Rubin might be in). Unset the env var to re-enable.
-    // Added 2026-08-26 after Rubin's token was pushed into a 403 block by
-    // a cron pileup; kept in place because there's no cost to leaving the
-    // guard when the flag is unset.
     const WRITE_ACTIONS = new Set([
       'create_playlist', 'add_tracks', 'update_playlist',
       'replace_tracks', 'unfollow_playlist',
     ]);
-    if (process.env.SPOTIFY_DISABLED === '1' && WRITE_ACTIONS.has(action)) {
-      console.warn(`[spotify] WRITE BLOCKED (SPOTIFY_DISABLED=1): ${action}`);
+    if (SPOTIFY_WRITES_DISABLED && WRITE_ACTIONS.has(action)) {
+      console.warn(`[spotify] WRITE BLOCKED (SPOTIFY_WRITES_DISABLED constant): ${action}`);
       return res.status(503).json({
         error: 'spotify_writes_disabled',
         action,
-        hint: 'unset SPOTIFY_DISABLED in Vercel env to re-enable',
+        hint: 'flip SPOTIFY_WRITES_DISABLED to false in api/new/spotify.js to re-enable',
       });
     }
 

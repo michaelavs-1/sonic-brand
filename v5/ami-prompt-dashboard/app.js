@@ -17,8 +17,8 @@
 
 import {
   EDITABLE_PROMPT_SECTION,
-  FIXED_PROMPT_SECTION,
-} from '/v5/generation/musical-directions.js?v=21082026a';
+  assembleSystemPrompt,
+} from '/v5/generation/musical-directions.js?v=26082026a';
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
 import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=04082026a';
 
@@ -202,7 +202,9 @@ async function onGenerate() {
   setStatus(`שולח ל־${PROVIDER}...`, '');
 
   try {
-    const system      = edited.trimEnd() + '\n\n' + FIXED_PROMPT_SECTION;
+    // Substitutes {{PLACES_*}} sentinels in Ami's edited text with the
+    // real Google Places docs, then concatenates FIXED_PROMPT_SECTION.
+    const system      = assembleSystemPrompt(edited.trimEnd());
     const userMessage = buildUserMessage({ bizName, bizDesc, atmospheres: atmos, musicalEmphases });
 
     // No caching: Ami's edits change the prompt every call, so Anthropic

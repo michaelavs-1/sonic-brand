@@ -12,6 +12,18 @@ tightly coupled to downstream parsing code and changes only when the schema chan
 
 ---
 
+## 2026-08-26 — Refactor only: Google Places docs extracted from EDITABLE via sentinels (no model behavior change)
+
+Non-semantic refactor. The two Google Places documentation blocks — the input-format block under `## Inputs` and the "Google Places Context" bullet under `### Processing Rules:` — were moved OUT of `EDITABLE_PROMPT_SECTION` and into two private constants (`PLACES_INPUT_BLOCK`, `PLACES_PROCESSING_RULE`) alongside a new exported helper `assembleSystemPrompt(editable)` that substitutes the sentinels `{{PLACES_INPUT_BLOCK}}` and `{{PLACES_PROCESSING_RULE}}` back in at their original textual position and concatenates `FIXED_PROMPT_SECTION`. The assembled `SYSTEM_PROMPT` is **byte-identical** to the pre-refactor version — the model sees exactly the same prompt.
+
+Rationale: the Google Places docs are plumbing (the shape of a specific input and how to weigh it), not creative direction content. Keeping them inside Ami's editable section meant Ami could accidentally break the Places contract when tuning the creative parts. Now Ami sees two short sentinel markers where the Places blocks used to sit; he can move them but can't edit the text they represent.
+
+Applied symmetrically to `v6/generation/musical-directions.js` and `v5/generation/musical-directions.js`. `v5/ami-prompt-dashboard/app.js` updated to import `assembleSystemPrompt` instead of `FIXED_PROMPT_SECTION` and use it for assembly.
+
+No change to the `EDITABLE_PROMPT_SECTION` creative content beyond the two sentinel substitutions.
+
+---
+
 ## 2026-08-21 — Instrumentalness preference sub-rule under Musical Emphases
 
 Additive edit. Extends the existing Musical Emphases processing rule with a new sub-rule that instructs Gemini to detect instrumental-music preferences in the emphases text and emit a new per-direction JSON field, `instrumentalness_preference`, valued `"none" | "soft" | "hard"`. Also extends the FIXED schema with the field.

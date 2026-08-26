@@ -99,23 +99,34 @@ STEP 5: Preview swipe deck (v6/preview.js runDirectionPreviewFlow)
     have been removed (kept in code as dead handlers for possible revival);
     swipe is now the only tap-free interaction.
   - Card layout inside .sw2-artwrap: album art + Spotify badge (top-left) +
-    orange play button (bottom-right, larger 36px icon) + super-like button
-    (bottom-left, 44px, tilted -12°). Below the art: title, artist,
-    Spotify-green "נסו שיר אחר מהכיוון הזה" pill (with a shuffle icon),
-    reason line, and the scrubbable playback progress bar.
+    orange play button (bottom-right, larger 36px icon). No visible
+    super-like button — that's the swipe-UP gesture now. Below the art
+    (OUTSIDE .sw2-artwrap): title, artist, orange "נסו שיר אחר מהכיוון
+    הזה" pill (with a shuffle icon), reason line, and the scrubbable
+    playback progress bar.
   - Spotify iframe hidden inside .sw2-artwrap with opacity:.01 (fully
     offscreen kills media). Custom sw2-play button drives it via the
     IFrame API.
-  - Super-like button (.sw2-superlike): the current model is NOT a plain
-    toggle — clicking it (a) records the trackId in state.superLikedTracks
-    (Set), (b) counts the card's direction as LIKED, (c) advances to the
-    next card. A short "סופר לייק" toast confirms. Idle glow (breathing
-    halo) sits on the button between cards.
-  - Pointer guards in the swipe handler ignore clicks on .sw2-play,
-    .sw2-superlike, .swap-btn, and .sw2-prog-bar so those buttons never
-    accidentally trigger a swipe gesture.
+  - Super-like is a SWIPE-UP gesture (threshold 100px). On fire it
+    (a) records the trackId in state.superLikedTracks (Set), (b) counts
+    the card's direction as LIKED, (c) advances to the next card. A
+    "סופר לייק" cyan toast confirms; the top cyan rail glows as the
+    user drags upward past the threshold.
+  - Swipe hit-area is scoped to .sw2-artwrap (the album art) ONLY.
+    Everything else on the card — title, artist, swap button, reason
+    line, progress bar — scrolls the page normally on touch. touch-action
+    lives on .sw2-artwrap, not on .swipe-card. The only pointer guard
+    left in the swipe handler is .sw2-play (inside artWrap).
+  - Undo toast: after every yes/no/super-like decision, a gray "בטל" pill
+    appears at bottom:24px for 3s. Clicking rewinds the last decision —
+    pops the direction from likedDirections, removes from superLikedTracks
+    (only if this call was the one that added it), decrements index, and
+    re-renders the previous card. Colored feedback toast bumped to
+    bottom:74px so both are visible during their ~1.8s overlap. Only the
+    most recent decision is reversible (previous card is already gone
+    from the deck).
   - Swiping right = "build a playlist for this direction" (same effect
-    as super-like's implicit "liked").
+    as swipe-up's implicit "liked").
         ↓
 STEP 6: Playlist build (v6/generation/playlist-builder.js buildDirectionPlaylists)
   - TARGET_TRACKS = 10 per playlist, one per picked direction, built with
@@ -126,6 +137,16 @@ STEP 6: Playlist build (v6/generation/playlist-builder.js buildDirectionPlaylist
       forwarded so the pool honors the emphasis-derived filter/bias)
     - POST /api/new/spotify create_playlist + add_tracks (Rubin account)
     - POST /api/v5/record-playlist → 24h expiry ledger entry
+  - `postSpotify` retry (added 2026-08-24): 3 attempts with 500ms/1000ms
+    backoff on 5xx / 429 / network. `postSpotifyOnce` also inspects the
+    add_tracks response shape — /api/new/spotify returns 200 with a
+    `results[]` array where individual chunks can carry a >= 400 status;
+    without that check a partial chunk failure would silently look like
+    success. Non-retriable statuses (4xx bad request, auth failure)
+    throw immediately so the outer catch in buildDirectionPlaylists
+    marks the playlist as skipped rather than fabricating success. Only
+    the onboarding path uses this — the daily-gen cron uses
+    api/v6/account/_daily-builder.js which has its own concurrency cap.
   - Result carries expansion:{direction, popularityWindow} so the dashboard
     can grow it later.
         ↓
@@ -157,6 +178,23 @@ renderAll:
   - renderPlaylists: reads bmeta().playlists (mirror of business_playlists rows)
     - Playlist entries with expansion:{...} and !expandedAt get an animated
       progress bar and a background expansion kicks off
+    - Per-playlist edit + trash icons (added 2026-08-25): every row whose
+      backing business_playlists row has a `direction_id` FK gets a pencil-
+      edit and red-trash SVG button between the info column and the
+      "▶ פתח" button (pre-migration rows without direction_id show neither).
+      Edit → switches to Profile tab and calls `selectDirectionInChat(id)`
+      in direction-chat.js, which primes the direction-edit chat with that
+      direction selected (synthetic "מה תרצו לשנות בכיוון X?" bubble).
+      Trash → opens the `trashDirModal` confirmation with three choices:
+      "בואו נערוך" (same jump as the edit icon), "כן, למחוק" (fires
+      `removeDirectionFromCard(id, { expireLive: true })` → apply-direction-
+      change with kind='remove' + expireLivePlaylist=true), or cancel. The
+      modal closes IMMEDIATELY on confirm (before the multi-second Spotify
+      round-trip); the trash icon rotates a spinner in place so the owner
+      isn't stuck on a modal spinner. Row disappears via the
+      `direction-change-applied` event listener → loadDashboardData
+      re-render. Handlers: `editDirectionFromCard`, `openTrashDirectionModal`,
+      `confirmTrashDirectionRemove` in [v6/account/app.js].
   - renderEvents: reads bmeta().events (mirror of business_events rows).
     Per-row layout is [🎪 name/description] [red trash SVG button (btn-danger)] [action button].
     The pencil edit icon was dropped in the 2026-08-20 chat rewrite —
@@ -216,7 +254,7 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
   - Exposure rules: chat may freely mention title / description_he / qualitative BPM feel, but never enumerates a direction's genres unprompted. Owner-named genres are fair game. Never exposes numeric BPM or the inst_pref enum.
   - Contradiction rule: if the ask contradicts the initial onboarding context or a prior committed change, surface it in one sentence and let the owner override. Latest chat wins.
   - Add is two-step: paraphrase intent → owner confirms → full spec (title + description + genres + bpm + inst_pref) emitted as an `add` proposal.
-  - Genre universe pinned to the same 73-genre canonical list as musical-directions; the model must return canonical strings verbatim.
+  - Genre universe pinned to the same 105-genre canonical list as musical-directions; the model must return canonical strings verbatim.
 
 - **Server endpoints**:
   - `POST /api/v6/account/direction-chat` — one Gemini turn. Loads business + atmospheres (via auth admin API) + place + all directions (active + inactive) + last 20 changes + last 40 messages. Composes a `## Business context` / `## Current directions` / `## Prior committed changes` / `## Selected direction id` block as the first user turn, followed by the multi-turn transcript, followed by the current user message. Persists both roles into `business_direction_chats`; returns both rows plus a parsed `{reply_he, state, proposal|null}` payload for the client.
@@ -302,7 +340,7 @@ sonic-brand/
 │   │   │                                      into EDITABLE + FIXED prompt sections; mirrored in v5/.
 │   │   ├── event-chat-prompt.js            ← System prompt for the special-events chat on /v6/account
 │   │   ├── direction-edit-chat-prompt.js   ← System prompt for the profile-tab direction-edit chat
-│   │   ├── genre-list.js                   ← Canonical 73-genre list (shared with event-playlist server)
+│   │   ├── genre-list.js                   ← Canonical 105-genre list (shared with event-playlist server)
 │   │   ├── popularity-window.js            ← Derives [lo,hi] from selected atmospheres
 │   │   ├── playlist-length.js              ← dailyPlaylistExpiryIso, computeTargetForToday, directionKey, ilPartsFromDate
 │   │   └── playlist-builder.js             ← buildDirectionPlaylists (10 tracks each, concurrency-capped)
@@ -346,7 +384,8 @@ sonic-brand/
 │   │       ├── direction-chat.js           ← One Gemini turn for the direction-edit chat; persists both messages
 │   │       ├── preview-direction.js        ← Round-robin anchor track for a merged (edit) or inline (add) spec
 │   │       ├── apply-direction-change.js   ← Commit add/edit/remove; rebuild playlist; audit row
-│   │       └── toggle-super-like.js        ← Upsert/delete one super_liked_tracks row (decoupled from apply)
+│   │       ├── toggle-super-like.js        ← Upsert/delete one super_liked_tracks row (decoupled from apply)
+│   │       └── log-playlist-open.js        ← Append one business_playlist_opens row per dashboard "▶ פתח" click
 │   ├── v5/
 │   │   ├── anthropic.js                    ← Anthropic Messages API proxy (uses ANTHROPIC_KEY)
 │   │   ├── anchor-tracks.js                ← Per-direction random preview track (BPM+popularity filter + inst_pref)
@@ -364,8 +403,8 @@ sonic-brand/
 │   ├── new/
 │   │   ├── spotify.js                      ← Two-app Spotify proxy (Michael CC reads + Rubin user writes)
 │   │   │                                      429 handler capped at 5s (was 30s — see cron section)
-│   │   ├── openai.js                       ← GPT proxy (legacy)
 │   │   └── rubin-oauth-callback.js         ← One-time OAuth seed for RUBIN_REFRESH_TOKEN
+│   │   (openai.js, databox.js gitignored — see legacy note below)
 │   ├── cron/
 │   │   ├── expire-playlists.js             ← Hourly cron. Renames + empties + unfollows expired playlists.
 │   │   │                                      Tolerates 404 (isGone helper) so purged playlists don't loop.
@@ -377,7 +416,18 @@ sonic-brand/
 │   │   ├── users.js                        ← GET list of businesses + owner emails (Michael's dashboard)
 │   │   ├── business.js                     ← GET one business's full onboarding prompt + directions + playlists + Gemini spend
 │   │   └── gemini-spend.js                 ← GET site-wide Gemini cost totals (attributed + abandoned onboarding)
-│   ├── openai.js, spotify.js, databox.js   ← Root-level legacy proxies (v1/v2/v3-era)
+│   (Legacy root proxies openai.js, spotify.js, databox.js, plus
+│    api/new/openai.js and api/new/databox.js, exist locally but are
+│    GITIGNORED since the 2026-08-22 security-hardening pass — nothing
+│    in v4/v5/v6/cron references them; last active callers were the
+│    v2/v3 frontends. To re-enable one: `git checkout <old-commit> -- api/<file>.js`
+│    then un-ignore it in .gitignore.)
+├── docs/
+│   └── admin-api-for-michael.md            ← Instructions Michael feeds his own Claude to build his admin dashboard.
+│                                             Kept in sync with /api/internal/* endpoint shape.
+├── internal-dashboard/                     ← Gitignored. Local placeholder dashboard for eyeballing
+│                                             /api/internal/* responses against `vercel dev`.
+│                                             Michael's real dashboard lives in his own repo.
 ├── scripts/
 │   ├── benchmark-directions.mjs            ← OpenAI vs Anthropic timing/quality benchmark
 │   ├── purge-rubin-playlists.mjs           ← Unfollow all Rubin playlists (source: created_playlists ledger)
@@ -486,7 +536,7 @@ Each swipe card has a playback progress bar between the description line and the
 
 ### Genre list — `v6/generation/genre-list.js`
 
-Shared 73-genre canonical menu. Both `musical-directions.js` (for the system prompt) and `api/v6/account/event-playlist.js` (Claude Haiku prompt) import from here. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match.
+Shared 105-genre canonical menu. Both `musical-directions.js` (for the system prompt) and `api/v6/account/event-playlist.js` (Claude Haiku prompt) import from here. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 to 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`.
 
 ### Playlist auto-expiry
 
@@ -602,6 +652,7 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 - `/api/v6/account/preview-direction` — shares the `anchor-tracks` bucket (60/min)
 - `/api/v6/account/apply-direction-change` — 10/min (commits add/edit/remove)
 - `/api/v6/account/toggle-super-like` — 60/min (super-like button toggle in the preview modal)
+- `/api/v6/account/log-playlist-open` — 120/min (dashboard "▶ פתח" click log; higher than other write endpoints because bursty clicking through several playlists is legitimate)
 
 **Behavior notes:**
 - Keyed by client IP (via `x-forwarded-for` first-hop, `x-real-ip`, or
@@ -761,6 +812,7 @@ Everything the account dashboard reads lives here:
 - `business_place` — one row per business (Google Places snapshot): { business_id, place_id, name, address, primary_type, types, editorial_summary, price_level, website_uri, vibe (jsonb), updated_at }. Upsert on business_id.
 - `business_events` — { id, business_id, name, description, created_at }. Owner's chat-generated one-off event descriptions.
 - `super_liked_tracks` — { id, business_id, spotify_id, created_at, UNIQUE(business_id, spotify_id) }. Persisted at signup from `state.superLikedTracks`; also topped up by the direction-edit preview modal when the owner taps super-like on a track. Nothing consumes yet — captured for future taste-tuning.
+- `business_playlist_opens` — { id bigserial, business_id, spotify_id, source ('home-daily' | 'home-event' | future), opened_at }. Append-only engagement log. One row per dashboard "▶ פתח" click. Not FK'd to `business_playlists` (matches `super_liked_tracks` pattern) — join manually on `spotify_id` when analyzing. `business_playlists` rows are never deleted (only `expires_at`-gated), so a click yesterday still resolves to its direction / genres / track_ids today. Client writes via fire-and-forget `POST /api/v6/account/log-playlist-open`; navigation to Spotify is never blocked on the write. Added 2026-08-26.
 - `business_direction_chats` — { id, business_id, role ('user'|'assistant'), content (raw JSON for assistant / plain text for user), proposal (jsonb — parsed structured payload attached to an assistant turn: `{kind, direction_id?, updates?, spec?}`), selected_direction_id (nullable FK, which card the owner had selected when they sent this), created_at }. Rolling per-business message log for the profile-tab direction-edit chat. Client renders the transcript on tab open; server loads the tail (last 40) as Gemini chat history each turn.
 - `business_direction_changes` — { id, business_id, direction_id (nullable — null when the pre-insert direction hasn't landed yet), kind ('add'|'edit'|'remove'), before (jsonb direction snapshot), after (jsonb direction snapshot), message_id_first, message_id_last (nullable FKs into business_direction_chats — the message range that produced this change), playlist_action ('rebuilt'|'expired'|'kept'|null), applied_at }. Written by `/api/v6/account/apply-direction-change` on every commit; surfaced by the internal admin API as the audit feed per business.
 
@@ -773,7 +825,7 @@ Everything the account dashboard reads lives here:
 
 ### Track pool coverage
 
-**~90.5k successfully-analyzed tracks** in `track_analyses` as of 2026-08-01. This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To refresh the count: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`. **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the 73 canonical genres is uneven; biz types added earlier (café, pizzeria) have deeper pools.
+**~114k successfully-analyzed tracks** in `track_analyses` as of 2026-08-26 (up from ~90.5k a month earlier — manual CLI batches through the RapidAPI worker filled in the new genres). This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To refresh the count: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`. **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the 105 canonical genres is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
 
 ---
 
@@ -828,6 +880,7 @@ Belt-and-suspenders. `pgrRequest` catches errors whose message contains `"57014"
 |---|---|---|---|
 | Musical directions (main flow) | `gemini-3.6-flash`, thinking=high | `v6/generation/ai-provider.js` `PROVIDER='gemini'` | Faster + cheaper than Sonnet at comparable quality once thinking=high is set; better JSON compliance with `responseMimeType`. Flip `PROVIDER` back to `'anthropic'` in that one file to revert. |
 | Event chat (special-events dashboard) | `gemini-3.6-flash`, thinking=low | `v6/account/app.js` (chat state machine) | Multi-turn JSON, low latency for a chat feel. Prompt in `v6/generation/event-chat-prompt.js`. |
+| Direction-edit chat (profile-tab) | `gemini-3.6-flash`, thinking=low, max_tokens=3000 | hardcoded in `api/v6/account/direction-chat.js` | Same rationale as event chat — multi-turn JSON, low latency. Prompt in `v6/generation/direction-edit-chat-prompt.js`. Kept distinct from the ai-provider switch used for musical directions. |
 | Event playlist genre+BPM extraction | `claude-haiku-4-5-20251001` | hardcoded in `api/v6/account/event-playlist.js` | Fast one-shot classify; kept on Anthropic because the task is narrow + the Haiku path is well-tested. |
 | Voice transcription | Whisper (`whisper-1`) via OpenAI | `api/v6/transcribe.js` | No good Anthropic ASR yet. Uses `OPENAI_API_KEY` env var only — the legacy `app_settings.openai_key` fallback was removed during the 2026-08-14 security audit. |
 | Rubin's Spotify writes | (not a model — Rubin's OAuth user token) | `api/new/spotify.js` | Single grandfathered Rubin app; token refreshed lazily. |
@@ -910,7 +963,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 | `GOOGLE_PLACES_API_KEY` | `api/v6/place-lookup.js` | Optional — endpoint silently skips if unset. Currently sensitive in Vercel + set to empty on some environments. |
 | `CRON_SECRET` | `api/cron/expire-playlists.js`, `api/cron/generate-daily.js` auth check | Vercel Cron sets `Authorization: Bearer <secret>` header |
 | `V6_ACCOUNT_REDIRECT_URL` | `api/v6/account/signup.js accountRedirectUrl` | Optional pin. When unset, magic-link redirect derives from request host (validated against `isAllowedHost`). |
-| `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json`. Batch worker is inactive (ami-cron-tick killed) but the endpoint stays available. |
+| `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json`. The *automated cron* is off (ami-cron-tick killed 2026-08-13) but the CLI batch worker `node v4/precompute/batch.mjs` is still run manually to digest new genres as Ami adds them. Key rotated 2026-08-25 after a paid-tier upgrade — the old key kept returning provider-side errors on the higher tier; new key resolved it. Regen a key at RapidAPI dashboard → your app → security. |
 | `RAPIDAPI_BILLING_CYCLE_DAY` | Precompute batch | Day of month billing resets |
 
 **Not in `.env.local` — configured in external dashboards:**

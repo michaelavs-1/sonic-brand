@@ -72,13 +72,22 @@ async function getJSON(url) {
     return data;
 }
 
+// /api/v4/spotify is behind the requireSiteOrInternal guard (added in the
+// 2026-08-22 security audit). Node fetch has no Origin header, so we must
+// present the shared INTERNAL_API_KEY via `x-sonic-internal`, otherwise the
+// proxy returns 403 {"error":"forbidden"}.
+const INTERNAL_HEADERS = {
+    'Content-Type': 'application/json',
+    ...(process.env.INTERNAL_API_KEY ? { 'x-sonic-internal': process.env.INTERNAL_API_KEY } : {}),
+};
+
 async function fetchPlaylistTrackIds(playlistId) {
     const ids = [];
     let offset = 0;
     while (true) {
         const r = await fetch(`${BASE}/api/v4/spotify`, {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: INTERNAL_HEADERS,
             body:    JSON.stringify({
                 action:      'get_playlist_tracks',
                 playlist_id: playlistId,

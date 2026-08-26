@@ -577,6 +577,34 @@ function playlistIsLive(p) {
   return !!p && (!p.expiresAt || p.expiresAt > Date.now());
 }
 
+// Fire-and-forget engagement log. Called from every dashboard "▶ פתח"
+// click. Never blocks the actual navigation — the Spotify link opens
+// via the browser's normal <a target="_blank"> handling and this POST
+// races it in the background. Failure is swallowed silently; the row
+// is an analytics signal, not user-facing state.
+function logPlaylistOpen(spotifyId, source) {
+  if (!spotifyId || !business?.id) return;
+  (async () => {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      if (!session?.access_token) return;
+      await fetch('/api/v6/account/log-playlist-open', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          businessId: business.id,
+          spotifyId,
+          source: source || 'home',
+        }),
+        keepalive: true,
+      });
+    } catch { /* swallow — analytics, not critical */ }
+  })();
+}
+
 function renderPlaylists() {
   const wrap = $('slotsWrap');
   wrap.innerHTML = '';
@@ -650,6 +678,7 @@ function renderPlaylists() {
       open.target = '_blank';
       open.rel = 'noopener';
       open.textContent = '▶ פתח';
+      open.addEventListener('click', () => logPlaylistOpen(p.id, 'home-daily'));
       row.append(open);
     }
     wrap.append(row);
@@ -1058,6 +1087,7 @@ function renderEvents() {
       openA.target = '_blank';
       openA.rel = 'noopener';
       openA.textContent = '▶ פתח';
+      openA.addEventListener('click', () => logPlaylistOpen(live.id, 'home-event'));
       row.append(openA);
     } else {
       const makeBtn = document.createElement('button');

@@ -70,18 +70,7 @@ You will receive:
 - Optionally: Business name.
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
 - Optionally: **Musical emphases** — free-text preferences the owner typed in a dedicated field. Contains styles they explicitly love, styles they want to avoid, general leanings (e.g. "no electronic at all", "as much R&B as possible", "only hits", "make each playlist varied and adventurous"). Usually short (1–3 sentences), any language.
-- Optionally: Google Places context — factual metadata about the venue, pulled from Google Maps if the business was matched. Format:
-
-\`\`\`
-Google Places context:
-  primary_type: <string>              e.g. "wine_bar", "cafe", "restaurant"
-  types: <comma-separated list>       broader Google categories
-  editorial_summary: <string or "none">   Google's one-line venue description
-  price_level: <string or "unknown">      PRICE_LEVEL_INEXPENSIVE..VERY_EXPENSIVE
-  vibe: <key=value list>              music-relevant booleans:
-                                      liveMusic, servesBeer, servesWine,
-                                      servesBreakfast, servesLunch, servesDinner, servesBrunch
-\`\`\`
+{{PLACES_INPUT_BLOCK}}
 
 ### Processing Rules:
 
@@ -93,7 +82,7 @@ Google Places context:
   Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
-- **Google Places Context:** External factual grounding — use it to sharpen or corroborate direction choices, never as a replacement for the description. Examples: \`price_level: PRICE_LEVEL_VERY_EXPENSIVE\` + editorial mentioning "intimate" → lean elegant; \`servesBreakfast: true\` + \`servesDinner: false\` → day-part-biased toward daytime energy; \`liveMusic: true\` → venue expects live-music culture. Don't invent constraints Google didn't state. Absence of the block means Google didn't find the venue; rely on the description alone.
+{{PLACES_PROCESSING_RULE}}
 
 ## Energy & Pairing Constraints
 
@@ -239,7 +228,35 @@ BAD inputs (return an error — do NOT force directions):
 - "מקום" → insufficient_description (no signal)
 - "מה השעה?" → off_topic (question about the tool / unrelated)`;
 
-const SYSTEM_PROMPT = EDITABLE_PROMPT_SECTION + '\n\n' + FIXED_PROMPT_SECTION;
+// Google Places docs (input format + processing rule) live outside
+// EDITABLE_PROMPT_SECTION so Ami can't accidentally break them in the
+// prompt-tuning dashboard. Injected back at their original textual
+// position via {{PLACES_*}} sentinels — the assembled SYSTEM_PROMPT is
+// byte-identical to the pre-refactor version, so model behavior is
+// unchanged.
+const PLACES_INPUT_BLOCK = `- Optionally: Google Places context — factual metadata about the venue, pulled from Google Maps if the business was matched. Format:
+
+\`\`\`
+Google Places context:
+  primary_type: <string>              e.g. "wine_bar", "cafe", "restaurant"
+  types: <comma-separated list>       broader Google categories
+  editorial_summary: <string or "none">   Google's one-line venue description
+  price_level: <string or "unknown">      PRICE_LEVEL_INEXPENSIVE..VERY_EXPENSIVE
+  vibe: <key=value list>              music-relevant booleans:
+                                      liveMusic, servesBeer, servesWine,
+                                      servesBreakfast, servesLunch, servesDinner, servesBrunch
+\`\`\``;
+
+const PLACES_PROCESSING_RULE = `- **Google Places Context:** External factual grounding — use it to sharpen or corroborate direction choices, never as a replacement for the description. Examples: \`price_level: PRICE_LEVEL_VERY_EXPENSIVE\` + editorial mentioning "intimate" → lean elegant; \`servesBreakfast: true\` + \`servesDinner: false\` → day-part-biased toward daytime energy; \`liveMusic: true\` → venue expects live-music culture. Don't invent constraints Google didn't state. Absence of the block means Google didn't find the venue; rely on the description alone.`;
+
+export function assembleSystemPrompt(editable) {
+  return editable
+    .replaceAll('{{PLACES_INPUT_BLOCK}}', PLACES_INPUT_BLOCK)
+    .replaceAll('{{PLACES_PROCESSING_RULE}}', PLACES_PROCESSING_RULE)
+    + '\n\n' + FIXED_PROMPT_SECTION;
+}
+
+const SYSTEM_PROMPT = assembleSystemPrompt(EDITABLE_PROMPT_SECTION);
 
 function summarizeDirection(d, idx) {
   const genres = Array.isArray(d.genres) && d.genres.length

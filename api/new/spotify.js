@@ -140,6 +140,27 @@ export default async function handler(req, res) {
   try {
     const { action } = req.body || {};
 
+    // Emergency kill switch for Spotify WRITE operations. Set env var
+    // SPOTIFY_DISABLED=1 in Vercel to freeze all writes without touching
+    // code (reads stay live — they use Michael's Client Credentials token,
+    // which is independent of Rubin's user token and doesn't affect any
+    // cooldown Rubin might be in). Unset the env var to re-enable.
+    // Added 2026-08-26 after Rubin's token was pushed into a 403 block by
+    // a cron pileup; kept in place because there's no cost to leaving the
+    // guard when the flag is unset.
+    const WRITE_ACTIONS = new Set([
+      'create_playlist', 'add_tracks', 'update_playlist',
+      'replace_tracks', 'unfollow_playlist',
+    ]);
+    if (process.env.SPOTIFY_DISABLED === '1' && WRITE_ACTIONS.has(action)) {
+      console.warn(`[spotify] WRITE BLOCKED (SPOTIFY_DISABLED=1): ${action}`);
+      return res.status(503).json({
+        error: 'spotify_writes_disabled',
+        action,
+        hint: 'unset SPOTIFY_DISABLED in Vercel env to re-enable',
+      });
+    }
+
     if (action === 'get_playlist_tracks') {
       const { playlist_id, offset = 0, limit = 50, fields } = req.body;
       if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });

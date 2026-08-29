@@ -398,8 +398,15 @@ export default async function handler(req, res) {
       }
       if (uniqueByFp.size) {
         try {
-          const fps = [...uniqueByFp.keys()];
-          const inserted = await pgrInsert('business_directions', [...uniqueByFp.values()], { returnRows: true });
+          // Cap at the 8-active-per-business ceiling enforced by the
+          // enforce_active_directions_cap trigger. Swipe-deck clients only
+          // ever produce ≤8, so this is a no-op for legit signups; the cap
+          // guards against a crafted payload that would otherwise abort
+          // the entire signup transaction on the 9th INSERT.
+          const capped = [...uniqueByFp.entries()].slice(0, 8);
+          const fps    = capped.map(([fp]) => fp);
+          const rows   = capped.map(([, row]) => row);
+          const inserted = await pgrInsert('business_directions', rows, { returnRows: true });
           // PostgREST preserves insert order in the returned representation,
           // so a positional zip is safe.
           (inserted || []).forEach((row, i) => {

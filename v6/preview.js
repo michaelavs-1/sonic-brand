@@ -283,25 +283,49 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
     let controller = null;
     let busy = false;
 
+    // Rail-click handlers are re-assigned inside showCard each render, so
+    // clicking a rail's chev+label always dispatches to the CURRENTLY
+    // mounted card's decide/superLike (which reference that card's `d`,
+    // trackId, cardEl closures). Null in between renders — clicks during
+    // fly-off no-op via `decide`'s own busy guard anyway.
+    let activeHandlers = null;
+
     const progLabel = el('div', { class: 'swipe-progress-label' });
     const progFill = el('div', { class: 'swipe-progress-fill' });
     const progBar = el('div', { class: 'swipe-progress-bar' }, progFill);
     const deck = el('div', { class: 'swipe-deck' });
-    const railNo = el('div', { class: 'sw2-rail no' },
+    // Rails contain a single `<button class="sw2-rail-btn">` wrapping the
+    // chev + label. The rail itself stays pointer-events:none so its full
+    // (invisible, ~600px tall) vertical strip doesn't intercept clicks on
+    // things below the artwork (title, artist, description, prog-bar).
+    // Only the tight button — sitting at the art's vertical midline — is
+    // clickable and fires the same action the corresponding swipe would.
+    const railNoBtn = el('button',
+      { class: 'sw2-rail-btn', type: 'button', 'aria-label': 'לא בשבילי' },
       el('span', { class: 'sw2-chev' }, '‹'),
       el('span', { class: 'sw2-rail-label' }, 'לא בשבילי'),
     );
-    const railYes = el('div', { class: 'sw2-rail yes' },
+    railNoBtn.onclick = () => activeHandlers?.decide?.(false);
+    const railNo = el('div', { class: 'sw2-rail no' }, railNoBtn);
+
+    const railYesBtn = el('button',
+      { class: 'sw2-rail-btn', type: 'button', 'aria-label': 'אהבתי' },
       el('span', { class: 'sw2-chev' }, '›'),
       el('span', { class: 'sw2-rail-label' }, 'אהבתי'),
     );
+    railYesBtn.onclick = () => activeHandlers?.decide?.(true);
+    const railYes = el('div', { class: 'sw2-rail yes' }, railYesBtn);
+
     // Top rail for the swipe-up super-like gesture. Cyan to match the toast
     // + card glow. Same chevron character as the yes/no rails (rotated 90°
     // in CSS so it points up) so the three rails read as a set.
-    const railSuper = el('div', { class: 'sw2-rail super' },
+    const railSuperBtn = el('button',
+      { class: 'sw2-rail-btn', type: 'button', 'aria-label': 'סופר לייק' },
       el('span', { class: 'sw2-chev' }, '‹'),
       el('span', { class: 'sw2-rail-label' }, 'סופר לייק'),
     );
+    railSuperBtn.onclick = () => activeHandlers?.superLike?.();
+    const railSuper = el('div', { class: 'sw2-rail super' }, railSuperBtn);
     const deckWrap = el('div', { class: 'sw2-deckwrap' }, deck, railNo, railYes, railSuper);
     // yes/no buttons are intentionally NOT mounted into the card — the user
     // decides purely via swipe now. Kept in memory (with their click handlers
@@ -764,6 +788,11 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       };
       noBtn.onclick = () => decide(false);
       yesBtn.onclick = () => decide(true);
+
+      // Bind the rails to THIS card's handlers so rail clicks dispatch to
+      // the correct closures (decide/superLike reference `d`, cardEl,
+      // trackId — all per-card). Reassigned on every showCard.
+      activeHandlers = { decide, superLike };
 
       // Swipe hit-area is the album art (artWrap) ONLY. Everywhere else on
       // the card (title, artist, swap button, description, progress bar)

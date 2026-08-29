@@ -1830,6 +1830,34 @@
       line-height: 1.25
     }
 
+    /* Rail content is wrapped in this button so clicks (and only clicks
+       inside the tight chev+label footprint) fire the same action as the
+       corresponding swipe. Rail itself stays pointer-events:none so its
+       big invisible vertical strip doesn't block other things. */
+    .sw2-rail-btn {
+      pointer-events: auto;
+      background: none;
+      border: none;
+      padding: 8px 10px;
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      border-radius: 10px;
+      transition: background .15s, transform .1s
+    }
+
+    .sw2-rail-btn:hover {
+      background: rgba(255, 255, 255, .06)
+    }
+
+    .sw2-rail-btn:active {
+      transform: scale(.94)
+    }
+
     .swipe-card2 {
       display: block;
       padding: 18px 14px 14px;
@@ -2625,7 +2653,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=25082026d"></script>
+  <script type="module" src="/v6/app.js?v=25082026e"></script>
 </body>
 
 </html>

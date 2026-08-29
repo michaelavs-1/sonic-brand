@@ -1507,7 +1507,10 @@
     /* Header row: h2 + chevron, full-width clickable. Chevron points
        down when collapsed (rotate 0), rotates 180° to point up when
        expanded. Aria-expanded on the button drives the arrow. */
-    .hours-section { margin: 16px 0 6px; }
+    .hours-section {
+      margin: 16px 0 6px;
+    }
+
     .hours-toggle {
       display: flex;
       align-items: center;
@@ -1523,14 +1526,22 @@
       text-align: right;
       transition: color .15s;
     }
-    .hours-toggle:hover { color: var(--accent); }
-    .hours-toggle:hover .hours-chev { color: var(--accent); }
+
+    .hours-toggle:hover {
+      color: var(--accent);
+    }
+
+    .hours-toggle:hover .hours-chev {
+      color: var(--accent);
+    }
+
     .hours-chev {
       color: var(--muted);
       transition: transform .2s, color .15s;
       transform: rotate(0);
       flex: 0 0 auto;
     }
+
     .hours-toggle[aria-expanded="true"] .hours-chev {
       transform: rotate(180deg);
     }
@@ -1967,15 +1978,33 @@
       font-family: inherit;
       transition: color .15s, border-color .15s, background .15s, box-shadow .15s, transform .06s;
     }
-    .slot-icon:hover { transform: translateY(-1px); }
-    .slot-icon:active { transform: translateY(0); }
-    .slot-icon:disabled { opacity: .55; cursor: default; transform: none; }
-    .slot-icon svg { width: 17px; height: 17px; display: block; }
+
+    .slot-icon:hover {
+      transform: translateY(-1px);
+    }
+
+    .slot-icon:active {
+      transform: translateY(0);
+    }
+
+    .slot-icon:disabled {
+      opacity: .55;
+      cursor: default;
+      transform: none;
+    }
+
+    .slot-icon svg {
+      width: 17px;
+      height: 17px;
+      display: block;
+    }
+
     .slot-edit:hover:not(:disabled) {
       color: var(--accent);
       border-color: var(--accent);
       box-shadow: 0 4px 14px rgba(240, 167, 63, .18);
     }
+
     .slot-trash:hover:not(:disabled) {
       color: var(--danger);
       border-color: var(--danger);
@@ -2712,12 +2741,14 @@
       <div class="hours-section">
         <button type="button" class="hours-toggle" id="hoursToggle" aria-expanded="false" aria-controls="hoursBody">
           <h2 style="margin:0"><span class="h-ico">🕒</span>שעות פעילות</h2>
-          <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="6 9 12 15 18 9"/>
+          <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
           </svg>
         </button>
         <div class="hours-body hide" id="hoursBody">
-          <p class="muted sub" style="margin:6px 0 12px">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן את
+          <p class="muted sub" style="margin:6px 0 12px">מהשעות האלה נגזרות רצועות המוזיקה היומיות. שינוי ביום אחד מעדכן
+            את
             כולם — סמנו "שעות שונות"
             ליום מסוים.</p>
           <div id="hoursHost"></div>
@@ -2765,7 +2796,7 @@
        direction AND expires today's live playlist), or cancel. -->
   <div class="gd-overlay hide" id="trashDirModal">
     <div class="gd-modal">
-      <h3>למחוק את הכיוון?</h3>
+      <h3>למחוק את הכיוון לצמיתות?</h3>
       <p>לפני שמוחקים אותו לחלוטין, אולי כדאי לנסות לערוך אותו כדי שיתאים יותר לטעם שלכם?</p>
       <div class="gd-actions">
         <button class="btn" id="trashDirEdit" type="button">בואו נערוך</button>

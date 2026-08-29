@@ -59,9 +59,19 @@ import {
 // Deployment Protection and returns {error:"Protected deployment"} for
 // server-to-server calls from inside a cron. VERCEL_PROJECT_PRODUCTION_URL
 // resolves to the primary production alias, which is publicly reachable.
-const SPOTIFY_BASE = process.env.VERCEL_PROJECT_PRODUCTION_URL
-  ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-  : (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://127.0.0.1:3000');
+//
+// `vercel dev` sets VERCEL_URL=localhost:3000 (not a real deployment URL),
+// so we normalise the scheme: localhost / 127.* always use http, everything
+// else uses https. Without this, the cron in dev tries https://localhost:3000
+// and every server-to-server fetch fails with "fetch failed".
+function resolveSpotifyBase() {
+  const raw = process.env.VERCEL_PROJECT_PRODUCTION_URL
+           || process.env.VERCEL_URL
+           || '127.0.0.1:3000';
+  const proto = /^(localhost|127\.)/.test(raw) ? 'http' : 'https';
+  return `${proto}://${raw}`;
+}
+const SPOTIFY_BASE = resolveSpotifyBase();
 
 // Fire the generation this many minutes before opening. Cron is hourly so
 // the actual firing lands anywhere in [openIL-120min, openIL-60min].
@@ -240,11 +250,21 @@ export default async function handler(req, res) {
 
   // Businesses processed serially. Parallel would race on the shared
   // /api/new/spotify Rubin user-token refresh (and cross-user
-  // v5_direction_tracks contention on the DB), and each business's own
-  // buildDailyBatch already parallelises its N direction builds. Serial
-  // outer loop is the right granularity.
+  // v5_direction_tracks contention on the DB).
+  //
+  // A 5s sleep separates each business so that even a run with 20+
+  // businesses spreads its Spotify writes over minutes, not seconds.
+  // Combined with _daily-builder.js's own 3s inter-playlist stagger inside
+  // each business, sustained write rate stays comfortably under the
+  // ~200/min ceiling we've historically observed on Rubin's app.
+  // No sleep before the first business — no need to delay the first
+  // eligible build.
+  const INTER_BUSINESS_MS = 5000;
+  const busSleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const results = [];
-  for (const b of businesses) {
+  for (let i = 0; i < businesses.length; i++) {
+    if (i > 0) await busSleep(INTER_BUSINESS_MS);
+    const b = businesses[i];
     try {
       const r = await processBusiness({ business: b, now, ilNow, origin });
       results.push(r);

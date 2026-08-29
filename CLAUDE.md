@@ -363,6 +363,8 @@ sonic-brand/
 ├── v3/, v2/                                ← Historical
 ├── michael-v4-snapshot/                    ← Gitignored. Snapshot of Michael's v4 fork. UI reference for v6.
 ├── api/
+│   ├── _alert.js                           ← Fire-and-forget Resend REST helper. Reads SUPABASE_AUTH.
+│   │                                          Used by spotify.js (pause/QUOTA alerts) + cron/expire (cluster / chronic alerts).
 │   ├── v6/
 │   │   ├── origin-guard.js                 ← requireSite / requireSiteOrInternal helpers
 │   │   ├── ratelimit.js                    ← Upstash-Redis fixed-window guard (see mechanism section)
@@ -401,16 +403,16 @@ sonic-brand/
 │   │   ├── ami-atmospheres-scan.js         ← Diffs sheet against Supabase, upserts changes
 │   │   └── ...                             ← Legacy v4 endpoints (openai, spotify, biztype-match, cached-*)
 │   ├── new/
-│   │   ├── spotify.js                      ← Two-app Spotify proxy (Michael CC reads + Rubin user writes)
-│   │   │                                      429 handler capped at 5s (was 30s — see cron section)
+│   │   ├── spotify.js                      ← Two-app Spotify proxy (Michael CC reads + Rubin user writes).
+│   │   │                                      Resilience layer: 15s per-call timeout, 4xx/5xx body logging,
+│   │   │                                      Redis pause switch, daily write counter with threshold alerts.
 │   │   └── rubin-oauth-callback.js         ← One-time OAuth seed for RUBIN_REFRESH_TOKEN
 │   │   (openai.js, databox.js gitignored — see legacy note below)
 │   ├── cron/
-│   │   ├── expire-playlists.js             ← Hourly cron. Renames + empties + unfollows expired playlists.
-│   │   │                                      Tolerates 404 (isGone helper) so purged playlists don't loop.
-│   │   └── generate-daily.js               ← Hourly cron. Skip guards: not-onboarding-done, no-hours,
-│   │                                          closed-today, past-close, already-built-today, too-early,
-│   │                                          no-directions. Then buildDailyBatch (concurrency-capped).
+│   │   ├── expire-playlists.js             ← Hourly `:30`. Exponential backoff on failure (1h→24h);
+│   │   │                                      cluster + chronic alert emails via api/_alert.js.
+│   │   └── generate-daily.js               ← Hourly `:00`. Skip guards + concurrency-1 pacing with 3s
+│   │                                          inter-playlist / 5s inter-business sleeps.
 │   ├── internal/
 │   │   ├── _guard.js                       ← Shared bearer-token guard for the /api/internal/* admin surface
 │   │   ├── users.js                        ← GET list of businesses + owner emails (Michael's dashboard)
@@ -542,9 +544,32 @@ Shared 105-genre canonical menu. Both `musical-directions.js` (for the system pr
 
 Every playlist created via `/api/new/spotify` create_playlist gets a row in
 `created_playlists` (`spotify_id`, `name`, `expires_at`, `deleted_at`,
-`error`). Hourly cron `/api/cron/expire-playlists` picks up any row with
-`expires_at <= now()` and unfollows on Rubin's side (rename → empty →
-unfollow → mark `deleted_at`; 404 treated as already-gone via `isGone`).
+`error`, plus `attempts`, `last_error`, `next_attempt_at`, `alerted_at`
+added 2026-08-29). Hourly cron `/api/cron/expire-playlists` (scheduled
+`30 * * * *`) picks up eligible rows and unfollows on Rubin's side
+(rename → empty → unfollow → mark `deleted_at`; 404 treated as
+already-gone via `isGone`).
+
+**Eligibility**: `deleted_at IS NULL AND expires_at <= now() AND
+(next_attempt_at IS NULL OR next_attempt_at <= now())`. The
+`next_attempt_at` gate is what makes the exponential backoff work.
+
+**Retry model (exponential backoff, added 2026-08-29)**:
+On failure, `attempts` is incremented and `next_attempt_at` is set to
+`now() + backoff(attempts)` where:
+`attempts=1 → +1h, 2 → +2h, 3 → +4h, 4 → +8h, 5 → +16h, 6+ → capped +24h`.
+Rows are NEVER permanently abandoned — we back off but keep trying until
+either the Spotify call succeeds or the playlist entity is gone (isGone
+→ mark deleted_at). This is what stops the tight every-hour re-loop that
+caused the 141-row backlog after Aug 22.
+
+**Alerts**:
+- Chronic failure — when a row transitions to `attempts >= 5` (~15h of
+  consecutive failure), one alert email fires per row via `alerted_at`
+  guard (never re-fires for the same row lifetime).
+- Cluster failure — if 3+ consecutive playlists fail in a single tick,
+  one alert email fires immediately with the failure list. Catches
+  broad Spotify-side incidents within the hour they start.
 
 Two different expiry regimes feed into that one cron:
 
@@ -590,10 +615,12 @@ plan cache):
    (reads `business_directions WHERE active=true`, the permanent per-biz
    direction table — no more reconstructing from playlist history).
 8. Build via shared `buildDailyBatch()` in `_daily-builder.js`. One
-   Spotify playlist per direction, with `BUILD_CONCURRENCY=2` + a 300ms
-   stagger between starts (was `Promise.all` — capped after Spotify
-   create_playlist 429s tripped the api/new/spotify 30s Vercel budget
-   during the same 2026-08-22 incident). Single batch INSERT into
+   Spotify playlist per direction, with `BUILD_CONCURRENCY=1` + a 3s
+   stagger between playlists (dropped from `Promise.all` → `CONCURRENCY=2
+   / stagger=300ms` on 2026-08-22, then to fully serial with 3s stagger
+   on 2026-08-29 as part of the resilience layer). Outer loop also
+   sleeps 5s between businesses. Combined pacing keeps sustained write
+   rate < 30/min per cron tick. Single batch INSERT into
    business_playlists at the end.
 9. Ledger row's `expires_at` reuses the `todaysExpiryIso` computed for
    the past-close check in step 4 (same source of truth as the
@@ -602,11 +629,10 @@ plan cache):
 
 Auth: `Authorization: Bearer ${CRON_SECRET}` (same as `expire-playlists`).
 
-**Related hardening in the Spotify proxy**: `api/new/spotify.js` used to
-sleep up to 30s on a Spotify `Retry-After` header (429), which could eat
-the whole 30s Vercel `maxDuration` and produce a 504. Cap is now 5s.
-Combined with the daily-gen guards, hourly 429 bursts became impossible
-in practice.
+**Related hardening in the Spotify proxy**: see the "Spotify resilience
+layer" mechanism below for the full 2026-08-29 rewrite. The daily-gen
+guards prevent the trigger conditions; the resilience layer catches
+what does slip through and stops it from escalating.
 
 ### Auth email — custom SMTP via Resend + robin-music.com
 
@@ -622,9 +648,11 @@ send magic-link emails from a `robin-music.com` sender via Resend SMTP.
   {emailRedirectTo: ...}})` in `v6/account/app.js` (the login flow) and
   the admin `generate_link` call in `api/v6/account/signup.js` both go
   out via whatever SMTP Supabase is configured to use.
-- **Resend account**: separate login, owned by Roni. API key kept in
-  Supabase — NOT in `.env.local` or Vercel env, since nothing in our
-  own code talks to Resend directly.
+- **Resend account**: separate login, owned by Roni. API key stored in
+  Supabase Auth SMTP settings AND mirrored to `.env.local` + Vercel env
+  as `SUPABASE_AUTH` (the historical name — see "Alerts via Resend"
+  mechanism below). Our own code reads it via `SUPABASE_AUTH` for
+  operational alert emails; Supabase Auth reads its own copy via SMTP.
 - **Verification records to keep green** in GoDaddy DNS: TXT + CNAME
   records Resend auto-generates during setup. If any go red, emails
   land in spam and Supabase auth flows silently degrade.
@@ -670,6 +698,58 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 double-prefix; mirror to `.env.local` for `vercel dev`):
 - `UPSTASH_REDIS_REST_KV_REST_API_URL`
 - `UPSTASH_REDIS_REST_KV_REST_API_TOKEN`
+
+### Spotify resilience layer (`api/new/spotify.js`)
+
+Added 2026-08-29 after the Aug 22 QUOTA_EXCEEDED incident. Four defenses
+layered into the proxy:
+
+1. **Per-call 15s timeout** via `AbortController`. Prevents a single hung
+   Spotify call (Aug 7 style 504 cascade) from eating the whole 30s
+   function budget. On timeout, returns synthetic 504.
+2. **Response-body logging** on every Spotify 4xx/5xx. Logs the response
+   body (500 char cap) plus the parsed `error.reason` field so the next
+   incident isn't a guessing game. This was the missing visibility that
+   let Aug 22 escalate silently.
+3. **Global pause switch** backed by Redis key `spotify:pause_until`
+   (epoch-ms value). Set automatically by the proxy on:
+   - Any `429` with `Retry-After ≥ 30s` → pause for the Retry-After duration
+   - Any `403` with `reason=QUOTA_EXCEEDED` → 6h pause (Retry-After is often
+     absent or unhelpfully large for QUOTA_EXCEEDED)
+   Every subsequent user-token call short-circuits with `503 { error:
+   'spotify_paused' }` until the key expires. Check-before-set ensures a
+   short 429 pause can't overwrite a long QUOTA pause. Fires one alert
+   email per pause event. The `_daily-builder.js` and `playlist-builder.js`
+   retry loops both recognise the `spotify_paused` marker and NEVER retry
+   it — that's what prevents the escalation loop that made Aug 22 worse.
+4. **Daily write counter** — Redis `spotify:writes:YYYY-MM-DD` (IL date).
+   Increments on every successful user-token write. Alerts once at 500
+   (soft) and once at 800 (hard). Exact-equality trigger prevents storming
+   under concurrent load.
+
+Pause / counter checks are BYPASSED for CC-token reads (Michael's app is
+on a separate quota bucket and hasn't been the source of any block).
+
+### Alerts via Resend (`api/_alert.js`)
+
+Fire-and-forget email helper for operational alerts. Delivered via
+Resend's REST API. Fail-open — a missing key or Resend outage logs one
+warning and returns `{ok:false}` without throwing, so a broken alert
+never takes down the caller.
+
+**Env**:
+- `SUPABASE_AUTH` — Resend API key. Named `SUPABASE_AUTH` because it was
+  originally added for Supabase's SMTP magic-link config (see the "Auth
+  email" section above). Our alert helper reads the same value.
+- `ALERT_EMAIL_FROM` (optional) — defaults to `noreply@robin-music.com`
+- `ALERT_EMAIL_TO`   (optional) — defaults to `roni.mark@gmail.com`
+
+**Current alert triggers**:
+- Spotify pause switch engaged (from the proxy on 429/403)
+- Cron expire: 3+ consecutive failures in one tick (cluster alert)
+- Cron expire: single row hitting `attempts >= 5` (chronic alert, once
+  per row lifetime via `alerted_at` guard)
+- Daily Spotify write count crossing 500 (soft) or 800 (hard)
 
 ### Instrumentalness preference (`instrumentalness_preference`)
 
@@ -959,17 +1039,20 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | All v5/v6 endpoints via api/v5/supabase-client.js | Anon safe to expose client-side; service role server-only |
 | `INTERNAL_API_KEY` | `api/v6/origin-guard.js requireSiteOrInternal`; passed as `x-sonic-internal` header for server-to-server calls into `api/new/spotify.js`; also rate-limit bypass in `api/v6/ratelimit.js` | Fail-open if not set. |
 | `INTERNAL_ADMIN_API_KEY` | `api/internal/_guard.js requireAdmin` — Michael's dashboard bearer token | Fail-CLOSED if unset (500s the endpoint). Must be set in Vercel prod + `.env.local`; share the value with Michael out-of-band. |
-| `UPSTASH_REDIS_REST_KV_REST_API_URL` / `_TOKEN` | `api/v6/ratelimit.js` | Auto-injected by Vercel's Upstash integration with the `UPSTASH_REDIS_REST` custom prefix. If unset, rate limiting is DISABLED (fail-open) and one warning line prints at cold start. |
+| `UPSTASH_REDIS_REST_KV_REST_API_URL` / `_TOKEN` | `api/v6/ratelimit.js`, `api/new/spotify.js` (pause switch + daily write counter) | Auto-injected by Vercel's Upstash integration with the `UPSTASH_REDIS_REST` custom prefix. If unset, rate limiting is DISABLED (fail-open) and one warning line prints at cold start. Same fail-open behaviour for the pause switch — logs a warning then proceeds without global backpressure. |
+| `SUPABASE_AUTH` | `api/_alert.js` sendAlert; Supabase Dashboard → Auth → SMTP for magic-link emails | Resend API key (prefixed `re_`). Named `SUPABASE_AUTH` because it was originally added for Supabase's SMTP config — same key powers our operational alert emails now. Fail-open if unset. Set in Vercel + `.env.local`. |
 | `GOOGLE_PLACES_API_KEY` | `api/v6/place-lookup.js` | Optional — endpoint silently skips if unset. Currently sensitive in Vercel + set to empty on some environments. |
 | `CRON_SECRET` | `api/cron/expire-playlists.js`, `api/cron/generate-daily.js` auth check | Vercel Cron sets `Authorization: Bearer <secret>` header |
 | `V6_ACCOUNT_REDIRECT_URL` | `api/v6/account/signup.js accountRedirectUrl` | Optional pin. When unset, magic-link redirect derives from request host (validated against `isAllowedHost`). |
 | `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json`. The *automated cron* is off (ami-cron-tick killed 2026-08-13) but the CLI batch worker `node v4/precompute/batch.mjs` is still run manually to digest new genres as Ami adds them. Key rotated 2026-08-25 after a paid-tier upgrade — the old key kept returning provider-side errors on the higher tier; new key resolved it. Regen a key at RapidAPI dashboard → your app → security. |
 | `RAPIDAPI_BILLING_CYCLE_DAY` | Precompute batch | Day of month billing resets |
 
-**Not in `.env.local` — configured in external dashboards:**
-- **Resend API key** — set in Supabase Dashboard → Auth → SMTP Settings.
-  No app code reads it; Supabase uses it directly to send magic-link
-  emails from `noreply@robin-music.com`. See "Auth email" mechanism.
+**Also configured in external dashboards:**
+- **Resend API key** — the value stored under `SUPABASE_AUTH` above is
+  a Resend key. Also mirrored into Supabase Dashboard → Auth → SMTP
+  Settings so Supabase can send magic-link emails from
+  `noreply@robin-music.com`. Two different consumers of the same key.
+  See the "Auth email" and "Alerts via Resend" mechanisms.
 
 ---
 

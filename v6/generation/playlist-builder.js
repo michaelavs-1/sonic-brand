@@ -92,10 +92,14 @@ async function postSpotifyOnce(action, body) {
   const status  = chunkFail ? chunkFail.status : r.status;
   const errBody = chunkFail ? chunkFail.body   : data;
   const msg     = errBody?.error?.message || errBody?.error || `${action} ${status}`;
+  // Global pause switch (api/new/spotify.js) returns 503 error='spotify_paused'.
+  // Never retry it — the whole point is to stop hammering during a Spotify block.
+  const paused = errBody?.error === 'spotify_paused'
+              || (typeof errBody?.error === 'string' && errBody.error.includes('spotify_paused'));
   return {
     ok: false,
     status,
-    retriable: status >= 500 || status === 429,
+    retriable: !paused && (status >= 500 || status === 429),
     error: new Error(`spotify ${action}: ${msg}`),
   };
 }
@@ -180,15 +184,26 @@ async function buildOne({ direction, bizName, popularityWindow }) {
   };
 }
 
-// Fires all playlist builds in parallel. `onProgress(index, result)` is called
-// each time one completes (in completion order, not rank order — the index
-// matches its position in selectedDirections so the caller can update the
-// right placeholder card). Returns the full results array once all promises
-// settle, in original rank order.
+// Builds playlists serially with a small inter-playlist gap. `onProgress(index,
+// result)` is called each time one completes (now equivalent to rank order,
+// since we're serial). Returns the full results array in rank order.
+//
+// Pacing (2026-08-29 post-Aug-22-incident): switched from Promise.all fan-out
+// to serial + 2s stagger. The onboarding path can burst-fire ~4-8 playlists
+// per user, and combined with other traffic that contributed to the Aug 22
+// rate-limit escalation. UX cost: an extra ~8-15s from first card populated
+// to last, while placeholder cards keep the user oriented. See the parallel
+// pacing change in api/v6/account/_daily-builder.js (same rationale, different
+// caller — cron rather than onboarding).
+const INTER_BUILD_MS = 2000;
+
 export async function buildDirectionPlaylists({ selectedDirections, bizName, popularityWindow, onProgress }) {
   if (!Array.isArray(selectedDirections) || !selectedDirections.length) return [];
 
-  const promises = selectedDirections.map(async (direction, index) => {
+  const results = new Array(selectedDirections.length);
+  for (let index = 0; index < selectedDirections.length; index++) {
+    if (index > 0) await sleep(INTER_BUILD_MS);
+    const direction = selectedDirections[index];
     let result;
     try {
       result = await buildOne({ direction, bizName, popularityWindow });
@@ -196,11 +211,10 @@ export async function buildDirectionPlaylists({ selectedDirections, bizName, pop
       console.error(`v5 playlist "${direction.title_en}" (rank ${direction.rank}) failed:`, err);
       result = { direction, skipped: true, reason: err.message };
     }
+    results[index] = result;
     if (typeof onProgress === 'function') {
       try { onProgress(index, result); } catch (e) { console.error('v5 onProgress threw:', e); }
     }
-    return result;
-  });
-
-  return Promise.all(promises);
+  }
+  return results;
 }

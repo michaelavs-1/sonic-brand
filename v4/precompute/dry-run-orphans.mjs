@@ -27,6 +27,7 @@
 // Run (from anywhere):
 //   node v4/precompute/dry-run-orphans.mjs
 //   node v4/precompute/dry-run-orphans.mjs --include-errors
+//   node v4/precompute/dry-run-orphans.mjs --exclude-genres="samba-choro,italian funk"
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -62,6 +63,18 @@ const OUT_PATH = path.join(STATE_DIR, 'dry-run.json');
 // `batch.mjs --retry-errors` to actually re-attempt them.
 const INCLUDE_ERRORS = process.argv.includes('--include-errors');
 
+// --exclude-genres="a,b,c": skip orphans that belong to any of the listed
+// genres. Comma-separated, case-insensitive. Any playlist tagged to at
+// least one excluded genre has all its orphans dropped from this run —
+// they stay orphans in the DB, no blacklist, no writes. Use when a
+// specific genre's playlists are causing upstream storms and you want
+// to keep filling everything else.
+const norm = (s) => String(s || '').trim().toLowerCase();
+const EXCLUDE_ARG = process.argv.find((a) => a.startsWith('--exclude-genres='));
+const EXCLUDE_GENRES = EXCLUDE_ARG
+    ? new Set(EXCLUDE_ARG.slice('--exclude-genres='.length).split(',').map(norm).filter(Boolean))
+    : new Set();
+
 // PostgREST paginated select via Range header — works for tables much larger
 // than the 1000-row default page.
 async function fetchAllPaginated(table, query = {}) {
@@ -92,6 +105,7 @@ async function main() {
     console.log('Scanning Supabase for orphan spotify_ids...');
     console.log('  orphan = present in playlist_tracks, MISSING from track_analyses');
     if (INCLUDE_ERRORS) console.log('  (--include-errors: also treating status=error rows as orphans)');
+    if (EXCLUDE_GENRES.size) console.log(`  (--exclude-genres: dropping orphans tagged to any of: ${[...EXCLUDE_GENRES].join(', ')})`);
     console.log('');
 
     // 1. All (playlist_id, spotify_id, position) from playlist_tracks
@@ -153,6 +167,23 @@ async function main() {
     const ranked = [...perGenre.entries()].sort((a, b) => b[1] - a[1]);
     for (const [g, n] of ranked) console.log(`  ${g.padEnd(30)} ${String(n).padStart(5)}`);
     if (unlinkedOrphans) console.log(`  <unlinked playlists>           ${String(unlinkedOrphans).padStart(5)}`);
+
+    // 4a. Genre exclusion — drop any playlist whose genre set intersects
+    //     EXCLUDE_GENRES. Runs after the rollup so the user still sees a
+    //     complete before-picture, then the counts below reflect the drop.
+    let excludedPlaylistCount = 0;
+    let excludedOrphanCount   = 0;
+    if (EXCLUDE_GENRES.size) {
+        for (const pid of [...orphansByPlaylist.keys()]) {
+            const genres = (playlistGenres.get(pid) || []).map(norm);
+            if (genres.some((g) => EXCLUDE_GENRES.has(g))) {
+                excludedOrphanCount += orphansByPlaylist.get(pid).length;
+                excludedPlaylistCount++;
+                orphansByPlaylist.delete(pid);
+            }
+        }
+        console.log(`\nExcluded ${excludedOrphanCount} orphans across ${excludedPlaylistCount} playlists via --exclude-genres`);
+    }
 
     // 5. Round-robin order: sort each playlist's orphans by position, then
     //    pick one from each playlist per round. Early abort yields even

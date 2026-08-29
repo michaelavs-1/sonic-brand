@@ -103,7 +103,7 @@ async function sb(path, opts = {}) {
 }
 
 // ---------- Spotify helpers ----------
-let spTok = null, spExp = 0, spUserId = null;
+let spTok = null, spExp = 0;
 
 async function spRefreshToken() {
   const basic = Buffer.from(`${SP_CLIENT_ID}:${SP_CLIENT_SECRET}`).toString('base64');
@@ -150,18 +150,11 @@ async function spFetch(path, init = {}, attempt = 1) {
   return r;
 }
 
-async function spMe() {
-  if (spUserId) return spUserId;
-  const r = await spFetch('/me');
-  if (!r.ok) throw new Error(`spotify /me ${r.status}`);
-  const d = await r.json();
-  spUserId = d.id;
-  return spUserId;
-}
-
+// Uses /me/playlists (introduced Feb 2026 migration). The old
+// /users/{id}/playlists endpoint was deprecated on 2026-03-09 and now
+// returns 403 for every caller — do NOT switch back to it.
 async function spCreatePlaylist(name, description) {
-  const uid = await spMe();
-  const r = await spFetch(`/users/${encodeURIComponent(uid)}/playlists`, {
+  const r = await spFetch(`/me/playlists`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, description, public: false }),
@@ -173,7 +166,8 @@ async function spCreatePlaylist(name, description) {
 async function spAddTracksChunked(playlistId, uris) {
   for (let i = 0; i < uris.length; i += 100) {
     const chunk = uris.slice(i, i + 100);
-    const r = await spFetch(`/playlists/${playlistId}/tracks`, {
+    // /playlists/{id}/items (Feb 2026 migration). The old /tracks POST is deprecated.
+    const r = await spFetch(`/playlists/${playlistId}/items`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uris: chunk }),

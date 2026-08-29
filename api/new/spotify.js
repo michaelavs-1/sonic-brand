@@ -1,5 +1,6 @@
 import { requireSiteOrInternal, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
+import { sendAlert } from '../_alert.js';
 
 // Emergency kill switch for Spotify WRITE operations. Flip to `true` to
 // freeze all writes (create_playlist / add_tracks / update_playlist /
@@ -9,7 +10,10 @@ import { guard } from '../v6/ratelimit.js';
 // Added 2026-08-26 after Rubin's token was pushed into a 403 block by a
 // cron pileup. Kept in place because the check has zero runtime cost when
 // the flag is `false`.
-const SPOTIFY_WRITES_DISABLED = true;
+// Re-enabled 2026-08-29 after the resilience layer (pause switch + backoff
+// + alerts + pacing) landed. Superseded in practice by the Redis pause
+// switch — this flag stays as a break-glass local override.
+const SPOTIFY_WRITES_DISABLED = false;
 /* /api/new/spotify.js
    Lean Spotify proxy for the new pipeline. Actions:
      - get_playlist_tracks: read tracks from public playlists (Client Credentials via Michael's app)
@@ -23,6 +27,22 @@ const SPOTIFY_WRITES_DISABLED = true;
      - Client Credentials: SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET (Michael's app — grandfathered)
      - User token:         RUBIN_REFRESH_TOKEN + RUBIN_SPOTIFY_CLIENT_ID + RUBIN_SPOTIFY_CLIENT_SECRET
                            (seed RUBIN_REFRESH_TOKEN once via /api/new/rubin-oauth-callback)
+
+   Resilience layer (added 2026-08-29 post-Aug-22-incident):
+     1. Every upstream Spotify fetch has an AbortController 15s timeout —
+        prevents a single hung call (Aug 7 style) from eating the 30s
+        function budget.
+     2. Every 4xx/5xx from Spotify is logged with the response body + parsed
+        `error.reason` field. This was the missing visibility that let the
+        Aug 22 QUOTA_EXCEEDED escalate silently.
+     3. Redis-backed global pause switch. On any 429 with Retry-After ≥ 30s,
+        OR any 403 with reason=QUOTA_EXCEEDED, the key `spotify:pause_until`
+        is set to the pause deadline (epoch ms). Every subsequent user-token
+        call short-circuits with a synthetic 503 until the key expires. Fires
+        one alert email per pause event.
+     4. Daily write counter. Every successful user-token write increments
+        `spotify:writes:YYYY-MM-DD` (Asia/Jerusalem). Alerts once at 500
+        (soft warning) and once at 800 (hard warning).
 */
 
 let ccToken  = null;
@@ -33,6 +53,140 @@ let userExpiry  = 0;
 let userRefresh = null;
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+const UPSTREAM_TIMEOUT_MS = 15000;
+const PAUSE_KEY           = 'spotify:pause_until';
+const PAUSE_TRIGGER_SEC   = 30;   // Retry-After ≥ this triggers the global pause
+const QUOTA_EXCEEDED_TTL  = 6 * 60 * 60; // 6h pause for 403 QUOTA_EXCEEDED (Retry-After is often huge/absent)
+const WRITE_SOFT_ALERT    = 500;
+const WRITE_HARD_ALERT    = 800;
+
+// -------- Redis helpers (Upstash REST pipeline) --------
+
+function redisEnv() {
+  return {
+    url:   process.env.UPSTASH_REDIS_REST_KV_REST_API_URL,
+    token: process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN,
+  };
+}
+
+async function redisPipeline(commands) {
+  const { url, token } = redisEnv();
+  if (!url || !token) return null;
+  try {
+    const r = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(commands),
+    });
+    if (!r.ok) return null;
+    return await r.json().catch(() => null);
+  } catch { return null; }
+}
+
+// -------- Pause switch --------
+
+// Returns { until } if currently paused, or null.
+async function checkPause() {
+  const res = await redisPipeline([['GET', PAUSE_KEY]]);
+  const raw = Array.isArray(res) ? res[0]?.result : null;
+  if (!raw) return null;
+  const until = parseInt(raw, 10);
+  if (!until || until <= Date.now()) return null;
+  return { until };
+}
+
+// Set the pause deadline, but only if it extends any existing pause.
+// Fires an alert email on first-set (or extension).
+async function setPause(untilMs, reason) {
+  const remainingSec = Math.max(1, Math.ceil((untilMs - Date.now()) / 1000));
+  // Small race here (read → compare → write) but at our scale a rare few-second
+  // overlap is fine. The point is not to accidentally shorten a long QUOTA
+  // pause with a subsequent short-Retry-After 429 arriving milliseconds later.
+  const current = await checkPause();
+  if (current && current.until >= untilMs) {
+    console.warn(`[spotify] pause already set until ${new Date(current.until).toISOString()} (>= new ${new Date(untilMs).toISOString()}), not overwriting`);
+    return { extended: false, until: current.until };
+  }
+  // TTL includes a small buffer so the key doesn't expire microseconds
+  // before the deadline check thinks it should.
+  const res = await redisPipeline([['SET', PAUSE_KEY, String(untilMs), 'EX', String(remainingSec + 60)]]);
+  const ok = Array.isArray(res) && res[0]?.result === 'OK';
+  if (!ok) {
+    console.warn(`[spotify] pause SET failed (redis unavailable?) — proceeding without global pause`);
+    return { extended: false, until: 0 };
+  }
+  console.warn(`[spotify] pause ENGAGED until ${new Date(untilMs).toISOString()} (${remainingSec}s) — reason: ${reason}`);
+  // Await the alert send. Vercel freezes the function process after res.end(),
+  // and fire-and-forget promises get cut off mid-fetch — confirmed empirically
+  // on 2026-08-29 when cron cluster alerts never delivered despite the code
+  // running. Cost here is ~300ms added to the FIRST 429/403 response that
+  // trips the pause; every subsequent paused call short-circuits fast on the
+  // Redis check without touching Spotify or Resend.
+  await sendAlert({
+    subject: '[sonic-brand] Spotify pause switch engaged',
+    text: [
+      `Rubin's Spotify writes are now paused globally.`,
+      ``,
+      `Reason:  ${reason}`,
+      `Until:   ${new Date(untilMs).toISOString()} (${remainingSec}s from now)`,
+      ``,
+      `While paused, every write action returns HTTP 503 with error='spotify_paused'.`,
+      `Reads via Michael's CC token are unaffected.`,
+      ``,
+      `The key auto-expires. No manual action required unless the cause looks structural.`,
+    ].join('\n'),
+  }).catch((e) => {
+    console.warn('[spotify] pause alert send threw:', e?.message);
+  });
+  return { extended: true, until: untilMs };
+}
+
+// -------- Daily write counter --------
+
+// yyyy-mm-dd in Asia/Jerusalem — matches the way daily-gen thinks about "today"
+// so the counter turnover lines up with meaningful business day boundaries.
+function todayIL() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jerusalem',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const get = (t) => parts.find((p) => p.type === t)?.value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
+async function incrDailyWrites() {
+  const key = `spotify:writes:${todayIL()}`;
+  // INCR + EXPIRE-NX-with-2-day-TTL so today's key auto-cleans tomorrow.
+  const res = await redisPipeline([
+    ['INCR', key],
+    ['EXPIRE', key, String(60 * 60 * 48), 'NX'],
+  ]);
+  const count = Array.isArray(res) ? res[0]?.result : null;
+  if (typeof count !== 'number') return;
+  // Alert only on the exact transition — prevents storming if the counter
+  // races past the threshold under concurrent load.
+  // Await these too: same Vercel-freezes-fire-and-forget reason as setPause.
+  // Only the write call that crosses the threshold pays the alert latency;
+  // every other successful write only pays the INCR + EXPIRE cost.
+  if (count === WRITE_SOFT_ALERT) {
+    await sendAlert({
+      subject: `[sonic-brand] Spotify writes: ${count} today (soft threshold)`,
+      text: `Today's Spotify write count crossed ${WRITE_SOFT_ALERT}.\nKey: ${key}\nHard alert at ${WRITE_HARD_ALERT}.`,
+    }).catch((e) => {
+      console.warn('[spotify] soft-threshold alert send threw:', e?.message);
+    });
+  } else if (count === WRITE_HARD_ALERT) {
+    await sendAlert({
+      subject: `[sonic-brand] Spotify writes: ${count} today (HARD threshold)`,
+      text: `Today's Spotify write count crossed ${WRITE_HARD_ALERT}. Getting close to the observed rate-limit ceiling. Consider pausing background jobs.\nKey: ${key}`,
+    }).catch((e) => {
+      console.warn('[spotify] hard-threshold alert send threw:', e?.message);
+    });
+  }
+}
+
+// -------- Token acquisition --------
 
 async function getCCToken() {
   if (ccToken && Date.now() < ccExpiry) return ccToken;
@@ -105,34 +259,140 @@ async function getUserToken() {
   return refreshUserToken();
 }
 
+// -------- Synthetic response objects --------
+// spotifyCall's callers use { status, json(), headers.get() }. When we can't
+// reach Spotify (paused / timeout), we return an object that satisfies that
+// interface so no downstream branching is needed.
+
+function synthResp(status, bodyObj) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    headers: { get: () => null },
+    json: async () => bodyObj,
+    text: async () => JSON.stringify(bodyObj),
+  };
+}
+
+// -------- The upstream call --------
+
 async function spotifyCall(url, init, tokenKind) {
+  // Global pause applies to user-token calls only. CC calls hit Michael's
+  // app which is on a different quota bucket and hasn't been the source
+  // of any block we've seen.
+  if (tokenKind === 'user') {
+    const pause = await checkPause();
+    if (pause) {
+      const remainingMs = Math.max(0, pause.until - Date.now());
+      return synthResp(503, {
+        error:          'spotify_paused',
+        pausedUntil:    pause.until,
+        remainingMs,
+        hint:           'a prior 429/403 tripped the global pause switch — retry after remainingMs',
+      });
+    }
+  }
+
   const getToken = async () => (tokenKind === 'user' ? getUserToken() : getCCToken());
-  const doFetch = (t) => fetch(url, {
-    ...(init || {}),
-    headers: { ...((init && init.headers) || {}), 'Authorization': `Bearer ${t}` },
-  });
+
+  const doFetch = async (t) => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), UPSTREAM_TIMEOUT_MS);
+    let r;
+    try {
+      r = await fetch(url, {
+        ...(init || {}),
+        headers: { ...((init && init.headers) || {}), 'Authorization': `Bearer ${t}` },
+        signal: ctl.signal,
+      });
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        console.warn(`[spotify] ${tokenKind} ${init?.method || 'GET'} ${url} — TIMEOUT after ${UPSTREAM_TIMEOUT_MS}ms`);
+        return synthResp(504, { error: 'spotify_upstream_timeout', hint: `no response from Spotify within ${UPSTREAM_TIMEOUT_MS}ms` });
+      }
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    // Log body + reason on ANY 4xx/5xx from Spotify. This is the visibility
+    // we didn't have on Aug 22 — every failed call now leaves a breadcrumb.
+    // Body is consumed once and cached on the returned object so the handler
+    // (which does its own r.json()) doesn't stall on an empty stream.
+    let bodyText = '';
+    let bodyJson = null;
+    try {
+      bodyText = await r.text();
+      try { bodyJson = JSON.parse(bodyText); } catch {}
+    } catch { /* body already consumed — extremely rare */ }
+
+    if (r.status >= 400) {
+      const reason = bodyJson?.error?.reason || null;
+      console.warn(`[spotify] ${tokenKind} ${init?.method || 'GET'} ${url} → ${r.status}${reason ? ` reason=${reason}` : ''}: ${bodyText.slice(0, 500)}`);
+    }
+
+    // Wrap into the same synthetic shape as the paused/timeout paths so callers
+    // see a consistent interface. Preserve Spotify's real headers for
+    // Retry-After access below.
+    return {
+      status: r.status,
+      ok:     r.ok,
+      headers: r.headers,
+      json:   async () => bodyJson ?? {},
+      text:   async () => bodyText,
+      _bodyJson: bodyJson,
+    };
+  };
 
   let token = await getToken();
   let r = await doFetch(token);
 
-  if (r.status === 429) {
-    // Cap the sleep at 5s (down from 30s) — this function's Vercel
-    // maxDuration is 30s, so honoring a large Retry-After header meant a
-    // single 429 could eat the entire execution budget and produce a 504
-    // (see 2026-08-22 cron alert). 5s is enough to let a normal short
-    // rate-limit window clear while leaving budget for the retry + the
-    // rest of the request. If the retry ALSO 429s the caller (with its
-    // own outer retry loop) will get a real 429 response fast and back off.
-    const retryAfter = parseInt(r.headers.get('retry-after') || '1', 10);
-    await sleep(Math.min(retryAfter, 5) * 1000);
-    r = await doFetch(token);
-  }
-
+  // 401 = token expired mid-flight. Refresh + retry once. Never counts against
+  // the pause switch (this is a benign token-lifecycle case).
   if (r.status === 401) {
     if (tokenKind === 'user') { userToken = null; userExpiry = 0; }
     else                      { ccToken   = null; ccExpiry   = 0; }
     token = await getToken();
     r = await doFetch(token);
+  }
+
+  // 429 → maybe set the global pause. Only Retry-After ≥ 30s trips the switch
+  // — shorter windows are normal Spotify per-second smoothing and callers can
+  // handle those with their own retry logic. Note we no longer do an internal
+  // retry-on-429 here (that's what fired the escalation storm on Aug 22 —
+  // ~500 additional failed calls after the first block). The response goes
+  // straight back to the caller.
+  if (tokenKind === 'user' && r.status === 429) {
+    const retryAfter = parseInt(r.headers?.get?.('retry-after') || '0', 10);
+    if (retryAfter >= PAUSE_TRIGGER_SEC) {
+      const untilMs = Date.now() + retryAfter * 1000;
+      await setPause(untilMs, `429 Retry-After=${retryAfter}s on ${init?.method || 'GET'} ${url}`);
+    }
+  }
+
+  // 403 with reason=QUOTA_EXCEEDED → set a long pause. Spotify introduced this
+  // reason field in July 2026's rate-limit rework; its Retry-After header is
+  // often unhelpfully large (hours) or missing entirely. Use a fixed 6h pause
+  // as an educated guess; the alert email tells us to check whether Spotify's
+  // dashboard has anything more specific.
+  if (tokenKind === 'user' && r.status === 403) {
+    const reason = r._bodyJson?.error?.reason || null;
+    if (reason === 'QUOTA_EXCEEDED') {
+      const untilMs = Date.now() + QUOTA_EXCEEDED_TTL * 1000;
+      await setPause(untilMs, `403 QUOTA_EXCEEDED on ${init?.method || 'GET'} ${url}`);
+    }
+  }
+
+  // Successful writes on Rubin's account bump the daily counter. Reads and
+  // failures don't count — we care about quota consumption, not attempts.
+  // Awaited so that when the counter crosses a threshold, the alert email
+  // inside incrDailyWrites actually leaves the box before res.end() lets
+  // Vercel freeze the function. Cost on non-threshold writes is ~50ms
+  // (one Redis pipeline roundtrip).
+  if (tokenKind === 'user' && r.ok) {
+    await incrDailyWrites().catch((e) => {
+      console.warn('[spotify] daily write counter update threw:', e?.message);
+    });
   }
 
   return r;

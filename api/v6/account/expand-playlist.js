@@ -254,8 +254,18 @@ export default async function handler(req, res) {
     const origin = selfOrigin(req);
     let running  = current;
     const addedIds = [];
+    // Pace add_tracks chunks 500ms apart so a full expansion doesn't burst
+    // 3-5 add_tracks calls in <1s. Added 2026-08-29 alongside the daily-gen
+    // and onboarding pacing; single expansion cost is negligible (max
+    // ~120 tracks / 50 per chunk × 500ms ≈ 1.5s added) but many concurrent
+    // dashboard expansions would otherwise pile up on Rubin's write budget.
+    // No sleep before the first chunk — start as fast as possible so the
+    // first progress tick lands quickly on the client.
+    const CHUNK_STAGGER_MS = 500;
+    const chunkSleep = (ms) => new Promise((r) => setTimeout(r, ms));
     try {
       for (let i = 0; i < newIds.length; i += SPOTIFY_CHUNK) {
+        if (i > 0) await chunkSleep(CHUNK_STAGGER_MS);
         const chunk = newIds.slice(i, i + SPOTIFY_CHUNK);
         const uris  = chunk.map((id) => `spotify:track:${id}`);
         await addTracksToSpotify(origin, playlistId, uris);

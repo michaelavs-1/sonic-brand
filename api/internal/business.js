@@ -27,8 +27,15 @@
          total_usd, call_count,
          by_label: [{ label, usd, calls }]                 //   sorted by usd desc
        },
-       gemini_calls:      <gemini_call_log[]>              // all rows for this
+       gemini_calls:      <gemini_call_log[]>,             // all rows for this
                                                            //   business, newest first
+       cleanup_backlog:   <created_playlists[]>            // rows expired but
+                                                           //   not yet cleaned
+                                                           //   (attempts >= 1),
+                                                           //   worst-offender first.
+                                                           //   Populated by the
+                                                           //   2026-08-29 backoff
+                                                           //   migration.
      }
 
    All playlist rows carry `track_ids` (array of Spotify track IDs) as
@@ -88,7 +95,8 @@ export default async function handler(req, res) {
 
     // Fetch the owner + all per-business tables in parallel — no ordering
     // dependency between them.
-    const [ownerUser, placeRows, hoursRows, directionRows, playlistRows, changeRows, chatRows, geminiRows] = await Promise.all([
+    const nowIso = new Date().toISOString();
+    const [ownerUser, placeRows, hoursRows, directionRows, playlistRows, changeRows, chatRows, geminiRows, cleanupBacklogRows] = await Promise.all([
       fetchAuthUser(business.owner_id),
       pgrSelect('business_place',      { business_id: `eq.${id}` }, { useService: true }),
       pgrSelect('business_hours',      { business_id: `eq.${id}` }, { useService: true }),
@@ -115,6 +123,24 @@ export default async function handler(req, res) {
       pgrSelect('gemini_call_log', { business_id: `eq.${id}` }, {
         select: 'id,created_at,model,label,input_tokens,output_tokens,thinking_tokens,total_tokens,cost_usd,finish_reason,http_status',
         order: 'created_at.desc',
+        useService: true,
+      }),
+      // Cleanup backlog: any created_playlists row for this business that is
+      // past-expired, not yet deleted, AND has failed cleanup at least once.
+      // Sorted by attempts desc so the worst-offender rows lead. Fresh 0-
+      // attempt rows are excluded because they're just "next cron tick will
+      // pick them up" — surfacing those as backlog would be noise.
+      // Empty array when there's no backlog. Pre-2026-08-29 rows have
+      // attempts=0 by default, so a well-behaved business never populates.
+      pgrSelect('created_playlists', {
+        business_id: `eq.${id}`,
+        deleted_at:  'is.null',
+        expires_at:  `lte.${nowIso}`,
+        attempts:    'gte.1',
+      }, {
+        select: 'spotify_id,name,expires_at,attempts,last_error,next_attempt_at,alerted_at',
+        order: 'attempts.desc',
+        limit: 50,
         useService: true,
       }),
     ]);
@@ -173,6 +199,7 @@ export default async function handler(req, res) {
       chat_transcript:    Array.isArray(chatRows)      ? chatRows      : [],
       gemini_spend:       geminiSpend,
       gemini_calls:       geminiCalls,
+      cleanup_backlog:    Array.isArray(cleanupBacklogRows) ? cleanupBacklogRows : [],
     });
   } catch (err) {
     console.error('[internal:business] failed:', err.message);

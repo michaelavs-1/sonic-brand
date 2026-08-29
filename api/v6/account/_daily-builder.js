@@ -199,9 +199,14 @@ async function spotifyAttempt(origin, action, body) {
   const status = chunkFail ? chunkFail.status : r.status;
   const errBody = chunkFail ? chunkFail.body : d;
   const msg = errBody?.error?.message || errBody?.error || `spotify ${action} ${status}`;
+  // Global pause switch (api/new/spotify.js) returns 503 error='spotify_paused'.
+  // That's NOT retriable — hammering during a pause is exactly what caused
+  // the Aug 22 escalation. Fail fast to the outer catch and surface it.
+  const paused = errBody?.error === 'spotify_paused'
+              || (typeof errBody?.error === 'string' && errBody.error.includes('spotify_paused'));
   return {
     ok: false, status,
-    retriable: status >= 500 || status === 429,
+    retriable: !paused && (status >= 500 || status === 429),
     error: new Error(msg),
   };
 }
@@ -333,16 +338,20 @@ export async function buildOneDailyPlaylist({
 
 // -------- batch: N directions → N INSERTs into business_playlists --------
 
-// Concurrency cap for the direction fan-out below. Each buildOneDailyPlaylist
-// fires ONE Spotify create_playlist on Rubin's user account, and Spotify's
-// per-user rate limit for create_playlist is tight and burst-sensitive —
-// firing 6-8 in parallel reliably tripped 429s that then blew out the
-// Vercel function budget on api/new/spotify.js (see 2026-08-22 alert).
-// Value tuned low enough to stay well under the burst threshold in
-// practice; the cross-business outer loop is already serial, so this cap
-// is the total in-flight ceiling across the whole cron tick.
-const BUILD_CONCURRENCY = 2;
-const BUILD_STAGGER_MS  = 300;
+// Concurrency + pacing for the direction fan-out below. Each
+// buildOneDailyPlaylist fires ONE Spotify create_playlist on Rubin's user
+// account (plus one add_tracks per 50-track chunk).
+//
+// Tuned down to fully serial with a 3s inter-playlist gap on 2026-08-29
+// after the Aug 22 incident post-mortem. Previous CONCURRENCY=2 STAGGER=300
+// still burst-fired hard enough to be a contributor to the 429 → 403
+// escalation. Cost is small: 4 directions × 3s ≈ 12s added per business per
+// tick, well within the 300s cron budget even with 20+ businesses.
+//
+// See also cron/generate-daily.js's inter-business sleep — the two together
+// keep sustained write rate under ~30/min per cron tick.
+const BUILD_CONCURRENCY = 1;
+const BUILD_STAGGER_MS  = 3000;
 
 export async function buildDailyBatch({
   ownerId, businessId, bizName,

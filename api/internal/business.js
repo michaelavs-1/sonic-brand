@@ -36,6 +36,16 @@
                                                            //   Populated by the
                                                            //   2026-08-29 backoff
                                                            //   migration.
+       playlist_opens:    <business_playlist_opens[]>,     // raw click log for
+                                                           //   this business,
+                                                           //   newest first,
+                                                           //   capped at 1000.
+       playlist_opens_summary: {
+         total,                                            // total click count
+         by_playlist: [{ spotify_id, count, last_opened_at }],  // desc by count
+         by_source:   [{ source, count }]                  // 'home-daily' /
+                                                           //   'home-event'
+       }
      }
 
    All playlist rows carry `track_ids` (array of Spotify track IDs) as
@@ -96,7 +106,7 @@ export default async function handler(req, res) {
     // Fetch the owner + all per-business tables in parallel — no ordering
     // dependency between them.
     const nowIso = new Date().toISOString();
-    const [ownerUser, placeRows, hoursRows, directionRows, playlistRows, changeRows, chatRows, geminiRows, cleanupBacklogRows] = await Promise.all([
+    const [ownerUser, placeRows, hoursRows, directionRows, playlistRows, changeRows, chatRows, geminiRows, cleanupBacklogRows, openRows] = await Promise.all([
       fetchAuthUser(business.owner_id),
       pgrSelect('business_place',      { business_id: `eq.${id}` }, { useService: true }),
       pgrSelect('business_hours',      { business_id: `eq.${id}` }, { useService: true }),
@@ -143,6 +153,16 @@ export default async function handler(req, res) {
         limit: 50,
         useService: true,
       }),
+      // Playlist-open clicks. Full log for this business, newest first,
+      // capped at 1000 (well above pilot-scale volume). Client-side, join
+      // on spotify_id against `playlists` to attribute each click to a
+      // direction/label/genres.
+      pgrSelect('business_playlist_opens', { business_id: `eq.${id}` }, {
+        select: 'id,spotify_id,source,opened_at',
+        order:  'opened_at.desc',
+        limit:  1000,
+        useService: true,
+      }),
     ]);
 
     // Roll up this business's Gemini spend from its log rows. Same idea
@@ -167,6 +187,32 @@ export default async function handler(req, res) {
       by_label: [...geminiByLabel.values()]
         .sort((a, b) => b.usd - a.usd)
         .map((l) => ({ label: l.label, usd: Number(l.usd.toFixed(6)), calls: l.calls })),
+    };
+
+    // Playlist-open rollup: per-playlist click counts and per-source
+    // (home-daily / home-event) totals. Dashboard uses this to show
+    // "opened N times" on each playlist card without having to sum on
+    // the client, and the per-source breakdown separates daily-playlist
+    // engagement from event-playlist engagement.
+    const playlistOpens = Array.isArray(openRows) ? openRows : [];
+    const opensByPlaylist = new Map();
+    const opensBySource   = new Map();
+    for (const o of playlistOpens) {
+      if (o.spotify_id) {
+        const b = opensByPlaylist.get(o.spotify_id) || { spotify_id: o.spotify_id, count: 0, last_opened_at: null };
+        b.count += 1;
+        if (!b.last_opened_at || o.opened_at > b.last_opened_at) b.last_opened_at = o.opened_at;
+        opensByPlaylist.set(o.spotify_id, b);
+      }
+      const src = o.source || '(unspecified)';
+      const s = opensBySource.get(src) || { source: src, count: 0 };
+      s.count += 1;
+      opensBySource.set(src, s);
+    }
+    const openSummary = {
+      total: playlistOpens.length,
+      by_playlist: [...opensByPlaylist.values()].sort((a, b) => b.count - a.count),
+      by_source:   [...opensBySource.values()].sort((a, b) => b.count - a.count),
     };
 
     const sonic = ownerUser?.user_metadata?.sonic || {};
@@ -200,6 +246,8 @@ export default async function handler(req, res) {
       gemini_spend:       geminiSpend,
       gemini_calls:       geminiCalls,
       cleanup_backlog:    Array.isArray(cleanupBacklogRows) ? cleanupBacklogRows : [],
+      playlist_opens:     playlistOpens,
+      playlist_opens_summary: openSummary,
     });
   } catch (err) {
     console.error('[internal:business] failed:', err.message);

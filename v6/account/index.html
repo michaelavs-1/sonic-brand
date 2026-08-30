@@ -217,6 +217,25 @@
       color: var(--text)
     }
 
+    /* Escape-hatch link under the "send me a link" button for users who
+       don't have an account yet. Centered under the button, muted with an
+       accent hover. Takes them to /v6?start=1 which jumps straight into
+       onboarding step 1 (bypassing the intro card's "do you have an
+       account?" question they've already implicitly answered). */
+    .no-account-link {
+      display: block;
+      text-align: center;
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: color .15s;
+    }
+    .no-account-link:hover {
+      color: var(--accent);
+    }
+
     .btn-small {
       width: auto;
       padding: 9px 15px;
@@ -2620,6 +2639,7 @@
           <span class="sb-spinner hide" id="sendSpinner"
             style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
         </button>
+        <a href="/v6?start=1" class="no-account-link">אין לי חשבון עדיין</a>
       </form>
       <div id="resendRow" class="hide" style="text-align:center">
         <p style="margin:0 0 14px;font-size:15px">שלחנו קישור כניסה ל־<span id="sentToEmail" dir="ltr"

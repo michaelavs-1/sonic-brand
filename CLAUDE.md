@@ -129,9 +129,12 @@ STEP 5: Preview swipe deck (v6/preview.js runDirectionPreviewFlow)
     as swipe-up's implicit "liked").
         ↓
 STEP 6: Playlist build (v6/generation/playlist-builder.js buildDirectionPlaylists)
-  - TARGET_TRACKS = 10 per playlist, one per picked direction, built with
-    BUILD_CONCURRENCY=3 (worker pool, was Promise.all — capped after
-    Spotify 429s during the pilot-hardening pass).
+  - TARGET_TRACKS = 10 per playlist, one per picked direction. Serial
+    with a 2s inter-playlist stagger (was `Promise.all`, then
+    CONCURRENCY=3 worker pool, dropped to serial+2s stagger on 2026-08-29
+    as part of the Spotify resilience layer — the onboarding path can
+    burst-fire 4-8 playlists per user and contributed to the Aug 22
+    rate-limit escalation).
   - Each playlist:
     - POST /api/v5/direction-tracks → 10 track IDs (instrumentalness_pref
       forwarded so the pool honors the emphasis-derived filter/bias)
@@ -144,9 +147,13 @@ STEP 6: Playlist build (v6/generation/playlist-builder.js buildDirectionPlaylist
     without that check a partial chunk failure would silently look like
     success. Non-retriable statuses (4xx bad request, auth failure)
     throw immediately so the outer catch in buildDirectionPlaylists
-    marks the playlist as skipped rather than fabricating success. Only
+    marks the playlist as skipped rather than fabricating success.
+    Also since 2026-08-29: the retry classifier explicitly recognises
+    the `spotify_paused` error and refuses to retry it — hammering
+    during a global pause is what caused the Aug 22 escalation. Only
     the onboarding path uses this — the daily-gen cron uses
-    api/v6/account/_daily-builder.js which has its own concurrency cap.
+    api/v6/account/_daily-builder.js which has the same paused-marker
+    check.
   - Result carries expansion:{direction, popularityWindow} so the dashboard
     can grow it later.
         ↓
@@ -363,8 +370,11 @@ sonic-brand/
 ├── v3/, v2/                                ← Historical
 ├── michael-v4-snapshot/                    ← Gitignored. Snapshot of Michael's v4 fork. UI reference for v6.
 ├── api/
-│   ├── _alert.js                           ← Fire-and-forget Resend REST helper. Reads SUPABASE_AUTH.
-│   │                                          Used by spotify.js (pause/QUOTA alerts) + cron/expire (cluster / chronic alerts).
+│   ├── _alert.js                           ← Resend REST helper. Reads SUPABASE_AUTH. Callers MUST await it
+│   │                                          before res.end() — see "Alerts via Resend" mechanism.
+│   ├── alert-probe.js                      ← Diagnostic endpoint (CRON_SECRET-gated). GET reports whether
+│   │                                          SUPABASE_AUTH is visible in the running function process;
+│   │                                          POST does a live Resend send via the shared sendAlert helper.
 │   ├── v6/
 │   │   ├── origin-guard.js                 ← requireSite / requireSiteOrInternal helpers
 │   │   ├── ratelimit.js                    ← Upstash-Redis fixed-window guard (see mechanism section)
@@ -425,8 +435,10 @@ sonic-brand/
 │    v2/v3 frontends. To re-enable one: `git checkout <old-commit> -- api/<file>.js`
 │    then un-ignore it in .gitignore.)
 ├── docs/
-│   └── admin-api-for-michael.md            ← Instructions Michael feeds his own Claude to build his admin dashboard.
-│                                             Kept in sync with /api/internal/* endpoint shape.
+│   ├── admin-api-for-michael.md            ← Instructions Michael feeds his own Claude to build his admin dashboard.
+│   │                                          Kept in sync with /api/internal/* endpoint shape.
+│   └── playlist-opens-delta.md             ← Focused delta doc for the 2026-08-30 addition of business_playlist_opens
+│                                             tracking + the new fields on /api/internal/business.
 ├── internal-dashboard/                     ← Gitignored. Local placeholder dashboard for eyeballing
 │                                             /api/internal/* responses against `vercel dev`.
 │                                             Michael's real dashboard lives in his own repo.
@@ -435,9 +447,22 @@ sonic-brand/
 │   ├── purge-rubin-playlists.mjs           ← Unfollow all Rubin playlists (source: created_playlists ledger)
 │   ├── purge-users.mjs, purge-users-except.mjs ← Tear down test users end-to-end
 │   ├── migrate-directions-to-table.mjs     ← Backfill business_directions from historical business_playlists.expansion
+│   ├── migrate-user-metadata-to-tables.mjs ← Backfill per-business tables from legacy user_metadata blobs
 │   ├── test-super-liked-tracks.mjs         ← Integration test for the super-like DB path
 │   ├── test-instrumentalness-preference.mjs ← Integration test for the 3-state inst_pref RPC behavior
 │   ├── test-cron-daily-guards.mjs          ← Integration test for the past-close + anyBuiltToday guards
+│   ├── test-rubin-spotify.mjs              ← Live probe: refresh Rubin token + create + unfollow a throwaway playlist
+│   ├── test-michael-spotify.mjs            ← Live probe: Michael's CC token still has grandfathered read access
+│   ├── test-anchor-removal.mjs             ← Regression: v5_anchor_tracks behavior after the anchor concept was dropped
+│   ├── test-gemini.mjs                     ← Sanity ping against /api/v6/gemini
+│   ├── test-resilience-layer.mjs           ← Unit-level tests for Aug 29 resilience layer (Redis pause + backoff + counter + Resend, opt-in --send-alert)
+│   ├── test-resilience-http.mjs            ← HTTP tests against vercel dev: pause switch 503, 4xx body log, cron endpoints alive
+│   ├── test-cluster-failure-alert.mjs      ← Forces 3 expire failures to exercise the cluster alert email end-to-end
+│   ├── check-duplicate-users.mjs           ← Reports exact-email dupes (should be 0) + Gmail alias collisions
+│   ├── check-prompt-genres.mjs             ← Diffs the EDITABLE_PROMPT_SECTION genre list against the canonical genre-list.js
+│   ├── post-deploy-health.mjs              ← Post-deploy sanity: cleanup ledger + daily-gen output + Redis state
+│   ├── cleanup-orphaned-playlists.mjs      ← One-off (2026-08-27): direct-Spotify cleanup for the Aug-22 141-row backlog
+│   ├── build-today-oneoff.mjs              ← One-off (2026-08-27): manually build today's daily playlists during the kill-switch window
 │   ├── mirror-vercel-deployment.mjs        ← Pull deployment source via Vercel API
 │   └── mirror-live-site.mjs                ← Pull deployed static assets via HTTP
 ├── benchmark-results/                      ← JSON outputs from benchmark script
@@ -445,7 +470,9 @@ sonic-brand/
 ├── tests/                                  ← Legacy test scripts (mostly v3/v4 era)
 ├── .env.local                              ← Gitignored. Has ANTHROPIC_KEY, GEMINI_API_KEY, RUBIN_*, SUPABASE_*,
 │                                              UPSTASH_REDIS_REST_KV_REST_API_URL/TOKEN, INTERNAL_API_KEY,
-│                                              INTERNAL_ADMIN_API_KEY, CRON_SECRET, TRACK_ANALYSIS_*
+│                                              INTERNAL_ADMIN_API_KEY, CRON_SECRET, TRACK_ANALYSIS_*,
+│                                              SUPABASE_AUTH (Resend key — see "Alerts via Resend"),
+│                                              ALERT_EMAIL_FROM / ALERT_EMAIL_TO (optional overrides)
 ├── vercel.json                             ← Function timeouts, cron schedule (two: expire + generate-daily),
 │                                              rewrites (incl. `/` → `/v6/index.html`), security headers
 └── CLAUDE.md                               ← This file
@@ -732,10 +759,23 @@ on a separate quota bucket and hasn't been the source of any block).
 
 ### Alerts via Resend (`api/_alert.js`)
 
-Fire-and-forget email helper for operational alerts. Delivered via
-Resend's REST API. Fail-open — a missing key or Resend outage logs one
-warning and returns `{ok:false}` without throwing, so a broken alert
-never takes down the caller.
+Email helper for operational alerts. Delivered via Resend's REST API.
+Fail-open — a missing key or Resend outage logs one warning and returns
+`{ok:false}` without throwing, so a broken alert never takes down the
+caller.
+
+**MUST-AWAIT rule (2026-08-29 lesson):** Vercel serverless freezes the
+function process the moment `res.end()` is called. A fire-and-forget
+`sendAlert(...).catch(() => {})` never gets to complete the fetch to
+Resend — the request is cut mid-flight. Every caller MUST await the
+send before returning:
+- In per-request handlers (setPause, incrDailyWrites) → `await sendAlert(...)`.
+- In loops that may fire many alerts (cron expire) → push each promise
+  into `alertPromises[]` and `await Promise.allSettled(alertPromises)`
+  before `res.status(200).json(...)`.
+
+This was the actual root cause of the "cluster alert never arrived" bug
+we chased for a day. If you add a new alert trigger, follow the pattern.
 
 **Env**:
 - `SUPABASE_AUTH` — Resend API key. Named `SUPABASE_AUTH` because it was
@@ -750,6 +790,15 @@ never takes down the caller.
 - Cron expire: single row hitting `attempts >= 5` (chronic alert, once
   per row lifetime via `alerted_at` guard)
 - Daily Spotify write count crossing 500 (soft) or 800 (hard)
+
+**Debugging the alert pipe** — `/api/alert-probe` (CRON_SECRET-gated).
+`GET` reports `{ env_present, from, to }` — tells you whether
+`SUPABASE_AUTH` is visible inside the running function process (Vercel
+env vs `.env.local` gotcha: `vercel dev` reads from Vercel cloud env,
+so a var only in `.env.local` will show `env_present: false` and every
+alert will silently fail-open). `POST` does a real send through the
+shared `sendAlert` helper and returns `{ env_present, sent, reason? }`.
+Use this after any env-var change before trusting cron alerts to arrive.
 
 ### Instrumentalness preference (`instrumentalness_preference`)
 
@@ -887,6 +936,7 @@ Everything the account dashboard reads lives here:
 **Per-business production data (owned by v6 signup + dashboard):**
 - `businesses` — { id, owner_id, name, monthly_credits, credits_remaining, business_description, musical_emphases, onboarding_expanded }. Written by signup. `business_description` + `musical_emphases` are the free-text prompt inputs the owner typed during onboarding (bizDesc + step-3 emphases); added 2026-08-23 for the internal admin API. PATCH path in signup.js skips blank values so repeat-onboarding with an empty field doesn't clobber a previously-recorded prompt.
 - `business_directions` — permanent per-business direction storage. Columns: { id, business_id, rank, title_en, description_he, genres (jsonb), bpm_range (jsonb), popularity_window (jsonb), **instrumentalness_preference** (`'none'|'soft'|'hard'`, added 2026-08-21), active (bool, soft-disable), created_at, updated_at }. Added 2026-08-20 migration — replaced the fragile "reconstruct directions from recent playlist_playlists.expansion" approach that cascaded to zero when the cron partially failed. Now the source of truth for daily-gen; `activeDirections(bizId)` in `_daily-builder.js` reads from here.
+  - **8-active cap enforced by DB trigger** (`business_directions_cap`, added 2026-08-29). BEFORE INSERT OR UPDATE, per-business advisory-lock + count-active, raises `check_violation` if the write would push active count > 8. Closes the TOCTOU race in apply-direction-change's app-level check and rejects crafted signup payloads. Signup.js still trims client-side to the first 8 so a legitimate 8-pick onboarding never hits the trigger; apply-direction-change still returns its own friendly `cap_reached` code before the trigger fires so end-users see a nice message rather than a raw exception. Trigger is the last-line defense. See `v5/precompute/migrations/2026-08-29-directions-cap-trigger.sql`.
 - `business_playlists` — one row per built Spotify playlist (onboarding sample, expanded daily, cron-generated daily, or event). Columns include { spotify_id, business_id, url, label, ico, track_count, genres, bpm_range, expansion (jsonb, legacy), event_id (nullable back-ref), direction_id (nullable FK → business_directions), track_ids (jsonb, ordered), expanded_at, expires_at, created_at }. Nothing deletes rows — `expires_at` gates dashboard visibility only.
 - `business_hours` — one row per business: { business_id, hours (jsonb — 0..6 day map with `{open,close,closed}`), longest_minutes, updated_at }. Upsert on business_id.
 - `business_place` — one row per business (Google Places snapshot): { business_id, place_id, name, address, primary_type, types, editorial_summary, price_level, website_uri, vibe (jsonb), updated_at }. Upsert on business_id.
@@ -1013,7 +1063,7 @@ expiry.
 Read-only endpoints under `api/internal/*` for Michael's forthcoming admin dashboard (his own repo, host TBD — not in this repo). Auth: single shared bearer token in `INTERNAL_ADMIN_API_KEY` env var, presented as `Authorization: Bearer <key>` or `x-internal-admin-key: <key>`. CORS is `*` because the bearer token IS the security boundary (no cookies, so cross-origin attacks can't attach it). Fail-CLOSED on missing env — misconfig 500s loudly, same philosophy as `requireSiteOrInternal`.
 
 - `GET /api/internal/users` → `{ count, businesses: [ { business_id, name, owner_id, owner_email, created_at, has_prompt } ] }`. `has_prompt` is true iff `business_description` or `musical_emphases` is non-null (rows signed up after the 2026-08-23 migration).
-- `GET /api/internal/business?id=<uuid>` → full detail: `{ business, onboarding: { business_description, musical_emphases, atmospheres }, place, hours, directions[], playlists[], direction_changes[], chat_transcript[], gemini_spend: { total_usd, call_count, by_label[] }, gemini_calls[] }`. `playlists[].track_ids` is the ordered Spotify-ID array as of build time (null for pre-2026-08-20 rows). `direction_changes[]` and `chat_transcript[]` are the profile-tab direction-edit chat's audit + full message log (empty for owners who haven't used the chat yet). `gemini_spend` + `gemini_calls[]` are this business's Gemini API cost rollup + every logged call (both onboarding calls backfilled at signup and post-signup chat calls) — both zero/empty for businesses that signed up before 2026-08-25 when call logging started.
+- `GET /api/internal/business?id=<uuid>` → full detail: `{ business, onboarding: { business_description, musical_emphases, atmospheres }, place, hours, directions[], playlists[], direction_changes[], chat_transcript[], gemini_spend: { total_usd, call_count, by_label[] }, gemini_calls[], cleanup_backlog[], playlist_opens[], playlist_opens_summary: { total, by_playlist[], by_source[] } }`. `playlists[].track_ids` is the ordered Spotify-ID array as of build time (null for pre-2026-08-20 rows). `direction_changes[]` and `chat_transcript[]` are the profile-tab direction-edit chat's audit + full message log (empty for owners who haven't used the chat yet). `gemini_spend` + `gemini_calls[]` are this business's Gemini API cost rollup + every logged call (both onboarding calls backfilled at signup and post-signup chat calls) — both zero/empty for businesses that signed up before 2026-08-25 when call logging started. `cleanup_backlog[]` (added 2026-08-29) is any `created_playlists` row for this business that is past-expired, not yet deleted, AND has failed at least once (attempts >= 1) — worst-offender first; empty for healthy businesses. `playlist_opens[]` + `playlist_opens_summary` (added 2026-08-30) are the dashboard "▶ פתח" click log for this business (raw log capped at 1000, plus rolled-up counts by playlist and by source).
 - `GET /api/internal/gemini-spend` → site-wide Gemini API cost totals: `{ totals: { all_time_usd, all_time_calls, attributed_usd, attributed_calls, abandoned_usd, abandoned_calls }, by_day[], by_label[], recent[] }`. `abandoned_*` = rows with `onboarding_session_id` set but no `business_id` (user started onboarding, Gemini spent money, they never signed up). Aggregations done in server memory over up to 10k rows — move to a Postgres RPC if the log ever grows past that.
 
 Notes on the data shape:
@@ -1064,9 +1114,9 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 `vercel.json` configures:
 - Function `maxDuration` per endpoint (30s default; 60s for anthropic + gemini + transcribe + event-playlist + expand-playlist + generate-daily; 300s for the cron entrypoints)
-- **Cron schedule (two crons, both hourly at :00)**:
-  - `/api/cron/expire-playlists` — sweeps expired ledger rows (rename + empty + unfollow on Rubin)
-  - `/api/cron/generate-daily` — per-business daily playlist builder (see the Daily-gen cron mechanism above for the full skip-reason list)
+- **Cron schedule (two hourly crons, deliberately staggered)**:
+  - `/api/cron/generate-daily` at `0 * * * *` — per-business daily playlist builder (see the Daily-gen cron mechanism above for the full skip-reason list)
+  - `/api/cron/expire-playlists` at `30 * * * *` — sweeps expired ledger rows (rename + empty + unfollow on Rubin). Moved off `:00` on 2026-08-29 as part of the resilience layer so it can't overlap top-of-hour daily-gen writes.
   - `/api/v4/ami-cron-tick` was **removed** from the cron schedule on 2026-08-13. Endpoint file still exists so it can be revived, but nothing schedules it now.
 - Cache headers: `no-cache` for `/` + `/index.html` + all `/vX/*` paths
 - Security headers (global): `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(), microphone=(self), camera=()` — added during the 2026-08-22 security audit
@@ -1151,6 +1201,8 @@ node scripts/benchmark-directions.mjs --out=benchmark-results/run.json
 5. **v5 tests + v3/v4 legacy scripts** may reference stale endpoints. Prefer building fresh under `scripts/` for new tools.
 6. **Prod deploys are manual** (`vercel --prod`). Easy to forget after code changes.
 7. **Vercel dev + moved files race**: if you move a file, update `vercel.json` in the same edit — otherwise `vercel dev` picks up the mismatch and crashes with "pattern doesn't match any Serverless Functions". Recovery: fix vercel.json and restart.
+8. **Vercel dev's `VERCEL_URL=localhost:3000` quirk**: server-to-server URLs built as `https://${VERCEL_URL}` resolve to `https://localhost:3000` in dev — every fetch fails with a bare "fetch failed". Both cron files use a `resolveSpotifyBase()` helper that scheme-normalises via a `/^(localhost|127\.)/` regex → http, everything else → https. If you add another server-to-server caller that builds a base URL from `VERCEL_URL` / `VERCEL_PROJECT_PRODUCTION_URL`, copy the same helper — do NOT hard-code `https://`.
+9. **Vercel serverless kills fire-and-forget promises after `res.end()`**: this bit us on 2026-08-29 when cron cluster alerts never arrived despite the code running. Any Resend / logging / analytics send that started with `.catch(() => {})` and wasn't awaited was cut mid-flight when the function returned. If you're adding async work in a handler, either await it before responding OR collect the promises and `await Promise.allSettled(alertPromises)` at the end. See "Alerts via Resend" mechanism for the pattern.
 
 ---
 

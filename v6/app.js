@@ -849,12 +849,17 @@ function runIntro() {
   const fp = $('flowProgress');
   if (!splash || !intro || !main) return;
 
-  // ?intro=1 — arrived from an explicit logout on /v6/account. Force the
-  // intro card: skip both the "logged-in? go to dashboard" auto-redirect
-  // (Supabase's token clearing on signOut can race with our navigation, so
-  // relying on hasSupabaseSession() here would risk bouncing the user right
-  // back) and the splash + entrance animation.
-  const skipSplash = new URLSearchParams(location.search).has('intro');
+  // URL params that alter the landing behavior:
+  //   ?intro=1  — post-logout from /v6/account: skip splash + entrance
+  //               animation, show the intro card immediately. Also
+  //               bypasses the session check (Supabase's token clearing
+  //               on signOut can race with our navigation).
+  //   ?start=1  — "אין לי חשבון עדיין" click from the account login page:
+  //               skip splash AND intro card, go straight to step 1.
+  //               Bypasses the session check for the same reason.
+  const params = new URLSearchParams(location.search);
+  const skipSplash = params.has('intro') || params.has('start');
+  const skipIntro = params.has('start');
 
   if (!skipSplash && hasSupabaseSession()) {
     window.location.replace('/v6/account');
@@ -871,6 +876,12 @@ function runIntro() {
     // Start the flow.
     goToStep(1);
   };
+
+  if (skipIntro) {
+    splash.remove();
+    finish();
+    return;
+  }
 
   if (skipSplash) {
     splash.remove();

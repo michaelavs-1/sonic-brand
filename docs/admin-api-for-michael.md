@@ -379,7 +379,36 @@ Structure (all fields listed; a few are noted as nullable):
       "finish_reason":   "STOP",                // "STOP" | "MAX_TOKENS" | etc.
       "http_status":     200
     }
-  ]
+  ],
+
+  "playlist_opens": [
+    // One row per time the owner clicked the "▶ פתח" button on a
+    // playlist card in their account dashboard. Newest first. Empty
+    // for businesses whose owner has never opened a playlist since
+    // the feature launched (2026-08-26).
+    {
+      "id":         12345,                     // bigserial
+      "spotify_id": "37i9dQZF1DX...",          // join back to
+                                                //   `playlists[i].spotify_id`
+                                                //   for label/direction/genres
+      "source":     "home-daily",              // "home-daily" | "home-event"
+                                                //   | future values
+      "opened_at":  "2026-08-27T13:22:44Z"
+    }
+  ],
+
+  "playlist_opens_summary": {
+    // Pre-computed rollups so the UI doesn't have to sum on the client.
+    "total":        7,                          // total clicks logged
+    "by_playlist": [                            // desc by count
+      { "spotify_id": "…", "count": 5, "last_opened_at": "…" },
+      { "spotify_id": "…", "count": 2, "last_opened_at": "…" }
+    ],
+    "by_source": [                              // desc by count
+      { "source": "home-daily", "count": 5 },
+      { "source": "home-event", "count": 2 }
+    ]
+  }
 }
 ```
 
@@ -577,6 +606,11 @@ Sections stacked top to bottom:
 9. **Gemini spend** — this business's total cost + per-label breakdown
    from `gemini_spend`, with a collapsible list of the individual
    calls from `gemini_calls`
+10. **Playlist opens** — engagement signal. Total click count from
+    `playlist_opens_summary.total`, per-source breakdown (daily vs
+    event), a per-playlist ranking (join `by_playlist[].spotify_id`
+    back to `playlists[]` for the label/direction), and the full
+    click log from `playlist_opens`.
 
 **Gemini spend page** (site-wide)
 - Top card: totals (all-time / baseline / since-logging / attributed / abandoned)

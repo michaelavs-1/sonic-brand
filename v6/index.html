@@ -47,6 +47,15 @@
           // in the same <head>, applied before body parse) suppresses the
           // splash + entrance animation and reveals the intro card the moment
           // it's parsed — no waiting on app.js.
+          document.documentElement.classList.add('no-splash', 'show-intro-now');
+          return;
+        }
+        if (params.has('start')) {
+          // "אין לי חשבון עדיין" landing from the account login page: skip
+          // the splash AND keep the intro card hidden; app.js runIntro reads
+          // the same param and jumps straight to step 1. Note we do NOT
+          // add show-intro-now — that class is what would flash the intro
+          // card before runIntro can swap it out for the mainCard.
           document.documentElement.classList.add('no-splash');
           return;
         }
@@ -235,6 +244,32 @@
       to {
         opacity: 1;
       }
+    }
+
+    /* Escape-hatch link in the top-right corner of the mainCard for users
+       who realize (or arrived here directly) that they already have an
+       account. Absolutely positioned so it sits above brand/subtitle. */
+    .have-account-link {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      padding: 6px 8px;
+      border-radius: 8px;
+      transition: color .15s;
+      z-index: 3;
+    }
+    .have-account-link:hover {
+      color: var(--accent);
+    }
+    .have-account-link svg {
+      flex-shrink: 0;
     }
 
     /* ---------- inputs ---------- */
@@ -1265,18 +1300,23 @@
       color: var(--accent);
     }
 
-    /* Post-logout landing (?intro=1): head script adds html.no-splash before
-       body parses. Splash never renders; intro card is shown immediately
-       (overrides the base [hidden]{display:none} rule) with no cardIn fade. */
+    /* Head script adds html.no-splash before body parses to suppress the
+       splash. Used by ?intro=1 (post-logout) and ?start=1 (jump into
+       onboarding from the account login page). */
     html.no-splash .splash {
       display: none !important;
     }
 
-    html.no-splash #introCard[hidden] {
+    /* Additional class added ONLY on ?intro=1: reveals the intro card
+       immediately (overriding [hidden]{display:none}) and kills its
+       entrance animation so it doesn't fade in from empty space. Not
+       set on ?start=1 — that flow wants the intro card to stay hidden
+       so it can never flash before runIntro swaps in the mainCard. */
+    html.show-intro-now #introCard[hidden] {
       display: block !important;
     }
 
-    html.no-splash #introCard {
+    html.show-intro-now #introCard {
       animation: none !important;
     }
 
@@ -1846,12 +1886,7 @@
       flex-direction: column;
       align-items: center;
       gap: 4px;
-      border-radius: 10px;
-      transition: background .15s, transform .1s
-    }
-
-    .sw2-rail-btn:hover {
-      background: rgba(255, 255, 255, .06)
+      transition: transform .1s
     }
 
     .sw2-rail-btn:active {
@@ -2557,6 +2592,12 @@
     </div>
 
     <div class="screen-card" id="mainCard" hidden>
+      <a href="/v6/account" class="have-account-link" aria-label="יש לי חשבון — עברו לאזור האישי">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+        <span>יש לי חשבון</span>
+      </a>
       <div class="brand">
         <div class="brand-logo-orbit">
           <svg class="brand-logo" viewBox="-18 -10 236 246" xmlns="http://www.w3.org/2000/svg" role="img"
@@ -2653,7 +2694,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=25082026e"></script>
+  <script type="module" src="/v6/app.js?v=30082026a"></script>
 </body>
 
 </html>

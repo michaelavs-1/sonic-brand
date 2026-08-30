@@ -279,6 +279,8 @@ async function renderDetail(id) {
   const chatTranscript   = data.chat_transcript    || [];
   const geminiSpend      = data.gemini_spend       || { total_usd: 0, call_count: 0, by_label: [] };
   const geminiCalls      = data.gemini_calls       || [];
+  const opens            = data.playlist_opens     || [];
+  const opensSummary     = data.playlist_opens_summary || { total: 0, by_playlist: [], by_source: [] };
 
   const header = el('div', { class: 'card' },
     el('div', { class: 'card-head' },
@@ -457,6 +459,80 @@ async function renderDetail(id) {
         ),
   );
 
+  // Build a spotify_id → playlist lookup so open rows can display the
+  // playlist's label instead of a bare Spotify ID.
+  const playlistById = new Map(playlists.map((p) => [p.spotify_id, p]));
+
+  const opensCard = el('div', { class: 'card' },
+    el('div', { class: 'card-head' },
+      el('h2', {}, 'Playlist opens'),
+      el('span', { class: 'meta' }, `${opensSummary.total} clicks total`),
+    ),
+    opens.length === 0
+      ? el('div', { class: 'empty' }, 'No playlist-open clicks logged yet.')
+      : el('div', {},
+          // Per-source breakdown
+          opensSummary.by_source.length > 0
+            ? el('table', {},
+                el('thead', {}, el('tr', {},
+                  el('th', {}, 'Source'),
+                  el('th', {}, 'Clicks'),
+                )),
+                el('tbody', {}, ...opensSummary.by_source.map((s) => el('tr', {},
+                  el('td', {}, s.source),
+                  el('td', {}, String(s.count)),
+                ))),
+              )
+            : null,
+          // Per-playlist breakdown (top playlists by open count)
+          el('details', { class: 'tracks', open: true },
+            el('summary', {}, `By playlist (${opensSummary.by_playlist.length})`),
+            el('div', { style: 'padding:0 14px 14px' },
+              el('table', {},
+                el('thead', {}, el('tr', {},
+                  el('th', {}, 'Playlist'),
+                  el('th', {}, 'Clicks'),
+                  el('th', {}, 'Last opened'),
+                )),
+                el('tbody', {}, ...opensSummary.by_playlist.map((b) => {
+                  const p = playlistById.get(b.spotify_id);
+                  return el('tr', {},
+                    el('td', {},
+                      p?.url
+                        ? el('a', { href: p.url, target: '_blank', rel: 'noopener' },
+                            p.label || b.spotify_id)
+                        : (p?.label || b.spotify_id)),
+                    el('td', {}, String(b.count)),
+                    el('td', {}, fmtDate(b.last_opened_at)),
+                  );
+                })),
+              ),
+            ),
+          ),
+          // Raw log
+          el('details', { class: 'tracks' },
+            el('summary', {}, `Individual clicks (${opens.length})`),
+            el('div', { style: 'padding:0 14px 14px' },
+              el('table', {},
+                el('thead', {}, el('tr', {},
+                  el('th', {}, 'When'),
+                  el('th', {}, 'Source'),
+                  el('th', {}, 'Playlist'),
+                )),
+                el('tbody', {}, ...opens.map((o) => {
+                  const p = playlistById.get(o.spotify_id);
+                  return el('tr', {},
+                    el('td', {}, fmtDate(o.opened_at)),
+                    el('td', {}, o.source || '—'),
+                    el('td', {}, p?.label || o.spotify_id),
+                  );
+                })),
+              ),
+            ),
+          ),
+        ),
+  );
+
   app.replaceChildren(
     renderAppbar(true),
     el('main', {},
@@ -471,6 +547,7 @@ async function renderDetail(id) {
       changesCard,
       chatCard,
       geminiCard,
+      opensCard,
     ),
   );
 }

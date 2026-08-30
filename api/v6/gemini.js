@@ -26,7 +26,14 @@ import { pgrInsert } from '../v5/supabase-client.js';
 */
 
 const ALLOWED_MODELS = new Set(['gemini-3.6-flash']);
-const MAX_OUTPUT_TOKENS_CAP = 4096;
+// Gemini 3.6-flash's hard output-token limit is 65536; values above are
+// silently clamped by Google. We match that here — a lower cap would
+// silently truncate legit calls (esp. under thinkingLevel='high' where
+// thinking tokens eat a big share of the budget), which is what caused
+// "sometimes 4 previews instead of 8" and Ami's cut-off JSON symptoms.
+// Per-call spend is still bounded by the model's own cap + the /gemini
+// rate limit above (20/min per IP).
+const MAX_OUTPUT_TOKENS_CAP = 65536;
 
 export default async function handler(req, res) {
   setCors(req, res);

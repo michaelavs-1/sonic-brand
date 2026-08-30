@@ -30,6 +30,33 @@ import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provid
 // affected — you only pay for tokens actually generated.
 const MAX_TOKENS = 65536;
 
+// Lenient wrapper around prod's strict assembleSystemPrompt, scoped to
+// this dashboard only. Ami iterates on the prompt freely — renaming
+// headings, restructuring sections, etc. — and prod's exact-anchor Places
+// injection can't keep up. This function normalizes ONLY the version
+// submitted to Gemini so previews still work; Ami's textarea keeps his
+// original wording.
+//
+// Two normalizations:
+//   1. Strip leftover `{{PLACES_*}}` sentinels. Older prompt versions had
+//      them visible; a lingering copy in Ami's edit would be sent to
+//      Gemini as literal noise.
+//   2. Rename any `### <anything> Processing Rules:` heading and any
+//      `## <anything> Energy & Pairing Constraints` heading to the exact
+//      canonical form the strict assembleSystemPrompt anchors on, so the
+//      two Places blocks get injected at the right positions.
+//
+// When Ami settles on a final prompt, Roni ports it into prod and
+// reconciles heading names manually — prod stays strict on purpose so
+// silent injection failures show up loudly as missing Places context.
+function normalizeForProdAssembly(editable) {
+  return editable
+    .replace(/^\{\{PLACES_INPUT_BLOCK\}\}\n?/gm, '')
+    .replace(/^\{\{PLACES_PROCESSING_RULE\}\}\n?/gm, '')
+    .replace(/^### [^\n]*Processing Rules:$/gm, '### Processing Rules:')
+    .replace(/^## [^\n]*Energy & Pairing Constraints$/gm, '## Energy & Pairing Constraints');
+}
+
 const $ = (id) => document.getElementById(id);
 
 const els = {
@@ -208,9 +235,11 @@ async function onGenerate() {
   setStatus(`שולח ל־${PROVIDER}...`, '');
 
   try {
-    // Substitutes {{PLACES_*}} sentinels in Ami's edited text with the
-    // real Google Places docs, then concatenates FIXED_PROMPT_SECTION.
-    const system      = assembleSystemPrompt(edited.trimEnd());
+    // normalizeForProdAssembly strips leftover Places sentinels and renames
+    // renamed Processing-Rules / Energy heading variants so prod's strict
+    // anchor-based Places injection still fires. Ami's textarea is not
+    // modified; only the version submitted to Gemini is normalized.
+    const system      = assembleSystemPrompt(normalizeForProdAssembly(edited.trimEnd()));
     const userMessage = buildUserMessage({ bizName, bizDesc, atmospheres: atmos, musicalEmphases });
 
     // No caching: Ami's edits change the prompt every call, so Anthropic

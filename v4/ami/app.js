@@ -870,6 +870,177 @@ function escapeHtml(s) {
 function escapeAttr(s) { return escapeHtml(s); }
 function cssEscape(s)  { return String(s).replace(/(["\\])/g, '\\$1'); }
 function formatNumber(n) { return Number(n).toLocaleString('en-US'); }
+
+// -----------------------------------------------------------------------------
+// Playlist cleanup — sibling of "Track cleanup" above. Same UX pattern:
+// input a Spotify playlist ID/URL, see DB state, delete with Undo. Backing
+// endpoints under /api/v4/ami-playlist-{lookup,delete,restore}.js. Reuses
+// the .track-cleanup-* CSS classes since they're generic input+result cards.
+// -----------------------------------------------------------------------------
+
+const playlistLookupInput  = $('playlistLookupInput');
+const playlistLookupBtn    = $('playlistLookupBtn');
+const playlistLookupResult = $('playlistLookupResult');
+
+let currentPlaylist = null;
+let deletedPlaylistForUndo = null;
+
+playlistLookupBtn.addEventListener('click', () => runPlaylistLookup());
+playlistLookupInput.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') runPlaylistLookup();
+});
+
+async function runPlaylistLookup() {
+    const input = playlistLookupInput.value.trim();
+    if (!input) return;
+    deletedPlaylistForUndo = null;
+
+    playlistLookupBtn.disabled = true;
+    playlistLookupBtn.innerHTML = '<span class="btn-spinner"></span>Searching...';
+    try {
+        const r = await fetch('/api/v4/ami-playlist-lookup', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ input }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        currentPlaylist = data;
+        renderPlaylistLookupResult({ mode: 'found', playlist: data });
+    } catch (err) {
+        currentPlaylist = null;
+        renderPlaylistLookupResult({ mode: 'error', message: err.message });
+    } finally {
+        playlistLookupBtn.disabled = false;
+        playlistLookupBtn.textContent = 'Find playlist';
+    }
+}
+
+async function runPlaylistDelete() {
+    if (!currentPlaylist) return;
+    const p = currentPlaylist;
+    const deleteBtn = playlistLookupResult.querySelector('.track-delete-btn');
+    if (deleteBtn) { deleteBtn.disabled = true; deleteBtn.innerText = 'Deleting...'; }
+    try {
+        const r = await fetch('/api/v4/ami-playlist-delete', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ playlistId: p.playlistId }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        deletedPlaylistForUndo = {
+            playlistId:            data.playlistId,
+            name:                  data.name,
+            owner:                 data.owner,
+            playlistTracksDeleted: data.playlistTracksDeleted,
+            playlistGenresDeleted: data.playlistGenresDeleted,
+        };
+        renderPlaylistLookupResult({ mode: 'deleted', playlist: deletedPlaylistForUndo });
+        showBanner(`Deleted playlist "${data.name || data.playlistId}" — Undo available until you search again.`, 'success');
+    } catch (err) {
+        showBanner(`Delete failed: ${err.message}`);
+        if (deleteBtn) { deleteBtn.disabled = false; deleteBtn.innerText = 'Delete playlist'; }
+    }
+}
+
+async function runPlaylistUndo() {
+    if (!deletedPlaylistForUndo) return;
+    const p = deletedPlaylistForUndo;
+    const undoBtn = playlistLookupResult.querySelector('.track-undo-btn');
+    if (undoBtn) { undoBtn.disabled = true; undoBtn.innerText = 'Restoring...'; }
+    try {
+        const r = await fetch('/api/v4/ami-playlist-restore', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ playlistId: p.playlistId }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        deletedPlaylistForUndo = null;
+        showBanner(`Restored playlist "${data.name || p.name || p.playlistId}".`, 'success');
+        // Re-run lookup so the DB-state counts refresh from the actual restored rows.
+        await runPlaylistLookup();
+    } catch (err) {
+        showBanner(`Restore failed: ${err.message}`);
+        if (undoBtn) { undoBtn.disabled = false; undoBtn.innerText = 'Undo delete'; }
+    }
+}
+
+function renderPlaylistLookupResult({ mode, playlist, message }) {
+    playlistLookupResult.classList.add('show');
+    if (mode === 'error') {
+        playlistLookupResult.innerHTML =
+            `<div class="track-card"><div class="track-title">Lookup failed</div>` +
+            `<div class="track-artist">${escapeHtml(message || 'Unknown error')}</div></div>`;
+        return;
+    }
+
+    const p = playlist;
+    const nameStr  = p.name  || (p.spotifyMissing ? '(Spotify: not found)' : '(unknown)');
+    const ownerStr = p.owner || (p.spotifyMissing ? '' : '(unknown owner)');
+
+    // Delete is meaningful only when there's SOMETHING in the DB — either a
+    // genre-tagging row or a track row for this playlist_id. If both are 0,
+    // there's nothing to remove.
+    const dbEmpty = mode === 'found'
+        && (p.playlistGenresCount || 0) === 0
+        && (p.playlistTracksCount || 0) === 0;
+
+    const inDbBadge = mode === 'deleted'
+        ? '(archived)'
+        : `${p.playlistTracksCount ?? '?'} track${p.playlistTracksCount === 1 ? '' : 's'}`;
+    const genresBadge = mode === 'deleted'
+        ? '(archived)'
+        : `${p.playlistGenresCount ?? '?'} genre-tag${p.playlistGenresCount === 1 ? '' : 's'}`;
+    const analyzedBadge = mode === 'deleted'
+        ? ''
+        : `${p.analyzedCount ?? '?'} / ${p.playlistTracksCount ?? '?'} analyzed`;
+    const spotifyBadge = (mode !== 'deleted' && Number.isFinite(p.spotifyTotal))
+        ? `Spotify: ${p.spotifyTotal} tracks`
+        : (mode !== 'deleted' && p.spotifyMissing ? 'Spotify: not found' : '');
+
+    const buttonsHtml = mode === 'deleted'
+        ? `<button class="track-delete-btn" disabled>Delete playlist</button>
+           <button class="track-undo-btn">Undo delete</button>`
+        : `<button class="track-delete-btn" ${dbEmpty ? 'disabled' : ''}>Delete playlist</button>
+           <button class="track-undo-btn" disabled>Undo delete</button>`;
+
+    const notFoundBadge = dbEmpty
+        ? `<span class="track-badge warn">Not in DB — nothing to delete</span>`
+        : '';
+
+    const genres = Array.isArray(p.genres) ? p.genres : [];
+    const genresHtml = (mode === 'found' && genres.length)
+        ? `<div class="track-meta track-genres">
+               <span class="track-meta-label">Genres:</span>
+               ${genres.map((g) => `<span class="track-badge">${escapeHtml(g)}</span>`).join('')}
+           </div>`
+        : '';
+
+    playlistLookupResult.innerHTML = `
+        <div class="track-card ${mode === 'deleted' ? 'deleted' : ''}">
+            <div class="track-title">${escapeHtml(nameStr)}</div>
+            <div class="track-artist">${escapeHtml(ownerStr)}</div>
+            <div class="track-meta">
+                ${notFoundBadge}
+                <span class="track-badge">${escapeHtml(inDbBadge)}</span>
+                <span class="track-badge">${escapeHtml(genresBadge)}</span>
+                ${analyzedBadge ? `<span class="track-badge">${escapeHtml(analyzedBadge)}</span>` : ''}
+                ${spotifyBadge ? `<span class="track-badge">${escapeHtml(spotifyBadge)}</span>` : ''}
+                <a class="track-badge track-playlist-link" href="https://open.spotify.com/playlist/${encodeURIComponent(p.playlistId)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.playlistId)}</a>
+            </div>
+            ${genresHtml}
+            <div class="track-actions">${buttonsHtml}</div>
+        </div>
+    `;
+
+    const deleteBtn = playlistLookupResult.querySelector('.track-delete-btn');
+    const undoBtn   = playlistLookupResult.querySelector('.track-undo-btn');
+    if (deleteBtn) deleteBtn.addEventListener('click', runPlaylistDelete);
+    if (undoBtn)   undoBtn.addEventListener('click',   runPlaylistUndo);
+}
+
 function arraysEqual(a, b) {
     if (a.length !== b.length) return false;
     for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;

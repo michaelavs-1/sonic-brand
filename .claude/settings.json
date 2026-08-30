@@ -66,7 +66,12 @@
       "Bash(node --check \"d:\\\\Projects\\\\algorithm\\\\sonic-brand\\\\scripts\\\\test-resilience-layer.mjs\")",
       "Bash(grep -i -E \"^\\(tests|internal-dashboard|docs\\)$\")",
       "Bash(cd d:/Projects/algorithm/sonic-brand)",
-      "Bash(grep '^SUPABASE_URL=' .env.local)"
+      "Bash(grep '^SUPABASE_URL=' .env.local)",
+      "Bash(node --check api/v4/ami-playlist-lookup.js)",
+      "Bash(node --check api/v4/ami-playlist-delete.js)",
+      "Bash(node --check api/v4/ami-playlist-restore.js)",
+      "Bash(node --check v4/ami/app.js)",
+      "Bash(node --check api/v4/ami-track-restore.js)"
     ]
   },
   "hooks": {

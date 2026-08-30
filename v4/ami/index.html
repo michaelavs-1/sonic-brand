@@ -998,6 +998,20 @@
       <div class="track-cleanup-result" id="trackLookupResult"></div>
     </div>
 
+    <div class="track-cleanup-section">
+      <h2>Playlist cleanup</h2>
+      <p class="hint">Remove a Spotify playlist's mapping rows from the DB
+        (deletes rows in <code>playlist_genres</code> + <code>playlist_tracks</code>
+        for the given playlist_id). Track audio-features cache is preserved —
+        use Track cleanup above to remove individual tracks.</p>
+      <div class="track-cleanup-input-row">
+        <input type="text" id="playlistLookupInput"
+          placeholder="Spotify playlist ID, open.spotify.com/playlist/... URL, or spotify:playlist:... URI" />
+        <button id="playlistLookupBtn">Find playlist</button>
+      </div>
+      <div class="track-cleanup-result" id="playlistLookupResult"></div>
+    </div>
+
     <div class="queue-section" id="queueSection" style="display: none;">
       <div class="queue-header">
         <h2>

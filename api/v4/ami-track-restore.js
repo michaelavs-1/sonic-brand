@@ -46,9 +46,13 @@ export default async function handler(req, res) {
         const spotifyData = await spotifyRes.json().catch(() => ({}));
         const canonicalId = spotifyData?.id || spotifyId;
 
+        // useService: true — deleted_tracks has RLS on with NO anon read
+        // policy (dashboard-only via service_role, per v4/precompute/schema.sql).
+        // Without this flag the pgrSelect goes out as anon and always returns
+        // [] → false "no archive" 404 even when the row exists.
         const archiveRows = await pgrSelect('deleted_tracks',
             { spotify_id: `eq.${canonicalId}` },
-            { limit: 1 },
+            { limit: 1, useService: true },
         );
         if (!archiveRows.length) {
             return res.status(404).json({

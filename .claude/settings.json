@@ -64,7 +64,9 @@
       "Bash(node --check \"d:\\\\Projects\\\\algorithm\\\\sonic-brand\\\\api\\\\cron\\\\generate-daily.js\")",
       "Bash(node --check \"d:\\\\Projects\\\\algorithm\\\\sonic-brand\\\\api\\\\v6\\\\account\\\\_daily-builder.js\")",
       "Bash(node --check \"d:\\\\Projects\\\\algorithm\\\\sonic-brand\\\\scripts\\\\test-resilience-layer.mjs\")",
-      "Bash(grep -i -E \"^\\(tests|internal-dashboard|docs\\)$\")"
+      "Bash(grep -i -E \"^\\(tests|internal-dashboard|docs\\)$\")",
+      "Bash(cd d:/Projects/algorithm/sonic-brand)",
+      "Bash(grep '^SUPABASE_URL=' .env.local)"
     ]
   },
   "hooks": {

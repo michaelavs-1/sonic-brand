@@ -60,7 +60,6 @@ You will receive:
 - Optionally: Business name.
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
 - Optionally: **Musical emphases** — free-text preferences the owner typed in a dedicated field. Contains styles they explicitly love, styles they want to avoid, general leanings (e.g. "no electronic at all", "as much R&B as possible", "only hits", "make each playlist varied and adventurous"). Usually short (1–3 sentences), any language.
-{{PLACES_INPUT_BLOCK}}
 
 ### Processing Rules:
 
@@ -72,7 +71,6 @@ You will receive:
   Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
-{{PLACES_PROCESSING_RULE}}
 
 ## Energy & Pairing Constraints
 
@@ -218,12 +216,23 @@ BAD inputs (return an error — do NOT force directions):
 - "מקום" → insufficient_description (no signal)
 - "מה השעה?" → off_topic (question about the tool / unrelated)`;
 
-// Google Places docs (input format + processing rule) live outside
-// EDITABLE_PROMPT_SECTION so Ami can't accidentally break them in the
+// Google Places docs (input format + processing rule) are kept completely
+// out of EDITABLE_PROMPT_SECTION — Ami sees no mention of Places in the
 // prompt-tuning dashboard. Injected back at their original textual
-// position via {{PLACES_*}} sentinels — the assembled SYSTEM_PROMPT is
-// byte-identical to the pre-refactor version, so model behavior is
-// unchanged.
+// positions by assembleSystemPrompt at call time, so the assembled
+// SYSTEM_PROMPT sent to the model is byte-identical to the pre-refactor
+// version and model behavior is unchanged.
+//
+// Injection is anchored on two section headings Ami is expected to leave
+// in place:
+//   - `### Processing Rules:` — the Places input block is inserted just
+//      before this heading, landing at the end of `## Inputs`.
+//   - `## Energy & Pairing Constraints` — the Places processing rule is
+//      inserted just before this heading, landing at the end of
+//      `### Processing Rules:`.
+// If either anchor is missing (Ami deleted or renamed the heading), we
+// log a warning and skip that injection — the prompt still ships without
+// Places context rather than crashing.
 const PLACES_INPUT_BLOCK = `- Optionally: Google Places context — factual metadata about the venue, pulled from Google Maps if the business was matched. Format:
 
 \`\`\`
@@ -239,11 +248,27 @@ Google Places context:
 
 const PLACES_PROCESSING_RULE = `- **Google Places Context:** External factual grounding — use it to sharpen or corroborate direction choices, never as a replacement for the description. Examples: \`price_level: PRICE_LEVEL_VERY_EXPENSIVE\` + editorial mentioning "intimate" → lean elegant; \`servesBreakfast: true\` + \`servesDinner: false\` → day-part-biased toward daytime energy; \`liveMusic: true\` → venue expects live-music culture. Don't invent constraints Google didn't state. Absence of the block means Google didn't find the venue; rely on the description alone.`;
 
+function injectPlaces(editable) {
+  let out = editable;
+  const inputsAnchor = '\n\n### Processing Rules:';
+  const inputsIdx = out.indexOf(inputsAnchor);
+  if (inputsIdx >= 0) {
+    out = out.slice(0, inputsIdx) + '\n' + PLACES_INPUT_BLOCK + out.slice(inputsIdx);
+  } else {
+    console.warn('[musical-directions] `### Processing Rules:` anchor missing — Places input block NOT injected');
+  }
+  const rulesAnchor = '\n\n## Energy & Pairing Constraints';
+  const rulesIdx = out.indexOf(rulesAnchor);
+  if (rulesIdx >= 0) {
+    out = out.slice(0, rulesIdx) + '\n' + PLACES_PROCESSING_RULE + out.slice(rulesIdx);
+  } else {
+    console.warn('[musical-directions] `## Energy & Pairing Constraints` anchor missing — Places processing rule NOT injected');
+  }
+  return out;
+}
+
 export function assembleSystemPrompt(editable) {
-  return editable
-    .replaceAll('{{PLACES_INPUT_BLOCK}}', PLACES_INPUT_BLOCK)
-    .replaceAll('{{PLACES_PROCESSING_RULE}}', PLACES_PROCESSING_RULE)
-    + '\n\n' + FIXED_PROMPT_SECTION;
+  return injectPlaces(editable) + '\n\n' + FIXED_PROMPT_SECTION;
 }
 
 const SYSTEM_PROMPT = assembleSystemPrompt(EDITABLE_PROMPT_SECTION);

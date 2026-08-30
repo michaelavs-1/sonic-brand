@@ -12,6 +12,23 @@ tightly coupled to downstream parsing code and changes only when the schema chan
 
 ---
 
+## 2026-08-29 — Refactor only: Places sentinels dropped in favor of anchor-based injection (no model behavior change)
+
+Second-pass refactor of the 2026-08-26 Places-extraction change. The `{{PLACES_INPUT_BLOCK}}` and `{{PLACES_PROCESSING_RULE}}` sentinels were confusing Ami in the prompt-tuning dashboard — visible placeholder strings inside an otherwise clean editable prompt. This pass removes them completely.
+
+New shape:
+- `EDITABLE_PROMPT_SECTION` contains **no reference to Google Places anywhere** — Ami sees a totally clean editable prompt.
+- `assembleSystemPrompt(editable)` now injects the two Places constants (`PLACES_INPUT_BLOCK`, `PLACES_PROCESSING_RULE`) at call time by anchoring on two stable section headings: `### Processing Rules:` (input block goes just before it) and `## Energy & Pairing Constraints` (processing rule bullet goes just before it).
+- If either anchor is missing (Ami deleted or renamed the heading), the injection is skipped with a `console.warn` — the prompt still ships without Places rather than crashing.
+
+Verified byte-identical to the pre-refactor prompt via `scripts` scratch script — the model sees exactly the same SYSTEM_PROMPT as before this change and as before the 2026-08-26 change. No behavior drift.
+
+Applied symmetrically to `v6/generation/musical-directions.js` and `v5/generation/musical-directions.js`. `v5/ami-prompt-dashboard` cache-bust bumped to `?v=29082026a`.
+
+No change to `EDITABLE_PROMPT_SECTION` creative content beyond the sentinel-line removal.
+
+---
+
 ## 2026-08-26 — Refactor only: Google Places docs extracted from EDITABLE via sentinels (no model behavior change)
 
 Non-semantic refactor. The two Google Places documentation blocks — the input-format block under `## Inputs` and the "Google Places Context" bullet under `### Processing Rules:` — were moved OUT of `EDITABLE_PROMPT_SECTION` and into two private constants (`PLACES_INPUT_BLOCK`, `PLACES_PROCESSING_RULE`) alongside a new exported helper `assembleSystemPrompt(editable)` that substitutes the sentinels `{{PLACES_INPUT_BLOCK}}` and `{{PLACES_PROCESSING_RULE}}` back in at their original textual position and concatenates `FIXED_PROMPT_SECTION`. The assembled `SYSTEM_PROMPT` is **byte-identical** to the pre-refactor version — the model sees exactly the same prompt.

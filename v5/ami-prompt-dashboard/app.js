@@ -22,7 +22,13 @@ import {
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
 import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=04082026a';
 
-const MAX_TOKENS = 16000;
+// Match v6 production. Gemini 3.6-flash's hard output-token cap is 65536;
+// values above that are silently clamped by Google. Under thinkingLevel
+// 'high' the model burns a big chunk of the budget on thinking tokens, so
+// a smaller cap here truncates the visible JSON mid-object (parse error
+// "Expected double-quoted property name"). Only failing calls are
+// affected — you only pay for tokens actually generated.
+const MAX_TOKENS = 65536;
 
 const $ = (id) => document.getElementById(id);
 

@@ -298,7 +298,17 @@ async function callRapidApiOnce(spotifyId, apiKey) {
     return { kind: 'ok', data };
 }
 
-async function callWithRetries(spotifyId, apiKey, cap, isAborted) {
+async function callWithRetries(spotifyId, apiKey, cap, isAborted, maxErrorRetries) {
+    // maxErrorRetries caps the 5xx/network retry ladder. null → full ladder
+    // (RETRY_5XX_BACKOFF_MS.length = 6). Pass 1 for fail-fast semantics —
+    // the first server_error / network_error / gateway_html marks the track
+    // terminal so a wave of transient upstream errors can't lock up workers
+    // in ~17 min of backoff each. 429 retries are unaffected (rate limits
+    // are legitimately worth waiting out).
+    const effective5xxCap = Math.min(
+        RETRY_5XX_BACKOFF_MS.length,
+        Number.isFinite(maxErrorRetries) && maxErrorRetries > 0 ? maxErrorRetries : RETRY_5XX_BACKOFF_MS.length,
+    );
     let rate429Idx = 0;
     let serr5xxIdx = 0;
     let htmlSeen   = 0;
@@ -357,11 +367,11 @@ async function callWithRetries(spotifyId, apiKey, cap, isAborted) {
         }
 
         // server_error or network_error → 5xx backoff schedule
-        if (serr5xxIdx >= RETRY_5XX_BACKOFF_MS.length) {
+        if (serr5xxIdx >= effective5xxCap) {
             return { kind: 'terminal', reason: `${result.kind} retries exhausted` };
         }
         const wait = RETRY_5XX_BACKOFF_MS[serr5xxIdx];
-        warn(`${result.kind} on ${spotifyId}: ${result.status || ''} ${result.body || result.message || ''}; backoff ${wait}ms (attempt ${serr5xxIdx + 1}/${RETRY_5XX_BACKOFF_MS.length})`);
+        warn(`${result.kind} on ${spotifyId}: ${result.status || ''} ${result.body || result.message || ''}; backoff ${wait}ms (attempt ${serr5xxIdx + 1}/${effective5xxCap})`);
         if (await interruptibleSleep(wait, isAborted)) return { kind: 'aborted_externally' };
         serr5xxIdx++;
     }
@@ -419,6 +429,26 @@ async function main() {
     // some calls returned transient error payloads (e.g. RapidAPI was unhealthy).
     const retryErrors = !!args['retry-errors'];
 
+    // --max-error-retries=N — caps the 5xx/network retry ladder at N attempts
+    // (default: full 6-step ladder). Use N=1 for "fail fast on any error" runs
+    // where you want easy tracks to breeze through and errored tracks to be
+    // marked status='error' quickly for a later --retry-errors sweep.
+    const maxErrorRetries = args['max-error-retries']
+        ? parseInt(args['max-error-retries'], 10)
+        : null;
+    if (args['max-error-retries'] && (!Number.isFinite(maxErrorRetries) || maxErrorRetries < 1)) {
+        fail('--max-error-retries must be a positive integer.');
+    }
+
+    // --no-storm-abort — bypass the 8-of-10-terminals rolling-window abort. The
+    // safety exists to avoid burning quota when upstream is completely dead;
+    // when quota isn't a concern (or you pair with --max-error-retries=1 which
+    // makes storm-abort trigger inside a couple of minutes), disable it and let
+    // the batch churn through everything, marking failures as status='error'
+    // for a later --retry-errors sweep. HTML-gateway abort and cap abort are
+    // NOT affected — those are true "impossible to proceed" conditions.
+    const noStormAbort = !!args['no-storm-abort'];
+
     // --- Guard 4: execution plan must exist and be fresh ---
     if (!fs.existsSync(PLAN_PATH)) {
         fail(`No execution plan at ${PLAN_PATH}. Run tests/.test-precompute-dry-run.mjs first.`);
@@ -437,6 +467,8 @@ async function main() {
     log(`cap: ${cap}`);
     log(`concurrency: ${concurrency} workers (each does serial calls)`);
     log(`retry-errors: ${retryErrors ? 'YES — status=error rows will be re-attempted' : 'no (default)'}`);
+    log(`max-error-retries: ${maxErrorRetries ?? `${RETRY_5XX_BACKOFF_MS.length} (default full ladder)`}`);
+    log(`no-storm-abort: ${noStormAbort ? 'YES — storm safety disabled' : 'no (default)'}`);
 
     // --- API key ---
     const apiKey = process.env.TRACK_ANALYSIS_RAPIDAPI_KEY;
@@ -565,6 +597,7 @@ async function main() {
         recentOutcomes.push(outcome);
         if (recentOutcomes.length > TERMINAL_STORM_WINDOW) recentOutcomes.shift();
         if (aborted) return;
+        if (noStormAbort) return;  // --no-storm-abort: still track window (cheap), skip the trigger
         if (recentOutcomes.length === TERMINAL_STORM_WINDOW) {
             const terminals = recentOutcomes.filter((o) => o === 'terminal').length;
             if (terminals >= TERMINAL_STORM_THRESHOLD) {
@@ -578,7 +611,7 @@ async function main() {
 
     async function processOne(spotifyId) {
         const t1 = Date.now();
-        const result = await callWithRetries(spotifyId, apiKey, cap, () => aborted);
+        const result = await callWithRetries(spotifyId, apiKey, cap, () => aborted, maxErrorRetries);
         const ms = Date.now() - t1;
 
         // Batch was aborted by another worker while we were mid-retry. Bail

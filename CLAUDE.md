@@ -411,6 +411,19 @@ sonic-brand/
 │   │   ├── ami-cron-tick.js                ← Endpoint still exists but REMOVED from vercel.json crons on 2026-08-13.
 │   │   │                                      Batch worker was killed; keep the file for future revival.
 │   │   ├── ami-atmospheres-scan.js         ← Diffs sheet against Supabase, upserts changes
+│   │   ├── ami-track-lookup.js             ← Look up a track (bare id / URL / URI / mobile-share link);
+│   │   │                                      reports track_analyses coverage + playlist mappings
+│   │   ├── ami-track-delete.js             ← Archive a track's rows into `deleted_tracks` then remove live rows
+│   │   ├── ami-track-restore.js            ← One-shot restore from the `deleted_tracks` archive
+│   │   ├── ami-playlist-lookup.js          ← Sibling of ami-track-lookup for playlist IDs. Handles mobile-share
+│   │   │                                      short links (open.spotify.com/s/…) via HTTP redirect-follow.
+│   │   │                                      Reports playlist_genres row count, distinct genres, and
+│   │   │                                      track_analyses coverage of the playlist's tracks.
+│   │   ├── ami-playlist-delete.js          ← Archive every playlist_genres + playlist_tracks row into
+│   │   │                                      `deleted_playlists`, then remove live rows. Does NOT touch
+│   │   │                                      track_analyses — the audio-features cache is shared across
+│   │   │                                      playlists and expensive to rebuild via RapidAPI.
+│   │   ├── ami-playlist-restore.js         ← Reverses ami-playlist-delete via the archive row; drops archive after.
 │   │   └── ...                             ← Legacy v4 endpoints (openai, spotify, biztype-match, cached-*)
 │   ├── new/
 │   │   ├── spotify.js                      ← Two-app Spotify proxy (Michael CC reads + Rubin user writes).
@@ -951,6 +964,10 @@ Everything the account dashboard reads lives here:
 - `v6_daily_track_history` — { business_id, direction_key, spotify_id, served_at }. Per-(biz, direction) served-track history for cross-day dedup. See "Cross-day track dedup" mechanism below. Cron opportunistically prunes rows older than 14 days.
 - `gemini_call_log` — one row per Gemini API call. Columns: { id, created_at, model, label, input_tokens, output_tokens (includes thinking tokens for cost purposes), thinking_tokens (broken out for analytics), total_tokens, cost_usd (numeric 12,8), business_id (nullable FK), onboarding_session_id (nullable text), http_status, finish_reason }. Written fire-and-forget by `api/v6/gemini.js` after every call — success OR failure. Cost computed server-side via `api/v6/gemini-pricing.js` using date-aware per-model rates (Google's paid Standard tier; auto-switches on 2027-01-01 when the price doubles). Attribution: post-signup callers pass `business_id` directly; onboarding callers pass a client-generated tab-lifetime `onboarding_session_id` which `signup.js` backfills into `business_id` (and clears the session id) on account creation. Rows with `onboarding_session_id` set but no `business_id` = "abandoned onboarding" bucket surfaced by the internal admin spend endpoint. Added 2026-08-25; RLS on with no policies (writes go through service_role).
 
+**Cleanup archives (Ami's dashboard):**
+- `deleted_tracks` — archive keyed by `spotify_id`. Snapshot of the track's `playlist_tracks` rows + its `track_analyses` row before deletion. Written by `api/v4/ami-track-delete.js`; consumed and dropped by `api/v4/ami-track-restore.js`. RLS on with no anon-read policy (dashboard hits go through service_role).
+- `deleted_playlists` — archive keyed by `playlist_id`. Columns: { playlist_id (PK), name, owner, playlist_genres_rows (jsonb), playlist_tracks_rows (jsonb), deleted_at }. Written by `api/v4/ami-playlist-delete.js`; consumed and dropped by `api/v4/ami-playlist-restore.js`. Added 2026-08-30 (migration `2026-08-25-deleted-playlists.sql`). Same RLS posture as `deleted_tracks`. **Does not archive `track_analyses`** — that cache is shared with any other playlist the tracks live in and is expensive to rebuild via RapidAPI.
+
 **Historical / vestigial:** `analyses`, `track_feedback`, `app_settings` (old OpenAI key storage — the `openai_key` row + its permissive RLS were removed during the 2026-08-14 security audit), `spotify_tokens` (v1 era).
 
 ### Track pool coverage
@@ -1040,7 +1057,9 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
 - `ami-scan.js` — sheet → Supabase upsert for biz-type genres
 - `ami-atmospheres-scan.js` — sheet → Supabase upsert for atmospheres (writes `atmospheres.name`, `ranges`, `row_in_sheet`)
 - `ami-status.js`, `ami-logs.js` — poll scan progress
-- `ami-toggle-*.js`, `ami-track-*.js` — manage skip flags, tombstone bad tracks
+- `ami-toggle-*.js` — manage skip flags
+- **Track cleanup** (`ami-track-lookup.js` / `-delete.js` / `-restore.js`) — reversible removal of one track. Lookup parses bare id / URL / URI / mobile-share short link and reports track_analyses + playlist_tracks state. Delete archives the track's rows into `deleted_tracks` before removing them. Restore replays the archive and drops the archive row.
+- **Playlist cleanup** (`ami-playlist-lookup.js` / `-delete.js` / `-restore.js`, added 2026-08-30) — the playlist equivalent. Lookup uses the same input parsing (bare id / URL / URI / mobile-share link resolved via redirect-follow) and reports playlist_genres row count + distinct genres + track_analyses coverage of the playlist's tracks. Delete archives every `playlist_genres` + `playlist_tracks` row for that `playlist_id` into `deleted_playlists`, then removes the live rows. **Critically does NOT touch `track_analyses`** — those audio-features rows are shared with any other playlist those tracks live in, and are expensive to rebuild via RapidAPI. If Ami wants a track's cache gone too, she uses the track-cleanup flow one-at-a-time. Restore replays the archive and drops the archive row for a re-deletable state.
 - `ami-cron-tick.js` — **cron schedule REMOVED from `vercel.json` on 2026-08-13**. Endpoint file kept so the batch worker can be revived, but no longer runs hourly. Was the driver for the RapidAPI-based track analysis pipeline; when we stopped needing it, keeping the hourly tick just consumed function invocations and served no purpose. Re-add `{"path": "/api/v4/ami-cron-tick", "schedule": "* * * * *"}` to `vercel.json crons` to bring it back.
 - `ami-sync-usage.js`, `ami-reorder.js` — housekeeping
 

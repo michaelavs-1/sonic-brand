@@ -71,7 +71,11 @@
       "Bash(node --check api/v4/ami-playlist-delete.js)",
       "Bash(node --check api/v4/ami-playlist-restore.js)",
       "Bash(node --check v4/ami/app.js)",
-      "Bash(node --check api/v4/ami-track-restore.js)"
+      "Bash(node --check api/v4/ami-track-restore.js)",
+      "Bash(node tmp-worldfunk-check.mjs)",
+      "Bash(node tmp-worldfunk-impact.mjs)",
+      "Bash(echo \"---exit $?---\")",
+      "Bash(node tmp-britfunk-purge.mjs)"
     ]
   },
   "hooks": {

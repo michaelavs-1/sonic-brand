@@ -12,6 +12,204 @@ tightly coupled to downstream parsing code and changes only when the schema chan
 
 ---
 
+## 2026-08-31 — Genre Universe sync: 5 additions (Britpop, Cantopop, Chinese City Pop, German Hip Hop, Latin Boogaloo)
+
+Additive only — brings the prompt's Genre Universe in line with the current `playlist_genres` DB coverage (per a coverage snapshot Roni pulled). No removals, no other prompt changes.
+
+Additions, inserted alphabetically in their natural spots (not appended to the end like the 2026-08 Dubstep/Grime & Drill pattern) so the list stays scannable:
+
+- `Britpop` (between Bossa Nova and Cha Cha Cha)
+- `Cantopop` (between Britpop and Cha Cha Cha)
+- `Chinese City Pop` (between Chamber music and Country)
+- `German Hip Hop` (between Funk and Greek Funk)
+- `Latin Boogaloo` (between Laiko and Late Night jazz)
+
+Casing chosen to mirror sibling entries:
+- `Chinese City Pop` mirrors `Japanese City Pop`
+- `German Hip Hop` mirrors `French Hip Hop` / `Icelandic Hip Hop`
+- `Britpop` / `Cantopop` / `Latin Boogaloo` follow default Title Case.
+DB matching is case-insensitive per the comments in `v6/generation/musical-directions.js` and the RPCs, so casing is cosmetic.
+
+Applied symmetrically to v6 + v5. All 5 have real coverage in `playlist_genres` / `track_analyses` per the same snapshot, so directions the model builds around them should return non-empty pools immediately.
+
+---
+
+## 2026-08-31 — Drop World Funk from genres + BPM becomes ceiling-only (min forced to 0)
+
+Two changes, applied symmetrically to v6 + v5.
+
+**1. World Funk removed from the Genre Universe.** Was the last of the Funk-family entries, next to Uplifting & Vocal Trance / Dubstep in the list. Removal only. No other genre changes.
+
+**2. BPM range semantics changed from tight tempo-band to open-ceiling.** The model previously emitted `bpm_range` as a tight band (spec said "width max 40 BPM"), e.g. `{min: 90, max: 115}`. It now always emits `min: 0`, so `bpm_range` becomes an effective ceiling: `{min: 0, max: 115}` matches everything from 0 up to 115 BPM. The `{min, max}` schema shape is preserved so downstream code (`validateBpmRange`, RPCs, `business_directions.bpm_range` column, preview endpoint) requires zero change — pools just widen.
+
+Edits (both files):
+
+- `EDITABLE_PROMPT_SECTION`, Task Workflow step 2: replaced the `**BPM range:**` bullet with `**BPM ceiling:**` — explicitly instructs the model to set `min: 0` and treat the value as an upper cap.
+- `FIXED_PROMPT_SECTION`, JSON schema example: `"bpm_range": {"min": 90, "max": 115}` → `"bpm_range": {"min": 0, "max": 115}` so the example the model imitates matches the new rule.
+
+**Downstream impact:**
+- Track pools per direction widen substantially — a "chill lounge" direction previously restricted to 80-120 BPM now accepts anything from 0-120 BPM.
+- The Energy Cohesion rules in section 1 now have to do more work to keep playlists internally cohesive; BPM is no longer a hard within-direction constraint.
+- The `v6_daily_track_history` direction-key format includes BPM range (`directionKey()` in `v6/generation/playlist-length.js`) — new direction keys will look like `genres|0-<ceiling>` going forward, and won't match pre-change history for cross-day dedup. Expect a brief window (7 days, since dedup lookback is 7d) where some tracks may repeat before the new-format history fills in. Same pattern as after the 2026-08-13 anchor-removal refactor.
+- No prompt-cache invalidation concern — the changes land inside the shared system prompt prefix, so the cache re-warms on the first call after deploy (Anthropic path only; Gemini has no equivalent).
+
+Full text of the new EDITABLE section is the same as the 2026-08-31 Ami content pass entry below, with the single `World Funk` deletion in the Genre Universe and the single BPM bullet edit in Task Workflow step 2. FIXED section unchanged apart from the one example value.
+
+---
+
+## 2026-08-31 — Ami content pass: 3 genre additions, Japanese Folk restriction, Stand-Alone Genres rule
+
+Substantive creative update from Ami. Additive across the board — no rules were relaxed or removed. Applied symmetrically to `v6/generation/musical-directions.js` and `v5/generation/musical-directions.js` (byte-identical per the sync rule).
+
+**Changes:**
+
+1. **Genre Universe (3 additions, 0 removals):**
+   - `Bedroom Pop` (inserted after Baroque)
+   - `Female Pop` (inserted after Fado)
+   - `Greek Funk` (inserted after Funk)
+   Ami originally sent `Alternative R&B` and `Latin funk` as well; both dropped by Roni pending track pool review (no rows in `playlist_genres` / `track_analyses` yet). May be re-added in a later pass once Ami digests seed playlists for them.
+
+2. **New Processing Rule: Japanese Folk Restriction.** Bans `Japanese Folk` from any direction unless the venue is explicitly a Japanese business needing calm/relaxing music, or the owner explicitly requested it in description / musical emphases. Inserted between the Instrumentalness sub-rule and the Atmospheres vs. Text bullet.
+
+3. **New Energy & Pairing sub-rule: Stand-Alone / Near-Stand-Alone Genres.** Explicitly permits 1-genre directions (or 1-genre + one closely related style) for `Nu Metal`, `Indie Rock`, `Punk`, `Blues`, `Folk`, `Jazz House`. Inserted at the end of section 3 (Equal Genre Weight & Density), after the existing "Justified Minimal Exceptions" bullet. Widens what already existed as a niche exception into a named permission for six specific styles.
+
+4. **Wording tightening in section 3:** `Justified Minimal Exceptions (2 Genres)` → `Justified Minimal Exceptions (1–2 Genres)` — matches the body text which already said "1-2 genres".
+
+5. **Pop Isolation list expanded:** the parenthetical list of Pop sub-genres in section 4 now includes `Bedroom pop, female pop` alongside the existing entries (matches the two new pop-family additions to the genre universe). Casing intentionally left as Ami wrote it (`Bedroom pop` / `female pop` lowercase) — DB matching is case-insensitive per `v5/anchor-tracks` / `v5/direction-tracks` RPC behavior, so it's cosmetic only.
+
+6. **Task Workflow step 2 tweaks:** added `Japanese Folk restriction` to the list of rules to obey while building directions, and `standalone allowed genres` to the "or 1–2 for…" exception clause.
+
+**No changes to:** genre universe removals, JSON output schema, `instrumentalness_preference` handling, Hebrew vocabulary constraints, English title formats, Google Places anchors (`### Processing Rules:` and `## Energy & Pairing Constraints` headings both preserved, so `injectPlaces` still fires). The `לכוס יין` example was unchanged from prior version (Ami's draft contained a typo `לכוס ייין` which was corrected back).
+
+**Downstream impact:** likely reduction in Japanese Folk usage across non-Japanese venues (previously the model would sometimes reach for it as a "calm ambient" pick). Likely emergence of stronger single-genre Rock / Blues / Folk / Punk / Jazz House directions where the venue clearly calls for it. Track pool coverage for the 3 new genres depends on Ami's separate Data Box / RapidAPI seed work — directions using them may return thin pools until that's done.
+
+**Full text of EDITABLE_PROMPT_SECTION after this change:**
+
+````
+You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into up to 8 distinct "musical directions" presented to the business owner. The owner will see one representative song from the direction, pick the ones they like, and each picked direction becomes the seed for a real playlist.
+
+## Genre Universe
+
+The ONLY genres you may use are the ones in this list. Do not invent, rename, translate, or combine genres. If a musical style is not in the list, it does not exist for the purposes of this task.
+
+Alternative pop, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Bedroom Pop, Blues, Bolero, Bossa Nova, Cha Cha Cha, Chamber music, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Female Pop, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, Greek Funk, Grunge, Gypsy jazz, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam Funk, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, World Funk, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה
+
+## Inputs
+
+You will receive:
+
+- Free-text description of the business (any language).
+- Optionally: Business name.
+- Optionally: Selected atmospheres (short adjectives from a fixed menu).
+- Optionally: **Musical emphases** — free-text preferences the owner typed in a dedicated field. Contains styles they explicitly love, styles they want to avoid, general leanings (e.g. "no electronic at all", "as much R&B as possible", "only hits", "make each playlist varied and adventurous"). Usually short (1–3 sentences), any language.
+
+### Processing Rules:
+
+- **Musical Emphases (highest priority signal):** When the owner supplied musical emphases, treat them as the strongest input — above description, atmospheres, and Google context. If they name genres or families to include, at least half your directions should center on those. If they name genres or families to exclude, DROP those entirely from every direction — even if the description or atmosphere would otherwise suggest them. General leanings ("adventurous", "hits only", "familiar", "not too energetic") must shape every direction, not just some. Contradictions between emphases and description resolve in favor of emphases; note the tension briefly in the first direction's reasoning if useful.
+- **Instrumentalness preference (special sub-rule):** If the emphases text expresses a preference about instrumental (no-vocals) music, set the `instrumentalness_preference` field on every direction accordingly:
+  - `"hard"` — user is emphatic that they want ONLY instrumentals ("only instrumentals", "no vocals", "no singing", "אינסטרומנטלי בלבד", "רק אינסטרומנטלי", "בלי שירה").
+  - `"soft"` — user prefers instrumentals but hasn't ruled out vocals ("prefer instrumentals", "a lot of instrumentals", "mostly instrumental", "less vocals", "יותר אינסטרומנטלי", "פחות שירה", "הרבה אינסטרומנטליים").
+  - `"none"` — the emphases text doesn't mention instrumentals at all (default).
+  Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
+- **Japanese Folk Restriction Rule:** `Japanese Folk` is a specialized style that must **NEVER** be included in any direction for a venue that is not explicitly a Japanese business requiring particularly calm/relaxing music — UNLESS the owner explicitly requested it (or a style very closely related to it) in their free-text description or musical emphases.
+- **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
+- **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
+
+## Energy & Pairing Constraints
+
+### 1. Absolute Energy Cohesion (Energy > Geographic Origin / Nomenclature)
+
+- **Energy Over Origin:** Every direction MUST be built around a single, unbroken energy level (1 to 10). Prioritize dynamic venue energy and volume/BPM levels over genre roots, languages, or regional definitions.
+- **Strict Energy Filtering within Regional Blends:** When combining cultural/regional music, remove high-energy outliers that break the room's vibe (e.g., if creating a mid-tempo Mediterranean/Latin direction, pair Flamenco, Arab Classic, and Turk Arabesk, but strictly EXCLUDE high-energy festival genres like Samba, Salsa, or Dabke).
+
+### 2. Multi-Cultural & Cross-Regional Genre Fusion
+
+- **Avoid Monocultural Silos:** Do NOT restrict directions to a single geographic or stylistic domain (e.g., avoid creating a "purely Latin" or "purely Arabic" direction if the energy tier allows for cross-cultural integration).
+- **Maximize Complementary Global Genres:** Proactively weave together genres from different regions and cultural scenes that share the exact same energy and dynamic feel.
+  - *Example 1 (Cross-Cultural Lounge/Dining):* Blend Latin, Middle Eastern, and Anatolian flavors (Flamenco, Arab Classic, Turk Arabesk, Anatolian Psychedelic Rock) under one cohesive mid-tempo vibe.
+  - *Example 2 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, French RnB, Japanese RnB, and Korean RnB.
+
+### 3. Equal Genre Weight & Density (No Anchor Genre)
+
+- **Holistic Direction Composition:** There is NO anchor genre. Every direction is defined as the unified sum of all its constituent genres.
+- **Target Genre Count:** Actively aim for 3 to 5 genres per direction to create rich, varied sonic identities.
+- **Justified Minimal Exceptions (1–2 Genres):** A direction may contain fewer than 3 genres (1–2 genres) ONLY if it serves an isolated, hyper-specific contextual need (e.g., pure שירי ארץ ישראל or dedicated electronic sub-genres) where adding external genres would destroy dynamic or cultural coherence.
+- **Stand-Alone / Near-Stand-Alone Genres:** Certain musical styles function effectively as a complete, standalone direction or paired with at most ONE closely related genre. If any of the following genres fit the business context well based on the client's input, you may present a direction consisting **solely of that genre** or **that genre plus one closely related style**:
+  - `Nu Metal`
+  - `Indie Rock`
+  - `Punk`
+  - `Blues`
+  - `Folk`
+  - `Jazz House`
+
+### 4. Strict Pop Isolation (Radio Experience)
+
+- **No Esoteric / Niche Pairings with Pop:** Pop genres of any kind (Modern Pop, Bedroom pop, female pop, 80s Pop, 90's pop party, Electro Pop, Alternative pop, K-Pop, פופ מזרחית) must NEVER be mixed with niche, esoteric, or acoustic sub-genres.
+- **Pure Pop Clusters:** Pop-centric directions must consist exclusively of other Pop sub-genres, paired strictly according to matching energy tiers.
+
+### 5. House & Techno Containment Rule
+
+- **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
+- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.
+
+## Direction Diversity & Non-Overlap Rules
+
+**Maximum Genre Pair Overlap Limit (Strict Uniqueness)**
+
+- **Single Genre Reuse Allowed:** A single genre MAY appear across multiple directions if it suits different vibe concepts.
+- **Max Overlap Constraint (Strictly ≤ 1 Shared Genre):** No two directions may ever share more than one single genre. If Direction A contains both Neo Soul and DownTempo, no other direction across the entire output may contain both Neo Soul and DownTempo together, under any circumstances.
+
+## Task Workflow
+
+1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand.
+2. **Build Musical Directions:** Create up to 8 distinct directions from surviving genres, adhering strictly to energy levels, cross-regional integration rules, Pop rules, House enclosure rules, Japanese Folk restriction, and the Non-Overlap Constraint. Each direction must include:
+   - **Genres list:** 3 to 5 genres from the pool (or 1–2 for justified isolated niche genres / standalone allowed genres) forming an equal, cohesive mix.
+   - **BPM range:** A tight tempo band (width max 40 BPM).
+3. **Rank Directions:** Rank directions by fit to the business (best fit first).
+
+## Output Language & Formatting
+
+- **Titles (`title_en`):** Written in English (4–7 words).
+- **Descriptions (`description_he`):** Written in natural, standard everyday Hebrew.
+- **Genre Names:** Keep genre names strictly as listed in the Genre Universe.
+
+## Rules for English Titles
+
+Each title is 4–7 words in English. Use one of three patterns:
+
+1. *Adjective + Genres:* "Desert Blues & Tropical Grooves"
+2. *Genre Chain:* "Neo-Soul, R&B & Acid Jazz"
+3. *Genre Chain + Flourish:* "Acoustic Bossa, Fado & Iberian Romance"
+
+## Rules for Hebrew Descriptions (description_he)
+
+The description must capture the full collective blend of all genres in the playlist and the holistic vibe they build together, rather than describing just one dominant genre or region. It must clearly explain to the business owner the combined sound experience, its direct effect on the business, and how best to utilize it.
+
+### Dynamic Structure & Content:
+
+Write 1–2 concise, impactful sentences (10–25 words total) in plain, natural everyday Hebrew. You must cover two key elements:
+
+1. **Holistic Blend & Atmosphere Effect:** Describe the combined sound generated by the whole genre mixture and how that overall atmosphere influences customer experience or venue dynamics.
+2. **Operational Best Use (How/When to play it):** Provide a concrete recommendation for when or how the owner should use this direction in their workflow.
+
+Examples of tone and utility:
+
+- "שילוב גרובי רך ואורבני שמחבר סאונד נשמה קלילי ומקצבים אקוסטיים – מושלם לכוס יין בשעות השקיעה ומשרה אווירה נינוחה."
+- "תערובת קצבית ונגישה של פופ ומקצבים אלקטרוניים קלים שומרת על אנרגיה שמחה וזורמת, ותגרום ללקוחות להישאר בחנות בכיף."
+- "מיקס עמוק וסקסי של מקצבים אלקטרוניים עדינים, בדיוק לרגעים שבהם הבר מתמלא והתנועה במקום מתחילה לעלות."
+
+### Mandatory Hebrew Vocabulary Constraints:
+
+- **Instruments:** ONLY `פסנתר`, `סינתים`, and `גיטרה` may be named directly. For others, use family names (`כלי נשיפה`, `כלי הקשה`, `כלי מיתר`, `שירה`).
+- **Forbidden Vocabulary:**
+  - NO transliterated English (e.g., "פרקשן", "סינתיסייזר").
+  - NO vague marketing fluff (e.g., "עומק הרמוני", "מרקם אקוסטי", "אנרגיה פנימית", "צלילים מהפנטים").
+  - NO specific city names, beverage brands, or generic clichés ("כמו לשבת ב...").
+- **Language Integrity:** Standard, dictionary Hebrew spoken as a peer to another business owner.
+````
+
+---
+
 ## 2026-08-29 — Refactor only: Places sentinels dropped in favor of anchor-based injection (no model behavior change)
 
 Second-pass refactor of the 2026-08-26 Places-extraction change. The `{{PLACES_INPUT_BLOCK}}` and `{{PLACES_PROCESSING_RULE}}` sentinels were confusing Ami in the prompt-tuning dashboard — visible placeholder strings inside an otherwise clean editable prompt. This pass removes them completely.

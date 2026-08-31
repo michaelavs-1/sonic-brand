@@ -14,9 +14,16 @@
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v6/atmosphere.js?v=21082026a';
 import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
-import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=25082026b';
+import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=31082026a';
+import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=31082026a';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
-import { runDirectionPreviewFlow, preparePreview } from '/v6/preview.js?v=25082026b';
+import {
+  runDirectionPreviewFlow,
+  runRefinedDirectionPreviewFlow,
+  showRefinedDirectionsLoading,
+  showRestartOnboardingScreen,
+  preparePreview,
+} from '/v6/preview.js?v=31082026b';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=21082026a';
 import {
   initPlaylistResultsShell,
@@ -61,6 +68,12 @@ const state = {
   // super_liked_tracks table at signup. Preserved across step navigation
   // — users can revise atmospheres or emphases without losing picks.
   superLikedTracks: new Set(),
+  // Direction objects the user tapped super-like on. Populated inside
+  // renderSwipeDeck via the shared reference pattern. Read by the Round-2
+  // refinement step to bias its output toward variants of super-liked
+  // directions. Cleared when state.directions is invalidated so stale
+  // object refs from a prior Round-1 run don't leak into R2's input.
+  superLikedDirections: new Set(),
   // Opening hours are collected in step 4 alongside the Gemini call. Kept
   // across step re-entry so users don't re-enter them just for changing
   // atmospheres or emphases.
@@ -104,12 +117,20 @@ function markReached(step) {
 
 function invalidateFrom(step) {
   if (step <= 1) {
-    // confirmedPlace is NOT reset here — runBusinessStep's change-detection
-    // block invalidates it only when name/description actually change, so
-    // clicking back to step 1 without editing keeps the cached place and
-    // skips a redundant Places lookup. musicalEmphases similarly persists —
-    // returning to step 1 doesn't erase what the user already wrote there.
-    state.selectedAtmos = [];
+    // Nothing to clear at step 1 anymore. Everything the user has entered
+    // is preserved across a return-to-step-1 (whether via progress-bar
+    // click or via the R2 restart-onboarding CTA):
+    //   - bizName / bizDesc / musicalEmphases: kept so runBusinessStep and
+    //     runEmphasesStep pre-fill their inputs.
+    //   - confirmedPlace: kept unless runBusinessStep detects that name or
+    //     description actually changed (that block invalidates it there).
+    //   - selectedAtmos: kept so step 2 pre-checks the same atmospheres
+    //     the owner already picked. If they change atmospheres in step 2,
+    //     the sameAtmos check in that handler clears directions.
+    //   - hours: kept so step 4 pre-fills the same schedule.
+    //   - superLikedTracks / superLikedDirections: kept so restart doesn't
+    //     lose the owner's earlier taste signals (persisted to
+    //     super_liked_tracks at signup).
   }
   // Step 2 (atmospheres) and step 3 (musical emphases) both feed the
   // Gemini prompt, so navigating back to either invalidates directions.
@@ -119,6 +140,10 @@ function invalidateFrom(step) {
     state.directions = null;
     state.page2Promise = null;
     state.popularityWindow = null;
+    // Direction refs become stale when directions are regenerated.
+    // Tracks (superLikedTracks) are keyed by spotify_id which stays
+    // meaningful across regenerations, so we preserve those.
+    state.superLikedDirections = new Set();
   }
   // Step 4 is the hours picker; it doesn't feed anything downstream that
   // needs invalidation. Hours themselves persist so re-entering pre-fills.
@@ -601,6 +626,7 @@ async function goToStep(start) {
           state.popularityWindow = null;
           state.picked = null;
           state.results = null;
+          state.superLikedDirections = new Set();
         }
         state.selectedAtmos = selectedAtmos;
         markReached(3);
@@ -627,6 +653,7 @@ async function goToStep(start) {
           state.popularityWindow = null;
           state.picked = null;
           state.results = null;
+          state.superLikedDirections = new Set();
         }
         state.musicalEmphases = emphases;
         markReached(4);
@@ -751,20 +778,80 @@ async function goToStep(start) {
           page2Promise: state.page2Promise,
           popularityWindow: state.popularityWindow,
           preparedPromise,
-          // Shared reference — the swipe deck mutates this Set directly.
+          // Shared references — the swipe deck mutates these Sets directly.
           superLikedTracks: state.superLikedTracks,
+          superLikedDirections: state.superLikedDirections,
         }), signal);
-        if (!picked.length) {
-          const card = document.querySelector('.screen-card');
-          if (card) {
-            card.replaceChildren(
-              Object.assign(document.createElement('h1'), { textContent: 'לא נבחרו כיוונים' }),
-              Object.assign(document.createElement('p'), { className: 'preview-empty', textContent: 'נסו שוב וסמנו לפחות שיר אחד.' }),
-            );
+
+        // Round 2 refinement: fires when Round 1 yielded < 3 liked
+        // directions (0, 1, or 2). Feeds the R2 Gemini call all R1 inputs
+        // + the full R1 direction set + liked/disliked/super-liked
+        // buckets, then presents a 4-card swipe deck. Merges R2 picks
+        // into R1 picks. If TOTAL likes across both rounds is 0, offers
+        // a restart-onboarding screen instead of the "no directions"
+        // dead-end. See v6/generation/refined-directions.js for the R2
+        // prompt spec.
+        let mergedPicked = picked;
+        if (picked.length < 3) {
+          showRefinedDirectionsLoading();
+          const r1Directions = state.directions;
+          const dislikedDirs = r1Directions.filter((d) => !picked.includes(d));
+          // state.superLikedDirections may contain stale refs from prior
+          // R1 runs (invalidated at step navigation, but belt-and-suspenders):
+          // intersect with the current picked list so we only surface
+          // super-likes from THIS Round 1 to R2.
+          const superLikedDirs = picked.filter((d) => state.superLikedDirections.has(d));
+
+          let refinedResult;
+          try {
+            refinedResult = await abortable(generateRefinedMusicalDirections({
+              bizName: state.bizName,
+              bizDesc: state.bizDesc,
+              atmospheres: state.selectedAtmos,
+              musicalEmphases: state.musicalEmphases,
+              place: state.confirmedPlace,
+              round1Directions: r1Directions,
+              likedDirections: picked,
+              dislikedDirections: dislikedDirs,
+              superLikedDirections: superLikedDirs,
+              onboardingSessionId: state.onboardingSessionId,
+            }), signal);
+          } catch (e) {
+            if (e?.name === 'AbortError') return;
+            console.warn('refined-directions call failed:', e);
+            refinedResult = { error: 'matcher_error', reasoning_en: e.message };
           }
-          return;
+
+          if (refinedResult && !refinedResult.error && Array.isArray(refinedResult.directions) && refinedResult.directions.length) {
+            const refinedPicked = await abortable(runRefinedDirectionPreviewFlow({
+              refinedDirections: refinedResult.directions,
+              popularityWindow: state.popularityWindow,
+              superLikedTracks: state.superLikedTracks,
+              superLikedDirections: state.superLikedDirections,
+            }), signal);
+            mergedPicked = [...picked, ...refinedPicked];
+          } else {
+            // R2 model errored (insufficient_signal / matcher_error / etc.)
+            // or preview pool came back empty. Fall through with just the
+            // R1 picks; the zero-total check below handles the worst case.
+            console.warn('R2 skipped:', refinedResult?.error || 'no directions', refinedResult?.reasoning_en || '');
+          }
+
+          if (mergedPicked.length === 0) {
+            // In-app restart: goToStep(1) preserves everything the owner has
+            // already entered (bizName / bizDesc / musicalEmphases / place /
+            // atmospheres / hours / super-liked tracks + directions) — see
+            // invalidateFrom() for the full persistence contract. Only the
+            // downstream picks/directions/results are cleared, so a fresh
+            // Round 1 fires when the owner re-submits. No page reload, so
+            // splash + intro do not re-fire. Hard refresh (F5) still resets
+            // everything to a truly fresh session as expected.
+            showRestartOnboardingScreen(() => goToStep(1));
+            return;
+          }
         }
-        state.picked = picked;
+
+        state.picked = mergedPicked;
         state.results = null;   // any new picks → fresh build
         markReached(6);
       }

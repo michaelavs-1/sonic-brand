@@ -299,15 +299,15 @@ async function callRapidApiOnce(spotifyId, apiKey) {
 }
 
 async function callWithRetries(spotifyId, apiKey, cap, isAborted, maxErrorRetries) {
-    // maxErrorRetries caps the 5xx/network retry ladder. null → full ladder
-    // (RETRY_5XX_BACKOFF_MS.length = 6). Pass 1 for fail-fast semantics —
-    // the first server_error / network_error / gateway_html marks the track
-    // terminal so a wave of transient upstream errors can't lock up workers
-    // in ~17 min of backoff each. 429 retries are unaffected (rate limits
-    // are legitimately worth waiting out).
+    // maxErrorRetries caps the 5xx/network retry ladder at N retries after
+    // the initial failure. null → full ladder (RETRY_5XX_BACKOFF_MS.length = 6).
+    // Pass 0 for true fail-fast — first server_error / network_error /
+    // gateway_html marks the track terminal without any retry call or backoff,
+    // so a wave of transient upstream errors can't lock up workers. 429 retries
+    // are unaffected (rate limits are legitimately worth waiting out).
     const effective5xxCap = Math.min(
         RETRY_5XX_BACKOFF_MS.length,
-        Number.isFinite(maxErrorRetries) && maxErrorRetries > 0 ? maxErrorRetries : RETRY_5XX_BACKOFF_MS.length,
+        Number.isFinite(maxErrorRetries) && maxErrorRetries >= 0 ? maxErrorRetries : RETRY_5XX_BACKOFF_MS.length,
     );
     let rate429Idx = 0;
     let serr5xxIdx = 0;
@@ -429,15 +429,16 @@ async function main() {
     // some calls returned transient error payloads (e.g. RapidAPI was unhealthy).
     const retryErrors = !!args['retry-errors'];
 
-    // --max-error-retries=N — caps the 5xx/network retry ladder at N attempts
-    // (default: full 6-step ladder). Use N=1 for "fail fast on any error" runs
-    // where you want easy tracks to breeze through and errored tracks to be
-    // marked status='error' quickly for a later --retry-errors sweep.
-    const maxErrorRetries = args['max-error-retries']
+    // --max-error-retries=N — caps the 5xx/network retry ladder at N retries
+    // *after* the initial failure (default: full 6-step ladder). Use N=0 for
+    // TRUE fail-fast: first server_error → terminal immediately, no backoff,
+    // no retry call. Use N=1 to allow one 5s-backoff retry. Errored tracks
+    // get status='error' quickly for a later --retry-errors sweep.
+    const maxErrorRetries = args['max-error-retries'] !== undefined
         ? parseInt(args['max-error-retries'], 10)
         : null;
-    if (args['max-error-retries'] && (!Number.isFinite(maxErrorRetries) || maxErrorRetries < 1)) {
-        fail('--max-error-retries must be a positive integer.');
+    if (args['max-error-retries'] !== undefined && (!Number.isFinite(maxErrorRetries) || maxErrorRetries < 0)) {
+        fail('--max-error-retries must be a non-negative integer.');
     }
 
     // --no-storm-abort — bypass the 8-of-10-terminals rolling-window abort. The
@@ -561,6 +562,37 @@ async function main() {
         return;
     }
 
+    // Build spotify_id → [genre] map for outcome logging. One-time bulk fetch
+    // from Supabase: playlist_tracks filtered to this run's toAnalyze set,
+    // then playlist_genres for those playlist_ids. Kept in memory for the
+    // whole run so per-track log lines can suffix the genre without an extra
+    // network round-trip per outcome.
+    log(`loading genre labels for ${toAnalyze.length} tracks...`);
+    const ptForRun = await pgrSelectIn('playlist_tracks', 'spotify_id', toAnalyze, { select: 'playlist_id,spotify_id' });
+    const playlistIdsForRun = [...new Set(ptForRun.map((r) => r.playlist_id))];
+    const pgForRun = await pgrSelectIn('playlist_genres', 'playlist_id', playlistIdsForRun, { select: 'playlist_id,genre' });
+    const genresByPlaylist = new Map();
+    for (const r of pgForRun) {
+        if (!genresByPlaylist.has(r.playlist_id)) genresByPlaylist.set(r.playlist_id, new Set());
+        genresByPlaylist.get(r.playlist_id).add(r.genre);
+    }
+    const genresByTrack = new Map();
+    for (const r of ptForRun) {
+        if (!genresByTrack.has(r.spotify_id)) genresByTrack.set(r.spotify_id, new Set());
+        for (const g of (genresByPlaylist.get(r.playlist_id) || [])) {
+            genresByTrack.get(r.spotify_id).add(g);
+        }
+    }
+    // Format for log line — join if a track belongs to multiple genres.
+    // Returns "" when there's no mapping (shouldn't happen in orphans mode,
+    // but guards against upstream weirdness).
+    function genreLabel(spotifyId) {
+        const gs = genresByTrack.get(spotifyId);
+        if (!gs || gs.size === 0) return '';
+        return ' ' + [...gs].join(' | ');
+    }
+    log(`  ${ptForRun.length} playlist_tracks rows, ${playlistIdsForRun.length} playlists, ${pgForRun.length} playlist_genres rows`);
+
     // --- Phase 3: per-id RapidAPI calls (rate-limited, retried, persisted) ---
     log(`starting RapidAPI phase...`);
     const t0 = Date.now();
@@ -649,7 +681,7 @@ async function main() {
                 analyzed++;
                 progress.done.push(spotifyId);
                 dirtyDoneSinceLastWrite++;
-                log(`ok ${spotifyId} ${ms}ms (analyzed=${analyzed})`);
+                log(`ok ${spotifyId} ${ms}ms (analyzed=${analyzed})${genreLabel(spotifyId)}`);
                 maybeWriteProgress();
                 recordOutcome('ok');
             } catch (err) {
@@ -670,7 +702,7 @@ async function main() {
                 notFound++;
                 progress.done.push(spotifyId);
                 dirtyDoneSinceLastWrite++;
-                log(`not_found ${spotifyId} ${ms}ms`);
+                log(`not_found ${spotifyId} ${ms}ms${genreLabel(spotifyId)}`);
                 maybeWriteProgress();
                 recordOutcome('not_found');
             } catch (err) {
@@ -694,7 +726,7 @@ async function main() {
             } catch (err) {
                 warn(`upsert (error) failed ${spotifyId} after retries: ${err.message}`);
             }
-            warn(`terminal ${spotifyId}: ${reason}`);
+            warn(`terminal ${spotifyId}: ${reason}${genreLabel(spotifyId)}`);
             maybeWriteProgress({ force: true });
             recordOutcome('terminal');
         }

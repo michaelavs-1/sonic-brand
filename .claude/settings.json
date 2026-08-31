@@ -75,7 +75,9 @@
       "Bash(node tmp-worldfunk-check.mjs)",
       "Bash(node tmp-worldfunk-impact.mjs)",
       "Bash(echo \"---exit $?---\")",
-      "Bash(node tmp-britfunk-purge.mjs)"
+      "Bash(node tmp-britfunk-purge.mjs)",
+      "Bash(node /c/Users/ronim/AppData/Local/Temp/test_r2_live.mjs)",
+      "Bash(curl -sf -o /dev/null -w '%{http_code}  %{url_effective}\\\\n' \"http://127.0.0.1:3000/v6/app.js?v=31082026c\")"
     ]
   },
   "hooks": {

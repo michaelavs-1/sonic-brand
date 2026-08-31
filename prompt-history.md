@@ -1,14 +1,221 @@
-# Musical Directions Prompt — History
+# Musical Directions Prompts — History
 
-Audit log for changes to `EDITABLE_PROMPT_SECTION` in
-`v6/generation/musical-directions.js` (and the identical `v5/generation/musical-directions.js`).
+Audit log for the musical-directions system prompts used in v6 onboarding.
 
-**Update this file every time the EDITABLE section changes.** New entries at the TOP.
-Include: date, one-line summary, full text of the new version as it lives in the code.
-Never delete old entries — this is the audit trail.
+**Round 1** — initial 8-direction generator. Prompt lives in
+`v6/generation/musical-directions.js` (mirrored in `v5/generation/musical-directions.js`).
+Sub-constants make up the composed `EDITABLE_PROMPT_SECTION` and `FIXED_PROMPT_SECTION`.
 
-The `FIXED_PROMPT_SECTION` (schema/error contract) is not tracked here — it's
-tightly coupled to downstream parsing code and changes only when the schema changes.
+**Round 2** — refinement 4-direction generator, fires only when Round 1 yields
+fewer than 3 liked directions. Prompt lives in `v6/generation/refined-directions.js`.
+Composed from Round-2-specific sections plus shared sub-constants imported from
+Round 1's file (Genre Universe, Processing Rules, Energy & Pairing Constraints,
+Output Language, Title Rules, Hebrew Description rules, plus the full
+"When NOT to return directions" error contract).
+
+**Update this file every time either prompt changes.** New entries at the TOP.
+Each entry starts with an **Applies to:** line (`Round 1` / `Round 2` / `both`).
+Include: date, one-line summary of what changed and why, full text of the new
+version (or the changed sub-constants). Never delete old entries.
+
+Entries dated before 2026-08-31 predate the two-round split and implicitly
+apply to Round 1 only (Round 2 didn't exist yet).
+
+The `FIXED_PROMPT_SECTION` / R2's output format contract is tracked here whenever
+it changes — it's tightly coupled to downstream parsing code but the schema
+history matters for debugging old rows.
+
+---
+
+## 2026-08-31 — Round 2 refinement prompt introduced + sub-constant refactor of Round 1
+
+**Applies to:** both
+
+Two intertwined changes shipping together.
+
+### 1. Round 1 sub-constant refactor (composed output byte-identical)
+
+`v6/generation/musical-directions.js` (and v5 mirror) was restructured so `EDITABLE_PROMPT_SECTION` and `FIXED_PROMPT_SECTION` are now composed from named sub-constants via `.join('\n\n')` instead of single large template literals. Verified byte-identical to the pre-refactor exports (composed EDITABLE = 12195 chars matching pre-refactor; composed FIXED = 3449 chars matching pre-refactor). Ami's prompt-tuning dashboard still imports `EDITABLE_PROMPT_SECTION` unchanged; his textarea shows exactly the same string as before.
+
+The named sub-constants are now exported for cross-file reuse:
+- `GENRE_UNIVERSE_SECTION`
+- `PROCESSING_RULES_SECTION`
+- `ENERGY_PAIRING_SECTION`
+- `NON_OVERLAP_SECTION`
+- `OUTPUT_LANGUAGE_SECTION`
+- `TITLE_RULES_SECTION`
+- `HEBREW_DESCRIPTION_SECTION`
+- `WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION`
+- `injectPlaces()` helper — now exported
+
+Round-1-only pieces (`ROUND1_INTRO`, `ROUND1_INPUTS_SECTION`, `ROUND1_TASK_WORKFLOW`, `ROUND1_OUTPUT_FORMAT`) remain internal to the file.
+
+Rationale: the Round-2 file below imports and composes the shared sections, so a future edit to (say) the Genre Universe or a Musical Rule propagates to both prompts automatically. Prevents the drift that Ami's draft R2 prompt had (5 missing genres, stale BPM rule).
+
+### 2. Round 2 refinement prompt live (v6/generation/refined-directions.js)
+
+New file. Client-side module. Called by v6/app.js's step-5 handler only when Round 1's swipe deck ended with fewer than 3 liked directions. Uses the same provider (`callModel` from ai-provider.js) as Round 1. Labels each Gemini call `onboarding-refined` so Michael's admin API and gemini_spend rollups can break Round-2 costs out separately.
+
+**Composed Round-2 system prompt shape (in composition order):**
+
+1. `REFINED_INTRO` (Round-2-specific)
+2. Shared `GENRE_UNIVERSE_SECTION`
+3. `REFINED_INPUTS_SECTION` (Round-2-specific — includes R1 directions + liked/super-liked/disliked buckets in the input format)
+4. Shared `PROCESSING_RULES_SECTION` (with Places rule injected at anchor at runtime, same as Round 1)
+5. Shared `ENERGY_PAIRING_SECTION`
+6. `REFINED_NON_OVERLAP_SECTION` (Round-2-specific — allows similar-but-not-identical to R1-liked directions)
+7. `LEARNING_LOGIC_SECTION` (Round-2-specific)
+8. `REFINED_TASK_WORKFLOW` (Round-2-specific — exactly 4 directions, super-like bias rule)
+9. Shared `OUTPUT_LANGUAGE_SECTION`
+10. Shared `TITLE_RULES_SECTION`
+11. Shared `HEBREW_DESCRIPTION_SECTION`
+12. `REFINED_OUTPUT_FORMAT` (Round-2-specific — schema example with exactly 4 directions)
+13. Shared `WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION` (full error criteria for `not_a_music_venue` / `insufficient_description` / `off_topic` — same as Round 1)
+14. `ROUND2_ADDITIONAL_ERROR` (Round-2-specific — new `insufficient_signal` error code)
+
+Places blocks (input format + processing rule) are injected via the same `injectPlaces()` helper Round 1 uses, anchored on `### Processing Rules:` and `## Energy & Pairing Constraints`.
+
+**Full text of Round-2-specific sub-constants (the shared sub-constants are unchanged; see them in `v6/generation/musical-directions.js`):**
+
+**`REFINED_INTRO`:**
+
+```
+You are refining a previously generated set of musical directions for a public-facing business playlist tool. The business owner was presented with up to 8 musical directions in Round 1 and liked fewer than 3. Your task now is to analyze their picks — including which directions they super-liked — and produce 4 brand-new directions that are higher-precision matches to their taste.
+```
+
+**`REFINED_INPUTS_SECTION`:**
+
+```
+## Inputs
+
+You will receive all Round 1 inputs plus the full Round 1 model output and the owner's per-direction decisions.
+
+- Free-text description of the business (any language).
+- Optionally: Business name.
+- Optionally: Selected atmospheres (short adjectives from a fixed menu).
+- Optionally: **Musical emphases** — same text the owner supplied in Round 1.
+- Optionally: Google Places context — factual metadata about the venue, same shape as Round 1.
+- **Round 1 directions** — the full set the model produced, each with rank, title, genres, bpm_range, description, and instrumentalness_preference.
+- **Liked directions** — the 0, 1, or 2 directions the owner selected (may be empty).
+- **Super-liked directions** — a subset of the Liked directions that the owner explicitly super-liked. Stronger positive signal than plain likes.
+- **Disliked directions** — the directions the owner rejected.
+```
+
+**`LEARNING_LOGIC_SECTION`:**
+
+```
+## Learning & Processing Logic (Round 2)
+
+Perform this analysis BEFORE generating new directions.
+
+### 1. Extract Positive Seeds (Embrace)
+- Collect all genres that appeared across the Liked directions. These form your Positive Genre Pool.
+- Identify shared traits across the Liked directions: energy tier, tempo range, vocal vs. instrumental leaning, organic vs. synthesized production, regional character.
+- Weight Super-liked directions more heavily than plain liked directions — their genre lists are the strongest positive signal you have.
+
+### 2. Extract Negative Constraints (Strict Ban)
+- Analyze the Disliked directions.
+- Identify genres that appeared ONLY in disliked directions and NEVER in any liked direction.
+- Ban those genres (and their direct sub-genre equivalents) completely from your Round 2 output.
+
+### 3. Identify Bridge & Expansion Genres
+- Cross-reference the Positive Genre Pool with the Genre Universe.
+- Find un-sampled genres that share **any strong axis of similarity** with the liked genres — energy tier, tempo range, production style (organic vs. synthesized, acoustic vs. electronic), dynamic feel, cultural/regional adjacency, atmospheric character (matches the venue's selected atmospheres), vocal treatment, or emotional register. A candidate genre only needs to align on one or two of these axes to qualify as a bridge — but the more axes it aligns on, the stronger the bridge.
+- Combine the Positive Genre Pool with these Bridge Genres to form your Round 2 Working Pool.
+
+### 4. Honor Musical Emphases even in Round 2
+- The Musical Emphases text from Round 1 still applies with its FULL priority — including any include-genre / exclude-genre / general-leaning rule, AND the Instrumentalness preference classification. If Round 1's likes contradict the Musical Emphases (rare), the Musical Emphases still win.
+- Set every direction's `instrumentalness_preference` to the same value you would emit for Round 1 given the same emphases text (consistent across all 4 directions).
+
+### 5. Special case: zero Liked directions
+If the Liked list is empty:
+- Treat Description + Atmospheres + Musical Emphases as your sole positive signal.
+- Use Disliked strictly as a negative filter.
+- If those three positive inputs give too little signal AND the Disliked directions are internally contradictory (e.g., the owner disliked both a purely acoustic AND a purely electronic direction, offering no coherent negative filter), return `{"error": "insufficient_signal", ...}` rather than fabricating directions from thin air.
+```
+
+**`REFINED_NON_OVERLAP_SECTION`:**
+
+```
+## Direction Diversity & Non-Overlap Rules (Round 2)
+
+- **Within Round 2:** No two Round-2 directions may share more than one single genre. (Same rule as Round 1's Max Overlap Constraint.)
+- **Vs. Round-1 Liked directions:** Round 2 directions MAY share multiple genres with the owner's liked directions and MAY be recognizably derived from them — similar is allowed and encouraged. Only IDENTICAL specs (same title + same exact genre list) are forbidden.
+- **Vs. Round-1 Disliked directions:** Round 2 directions must NOT share the overall shape of a disliked direction. One common genre is fine; matching more than one is a signal you're drifting toward what the owner rejected.
+```
+
+**`REFINED_TASK_WORKFLOW`:**
+
+```
+## Task Workflow (Round 2)
+
+1. Run the Learning & Processing Logic above to produce your Round 2 Working Pool.
+2. Generate exactly 4 new directions from the Working Pool. Follow every rule from the shared Energy & Pairing Constraints (Absolute Energy Cohesion, Cross-Regional Fusion, Equal Genre Weight + Standalone allowances, Strict Pop Isolation, House & Techno Enclosure) AND the Japanese Folk Restriction from Processing Rules.
+3. **Super-like bias:** For each Super-liked Round-1 direction, dedicate 1 of your 4 output slots to a closely-derived variant — same energy tier, overlapping genre set expanded with 1–2 bridge genres, distinct title. Do NOT copy the super-liked direction verbatim (identical spec). Cap this at 2 of the 4 output slots even if the owner super-liked more than 2 directions — the remaining 2 slots are reserved for pure bridge / discovery picks.
+4. Each direction must include:
+   - **Genres list:** 3 to 5 genres from the Working Pool (or 1–2 for justified isolated niche genres / standalone allowed genres).
+   - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit `bpm_range` as `{"min": 0, "max": <ceiling>}`. Same rule as Round 1.
+   - **instrumentalness_preference:** Same value across all 4 directions, derived from the Musical Emphases text using the same rules as Round 1 (`"none"` | `"soft"` | `"hard"`).
+5. Rank directions best-fit first based on strength of the taste signal.
+```
+
+**`REFINED_OUTPUT_FORMAT`:**
+
+```
+## Output format
+
+Return a single JSON object with exactly this shape, and NOTHING ELSE — no prose before or after, no markdown code fences around it. Do not add fields not listed here.
+
+Normal case:
+{
+  "directions": [
+    {
+      "rank": 1,
+      "title_en": "English title, 4-7 words (see Rules for English Titles)",
+      "genres": ["...", "...", "..."],
+      "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
+      "bpm_range": {"min": 0, "max": 115},
+      "instrumentalness_preference": "none"
+    }
+    // exactly 4 directions
+  ]
+}
+
+The `instrumentalness_preference` field is one of `"none"` | `"soft"` | `"hard"`. Consistent across all 4 directions, derived from the Musical Emphases text.
+
+Error case (return instead of directions):
+{"error": "<code>", "reasoning_en": "one short English sentence"}
+```
+
+**`ROUND2_ADDITIONAL_ERROR`:**
+
+```
+## Additional Round-2 error code
+
+Return `{"error": "insufficient_signal", "reasoning_en": "..."}` ONLY when ALL of the following hold:
+- The Liked directions list is empty.
+- Description + Atmospheres + Musical Emphases together give too little positive signal to design new directions.
+- Disliked directions are internally contradictory (they don't point to a coherent negative filter).
+
+Prefer this error over fabricating directions from thin air. If any ONE of the three positive inputs still gives usable signal, produce directions rather than erroring.
+```
+
+### Client flow (context, not part of the prompt)
+
+`v6/app.js`'s step-5 handler now branches after the R1 swipe deck resolves:
+- If `picked.length >= 3` → proceed to step 6 (build playlists) as before.
+- If `picked.length < 3` → show a "מוצאים לכם עוד כיוונים" loading screen, fire `generateRefinedMusicalDirections()` with all R1 inputs + full R1 directions + liked / super-liked / disliked buckets, then render a 4-card refined swipe deck. Merges R2 picks into R1 picks. If TOTAL across both rounds is 0, shows a restart-onboarding screen instead of the "no directions" dead-end.
+
+Super-likes are tracked at two granularities now:
+- `state.superLikedTracks` (existing) — Set of spotify_ids, persisted to `super_liked_tracks` at signup. Same behavior for R2.
+- `state.superLikedDirections` (new) — Set of R1 direction objects. Populated by preview.js's super-like handler alongside track adds. Read at R2 launch to bias R2's output toward variants of super-liked directions. Not persisted; ephemeral onboarding state.
+
+Round 2 liked directions persist to `business_directions` at signup via the same `state.picked` array as R1 picks — no schema change. Round 2 Gemini calls appear in `gemini_call_log` with `label='onboarding-refined'`, attributed to the same `onboarding_session_id` and backfilled with the new `business_id` at signup by the existing UPDATE.
+
+### Related docs (out of scope for this file)
+
+- `docs/admin-api-for-michael.md` should be updated to note the new `onboarding-refined` label value (planned separately if Michael asks).
+- CLAUDE.md's onboarding pipeline diagram will need an R2 branch added after step 5 (planned in the next CLAUDE.md audit pass).
 
 ---
 

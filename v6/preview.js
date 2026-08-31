@@ -269,7 +269,17 @@ function directionsToPreviews(directions, byRank) {
 // the same deck so the user can keep swiping seamlessly. If the user
 // reaches the end of page 1 before page 2 arrives, we show a brief
 // "loading more" state until it does.
-async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, popularityWindow, page2Ready, superLikedTracks) {
+async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, popularityWindow, page2Ready, superLikedTracks, opts = {}) {
+  // `opts.expectedTotal` — total number of cards expected across pages. Round 1
+  // is 8 (page 1 + page 2), Round 2 is 4 (single page). Drives the progress
+  // label's denominator. Defaults to 8 for backward-compat.
+  //
+  // `opts.superLikedDirections` — optional Set the caller owns. Super-like
+  // fires add the direction OBJECT (not rank — direction objects are unique
+  // across rounds while ranks collide) so Round 2 can read Round 1's set.
+  const expectedTotal = Number.isFinite(opts.expectedTotal) ? opts.expectedTotal : 8;
+  const superLikedDirections = opts.superLikedDirections || null;
+
   const api = await getSpotifyIframeApi();
 
   return new Promise((resolve) => {
@@ -339,10 +349,11 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
     card.replaceChildren(el('h1', {}, HEADING), progLabel, progBar, deckWrap);
 
     const setProgress = () => {
-      // Pin the denominator to the pipeline's expected total (2 pages × 4)
-      // so the label never flashes "1/4 → 1/8" when page 2 lands. Math.max
-      // guards the theoretical case where more than 8 previews sneak in.
-      const total = Math.max(previews.length, 8);
+      // Pin the denominator to the pipeline's expected total (2 pages × 4 in
+      // R1, single page × 4 in R2) so the label never flashes "1/4 → 1/8"
+      // when page 2 lands. Math.max guards the theoretical case where more
+      // previews than expected sneak in.
+      const total = Math.max(previews.length, expectedTotal);
       // Spinner next to the count while page 2 is still en route — it means
       // "more cards are loading", now that the denominator itself is stable.
       const spinner = page2Settled
@@ -760,8 +771,11 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       // Super-like = "yes on the direction PLUS save this specific track as
       // a favorite for future taste-tuning". Semantically a commit + advance,
       // so we fly the card upward and step to the next preview. Distinct from
-      // plain yes only in that the track's spotify_id also lands in the
-      // shared Set that the signup step persists.
+      // plain yes only in that (a) the track's spotify_id lands in the shared
+      // superLikedTracks Set the signup step persists, AND (b) the direction
+      // object itself lands in superLikedDirections — the Round-2 refinement
+      // step reads that set to bias its output toward variants of directions
+      // the owner super-liked in Round 1.
       const superLike = () => {
         if (busy) return;
         busy = true;
@@ -771,6 +785,9 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         // otherwise we'd clobber a previous super-like of the same track.
         const trackWasAlreadyLiked = !!(superLikedTracks && superLikedTracks.has(trackId));
         if (superLikedTracks) superLikedTracks.add(trackId);
+        // Direction-level super-like — each direction appears on exactly one
+        // card so we never double-add. Undo unconditionally removes.
+        if (superLikedDirections) superLikedDirections.add(d);
         likedDirections.push(d);
         index += 1;
         progFill.style.width = ((index / previews.length) * 100) + '%';
@@ -778,6 +795,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         flyOff('up');
         showUndoToast(() => {
           if (superLikedTracks && !trackWasAlreadyLiked) superLikedTracks.delete(trackId);
+          if (superLikedDirections) superLikedDirections.delete(d);
           const idx = likedDirections.lastIndexOf(d);
           if (idx !== -1) likedDirections.splice(idx, 1);
           index -= 1;
@@ -991,7 +1009,7 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
 // background. Otherwise we do the prep synchronously here as a fallback.
 // When the prepared payload is already resolved, `await` returns in the same
 // microtask so the swipe deck appears without a visible loading flash.
-export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow, preparedPromise, superLikedTracks }) {
+export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow, preparedPromise, superLikedTracks, superLikedDirections }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('preview: .screen-card not found');
 
@@ -1010,13 +1028,109 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, popula
   // app.js). Each card's super-like button toggles items in the same Set,
   // so navigating back and forward preserves picks and the final list is
   // ready to hand off to signup at the end of the flow.
+  //
+  // `superLikedDirections` mirrors that pattern for direction-level super-
+  // likes — populated here and read by the Round-2 refinement step to bias
+  // its output toward variants of the super-liked directions.
   const page1 = await prepared.page1Ready;
   if (!page1.previews.length) {
     // Page 1 empty — fall back to page 2 as a last chance.
     const page2 = await prepared.page2Ready;
     if (!page2.previews.length) return [];
-    return renderSwipeDeck(container, page2.previews, page2.trackMeta, popularityWindow, null, superLikedTracks);
+    return renderSwipeDeck(container, page2.previews, page2.trackMeta, popularityWindow, null, superLikedTracks, { superLikedDirections });
   }
 
-  return renderSwipeDeck(container, page1.previews, page1.trackMeta, popularityWindow, prepared.page2Ready, superLikedTracks);
+  return renderSwipeDeck(container, page1.previews, page1.trackMeta, popularityWindow, prepared.page2Ready, superLikedTracks, { superLikedDirections });
+}
+
+// ---------- Round 2: refinement preview ----------
+//
+// Fires when Round 1's preview swipe deck yielded fewer than 3 liked
+// directions. Reuses preparePreview + renderSwipeDeck (single page, 4
+// cards), but bounds the deck's expected total to 4 so the progress
+// label reads 1/4 instead of 1/8. Returns the array of Round-2
+// directions the owner liked; the caller merges them into state.picked.
+//
+// `refinedDirections` — already-generated 4 directions from
+//   generateRefinedMusicalDirections. This flow does NOT trigger the R2
+//   Gemini call itself; the caller in app.js does that so the loading UI
+//   can render while the call is in flight.
+export async function runRefinedDirectionPreviewFlow({ refinedDirections, popularityWindow, superLikedTracks, superLikedDirections }) {
+  const container = document.querySelector('.screen-card');
+  if (!container) throw new Error('refined preview: .screen-card not found');
+
+  showLoading(container, 'טוענים עוד שירים לדוגמא…');
+
+  // Single page — no page2Promise. preparePreview still returns {page1Ready,
+  // page2Ready} where page2Ready is a settled empty payload.
+  const prepared = await preparePreview({
+    directions: refinedDirections,
+    page2Promise: null,
+    popularityWindow,
+  });
+
+  const page1 = await prepared.page1Ready;
+  if (!page1.previews.length) return [];
+
+  return renderSwipeDeck(
+    container,
+    page1.previews,
+    page1.trackMeta,
+    popularityWindow,
+    null,
+    superLikedTracks,
+    { expectedTotal: refinedDirections.length, superLikedDirections },
+  );
+}
+
+// ---------- Round 2 loading screen (while R2 Gemini call is in flight) ----------
+//
+// Shown between the end of the Round-1 swipe deck and the start of the
+// Round-2 swipe deck, while the refined-directions Gemini call runs.
+// Different copy from R1's showDirectionsLoading so the owner understands
+// they're getting a personalised second pass, not repeating step 5.
+export function showRefinedDirectionsLoading() {
+  const card = document.querySelector('.screen-card');
+  if (!card) return;
+  const h = document.createElement('h1');
+  h.textContent = 'רגע, מוצאים לכם עוד כיוונים';
+  const sub = document.createElement('p');
+  sub.className = 'subtitle';
+  sub.textContent = 'לא בחרתם הרבה — רובין ילמד מהבחירות שלכם ויציג עוד כמה כיוונים שיתאימו יותר.';
+  const wrap = document.createElement('div');
+  wrap.className = 'preview-load-column';
+  wrap.innerHTML =
+    '<div class="preview-load-label">מחדדים את הטעם שלכם…</div>' +
+    '<div class="preview-load-progress"><div class="preview-load-progress-fill"></div></div>';
+  card.replaceChildren(h, sub, wrap);
+}
+
+// ---------- Restart-onboarding screen ----------
+//
+// Shown when the owner completes both Round 1 AND Round 2 with 0 total
+// likes. Instead of hitting the "no directions" dead-end, we offer them
+// a fresh start with a friendly frame. Clicking the CTA calls `onRestart`
+// which the caller (app.js) wires to `goToStep(1)` — that path preserves
+// state.bizName / state.bizDesc / state.musicalEmphases so the owner
+// re-enters the description page with their prior inputs pre-filled and
+// can edit them before trying again. No page reload, so the splash and
+// "have a Rubin account?" gate do not re-fire. Fallback to a
+// ?reset=1 page reload if no callback was supplied (dev-safety only —
+// production callers always pass one).
+export function showRestartOnboardingScreen(onRestart) {
+  const card = document.querySelector('.screen-card');
+  if (!card) return;
+  const h = document.createElement('h1');
+  h.textContent = 'לא מצאנו את הכיוונים המתאימים';
+  const p = document.createElement('p');
+  p.className = 'preview-empty';
+  p.textContent = 'בואו ננסה שוב — תיאור עסק מדויק יותר או דגשים מוזיקליים ברורים יעזרו לרובין למצוא כיוונים שיתאימו לכם.';
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-primary btn-block';
+  btn.textContent = 'התחילו מחדש';
+  btn.addEventListener('click', () => {
+    if (typeof onRestart === 'function') onRestart();
+    else window.location.href = '/v6/?reset=1';
+  });
+  card.replaceChildren(h, p, btn);
 }

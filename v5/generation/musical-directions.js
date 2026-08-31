@@ -35,33 +35,32 @@ const MAX_TOKENS = 4000;
 //   - "Downtempo" is one word, "Easy Listening" has no "(50s)"
 // If you change the DB's genre spelling, update this list too or anchor
 // lookups will silently drop that direction.
-// The system prompt is split into two exported constants so the
-// /v5/ami-prompt-dashboard/ can substitute EDITABLE_PROMPT_SECTION with
-// Ami's tuned version while FIXED_PROMPT_SECTION stays constant.
+// ---------- Prompt sub-constants ----------
 //
-// EDITABLE_PROMPT_SECTION — the creative-direction content Ami owns:
-//   intro / genre universe / inputs / task / coverage / energy /
-//   output language / title style / description style.
-// FIXED_PROMPT_SECTION — the schema/error-handling contract that downstream
-//   code depends on (output format, when-not, good/bad examples).
-export const EDITABLE_PROMPT_SECTION = `You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into up to 8 distinct "musical directions" presented to the business owner. The owner will see one representative song from the direction, pick the ones they like, and each picked direction becomes the seed for a real playlist.
+// Split into sub-constants so v6/generation/refined-directions.js (Round 2)
+// can reuse the shared parts without duplication. The composed
+// EDITABLE_PROMPT_SECTION is byte-identical to the pre-refactor single
+// template literal — Ami's prompt dashboard (which imports this file)
+// sees exactly the same string in its textarea.
 
-## Genre Universe
+const ROUND1_INTRO = `You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into up to 8 distinct "musical directions" presented to the business owner. The owner will see one representative song from the direction, pick the ones they like, and each picked direction becomes the seed for a real playlist.`;
+
+export const GENRE_UNIVERSE_SECTION = `## Genre Universe
 
 The ONLY genres you may use are the ones in this list. Do not invent, rename, translate, or combine genres. If a musical style is not in the list, it does not exist for the purposes of this task.
 
-Alternative pop, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Bedroom Pop, Blues, Bolero, Bossa Nova, Britpop, Cantopop, Cha Cha Cha, Chamber music, Chinese City Pop, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Female Pop, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, German Hip Hop, Greek Funk, Grunge, Gypsy jazz, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Latin Boogaloo, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam Funk, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה
+Alternative pop, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Bedroom Pop, Blues, Bolero, Bossa Nova, Britpop, Cantopop, Cha Cha Cha, Chamber music, Chinese City Pop, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Female Pop, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, German Hip Hop, Greek Funk, Grunge, Gypsy jazz, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Latin Boogaloo, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam Funk, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה`;
 
-## Inputs
+const ROUND1_INPUTS_SECTION = `## Inputs
 
 You will receive:
 
 - Free-text description of the business (any language).
 - Optionally: Business name.
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
-- Optionally: **Musical emphases** — free-text preferences the owner typed in a dedicated field. Contains styles they explicitly love, styles they want to avoid, general leanings (e.g. "no electronic at all", "as much R&B as possible", "only hits", "make each playlist varied and adventurous"). Usually short (1–3 sentences), any language.
+- Optionally: **Musical emphases** — free-text preferences the owner typed in a dedicated field. Contains styles they explicitly love, styles they want to avoid, general leanings (e.g. "no electronic at all", "as much R&B as possible", "only hits", "make each playlist varied and adventurous"). Usually short (1–3 sentences), any language.`;
 
-### Processing Rules:
+export const PROCESSING_RULES_SECTION = `### Processing Rules:
 
 - **Musical Emphases (highest priority signal):** When the owner supplied musical emphases, treat them as the strongest input — above description, atmospheres, and Google context. If they name genres or families to include, at least half your directions should center on those. If they name genres or families to exclude, DROP those entirely from every direction — even if the description or atmosphere would otherwise suggest them. General leanings ("adventurous", "hits only", "familiar", "not too energetic") must shape every direction, not just some. Contradictions between emphases and description resolve in favor of emphases; note the tension briefly in the first direction's reasoning if useful.
 - **Instrumentalness preference (special sub-rule):** If the emphases text expresses a preference about instrumental (no-vocals) music, set the \`instrumentalness_preference\` field on every direction accordingly:
@@ -71,9 +70,9 @@ You will receive:
   Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
 - **Japanese Folk Restriction Rule:** \`Japanese Folk\` is a specialized style that must **NEVER** be included in any direction for a venue that is not explicitly a Japanese business requiring particularly calm/relaxing music — UNLESS the owner explicitly requested it (or a style very closely related to it) in their free-text description or musical emphases.
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
-- **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
+- **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.`;
 
-## Energy & Pairing Constraints
+export const ENERGY_PAIRING_SECTION = `## Energy & Pairing Constraints
 
 ### 1. Absolute Energy Cohesion (Energy > Geographic Origin / Nomenclature)
 
@@ -108,38 +107,38 @@ You will receive:
 ### 5. House & Techno Containment Rule
 
 - **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
-- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.
+- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.`;
 
-## Direction Diversity & Non-Overlap Rules
+export const NON_OVERLAP_SECTION = `## Direction Diversity & Non-Overlap Rules
 
 **Maximum Genre Pair Overlap Limit (Strict Uniqueness)**
 
 - **Single Genre Reuse Allowed:** A single genre MAY appear across multiple directions if it suits different vibe concepts.
-- **Max Overlap Constraint (Strictly ≤ 1 Shared Genre):** No two directions may ever share more than one single genre. If Direction A contains both Neo Soul and DownTempo, no other direction across the entire output may contain both Neo Soul and DownTempo together, under any circumstances.
+- **Max Overlap Constraint (Strictly ≤ 1 Shared Genre):** No two directions may ever share more than one single genre. If Direction A contains both Neo Soul and DownTempo, no other direction across the entire output may contain both Neo Soul and DownTempo together, under any circumstances.`;
 
-## Task Workflow
+const ROUND1_TASK_WORKFLOW = `## Task Workflow
 
 1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand.
 2. **Build Musical Directions:** Create up to 8 distinct directions from surviving genres, adhering strictly to energy levels, cross-regional integration rules, Pop rules, House enclosure rules, Japanese Folk restriction, and the Non-Overlap Constraint. Each direction must include:
    - **Genres list:** 3 to 5 genres from the pool (or 1–2 for justified isolated niche genres / standalone allowed genres) forming an equal, cohesive mix.
    - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit \`bpm_range\` as \`{"min": 0, "max": <ceiling>}\`.
-3. **Rank Directions:** Rank directions by fit to the business (best fit first).
+3. **Rank Directions:** Rank directions by fit to the business (best fit first).`;
 
-## Output Language & Formatting
+export const OUTPUT_LANGUAGE_SECTION = `## Output Language & Formatting
 
 - **Titles (\`title_en\`):** Written in English (4–7 words).
 - **Descriptions (\`description_he\`):** Written in natural, standard everyday Hebrew.
-- **Genre Names:** Keep genre names strictly as listed in the Genre Universe.
+- **Genre Names:** Keep genre names strictly as listed in the Genre Universe.`;
 
-## Rules for English Titles
+export const TITLE_RULES_SECTION = `## Rules for English Titles
 
 Each title is 4–7 words in English. Use one of three patterns:
 
 1. *Adjective + Genres:* "Desert Blues & Tropical Grooves"
 2. *Genre Chain:* "Neo-Soul, R&B & Acid Jazz"
-3. *Genre Chain + Flourish:* "Acoustic Bossa, Fado & Iberian Romance"
+3. *Genre Chain + Flourish:* "Acoustic Bossa, Fado & Iberian Romance"`;
 
-## Rules for Hebrew Descriptions (description_he)
+export const HEBREW_DESCRIPTION_SECTION = `## Rules for Hebrew Descriptions (description_he)
 
 The description must capture the full collective blend of all genres in the playlist and the holistic vibe they build together, rather than describing just one dominant genre or region. It must clearly explain to the business owner the combined sound experience, its direct effect on the business, and how best to utilize it.
 
@@ -165,7 +164,21 @@ Examples of tone and utility:
   - NO specific city names, beverage brands, or generic clichés ("כמו לשבת ב...").
 - **Language Integrity:** Standard, dictionary Hebrew spoken as a peer to another business owner.`;
 
-export const FIXED_PROMPT_SECTION = `## Output format
+// Composed Round-1 editable prompt — byte-identical to the pre-refactor version.
+export const EDITABLE_PROMPT_SECTION = [
+  ROUND1_INTRO,
+  GENRE_UNIVERSE_SECTION,
+  ROUND1_INPUTS_SECTION,
+  PROCESSING_RULES_SECTION,
+  ENERGY_PAIRING_SECTION,
+  NON_OVERLAP_SECTION,
+  ROUND1_TASK_WORKFLOW,
+  OUTPUT_LANGUAGE_SECTION,
+  TITLE_RULES_SECTION,
+  HEBREW_DESCRIPTION_SECTION,
+].join('\n\n');
+
+const ROUND1_OUTPUT_FORMAT = `## Output format
 
 Return a single JSON object with exactly this shape, and NOTHING ELSE — no prose before or after, no markdown code fences around it. Do not add fields not listed here.
 
@@ -187,9 +200,9 @@ Normal case:
 The \`instrumentalness_preference\` field is one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Instrumentalness preference" sub-rule under Processing Rules for when to use each. Default is \`"none"\` — that's what you output when the emphases text doesn't mention instrumentals at all.
 
 Error case (return instead of directions):
-{"error": "<code>", "reasoning_en": "one short English sentence"}
+{"error": "<code>", "reasoning_en": "one short English sentence"}`;
 
-## When NOT to return directions
+export const WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION = `## When NOT to return directions
 
 Musical directions are only meaningful for public-facing physical venues where customers are physically present and hear curated background music (bars, restaurants, cafés, salons, retail shops, gyms, hotels, and the like). If the input doesn't describe such a venue, or is otherwise unusable, return an error instead of directions. It is much better to return an error than to force-fit directions onto a bad input. If unsure, prefer the error — vague fits are more damaging than clean rejections.
 
@@ -223,6 +236,12 @@ BAD inputs (return an error — do NOT force directions):
 - "אני בונה רקטה" → off_topic (not a business)
 - "מקום" → insufficient_description (no signal)
 - "מה השעה?" → off_topic (question about the tool / unrelated)`;
+
+// Composed Round-1 fixed prompt — byte-identical to the pre-refactor version.
+export const FIXED_PROMPT_SECTION = [
+  ROUND1_OUTPUT_FORMAT,
+  WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION,
+].join('\n\n');
 
 // Google Places docs (input format + processing rule) are kept completely
 // out of EDITABLE_PROMPT_SECTION — Ami sees no mention of Places in the

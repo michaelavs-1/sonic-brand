@@ -49,7 +49,7 @@ export const GENRE_UNIVERSE_SECTION = `## Genre Universe
 
 The ONLY genres you may use are the ones in this list. Do not invent, rename, translate, or combine genres. If a musical style is not in the list, it does not exist for the purposes of this task.
 
-Alternative pop, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Bedroom Pop, Blues, Bolero, Bossa Nova, Britpop, Cantopop, Cha Cha Cha, Chamber music, Chinese City Pop, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Female Pop, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, German Hip Hop, Greek Funk, Grunge, Gypsy jazz, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Latin Boogaloo, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam Funk, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה`;
+Alternative pop, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Bedroom Pop, Blues, Bolero, Bossa Nova, Britpop, Cantopop, Cha Cha Cha, Chamber music, Chinese City Pop, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Female Pop, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, German Hip Hop, Greek Funk, Grunge, Gypsy jazz, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Latin Boogaloo, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה`;
 
 const ROUND1_INPUTS_SECTION = `## Inputs
 
@@ -74,23 +74,35 @@ export const PROCESSING_RULES_SECTION = `### Processing Rules:
 
 export const ENERGY_PAIRING_SECTION = `## Energy & Pairing Constraints
 
-### 1. Absolute Energy Cohesion (Energy > Geographic Origin / Nomenclature)
+### 1. Absolute Energy & Dynamic Cohesion (Zero Tolerance for Mismatches)
 
-- **Energy Over Origin:** Every direction MUST be built around a single, unbroken energy level (1 to 10). Prioritize dynamic venue energy and volume/BPM levels over genre roots, languages, or regional definitions.
+- **Unbroken Dynamic & Rhythm Compatibility:** Every direction MUST maintain a completely cohesive dynamic feel, rhythmic foundation, and energy level (1 to 10).
+- **Strict Beat/Percussion Pairing Rules:** NEVER pair genres with strong rhythmic grooves, prominent drum patterns, or sexy/upbeat vibes (e.g., \`RnB\`, \`French RnB\`, \`Funk\`, \`Neo Soul\`) with ambient, drumless, or slow acoustic genres (e.g., \`Late Night jazz\`, \`Piano Impressionism\`, \`Chamber music\`). Switching between a drum-driven beat and a beatless slow jazz track within the same direction is strictly forbidden.
 - **Strict Energy Filtering within Regional Blends:** When combining cultural/regional music, remove high-energy outliers that break the room's vibe (e.g., if creating a mid-tempo Mediterranean/Latin direction, pair Flamenco, Arab Classic, and Turk Arabesk, but strictly EXCLUDE high-energy festival genres like Samba, Salsa, or Dabke).
 
-### 2. Multi-Cultural & Cross-Regional Genre Fusion
+### 2. Jazz Isolation Rule
+
+- **Jazz Sub-genres Containment:** All Jazz genres (\`Jazz (Standards)\`, \`Late Night jazz\`, \`Smooth Jazz\`, \`Swing Jazz\`, \`French Jazz\`, \`Gypsy jazz\`, \`JazzHop\`) are intrinsically laid-back, background, or seated styles. They MUST NEVER be paired with dancing, energetic, or heavy beat-driven genres (such as RnB, Hip Hop, Funk, Pop, or Dance).
+- **Allowed Jazz Pairings:** Except for \`Ethio-Jazz\` and \`Acid Jazz\` (both rhythmic/uplifting and can blend with Afro/Funk/R&B styles) and \`Jazz House\` (enclosed under House rules), all Jazz genres can ONLY be paired with:
+  - Other Jazz genres.
+  - \`Bossa Nova\`
+  - \`Fado\`
+
+### 3. Multi-Cultural & Cross-Regional Genre Fusion
 
 - **Avoid Monocultural Silos:** Do NOT restrict directions to a single geographic or stylistic domain (e.g., avoid creating a "purely Latin" or "purely Arabic" direction if the energy tier allows for cross-cultural integration).
 - **Maximize Complementary Global Genres:** Proactively weave together genres from different regions and cultural scenes that share the exact same energy and dynamic feel.
-  - *Example 1 (Cross-Cultural Lounge/Dining):* Blend Latin, Middle Eastern, and Anatolian flavors (Flamenco, Arab Classic, Turk Arabesk, Anatolian Psychedelic Rock) under one cohesive mid-tempo vibe.
-  - *Example 2 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, French RnB, Japanese RnB, and Korean RnB.
+  - *Example 1 (Cross-Cultural Lounge/Dining):* Blend Latin, Middle Eastern, Turkish, and European flavours (Flamenco, Arab Classic, Turk Arabesk, Rebetiko, Fado) under one cohesive mid-tempo vibe.
+  - *Example 2 (Cross-Cultural Energetic Dining):* Blend Latin, Middle Eastern, Asian, and European flavours (Cha Cha Cha, Peruvian Cumbia, Anatolian Psychedelic Rock, Tishoumaren, Thai Molam, Samba-Choro) under one cohesive, not danceable yet groove-filled vibe.
+  - *Example 3 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, Neo Soul, Acid Jazz, French RnB, Japanese RnB, and Korean RnB.
+  - *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk).
+  - *Example 5 (Global Disco and City Pop):* Genres from around the world that share a similar groove background, such as a disco groove, pair naturally. In this case, Disco (not Nu Disco or Italo Disco) along with Japanese City Pop and Chinese City Pop.
 
-### 3. Equal Genre Weight & Density (No Anchor Genre)
+### 4. Equal Genre Weight & Density (No Anchor Genre)
 
 - **Holistic Direction Composition:** There is NO anchor genre. Every direction is defined as the unified sum of all its constituent genres.
-- **Target Genre Count:** Actively aim for 3 to 5 genres per direction to create rich, varied sonic identities.
-- **Justified Minimal Exceptions (1–2 Genres):** A direction may contain fewer than 3 genres (1–2 genres) ONLY if it serves an isolated, hyper-specific contextual need (e.g., pure שירי ארץ ישראל or dedicated electronic sub-genres) where adding external genres would destroy dynamic or cultural coherence.
+- **Target Genre Count:** Actively aim for 4 to 6 genres per direction to create rich, varied sonic identities.
+- **Justified Minimal Exceptions (1–3 Genres):** A direction may contain fewer than 4 genres (1–3 genres) ONLY if it serves an isolated, hyper-specific contextual need (e.g., pure שירי ארץ ישראל or dedicated electronic sub-genres) where adding external genres would destroy dynamic or cultural coherence.
 - **Stand-Alone / Near-Stand-Alone Genres:** Certain musical styles function effectively as a complete, standalone direction or paired with at most ONE closely related genre. If any of the following genres fit the business context well based on the client's input, you may present a direction consisting **solely of that genre** or **that genre plus one closely related style**:
   - \`Nu Metal\`
   - \`Indie Rock\`
@@ -99,12 +111,13 @@ export const ENERGY_PAIRING_SECTION = `## Energy & Pairing Constraints
   - \`Folk\`
   - \`Jazz House\`
 
-### 4. Strict Pop Isolation (Radio Experience)
+### 5. Strict Pop Isolation Rule
 
-- **No Esoteric / Niche Pairings with Pop:** Pop genres of any kind (Modern Pop, Bedroom pop, female pop, 80s Pop, 90's pop party, Electro Pop, Alternative pop, K-Pop, פופ מזרחית) must NEVER be mixed with niche, esoteric, or acoustic sub-genres.
-- **Pure Pop Clusters:** Pop-centric directions must consist exclusively of other Pop sub-genres, paired strictly according to matching energy tiers.
+- **Pop Isolation:** ALL Pop genres (including \`Bedroom Pop\`, \`Modern Pop\`, \`Female Pop\`, \`80s Pop\`, \`90's pop party\`, \`Electro Pop\`, \`Alternative Pop\`, \`K-Pop\`, \`פופ מזרחית\`, \`Cantopop\`) must NEVER be mixed with non-pop, niche, esoteric, acoustic, or electronic dance genres.
+- **Pop-Only Pairs:** Pop sub-genres can ONLY be paired with other Pop sub-genres of matching energy tiers.
+- **City Pop Exception:** City Pop sub-genres (\`Japanese City Pop\` and \`Chinese City Pop\`) are explicitly **EXEMPT** from the Pop Isolation rule and may be mixed with appropriate non-pop genres (such as Funk, Disco, or DownTempo) based on energy cohesion.
 
-### 5. House & Techno Containment Rule
+### 6. House & Techno Containment Rule
 
 - **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
 - **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.`;
@@ -119,24 +132,30 @@ export const NON_OVERLAP_SECTION = `## Direction Diversity & Non-Overlap Rules
 const ROUND1_TASK_WORKFLOW = `## Task Workflow
 
 1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand.
-2. **Build Musical Directions:** Create up to 8 distinct directions from surviving genres, adhering strictly to energy levels, cross-regional integration rules, Pop rules, House enclosure rules, Japanese Folk restriction, and the Non-Overlap Constraint. Each direction must include:
-   - **Genres list:** 3 to 5 genres from the pool (or 1–2 for justified isolated niche genres / standalone allowed genres) forming an equal, cohesive mix.
+2. **Build Musical Directions:** Create up to 8 distinct directions from surviving genres, adhering strictly to energy & dynamic cohesion, Jazz Isolation Rule, cross-regional integration rules, Pop Isolation, House & Techno enclosure, Japanese Folk restriction, and the Non-Overlap Constraint. Each direction must include:
+   - **Genres list:** 4 to 6 genres from the pool (or 1–3 for justified isolated niche genres / standalone allowed genres) forming an equal, cohesive mix.
    - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit \`bpm_range\` as \`{"min": 0, "max": <ceiling>}\`.
 3. **Rank Directions:** Rank directions by fit to the business (best fit first).`;
 
 export const OUTPUT_LANGUAGE_SECTION = `## Output Language & Formatting
 
-- **Titles (\`title_en\`):** Written in English (4–7 words).
+- **Titles (\`title_en\`):** Written in English (4–7 words), constructed strictly around: **[Style/Genre Elements] + [Dynamic Tier] + [Operational Use/Context]**.
 - **Descriptions (\`description_he\`):** Written in natural, standard everyday Hebrew.
 - **Genre Names:** Keep genre names strictly as listed in the Genre Universe.`;
 
-export const TITLE_RULES_SECTION = `## Rules for English Titles
+export const TITLE_RULES_SECTION = `## Rules for English Titles (\`title_en\`)
 
-Each title is 4–7 words in English. Use one of three patterns:
+Each title is 4–7 words in English and must clearly combine three structured elements derived from the business description and user settings:
+1. **Style / Genre Core** (e.g., *Modern Pop*, *Acoustic Grooves*, *Upbeat Disco*, *Ambient DownTempo*)
+2. **Dynamic / Energy Level** (e.g., *Light*, *Gentle*, *High-Energy*, *Mellow*, *Vibrant*, *Deep*)
+3. **Operational Use / Practical Context** (e.g., *for Morning Hours*, *for Lunch Service*, *for Peak Hours*, *for Late Night Bar*, *for Evening Vibes*)
 
-1. *Adjective + Genres:* "Desert Blues & Tropical Grooves"
-2. *Genre Chain:* "Neo-Soul, R&B & Acid Jazz"
-3. *Genre Chain + Flourish:* "Acoustic Bossa, Fado & Iberian Romance"`;
+**Examples of valid Title constructions:**
+- "Light Pop Grooves for Morning Hours"
+- "Gentle Acoustic Rhythms for Lunch Service"
+- "High-Energy Global Beats for Evening Peak"
+- "Mellow DownTempo Vibes for Late Night Drinks"
+- "Vibrant Pop Energy for Busy Hours"`;
 
 export const HEBREW_DESCRIPTION_SECTION = `## Rules for Hebrew Descriptions (description_he)
 

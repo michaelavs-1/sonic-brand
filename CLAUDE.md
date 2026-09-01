@@ -108,10 +108,15 @@ STEP 5: Preview swipe deck (v6/preview.js runDirectionPreviewFlow)
     offscreen kills media). Custom sw2-play button drives it via the
     IFrame API.
   - Super-like is a SWIPE-UP gesture (threshold 100px). On fire it
-    (a) records the trackId in state.superLikedTracks (Set), (b) counts
-    the card's direction as LIKED, (c) advances to the next card. A
-    "סופר לייק" cyan toast confirms; the top cyan rail glows as the
-    user drags upward past the threshold.
+    (a) records the trackId in state.superLikedTracks (Set), (b) records
+    the CURRENTLY-DISPLAYED card's genre in state.superLikedGenres
+    (Map<trackId, genre>) — the specific genre that produced the visible
+    track (if the owner swapped through cycled genres before super-liking,
+    the swapped-in genre is what gets attributed, NOT the whole direction's
+    genre list) so Round 2 can weight those specific genres extra-strongly,
+    (c) counts the card's direction as LIKED, (d) advances to the next
+    card. A "סופר לייק" cyan toast confirms; the top cyan rail glows as
+    the user drags upward past the threshold.
   - Swipe hit-area is scoped to .sw2-artwrap (the album art) ONLY.
     Everything else on the card — title, artist, swap button, reason
     line, progress bar — scrolls the page normally on touch. touch-action
@@ -127,6 +132,58 @@ STEP 5: Preview swipe deck (v6/preview.js runDirectionPreviewFlow)
     from the deck).
   - Swiping right = "build a playlist for this direction" (same effect
     as swipe-up's implicit "liked").
+        ↓
+STEP 5b: Round 2 refinement (only if picked.length < 3)
+  Trigger: after the R1 swipe deck resolves. If the owner picked fewer
+  than 3 directions (0, 1, or 2), the flow branches into a refinement
+  sub-step BEFORE STEP 6. If they picked 3+, STEP 6 fires directly.
+  See the dedicated "Round 2 refinement flow" mechanism section below
+  for the full model prompt / signal-priority breakdown.
+
+  - **Refinement emphases screen** (v6/preview.js runRefinedEmphasesStep):
+    "לא בחרת הרבה - נציע לך עוד קצת מוזיקה על סמך מה שכן אהבת. תרצה גם
+    לדייק אותנו?" + optional textarea + המשך (gated on ≥4 chars) / דלג.
+    Captured text lands in state.round2Emphases (preserved across step
+    re-entry; cleared when state.directions is invalidated so a fresh
+    R1 attempt starts with an empty textarea).
+  - **Prewarm nudge**: /api/v5/prewarm fires alongside the R2 Gemini
+    call (fire-and-forget). The ~30s Gemini call gives the Postgres
+    plan cache time to warm before the R2 anchor-tracks call actually
+    runs — mitigates the 57014 statement-timeout that can hit R2 hard
+    (R1 has page-2 fallback; R2 has no fallback).
+  - **R2 Gemini call** (v6/generation/refined-directions.js
+    generateRefinedMusicalDirections): single call producing exactly 4
+    refined directions. Inputs: all R1 inputs + full R1 direction set +
+    owner's LIKED / DISLIKED / SUPER-LIKED GENRES + the round2 emphases
+    text. Labeled `onboarding-refined` in gemini_call_log so admin API
+    rollups split R1 spend from R2 spend.
+  - **R2 preview swipe deck** (v6/preview.js runRefinedDirectionPreviewFlow):
+    same swipe UI as R1, single-page 4 cards (no page 2). Reuses the
+    same superLikedTracks + superLikedGenres references, so R2 super-
+    likes flow into the same downstream (persisted to super_liked_tracks
+    at signup; genres captured for parity).
+  - **Failure UX** (v6/preview.js showR2FailureScreen): if R2 Gemini
+    errored OR the R2 preview couldn't render any cards (usual cause:
+    all 4 refined directions had empty anchor-tracks pools — 57014
+    timeout despite the prewarm and client-side retry), the owner sees
+    a screen offering "נסה שוב" (refires R2 pipeline including another
+    prewarm) or a secondary action:
+      - if R1 picks >= 1 → "המשך עם הכיוונים שבחרתי" (proceed to STEP 6
+        with just R1 picks)
+      - if R1 picks == 0 → "התחלה מחדש" (falls through to the restart
+        screen below)
+  - **Merge**: R2 liked directions get appended to state.picked. Persist
+    to business_directions at signup identical to R1 picks; no schema
+    difference between R1-picked and R2-picked directions downstream.
+  - **Restart flow** (v6/preview.js showRestartOnboardingScreen): shown
+    when total R1+R2 picks is 0. Single card, "התחלה מחדש" CTA calls
+    goToStep(1) in-app — NOT a page reload, so the splash + "have a
+    Rubin account?" gate do not re-fire. Preserved across the restart:
+    bizName, bizDesc, musicalEmphases, confirmedPlace, selectedAtmos,
+    hours, superLikedTracks, superLikedGenres. Cleared: directions,
+    picked, round2Emphases, results (all downstream of the R1 model
+    call). Hard refresh (F5) is the only way to fully reset session
+    state.
         ↓
 STEP 6: Playlist build (v6/generation/playlist-builder.js buildDirectionPlaylists)
   - TARGET_TRACKS = 10 per playlist, one per picked direction. Serial
@@ -261,7 +318,7 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
   - Exposure rules: chat may freely mention title / description_he / qualitative BPM feel, but never enumerates a direction's genres unprompted. Owner-named genres are fair game. Never exposes numeric BPM or the inst_pref enum.
   - Contradiction rule: if the ask contradicts the initial onboarding context or a prior committed change, surface it in one sentence and let the owner override. Latest chat wins.
   - Add is two-step: paraphrase intent → owner confirms → full spec (title + description + genres + bpm + inst_pref) emitted as an `add` proposal.
-  - Genre universe pinned to the same 105-genre canonical list as musical-directions; the model must return canonical strings verbatim.
+  - Genre universe pinned to the same canonical list as musical-directions (imported from `v6/generation/genre-list.js`, currently ~110 entries); the model must return canonical strings verbatim.
 
 - **Server endpoints**:
   - `POST /api/v6/account/direction-chat` — one Gemini turn. Loads business + atmospheres (via auth admin API) + place + all directions (active + inactive) + last 20 changes + last 40 messages. Composes a `## Business context` / `## Current directions` / `## Prior committed changes` / `## Selected direction id` block as the first user turn, followed by the multi-turn transcript, followed by the current user message. Persists both roles into `business_direction_chats`; returns both rows plus a parsed `{reply_he, state, proposal|null}` payload for the client.
@@ -334,20 +391,42 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
 sonic-brand/
 ├── v6/                                     ← CURRENT ACTIVE UI
 │   ├── index.html                          ← Onboarding shell + all v6 CSS (splash, swipe, hours, progress bars)
-│   ├── app.js                              ← Onboarding orchestrator: state machine, clickable 6-step nav
+│   ├── app.js                              ← Onboarding orchestrator: state machine, 6-step progress nav +
+│   │                                          the R2 refinement sub-flow that branches inside step 5 when
+│   │                                          R1 preview yielded < 3 picks. See "Round 2 refinement flow" below.
 │   ├── atmosphere.js                       ← Atmosphere-selection screen driver
 │   ├── atmosphere-bubbles.js               ← Bubble-grid renderer used by atmosphere.js (rewrite of the old chip grid)
 │   ├── emphases.js                         ← Step 3 "דגשים מוזיקליים" — one textarea + skip button
 │   ├── hours-selector.js                   ← Opening hours picker (shared + master days, "שעות שונות" override)
-│   ├── preview.js                          ← Michael's swipe deck + preparePreview (background prefetch)
+│   ├── preview.js                          ← R1 swipe deck (runDirectionPreviewFlow) + preparePreview
+│   │                                          (background prefetch, page 1 + page 2). Also owns the R2
+│   │                                          UI surface: runRefinedEmphasesStep, runRefinedDirectionPreviewFlow,
+│   │                                          showRefinedDirectionsLoading, showR2FailureScreen (retry /
+│   │                                          continue / restart), showRestartOnboardingScreen.
 │   ├── result.js                           ← Progressive results shell + "אני רוצה את רובין" CTA + signup card
 │   ├── generation/
 │   │   ├── ai-provider.js                  ← PROVIDER='gemini'|'anthropic' switch. Shared by v6 + Ami dashboard.
-│   │   ├── musical-directions.js           ← Direction generator prompt + call (uses ai-provider). Split
-│   │   │                                      into EDITABLE + FIXED prompt sections; mirrored in v5/.
+│   │   ├── musical-directions.js           ← R1 direction generator (uses ai-provider). Both EDITABLE and
+│   │   │                                      FIXED prompt sections are composed from named sub-constants
+│   │   │                                      (GENRE_UNIVERSE_SECTION, PROCESSING_RULES_SECTION,
+│   │   │                                      ENERGY_PAIRING_SECTION, NON_OVERLAP_SECTION,
+│   │   │                                      OUTPUT_LANGUAGE_SECTION, TITLE_RULES_SECTION,
+│   │   │                                      HEBREW_DESCRIPTION_SECTION, WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION)
+│   │   │                                      which are EXPORTED for reuse by refined-directions.js. Composed
+│   │   │                                      EDITABLE + FIXED are byte-identical to the pre-refactor
+│   │   │                                      single-template-literal version. `injectPlaces()` also exported.
+│   │   │                                      Mirrored in v5/ so Ami's prompt dashboard sees the same string.
+│   │   ├── refined-directions.js           ← R2 direction generator. Client-side module. Composes its own
+│   │   │                                      system prompt from R2-specific sub-constants (REFINED_INTRO,
+│   │   │                                      REFINED_INPUTS_SECTION, LEARNING_LOGIC_SECTION,
+│   │   │                                      REFINED_NON_OVERLAP_SECTION, REFINED_TASK_WORKFLOW,
+│   │   │                                      REFINED_OUTPUT_FORMAT, ROUND2_ADDITIONAL_ERROR — new
+│   │   │                                      `insufficient_signal` error) plus imported shared sub-constants.
+│   │   │                                      Fires via callModel with label='onboarding-refined'. No v5 mirror.
 │   │   ├── event-chat-prompt.js            ← System prompt for the special-events chat on /v6/account
 │   │   ├── direction-edit-chat-prompt.js   ← System prompt for the profile-tab direction-edit chat
-│   │   ├── genre-list.js                   ← Canonical 105-genre list (shared with event-playlist server)
+│   │   ├── genre-list.js                   ← Canonical genre list, currently ~110 entries — count moves as
+│   │   │                                      Ami digests new genres. Shared with event-playlist server.
 │   │   ├── popularity-window.js            ← Derives [lo,hi] from selected atmospheres
 │   │   ├── playlist-length.js              ← dailyPlaylistExpiryIso, computeTargetForToday, directionKey, ilPartsFromDate
 │   │   └── playlist-builder.js             ← buildDirectionPlaylists (10 tracks each, concurrency-capped)
@@ -562,6 +641,22 @@ Each swipe card has a playback progress bar between the description line and the
   emphases sub-rules including instrumentalness classification, title +
   description conventions) and `FIXED_PROMPT_SECTION` (schema / error
   contract that downstream parsing depends on).
+- **Both sections are composed at load time from named sub-constants.**
+  Refactored 2026-08-31 so `v6/generation/refined-directions.js`
+  (Round 2) can `import` and reuse the shared parts — Genre Universe,
+  Processing Rules, Energy & Pairing Constraints, Non-Overlap, Output
+  Language, English-Title rules, Hebrew Description rules, and the full
+  When-Not-To-Return error contract — without copy-paste drift. The
+  composed EDITABLE + FIXED strings are byte-identical to the pre-
+  refactor single-template-literal version (verified by test script),
+  so Ami's dashboard imports `EDITABLE_PROMPT_SECTION` and sees the
+  same textarea contents as before. `injectPlaces()` is also exported
+  so R2 reuses the same Google-Places-block injection logic.
+- Any edit to a shared sub-constant automatically flows to both R1 and
+  R2 prompts. Edits to Round-1-only pieces (`ROUND1_INTRO`,
+  `ROUND1_INPUTS_SECTION`, `ROUND1_TASK_WORKFLOW`, `ROUND1_OUTPUT_FORMAT`)
+  affect only R1. R2 has its own corresponding sub-constants inside
+  refined-directions.js.
 - Ephemeral system-prompt cache via `cache_control` — applies only on
   the Anthropic path (Gemini has no equivalent; `callGemini` ignores
   the `cache: true` flag).
@@ -576,9 +671,42 @@ Each swipe card has a playback progress bar between the description line and the
   "Instrumentalness preference" mechanism below). `normalizeDirections`
   coerces + validates each field before handing to downstream code.
 
+### Round 2 refinement flow — `v6/generation/refined-directions.js`
+
+Fires only when the R1 preview swipe deck yielded fewer than 3 liked directions (0, 1, or 2). Same provider (`callModel` from ai-provider.js), same underlying `/api/v6/gemini` proxy, different system prompt and different labeling.
+
+**System prompt** — assembled at module load from R2-specific sub-constants + shared sub-constants imported from `musical-directions.js`. R2-specific pieces:
+- `REFINED_INTRO` — "You are refining a previously generated set..."
+- `REFINED_INPUTS_SECTION` — documents the input format including the R2-only fields (Round 1 directions, LIKED / DISLIKED buckets, SUPER-LIKED GENRES, Round-2 refinement emphases).
+- `LEARNING_LOGIC_SECTION` — 6-step reasoning skeleton: extract positive seeds → extract negative constraints → identify bridge genres (energy / tempo / production / cultural adjacency / atmospheric fit) → honor Musical Emphases → zero-Liked special case → Round 2 refinement emphases override (highest priority when present).
+- `REFINED_NON_OVERLAP_SECTION` — R2-scoped non-overlap: within R2 ≤ 1 shared genre per pair; vs. R1-Liked may share multiple genres (similar-but-not-identical is encouraged); vs. R1-Disliked must not share more than 1 genre.
+- `REFINED_TASK_WORKFLOW` — "generate exactly 4 directions" + super-liked-genre bias (spread across separate outputs when energy allows) + BPM ceiling rule + inst_pref inheritance.
+- `REFINED_OUTPUT_FORMAT` — schema example with `exactly 4 directions`.
+- `ROUND2_ADDITIONAL_ERROR` — new `insufficient_signal` error code (0 likes AND contradictory dislikes AND thin positive inputs).
+
+**Signal priority hierarchy** (highest first) — enforced by the prompt:
+1. **Round 2 refinement emphases** (freshest, most explicit — overrides everything below when contradictory)
+2. Round-1 Musical Emphases
+3. Super-liked genres (from state.superLikedGenres.values())
+4. Liked directions (full R1 direction spec)
+5. Disliked directions (negative filter)
+6. Description + Atmospheres + Google Places (contextual)
+
+**Client wiring** (v6/app.js step-5 handler): after R1 preview resolves with < 3 picks, the block does:
+1. `runRefinedEmphasesStep({initialValue: state.round2Emphases})` — capture optional refinement text
+2. `fetch('/api/v5/prewarm')` — fire-and-forget, warms Supabase plan cache in parallel with the Gemini call
+3. `generateRefinedMusicalDirections({...})` with all R1 context + likedDirections + dislikedDirections + `superLikedGenres: [...new Set(state.superLikedGenres.values())]` + `round2Emphases` + `onboardingSessionId`
+4. `runRefinedDirectionPreviewFlow({...})` — single-page 4-card swipe deck. Throws (not returns []) when it can't render any cards, so the caller distinguishes "swiped left on all" from "preview couldn't render".
+5. On thrown / errored / empty: `showR2FailureScreen({hasR1Picks})` — loops on retry, exits on continue / restart.
+6. On success: R2 picks appended to state.picked; if merged total is 0, restart screen.
+
+**Persistence**: R2 liked directions land in `state.picked` and get persisted to `business_directions` at signup identical to R1 picks. No schema difference downstream — the direction-edit chat, daily-gen cron, dashboard rendering all treat R2-origin directions the same. `gemini_call_log` rows for R2 carry `label='onboarding-refined'` (contrast with R1's `label='onboarding'`), attributed to the same `onboarding_session_id` and backfilled with `business_id` at signup by the same UPDATE.
+
+**Cost profile**: R2 typically ~30s Gemini call at ~6-11k tokens (thinking=high). Fires in a minority of sessions (< 3 R1 picks trigger). Only fired once per R1 outcome — retries re-fire but only when the previous R2 attempt hard-failed (Gemini error or empty preview). Admin API `by_label[]` in `/api/internal/gemini-spend` breaks it out separately.
+
 ### Genre list — `v6/generation/genre-list.js`
 
-Shared 105-genre canonical menu. Both `musical-directions.js` (for the system prompt) and `api/v6/account/event-playlist.js` (Claude Haiku prompt) import from here. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 to 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`.
+Shared canonical menu, currently ~110 entries — count moves as Ami digests new genres. Both `musical-directions.js` (for the system prompt via `GENRE_UNIVERSE_SECTION`) and `api/v6/account/event-playlist.js` (Claude Haiku prompt) import from here. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`; further churn (add / remove) has continued since.
 
 ### Playlist auto-expiry
 
@@ -962,7 +1090,7 @@ Everything the account dashboard reads lives here:
 **Ledgers + operational state:**
 - `created_playlists` — the expiry ledger. Columns: `spotify_id` (PK), `name`, `expires_at`, `deleted_at`, `error`, `owner_id` (nullable FK → auth.users), `business_id` (nullable FK → businesses). Both FKs use ON DELETE SET NULL so the cron can still unfollow expired playlists after their owner/business is deleted. Rows written by onboarding (via /api/v5/record-playlist) start with NULL owner/business — signup.js back-fills them. Renamed from `v5_created_playlists` on 2026-08-02; migration in `v5/precompute/migrations/`.
 - `v6_daily_track_history` — { business_id, direction_key, spotify_id, served_at }. Per-(biz, direction) served-track history for cross-day dedup. See "Cross-day track dedup" mechanism below. Cron opportunistically prunes rows older than 14 days.
-- `gemini_call_log` — one row per Gemini API call. Columns: { id, created_at, model, label, input_tokens, output_tokens (includes thinking tokens for cost purposes), thinking_tokens (broken out for analytics), total_tokens, cost_usd (numeric 12,8), business_id (nullable FK), onboarding_session_id (nullable text), http_status, finish_reason }. Written fire-and-forget by `api/v6/gemini.js` after every call — success OR failure. Cost computed server-side via `api/v6/gemini-pricing.js` using date-aware per-model rates (Google's paid Standard tier; auto-switches on 2027-01-01 when the price doubles). Attribution: post-signup callers pass `business_id` directly; onboarding callers pass a client-generated tab-lifetime `onboarding_session_id` which `signup.js` backfills into `business_id` (and clears the session id) on account creation. Rows with `onboarding_session_id` set but no `business_id` = "abandoned onboarding" bucket surfaced by the internal admin spend endpoint. Added 2026-08-25; RLS on with no policies (writes go through service_role).
+- `gemini_call_log` — one row per Gemini API call. Columns: { id, created_at, model, label, input_tokens, output_tokens (includes thinking tokens for cost purposes), thinking_tokens (broken out for analytics), total_tokens, cost_usd (numeric 12,8), business_id (nullable FK), onboarding_session_id (nullable text), http_status, finish_reason }. Written fire-and-forget by `api/v6/gemini.js` after every call — success OR failure. Cost computed server-side via `api/v6/gemini-pricing.js` using date-aware per-model rates (Google's paid Standard tier; auto-switches on 2027-01-01 when the price doubles). Label values in use: `onboarding` (Round-1 musical directions), `onboarding-refined` (Round-2 refinement — added 2026-08-31; see the "Round 2 refinement flow" mechanism above), plus post-signup labels for event chat / direction-edit chat / preview-direction. Attribution: post-signup callers pass `business_id` directly; onboarding callers pass a client-generated tab-lifetime `onboarding_session_id` which `signup.js` backfills into `business_id` (and clears the session id) on account creation — this applies to both `onboarding` and `onboarding-refined` label rows since R2 fires during the same tab-lifetime session as R1. Rows with `onboarding_session_id` set but no `business_id` = "abandoned onboarding" bucket surfaced by the internal admin spend endpoint. Added 2026-08-25; RLS on with no policies (writes go through service_role).
 
 **Cleanup archives (Ami's dashboard):**
 - `deleted_tracks` — archive keyed by `spotify_id`. Snapshot of the track's `playlist_tracks` rows + its `track_analyses` row before deletion. Written by `api/v4/ami-track-delete.js`; consumed and dropped by `api/v4/ami-track-restore.js`. RLS on with no anon-read policy (dashboard hits go through service_role).
@@ -1153,7 +1281,17 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 ## PROMPT EDITING PROTOCOL
 
-Every time you edit `EDITABLE_PROMPT_SECTION` in `v6/generation/musical-directions.js` (and the mirrored `v5/generation/musical-directions.js`), append a NEW entry at the top of `prompt-history.md` at the repo root. Each entry contains: today's date, a one-sentence summary of what changed and why, and the FULL text of the new EDITABLE section as it lives in the code. Never delete old entries — the file is the audit log. Ami's dashboard reads the same section, so v6 and v5 must stay identical; check both after every edit.
+Two musical-directions prompts exist and both are tracked in `prompt-history.md`:
+
+- **Round 1** — `EDITABLE_PROMPT_SECTION` + `FIXED_PROMPT_SECTION` in `v6/generation/musical-directions.js`, both composed from named sub-constants. Mirrored byte-for-byte in `v5/generation/musical-directions.js` — Ami's dashboard reads the v5 copy.
+- **Round 2** — R2-specific sub-constants inside `v6/generation/refined-directions.js`, composed on top of shared sub-constants imported from R1's file. No v5 mirror (R2 is v6-only).
+
+**Any edit to either prompt** — including edits to shared sub-constants (which affect both R1 and R2 automatically) — appends a NEW entry at the top of `prompt-history.md`. Each entry MUST include:
+- An **Applies to:** line: `Round 1` / `Round 2` / `both`
+- Today's date + one-sentence summary of what changed and why
+- The FULL text of the changed sub-constants (for a substantive content change) OR a clear diff description (for a structural/refactor change with byte-identical output). Never delete old entries — the file is the audit log.
+
+If the edit touches a shared sub-constant, mark `Applies to: both` and note both prompts are affected. If it touches only Round-1-specific pieces (`ROUND1_*`), mark `Applies to: Round 1`. Same for R2. Verify v5 mirror is still byte-identical to v6 for `EDITABLE_PROMPT_SECTION` and `FIXED_PROMPT_SECTION` after every edit (composition should keep them in sync as long as you edit them in the same way).
 
 ---
 
@@ -1224,6 +1362,7 @@ node scripts/benchmark-directions.mjs --out=benchmark-results/run.json
 7. **Vercel dev + moved files race**: if you move a file, update `vercel.json` in the same edit — otherwise `vercel dev` picks up the mismatch and crashes with "pattern doesn't match any Serverless Functions". Recovery: fix vercel.json and restart.
 8. **Vercel dev's `VERCEL_URL=localhost:3000` quirk**: server-to-server URLs built as `https://${VERCEL_URL}` resolve to `https://localhost:3000` in dev — every fetch fails with a bare "fetch failed". Both cron files use a `resolveSpotifyBase()` helper that scheme-normalises via a `/^(localhost|127\.)/` regex → http, everything else → https. If you add another server-to-server caller that builds a base URL from `VERCEL_URL` / `VERCEL_PROJECT_PRODUCTION_URL`, copy the same helper — do NOT hard-code `https://`.
 9. **Vercel serverless kills fire-and-forget promises after `res.end()`**: this bit us on 2026-08-29 when cron cluster alerts never arrived despite the code running. Any Resend / logging / analytics send that started with `.catch(() => {})` and wasn't awaited was cut mid-flight when the function returned. If you're adding async work in a handler, either await it before responding OR collect the promises and `await Promise.allSettled(alertPromises)` at the end. See "Alerts via Resend" mechanism for the pattern.
+10. **`Latin Funk` pending re-add to prompt** — the genre was in the Genre Universe earlier but was cut 2026-08-31 because `playlist_genres` had zero rows for it (no track pool). Once RapidAPI batch scans seed enough playlists into `track_analyses` under a `latin funk` label, the genre needs to be re-added in TWO places to bring parity back: (a) the `GENRE_UNIVERSE_SECTION` list in `v6/generation/musical-directions.js` (and v5 mirror), and (b) `ENERGY_PAIRING_SECTION` §3 Example 4's closed Funk-family enumeration (currently `Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk` — append `, Latin Funk`). Ami's dashboard reads the same v5 file, so his textarea updates automatically. R2 uses the same shared constants, so R2 gets it too.
 
 ---
 

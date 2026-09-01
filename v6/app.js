@@ -14,8 +14,8 @@
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v6/atmosphere.js?v=21082026a';
 import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
-import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=31082026a';
-import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=01092026b';
+import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=01092026d';
+import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=01092026d';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
 import {
   runDirectionPreviewFlow,

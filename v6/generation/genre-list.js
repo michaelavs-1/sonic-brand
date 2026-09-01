@@ -88,7 +88,7 @@ export const GENRES = [
   'Icelandic Hip Hop',
   'Trap',
   'Grime & Drill',
-  'Thai Molam Funk',
+  'Thai Molam',
   'Japanese City Pop',
   'Disco',
   'Nu Disco',

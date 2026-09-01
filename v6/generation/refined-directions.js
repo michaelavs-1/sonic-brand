@@ -34,7 +34,7 @@ import {
   HEBREW_DESCRIPTION_SECTION,
   WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION,
   injectPlaces,
-} from '/v6/generation/musical-directions.js?v=31082026a';
+} from '/v6/generation/musical-directions.js?v=01092026d';
 
 // Same output cap as Round 1 — Gemini 3.6-flash hard limit. Only 4
 // directions expected, so we're well under real usage; the ceiling
@@ -105,10 +105,10 @@ const REFINED_NON_OVERLAP_SECTION = `## Direction Diversity & Non-Overlap Rules 
 const REFINED_TASK_WORKFLOW = `## Task Workflow (Round 2)
 
 1. Run the Learning & Processing Logic above to produce your Round 2 Working Pool.
-2. Generate exactly 4 new directions from the Working Pool. Follow every rule from the shared Energy & Pairing Constraints (Absolute Energy Cohesion, Cross-Regional Fusion, Equal Genre Weight + Standalone allowances, Strict Pop Isolation, House & Techno Enclosure) AND the Japanese Folk Restriction from Processing Rules.
+2. Generate exactly 4 new directions from the Working Pool. Follow every rule from the shared Energy & Pairing Constraints (Absolute Energy & Dynamic Cohesion, Jazz Isolation Rule, Multi-Cultural Fusion, Equal Genre Weight + Standalone allowances, Strict Pop Isolation with City Pop Exception, House & Techno Enclosure) AND the Japanese Folk Restriction from Processing Rules.
 3. **Super-liked genre bias:** Ensure super-liked genres (or their close bridges identified in Learning step 3) appear in at least one of your 4 output directions. If multiple super-liked genres are supplied, prefer to spread them across separate output directions when the energy tiers and pairing rules allow — do NOT force every super-liked genre into a single direction. The super-like signal is genre-weighting, not slot-dedication: no output direction has to be a "variant" of a Round-1 direction.
 4. Each direction must include:
-   - **Genres list:** 3 to 5 genres from the Working Pool (or 1–2 for justified isolated niche genres / standalone allowed genres).
+   - **Genres list:** 4 to 6 genres from the Working Pool (or 1–3 for justified isolated niche genres / standalone allowed genres).
    - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit \`bpm_range\` as \`{"min": 0, "max": <ceiling>}\`. Same rule as Round 1.
    - **instrumentalness_preference:** Same value across all 4 directions, derived from the Musical Emphases text using the same rules as Round 1 (\`"none"\` | \`"soft"\` | \`"hard"\`).
 5. Rank directions best-fit first based on strength of the taste signal.`;

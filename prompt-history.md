@@ -27,6 +27,80 @@ history matters for debugging old rows.
 
 ---
 
+## 2026-09-01 — Ami content pass v2: Jazz Isolation Rule, City Pop Exception, expanded Multi-Cultural examples, richer titles, 4-6 genre target
+
+**Applies to:** both (all changes are in shared sub-constants — R1 and R2 receive them via composition / imports)
+
+Substantive creative update from Ami. Structural section changes and richer prompt guidance. R2 also picks up two small task-list edits to reference the reorganised sections.
+
+**Changes to `ENERGY_PAIRING_SECTION`** (shared sub-constant — flows to both R1 and R2):
+
+- **§1 renamed** to *Absolute Energy & Dynamic Cohesion (Zero Tolerance for Mismatches)* with a new **Strict Beat/Percussion Pairing Rules** bullet forbidding drum-driven genres (RnB / French RnB / Funk / Neo Soul) from being mixed with beatless/ambient/slow acoustic ones (Late Night jazz / Piano Impressionism / Chamber music).
+- **New §2 Jazz Isolation Rule.** Enumerates Jazz sub-genres (Jazz Standards, Late Night jazz, Smooth Jazz, Swing Jazz, French Jazz, Gypsy jazz, JazzHop) as intrinsically laid-back/background — MUST NEVER pair with dancing/energetic/beat-driven genres. Exceptions: `Ethio-Jazz` and `Acid Jazz` (both rhythmic/uplifting, freely mixable with Afro/Funk/R&B), and `Jazz House` (enclosed under House rules). Other Jazz genres can only pair with other Jazz + `Bossa Nova` + `Fado`. Biggest content change — driven by Ami's test results showing prior mixes of chill jazz with drum-driven R&B produced incoherent output.
+- **§3 Multi-Cultural & Cross-Regional Genre Fusion** expanded from 2 examples to 5. Explicit closed-list genres per example, all verified against the current Genre Universe. Example 3 (Global R&B & Soul) now includes `Neo Soul` and `Acid Jazz` alongside R&B family (possible because Acid Jazz is exempt from Jazz Isolation per §2). Example 4 (Global Funk & Groove) enumerates the closed Funk-family list (Funk / Afro Funk / Italian Funk / French Funk / Greek Funk / Arabic Funk). Example 5 (Global Disco and City Pop) leverages the new City Pop exception (see §5).
+- **§4 Equal Genre Weight & Density** — Target Genre Count raised from **3-5 → 4-6 genres per direction**. "Justified Minimal Exceptions" rewritten to `1-3 Genres` / "fewer than 4" to match the new target.
+- **§5 renamed** to *Strict Pop Isolation Rule* (dropped "Radio Experience"). Pop-list casing normalised (`Bedroom Pop`, `Modern Pop`, `Female Pop`, `Alternative Pop`, `Cantopop`). Wording tightened: "must NEVER be mixed with non-pop, niche, esoteric, acoustic, or electronic dance genres". **New City Pop Exception**: `Japanese City Pop` and `Chinese City Pop` are explicitly EXEMPT and may mix with Funk / Disco / DownTempo based on energy cohesion.
+- **§6 House & Techno Containment** — unchanged (renumbered from §5).
+
+**Changes to `ROUND1_TASK_WORKFLOW`** (R1-only):
+- Rule enumeration in Step 2 reordered to match new section numbering: "energy & dynamic cohesion → Jazz Isolation Rule → cross-regional integration → Pop Isolation → House & Techno enclosure → Japanese Folk restriction → Non-Overlap Constraint".
+- Genre-count line updated: `3 to 5 (or 1-2 for exceptions)` → `4 to 6 (or 1-3 for exceptions)`.
+
+**Changes to `OUTPUT_LANGUAGE_SECTION`** (shared):
+- Title bullet now reads: `Written in English (4-7 words), constructed strictly around: [Style/Genre Elements] + [Dynamic Tier] + [Operational Use/Context]`. Word cap preserved at 4-7.
+
+**Changes to `TITLE_RULES_SECTION`** (shared — complete rewrite):
+
+```
+## Rules for English Titles (`title_en`)
+
+Each title is 4-7 words in English and must clearly combine three structured elements derived from the business description and user settings:
+1. **Style / Genre Core** (e.g., *Modern Pop*, *Acoustic Grooves*, *Upbeat Disco*, *Ambient DownTempo*)
+2. **Dynamic / Energy Level** (e.g., *Light*, *Gentle*, *High-Energy*, *Mellow*, *Vibrant*, *Deep*)
+3. **Operational Use / Practical Context** (e.g., *for Morning Hours*, *for Lunch Service*, *for Peak Hours*, *for Late Night Bar*, *for Evening Vibes*)
+
+**Examples of valid Title constructions:**
+- "Light Pop Grooves for Morning Hours"
+- "Gentle Acoustic Rhythms for Lunch Service"
+- "High-Energy Global Beats for Evening Peak"
+- "Mellow DownTempo Vibes for Late Night Drinks"
+- "Vibrant Pop Energy for Busy Hours"
+```
+
+Replaces the previous three-pattern menu (`Adjective + Genres` / `Genre Chain` / `Genre Chain + Flourish`).
+
+**R2-specific edits** (`v6/generation/refined-directions.js`):
+- `REFINED_TASK_WORKFLOW` §2 rule list updated to reference the new shared section names (Absolute Energy & Dynamic Cohesion, Jazz Isolation Rule, Multi-Cultural Fusion, Equal Genre Weight + Standalone allowances, Strict Pop Isolation with City Pop Exception, House & Techno Enclosure).
+- `REFINED_TASK_WORKFLOW` §4 genre count updated: `3 to 5 (or 1-2 for exceptions)` → `4 to 6 (or 1-3 for exceptions)` — matches R1.
+
+**Not changed:** Genre Universe, Inputs, Processing Rules (Musical Emphases / Instrumentalness / Japanese Folk / Atmospheres / Business Name), Non-Overlap Rules, Hebrew Description rules, Output schema, Error contract. Downstream code (validateDirection / normalizeDirections / bpm_range shape / v6_daily_track_history direction-key format) all unaffected.
+
+**Known genre-pool pending item:** Example 4 (Global Funk & Groove) enumerates the closed Funk family currently in the Genre Universe. `Latin Funk` was previously dropped due to zero track pool. Once RapidAPI scans seed enough playlists for it, re-add `Latin Funk` to the Genre Universe list AND append it to §3 Example 4. Tracked in CLAUDE.md's Known Issues section.
+
+**Ami's dashboard cache-bust** bumped from `?v=29082026a` → `?v=01092026d` in `v5/ami-prompt-dashboard/app.js` so Ami sees the updated textarea contents on next load.
+
+**Composed prompt size**: EDITABLE grew from 12195 → 14827 chars. FIXED unchanged at 3449. v5/v6 sub-constants verified byte-identical.
+
+---
+
+## 2026-09-01 — Genre rename: "Thai Molam Funk" → "Thai Molam"
+
+**Applies to:** both
+
+Single-genre rename in the shared `GENRE_UNIVERSE_SECTION` (imported by both R1 and R2). Databox Tab 2 was already updated; DB rows renamed (8 rows in `playlist_genres`); `v6/generation/genre-list.js` and `v6/generation/direction-edit-chat-prompt.js` also updated to match. No other content changed — only the one comma-separated entry in the genre list.
+
+New `GENRE_UNIVERSE_SECTION`:
+
+```
+## Genre Universe
+
+The ONLY genres you may use are the ones in this list. Do not invent, rename, translate, or combine genres. If a musical style is not in the list, it does not exist for the purposes of this task.
+
+Alternative pop, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Bedroom Pop, Blues, Bolero, Bossa Nova, Britpop, Cantopop, Cha Cha Cha, Chamber music, Chinese City Pop, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Female Pop, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, German Hip Hop, Greek Funk, Grunge, Gypsy jazz, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Latin Boogaloo, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה
+```
+
+---
+
 ## 2026-09-01 — Round 2 gains a refinement-emphases input (highest-priority signal)
 
 **Applies to:** Round 2

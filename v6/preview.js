@@ -210,7 +210,12 @@ async function fetchAnchorTracks(specs, popularityWindow) {
   }
 }
 
-// Initial preview fetch: random genre per direction.
+// Initial preview fetch: random genre per direction. Returns both the
+// byRank map (rank → trackId) and a parallel genreByRank map (rank →
+// which genre was used to draw that track). The genre is what a
+// super-like on that card contributes to state.superLikedGenres — a
+// sharper positive signal for Round 2 than the whole direction's genre
+// list would be.
 async function fetchInitialPreviewTracks(directions, popularityWindow) {
   const specs = directions.map((d) => ({
     rank: d.rank,
@@ -218,8 +223,11 @@ async function fetchInitialPreviewTracks(directions, popularityWindow) {
     bpm_range: d.bpm_range,
     inst_pref: d.instrumentalness_preference || 'none',
   })).filter((s) => s.genre);
-  if (!specs.length) return {};
-  return fetchAnchorTracks(specs, popularityWindow);
+  if (!specs.length) return { byRank: {}, genreByRank: {} };
+  const byRank = await fetchAnchorTracks(specs, popularityWindow);
+  const genreByRank = {};
+  for (const s of specs) genreByRank[String(s.rank)] = s.genre;
+  return { byRank, genreByRank };
 }
 
 // ---------- track metadata (via v4 Spotify proxy — client credentials) ----------
@@ -246,13 +254,17 @@ async function fetchTrackMeta(trackIds) {
 }
 
 // Combine v5 directions with their anchor tracks. Drops directions whose
-// anchor genre had no cached track (byRank[rank] is empty).
-function directionsToPreviews(directions, byRank) {
+// anchor genre had no cached track (byRank[rank] is empty). Each preview
+// also carries the `genre` that produced its trackId — captured so that
+// super-liking the card contributes the specific genre (not the whole
+// direction) to state.superLikedGenres for Round 2.
+function directionsToPreviews(directions, byRank, genreByRank) {
   const out = [];
   for (const d of directions) {
     const trackId = byRank[String(d.rank)];
     if (!trackId) continue;
-    out.push({ direction: d, trackId });
+    const genre = genreByRank ? genreByRank[String(d.rank)] || null : null;
+    out.push({ direction: d, trackId, genre });
   }
   out.sort((a, b) => a.direction.rank - b.direction.rank);
   return out;
@@ -274,11 +286,14 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
   // is 8 (page 1 + page 2), Round 2 is 4 (single page). Drives the progress
   // label's denominator. Defaults to 8 for backward-compat.
   //
-  // `opts.superLikedDirections` — optional Set the caller owns. Super-like
-  // fires add the direction OBJECT (not rank — direction objects are unique
-  // across rounds while ranks collide) so Round 2 can read Round 1's set.
+  // `opts.superLikedGenres` — optional Map<trackId, genre> the caller owns.
+  // Super-like fires record the CURRENT card's genre (the genre that was
+  // used to draw the currently-displayed track — may differ from the initial
+  // trackId's genre if the user swapped first). Round 2 uses the deduped
+  // list of these genres as its extra-weighted positive signal, replacing
+  // the earlier "super-liked directions" concept.
   const expectedTotal = Number.isFinite(opts.expectedTotal) ? opts.expectedTotal : 8;
-  const superLikedDirections = opts.superLikedDirections || null;
+  const superLikedGenres = opts.superLikedGenres || null;
 
   const api = await getSpotifyIframeApi();
 
@@ -655,6 +670,12 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       const cycleGenres = directionGenres(d);
       let cycleIdx = cycleGenres.length ? Math.floor(Math.random() * cycleGenres.length) : 0;
       const seenIds = new Set([p.trackId]);
+      // Genre that produced the currently-displayed track. Starts as the
+      // initial preview's genre (set by fetchInitialPreviewTracks), updates
+      // to cycleGenres[idx] whenever swap successfully lands on that idx.
+      // The super-like handler reads this to record the specific genre the
+      // user reacted to (not the whole direction's genre list).
+      let currentGenre = p.genre || null;
       const drawUnique = async (spec, pop) => {
         for (let attempt = 0; attempt < 2; attempt++) {
           let byRank;
@@ -673,6 +694,8 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         }
         return null;
       };
+      // Returns { trackId, genre } so the caller can update currentGenre
+      // alongside the visible track.
       const walkCycle = async (bpmRange, pop) => {
         for (let step = 0; step < cycleGenres.length; step++) {
           const idx = (cycleIdx + step) % cycleGenres.length;
@@ -683,7 +706,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
             inst_pref: d.instrumentalness_preference || 'none',
           };
           const hit = await drawUnique(spec, pop);
-          if (hit) { cycleIdx = (idx + 1) % cycleGenres.length; return hit; }
+          if (hit) { cycleIdx = (idx + 1) % cycleGenres.length; return { trackId: hit, genre: cycleGenres[idx] }; }
         }
         return null;
       };
@@ -696,14 +719,16 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         // songs keep loading.
         swap.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים…';
         try {
-          let nextId = await walkCycle(d.bpm_range, popularityWindow);
-          if (!nextId) {
-            nextId = await walkCycle({ min: 0, max: 300 }, [0, 100]);
+          let hit = await walkCycle(d.bpm_range, popularityWindow);
+          if (!hit) {
+            hit = await walkCycle({ min: 0, max: 300 }, [0, 100]);
           }
-          if (!nextId) {
+          if (!hit) {
             swap.textContent = 'אין עוד שירים בכיוון הזה';
             return;
           }
+          const nextId = hit.trackId;
+          currentGenre = hit.genre;   // super-like now attributes to the new genre
           seenIds.add(nextId);
           const m2 = (await fetchTrackMeta([nextId]))[nextId] || {};
           trackMeta[nextId] = m2;
@@ -771,23 +796,30 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       // Super-like = "yes on the direction PLUS save this specific track as
       // a favorite for future taste-tuning". Semantically a commit + advance,
       // so we fly the card upward and step to the next preview. Distinct from
-      // plain yes only in that (a) the track's spotify_id lands in the shared
-      // superLikedTracks Set the signup step persists, AND (b) the direction
-      // object itself lands in superLikedDirections — the Round-2 refinement
-      // step reads that set to bias its output toward variants of directions
-      // the owner super-liked in Round 1.
+      // plain yes in two ways:
+      //   (a) the track's spotify_id lands in the shared superLikedTracks
+      //       Set the signup step persists, AND
+      //   (b) the currently-displayed track's GENRE (not the whole direction)
+      //       is recorded in superLikedGenres, keyed by trackId. Round 2
+      //       reads the deduped set of genre values as an extra-weighted
+      //       positive signal — the owner reacted to that specific genre,
+      //       which is sharper information than "the whole direction was
+      //       liked". If the owner swapped tracks before super-liking, the
+      //       new (swapped-in) genre is what gets recorded.
       const superLike = () => {
         if (busy) return;
         busy = true;
         destroyController();
         const trackId = cardEl.dataset.trackId || p.trackId;
+        const genreAtSuperLike = currentGenre;
         // Only .delete on undo if this call was the one that added it;
         // otherwise we'd clobber a previous super-like of the same track.
         const trackWasAlreadyLiked = !!(superLikedTracks && superLikedTracks.has(trackId));
         if (superLikedTracks) superLikedTracks.add(trackId);
-        // Direction-level super-like — each direction appears on exactly one
-        // card so we never double-add. Undo unconditionally removes.
-        if (superLikedDirections) superLikedDirections.add(d);
+        // Genre-per-super-liked-track. Key is trackId so undo can precisely
+        // remove this entry without affecting other super-likes that
+        // happened to share the same genre from other cards.
+        if (superLikedGenres && genreAtSuperLike) superLikedGenres.set(trackId, genreAtSuperLike);
         likedDirections.push(d);
         index += 1;
         progFill.style.width = ((index / previews.length) * 100) + '%';
@@ -795,7 +827,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         flyOff('up');
         showUndoToast(() => {
           if (superLikedTracks && !trackWasAlreadyLiked) superLikedTracks.delete(trackId);
-          if (superLikedDirections) superLikedDirections.delete(d);
+          if (superLikedGenres) superLikedGenres.delete(trackId);
           const idx = likedDirections.lastIndexOf(d);
           if (idx !== -1) likedDirections.splice(idx, 1);
           index -= 1;
@@ -927,8 +959,8 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
   // Page 1: anchors → previews → metadata, chained together.
   const page1Ready = (async () => {
     console.log('[v6 preview] page 1 model directions:', directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d), bpm: d.bpm_range })));
-    const byRank = await sequencedAnchors(directions);
-    const previews = directionsToPreviews(directions, byRank);
+    const { byRank, genreByRank } = await sequencedAnchors(directions);
+    const previews = directionsToPreviews(directions, byRank, genreByRank);
     logPageOutcome('page 1', directions, previews, byRank);
     const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
     return { previews, trackMeta };
@@ -983,8 +1015,8 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
       }
       console.log('[v6 preview] page 2 model directions:', page2Result.directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d), bpm: d.bpm_range })));
       try {
-        const byRank = await sequencedAnchors(page2Result.directions);
-        const previews = directionsToPreviews(page2Result.directions, byRank);
+        const { byRank, genreByRank } = await sequencedAnchors(page2Result.directions);
+        const previews = directionsToPreviews(page2Result.directions, byRank, genreByRank);
         logPageOutcome('page 2', page2Result.directions, previews, byRank);
         const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
         return { previews, trackMeta };
@@ -1009,7 +1041,7 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
 // background. Otherwise we do the prep synchronously here as a fallback.
 // When the prepared payload is already resolved, `await` returns in the same
 // microtask so the swipe deck appears without a visible loading flash.
-export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow, preparedPromise, superLikedTracks, superLikedDirections }) {
+export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow, preparedPromise, superLikedTracks, superLikedGenres }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('preview: .screen-card not found');
 
@@ -1029,18 +1061,19 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, popula
   // so navigating back and forward preserves picks and the final list is
   // ready to hand off to signup at the end of the flow.
   //
-  // `superLikedDirections` mirrors that pattern for direction-level super-
-  // likes — populated here and read by the Round-2 refinement step to bias
-  // its output toward variants of the super-liked directions.
+  // `superLikedGenres` is a Map<trackId, genre> the caller owns. Populated
+  // per super-like with the currently-displayed track's genre — Round 2
+  // reads the deduped values as an extra-weighted positive signal (a
+  // sharper input than "the whole direction was liked").
   const page1 = await prepared.page1Ready;
   if (!page1.previews.length) {
     // Page 1 empty — fall back to page 2 as a last chance.
     const page2 = await prepared.page2Ready;
     if (!page2.previews.length) return [];
-    return renderSwipeDeck(container, page2.previews, page2.trackMeta, popularityWindow, null, superLikedTracks, { superLikedDirections });
+    return renderSwipeDeck(container, page2.previews, page2.trackMeta, popularityWindow, null, superLikedTracks, { superLikedGenres });
   }
 
-  return renderSwipeDeck(container, page1.previews, page1.trackMeta, popularityWindow, prepared.page2Ready, superLikedTracks, { superLikedDirections });
+  return renderSwipeDeck(container, page1.previews, page1.trackMeta, popularityWindow, prepared.page2Ready, superLikedTracks, { superLikedGenres });
 }
 
 // ---------- Round 2: refinement preview ----------
@@ -1055,7 +1088,7 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, popula
 //   generateRefinedMusicalDirections. This flow does NOT trigger the R2
 //   Gemini call itself; the caller in app.js does that so the loading UI
 //   can render while the call is in flight.
-export async function runRefinedDirectionPreviewFlow({ refinedDirections, popularityWindow, superLikedTracks, superLikedDirections }) {
+export async function runRefinedDirectionPreviewFlow({ refinedDirections, popularityWindow, superLikedTracks, superLikedGenres }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('refined preview: .screen-card not found');
 
@@ -1079,7 +1112,7 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, popula
     popularityWindow,
     null,
     superLikedTracks,
-    { expectedTotal: refinedDirections.length, superLikedDirections },
+    { expectedTotal: refinedDirections.length, superLikedGenres },
   );
 }
 

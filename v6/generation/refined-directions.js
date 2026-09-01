@@ -56,8 +56,8 @@ You will receive all Round 1 inputs plus the full Round 1 model output and the o
 - Optionally: Google Places context — factual metadata about the venue, same shape as Round 1.
 - **Round 1 directions** — the full set the model produced, each with rank, title, genres, bpm_range, description, and instrumentalness_preference.
 - **Liked directions** — the 0, 1, or 2 directions the owner selected (may be empty).
-- **Super-liked directions** — a subset of the Liked directions that the owner explicitly super-liked. Stronger positive signal than plain likes.
-- **Disliked directions** — the directions the owner rejected.`;
+- **Disliked directions** — the directions the owner rejected.
+- **Super-liked genres** — a deduped list of specific GENRES (not whole directions) that the owner super-liked at least one track from. Each entry is a single genre string from the Genre Universe. Super-liking is a sharper signal than merely liking a direction: the owner reacted specifically to a track drawn from that genre, so that genre carries extra positive weight beyond what its containing direction alone would suggest. May be empty.`;
 
 const LEARNING_LOGIC_SECTION = `## Learning & Processing Logic (Round 2)
 
@@ -66,7 +66,7 @@ Perform this analysis BEFORE generating new directions.
 ### 1. Extract Positive Seeds (Embrace)
 - Collect all genres that appeared across the Liked directions. These form your Positive Genre Pool.
 - Identify shared traits across the Liked directions: energy tier, tempo range, vocal vs. instrumental leaning, organic vs. synthesized production, regional character.
-- Weight Super-liked directions more heavily than plain liked directions — their genre lists are the strongest positive signal you have.
+- **Super-liked genres carry extra weight.** Each is an individual genre (not a whole direction) that the owner super-liked a specific track from — a sharper positive signal than the composition of merely-liked directions. Prioritize including super-liked genres, or close bridges from step 3 built off them, in your Working Pool.
 
 ### 2. Extract Negative Constraints (Strict Ban)
 - Analyze the Disliked directions.
@@ -98,7 +98,7 @@ const REFINED_TASK_WORKFLOW = `## Task Workflow (Round 2)
 
 1. Run the Learning & Processing Logic above to produce your Round 2 Working Pool.
 2. Generate exactly 4 new directions from the Working Pool. Follow every rule from the shared Energy & Pairing Constraints (Absolute Energy Cohesion, Cross-Regional Fusion, Equal Genre Weight + Standalone allowances, Strict Pop Isolation, House & Techno Enclosure) AND the Japanese Folk Restriction from Processing Rules.
-3. **Super-like bias:** For each Super-liked Round-1 direction, dedicate 1 of your 4 output slots to a closely-derived variant — same energy tier, overlapping genre set expanded with 1–2 bridge genres, distinct title. Do NOT copy the super-liked direction verbatim (identical spec). Cap this at 2 of the 4 output slots even if the owner super-liked more than 2 directions — the remaining 2 slots are reserved for pure bridge / discovery picks.
+3. **Super-liked genre bias:** Ensure super-liked genres (or their close bridges identified in Learning step 3) appear in at least one of your 4 output directions. If multiple super-liked genres are supplied, prefer to spread them across separate output directions when the energy tiers and pairing rules allow — do NOT force every super-liked genre into a single direction. The super-like signal is genre-weighting, not slot-dedication: no output direction has to be a "variant" of a Round-1 direction.
 4. Each direction must include:
    - **Genres list:** 3 to 5 genres from the Working Pool (or 1–2 for justified isolated niche genres / standalone allowed genres).
    - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit \`bpm_range\` as \`{"min": 0, "max": <ceiling>}\`. Same rule as Round 1.
@@ -214,7 +214,7 @@ function formatDirection(d) {
 
 function buildRefinedUserMessage({
   bizName, bizDesc, atmospheres, musicalEmphases, place,
-  round1Directions, likedDirections, dislikedDirections, superLikedDirections,
+  round1Directions, likedDirections, dislikedDirections, superLikedGenres,
 }) {
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
   const atmLine = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
@@ -234,15 +234,17 @@ function buildRefinedUserMessage({
     : '(none)';
 
   const likedList = rankList(likedDirections);
-  const superList = rankList(superLikedDirections);
   const dislikedList = rankList(dislikedDirections);
+  const superLikedGenresList = (Array.isArray(superLikedGenres) && superLikedGenres.length)
+    ? superLikedGenres.join(', ')
+    : '(none)';
 
   return base
     + `\n\nRound 1 produced these directions:\n\n${round1Block}`
     + `\n\nOwner's decisions:`
     + `\n- LIKED (ranks): ${likedList}`
-    + `\n- SUPER-LIKED (subset of Liked; ranks): ${superList}`
     + `\n- DISLIKED (ranks): ${dislikedList}`
+    + `\n- SUPER-LIKED GENRES: ${superLikedGenresList}`
     + `\n\nGenerate 4 refined directions per the Round-2 Task Workflow.`;
 }
 
@@ -317,7 +319,7 @@ async function callRefined({ userMessage, label, onboardingSessionId }) {
 // renumbers ranks 1..N at persistence time.
 export async function generateRefinedMusicalDirections({
   bizName, bizDesc, atmospheres, musicalEmphases, place,
-  round1Directions, likedDirections, dislikedDirections, superLikedDirections,
+  round1Directions, likedDirections, dislikedDirections, superLikedGenres,
   onboardingSessionId,
 }) {
   if (!bizDesc || typeof bizDesc !== 'string' || bizDesc.trim().length < 3) {
@@ -329,7 +331,7 @@ export async function generateRefinedMusicalDirections({
 
   const userMessage = buildRefinedUserMessage({
     bizName, bizDesc, atmospheres, musicalEmphases, place,
-    round1Directions, likedDirections, dislikedDirections, superLikedDirections,
+    round1Directions, likedDirections, dislikedDirections, superLikedGenres,
   });
 
   let parsed;

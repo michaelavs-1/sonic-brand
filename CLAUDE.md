@@ -985,15 +985,17 @@ Everything the account dashboard reads lives here:
 
 ### `RUBIN_REFRESH_TOKEN` scope
 
-Currently seeded with `playlist-modify-private` only. **Cannot enumerate the account's playlists** — `GET /me/playlists` returns 403 "insufficient client scope".
+Currently seeded with `playlist-modify-private` + `playlist-modify-public` (verified via `scripts/test-rubin-spotify.mjs` — the refresh returns both scopes). **Cannot enumerate the account's playlists** — `GET /me/playlists` returns 403 "insufficient client scope" because neither `playlist-read-private` nor `playlist-read-collaborative` is present.
 
 If you need enumeration (e.g., cleaning up pre-ledger cruft), re-seed with wider scope:
 
 ```
-https://accounts.spotify.com/authorize?client_id=431c55feb024444c979f2aa51e04426d&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fnew%2Frubin-oauth-callback&scope=playlist-modify-private%20playlist-read-private&show_dialog=true
+https://accounts.spotify.com/authorize?client_id=431c55feb024444c979f2aa51e04426d&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fnew%2Frubin-oauth-callback&scope=playlist-modify-private%20playlist-modify-public%20playlist-read-private&show_dialog=true
 ```
 
 Otherwise, `scripts/purge-rubin-playlists.mjs` uses the `created_playlists` ledger as the enumeration source instead — no scope needed.
+
+**Known 403 quirk on `DELETE /playlists/{id}/followers`:** occasional 403 "Insufficient client scope" when the expire cron tries to unfollow a playlist Rubin's app created hours earlier — even though rename + empty on the same playlist in the same tick succeed. First observed 2026-09-01 on a `בלנד 5 · Boutique World Funk & Ethio-Jazz` daily-gen playlist. Rename + empty succeed silently, unfollow 403s, `expirePlaylistNow` catches it as best-effort and marks `deleted_at` anyway → the playlist stays in Rubin's library as `(expired) <name>` with 0 tracks (cruft). Suspected trigger: `create_playlist` sets `collaborative: true` (see [api/new/spotify.js](api/new/spotify.js)), which may have quirky scope semantics on the follower-DELETE endpoint. If this becomes systematic, either (a) drop `collaborative: true` in create_playlist, or (b) treat unfollow 403s as retriable so the row stays eligible on next tick.
 
 ### Development mode
 

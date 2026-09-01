@@ -27,6 +27,64 @@ history matters for debugging old rows.
 
 ---
 
+## 2026-09-01 — Round 2 super-like signal shifts from direction-level to genre-level
+
+**Applies to:** Round 2
+
+Behavior change to how super-likes inform Round 2. Previously R2 was told which of the Round-1 Liked *directions* were super-liked, and instructed to "dedicate 1-2 of your 4 slots to closely-derived variants" of them. That was too coarse: super-liking a track means the owner reacted to a *specific song*, and the specific song came from *one specific genre* out of the direction's 3-5 genres. Dedicating a whole variant to the whole direction misattributes the signal to the composition rather than the ingredient the owner actually responded to.
+
+New behavior: the super-like signal becomes a deduped list of GENRES (not directions). Round 2 weights those genres extra-strongly in its Positive Genre Pool and ensures at least one output direction includes them (or a close bridge from them), but no output slot is reserved as a "variant" of anything. This gives the model latitude to combine the super-liked genre with fresh bridges the owner hasn't seen yet, rather than being pushed toward a slight rearrangement of a Round-1 direction.
+
+**Implementation:** super-like fires now record `{trackId → genre}` on `state.superLikedGenres` (Map) where the genre is whatever the *currently-displayed* track was drawn from — so if the owner swapped through several genres inside a direction before super-liking, the swapped-in genre is the one attributed. Also: `state.superLikedGenres` is now preserved across all navigation (matching the `superLikedTracks` lifetime) since genre names are stable identifiers from the Genre Universe and don't go stale when directions regenerate.
+
+**Three prompt sub-constants edited (all in `v6/generation/refined-directions.js`, R2 only):**
+
+**`REFINED_INPUTS_SECTION`** — final bullet rewritten:
+
+```
+- **Super-liked genres** — a deduped list of specific GENRES (not whole directions) that the owner super-liked at least one track from. Each entry is a single genre string from the Genre Universe. Super-liking is a sharper signal than merely liking a direction: the owner reacted specifically to a track drawn from that genre, so that genre carries extra positive weight beyond what its containing direction alone would suggest. May be empty.
+```
+
+(Replaces the earlier "Super-liked directions — a subset of the Liked directions..." bullet. Also reorders bullets so DISLIKED lands before SUPER-LIKED GENRES in the input list, matching the new user-message layout.)
+
+**`LEARNING_LOGIC_SECTION` §1 — third bullet rewritten:**
+
+```
+- **Super-liked genres carry extra weight.** Each is an individual genre (not a whole direction) that the owner super-liked a specific track from — a sharper positive signal than the composition of merely-liked directions. Prioritize including super-liked genres, or close bridges from step 3 built off them, in your Working Pool.
+```
+
+(Replaces the earlier "Weight Super-liked directions more heavily..." bullet.)
+
+**`REFINED_TASK_WORKFLOW` §3 rewritten:**
+
+```
+3. **Super-liked genre bias:** Ensure super-liked genres (or their close bridges identified in Learning step 3) appear in at least one of your 4 output directions. If multiple super-liked genres are supplied, prefer to spread them across separate output directions when the energy tiers and pairing rules allow — do NOT force every super-liked genre into a single direction. The super-like signal is genre-weighting, not slot-dedication: no output direction has to be a "variant" of a Round-1 direction.
+```
+
+(Replaces the earlier "Super-like bias: For each Super-liked Round-1 direction, dedicate 1 of your 4 output slots to a closely-derived variant..." bullet.)
+
+**User-message change (buildRefinedUserMessage):** the "Owner's decisions" block used to render:
+
+```
+- LIKED (ranks): 1, 2
+- SUPER-LIKED (subset of Liked; ranks): 1
+- DISLIKED (ranks): 3, 4
+```
+
+Now renders:
+
+```
+- LIKED (ranks): 1, 2
+- DISLIKED (ranks): 3, 4
+- SUPER-LIKED GENRES: Neo Soul, Late Night jazz
+```
+
+(Empty list renders as `(none)` for both LIKED/DISLIKED/SUPER-LIKED GENRES.)
+
+No shared sub-constants changed. Round 1 prompt is untouched. `WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION`, `insufficient_signal` addendum, output schema example: all untouched. Downstream `normalizeDirections` / `validateDirection` / persistence paths: untouched.
+
+---
+
 ## 2026-08-31 — Round 2 refinement prompt introduced + sub-constant refactor of Round 1
 
 **Applies to:** both

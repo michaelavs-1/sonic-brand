@@ -15,7 +15,7 @@ import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v6/atmosphere
 import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
 import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=31082026a';
-import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=31082026a';
+import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=01092026a';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
 import {
   runDirectionPreviewFlow,
@@ -23,7 +23,7 @@ import {
   showRefinedDirectionsLoading,
   showRestartOnboardingScreen,
   preparePreview,
-} from '/v6/preview.js?v=31082026b';
+} from '/v6/preview.js?v=01092026a';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=21082026a';
 import {
   initPlaylistResultsShell,
@@ -68,12 +68,14 @@ const state = {
   // super_liked_tracks table at signup. Preserved across step navigation
   // — users can revise atmospheres or emphases without losing picks.
   superLikedTracks: new Set(),
-  // Direction objects the user tapped super-like on. Populated inside
-  // renderSwipeDeck via the shared reference pattern. Read by the Round-2
-  // refinement step to bias its output toward variants of super-liked
-  // directions. Cleared when state.directions is invalidated so stale
-  // object refs from a prior Round-1 run don't leak into R2's input.
-  superLikedDirections: new Set(),
+  // Genre attribution for super-liked tracks. Map<trackId, genre> — for
+  // each super-liked track we record the specific genre that was used to
+  // draw it (differs from the direction's full genre list; matches whatever
+  // the card was showing at super-like time, including post-swap tracks).
+  // Round 2 reads a deduped list of the values as an extra-weighted
+  // positive signal — a sharper input than "the whole direction was liked".
+  // Also preserved across all navigation, same lifetime as superLikedTracks.
+  superLikedGenres: new Map(),
   // Opening hours are collected in step 4 alongside the Gemini call. Kept
   // across step re-entry so users don't re-enter them just for changing
   // atmospheres or emphases.
@@ -128,9 +130,9 @@ function invalidateFrom(step) {
     //     the owner already picked. If they change atmospheres in step 2,
     //     the sameAtmos check in that handler clears directions.
     //   - hours: kept so step 4 pre-fills the same schedule.
-    //   - superLikedTracks / superLikedDirections: kept so restart doesn't
+    //   - superLikedTracks / superLikedGenres: kept so restart doesn't
     //     lose the owner's earlier taste signals (persisted to
-    //     super_liked_tracks at signup).
+    //     super_liked_tracks at signup; genres fed to R2).
   }
   // Step 2 (atmospheres) and step 3 (musical emphases) both feed the
   // Gemini prompt, so navigating back to either invalidates directions.
@@ -140,10 +142,10 @@ function invalidateFrom(step) {
     state.directions = null;
     state.page2Promise = null;
     state.popularityWindow = null;
-    // Direction refs become stale when directions are regenerated.
-    // Tracks (superLikedTracks) are keyed by spotify_id which stays
-    // meaningful across regenerations, so we preserve those.
-    state.superLikedDirections = new Set();
+    // superLikedTracks + superLikedGenres are user-taste signals keyed by
+    // stable identifiers (spotify_id / genre name from the DB genre
+    // universe), so they stay meaningful across direction regenerations
+    // and we preserve them. Hard refresh is the only reset.
   }
   // Step 4 is the hours picker; it doesn't feed anything downstream that
   // needs invalidation. Hours themselves persist so re-entering pre-fills.
@@ -626,7 +628,7 @@ async function goToStep(start) {
           state.popularityWindow = null;
           state.picked = null;
           state.results = null;
-          state.superLikedDirections = new Set();
+          // superLikedTracks + superLikedGenres survive — see invalidateFrom.
         }
         state.selectedAtmos = selectedAtmos;
         markReached(3);
@@ -653,7 +655,7 @@ async function goToStep(start) {
           state.popularityWindow = null;
           state.picked = null;
           state.results = null;
-          state.superLikedDirections = new Set();
+          // superLikedTracks + superLikedGenres survive — see invalidateFrom.
         }
         state.musicalEmphases = emphases;
         markReached(4);
@@ -778,29 +780,31 @@ async function goToStep(start) {
           page2Promise: state.page2Promise,
           popularityWindow: state.popularityWindow,
           preparedPromise,
-          // Shared references — the swipe deck mutates these Sets directly.
+          // Shared references — the swipe deck mutates these directly.
           superLikedTracks: state.superLikedTracks,
-          superLikedDirections: state.superLikedDirections,
+          superLikedGenres: state.superLikedGenres,
         }), signal);
 
         // Round 2 refinement: fires when Round 1 yielded < 3 liked
         // directions (0, 1, or 2). Feeds the R2 Gemini call all R1 inputs
-        // + the full R1 direction set + liked/disliked/super-liked
-        // buckets, then presents a 4-card swipe deck. Merges R2 picks
-        // into R1 picks. If TOTAL likes across both rounds is 0, offers
-        // a restart-onboarding screen instead of the "no directions"
-        // dead-end. See v6/generation/refined-directions.js for the R2
-        // prompt spec.
+        // + the full R1 direction set + liked/disliked + a deduped list
+        // of super-liked GENRES (the specific genres the owner tapped
+        // super-like on tracks from — a sharper signal than
+        // super-liked-direction refs), then presents a 4-card swipe
+        // deck. Merges R2 picks into R1 picks. If TOTAL likes across
+        // both rounds is 0, offers a restart-onboarding screen instead
+        // of the "no directions" dead-end. See v6/generation/refined-
+        // directions.js for the R2 prompt spec.
         let mergedPicked = picked;
         if (picked.length < 3) {
           showRefinedDirectionsLoading();
           const r1Directions = state.directions;
           const dislikedDirs = r1Directions.filter((d) => !picked.includes(d));
-          // state.superLikedDirections may contain stale refs from prior
-          // R1 runs (invalidated at step navigation, but belt-and-suspenders):
-          // intersect with the current picked list so we only surface
-          // super-likes from THIS Round 1 to R2.
-          const superLikedDirs = picked.filter((d) => state.superLikedDirections.has(d));
+          // Deduped list of every genre the owner super-liked a track
+          // from — includes super-likes from disliked directions too
+          // (the direction as a whole didn't resonate, but that specific
+          // genre did). Passed to R2 as its extra-weighted positive signal.
+          const superLikedGenresList = [...new Set(state.superLikedGenres.values())];
 
           let refinedResult;
           try {
@@ -813,7 +817,7 @@ async function goToStep(start) {
               round1Directions: r1Directions,
               likedDirections: picked,
               dislikedDirections: dislikedDirs,
-              superLikedDirections: superLikedDirs,
+              superLikedGenres: superLikedGenresList,
               onboardingSessionId: state.onboardingSessionId,
             }), signal);
           } catch (e) {
@@ -827,7 +831,7 @@ async function goToStep(start) {
               refinedDirections: refinedResult.directions,
               popularityWindow: state.popularityWindow,
               superLikedTracks: state.superLikedTracks,
-              superLikedDirections: state.superLikedDirections,
+              superLikedGenres: state.superLikedGenres,
             }), signal);
             mergedPicked = [...picked, ...refinedPicked];
           } else {

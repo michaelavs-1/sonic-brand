@@ -1103,7 +1103,17 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, popula
   });
 
   const page1 = await prepared.page1Ready;
-  if (!page1.previews.length) return [];
+  // Distinct from R1 behavior: R1 falls back page1→page2 and returns [] on
+  // total exhaustion, which the caller treats as "user made no picks."
+  // R2 has no page 2, so page1 empty means the anchor-tracks pipeline
+  // couldn't produce any renderable card at all — a hard failure, not a
+  // user choice. Throw so the caller can distinguish this from an empty
+  // renderSwipeDeck return (user swiped left on all 4 cards) and offer a
+  // retry. Most common trigger: Supabase v5_anchor_tracks RPC statement
+  // timeout (57014) even after the client-side + server-side retries.
+  if (!page1.previews.length) {
+    throw new Error('refined preview: no cards to render — anchor-tracks pool empty for all R2 directions');
+  }
 
   return renderSwipeDeck(
     container,
@@ -1114,6 +1124,136 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, popula
     superLikedTracks,
     { expectedTotal: refinedDirections.length, superLikedGenres },
   );
+}
+
+// ---------- Round 2 failure screen ----------
+//
+// Shown when the Round-2 pipeline can't produce a swipe deck — either the
+// R2 Gemini call errored, or the anchor-tracks pool came back empty for
+// every R2 direction (typical trigger: Supabase RPC statement timeout on
+// a cold plan cache). Offers two options: retry the R2 pipeline (a
+// fresh Gemini call + preview fetch) or move on with whatever the owner
+// already picked in Round 1. If they picked nothing in R1 either, the
+// "move on" button is replaced with a restart-onboarding button.
+//
+// Resolves with 'retry' | 'continue' | 'restart'.
+export function showR2FailureScreen({ hasR1Picks }) {
+  const card = document.querySelector('.screen-card');
+  if (!card) return Promise.resolve('continue');
+
+  const h = document.createElement('h1');
+  h.textContent = 'לא הצלחנו לבנות עוד כיוונים כרגע';
+
+  const p = document.createElement('p');
+  p.className = 'preview-empty';
+  p.textContent = hasR1Picks
+    ? 'תרצו לנסות שוב, או להמשיך עם הכיוונים שבחרתם?'
+    : 'תרצו לנסות שוב, או להתחיל מחדש?';
+
+  const retryBtn = document.createElement('button');
+  retryBtn.className = 'btn btn-primary btn-block';
+  retryBtn.type = 'button';
+  retryBtn.textContent = 'נסה שוב';
+
+  const secondaryBtn = document.createElement('button');
+  secondaryBtn.className = 'btn btn-block';
+  secondaryBtn.type = 'button';
+  secondaryBtn.textContent = hasR1Picks ? 'המשך עם הכיוונים שבחרתי' : 'התחלה מחדש';
+  secondaryBtn.style.background = 'var(--teal-soft)';
+  secondaryBtn.style.color = '#0a1117';
+  secondaryBtn.style.boxShadow = 'none';
+  secondaryBtn.style.marginTop = '10px';
+
+  card.replaceChildren(h, p, retryBtn, secondaryBtn);
+
+  return new Promise((resolve) => {
+    const finish = (choice) => {
+      retryBtn.disabled = true;
+      secondaryBtn.disabled = true;
+      resolve(choice);
+    };
+    retryBtn.addEventListener('click', () => finish('retry'));
+    secondaryBtn.addEventListener('click', () => finish(hasR1Picks ? 'continue' : 'restart'));
+  });
+}
+
+// ---------- Round 2 refinement-emphases step ----------
+//
+// Shown right after R1 preview if the owner picked fewer than 3 directions,
+// BEFORE the R2 Gemini call fires. Gives the owner a chance to type
+// context-aware feedback ("I actually loved the jazz, less electronic
+// please, more upbeat") that then goes to R2 as the highest-priority
+// input signal. Optional field — skip button always available.
+//
+// Layout deliberately minimal (no brand block) since the owner is mid-flow.
+// Matches the R1 emphases MIN_LEN=4 gating on המשך (short text gives no
+// useful signal), skip always enabled. Resolves with trimmed text (may
+// be empty).
+export function runRefinedEmphasesStep({ initialValue = '' } = {}) {
+  const card = document.querySelector('.screen-card');
+  if (!card) throw new Error('refined emphases: .screen-card not found');
+
+  const heading = document.createElement('h1');
+  heading.textContent = 'לא בחרת הרבה - נציע לך עוד קצת מוזיקה על סמך מה שכן אהבת. תרצה גם לדייק אותנו?';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'input-wrap';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'input-textarea';
+  textarea.id = 'round2Emphases';
+  textarea.placeholder = 'למשל: אהבתי את הג׳אז, פחות אלקטרוני, יותר קצבי…';
+  textarea.maxLength = 500;
+  if (initialValue) textarea.value = initialValue;
+  wrap.append(textarea);
+
+  const submitBtn = document.createElement('button');
+  submitBtn.className = 'btn btn-primary btn-block';
+  submitBtn.type = 'button';
+  submitBtn.textContent = 'המשך ←';
+
+  const skipBtn = document.createElement('button');
+  skipBtn.className = 'btn btn-block';
+  skipBtn.type = 'button';
+  skipBtn.textContent = 'דלג';
+  skipBtn.style.background = 'var(--teal-soft)';
+  skipBtn.style.color = '#0a1117';
+  skipBtn.style.boxShadow = 'none';
+  skipBtn.style.marginTop = '10px';
+
+  const MIN_LEN = 4;
+  const syncSubmitEnabled = () => {
+    submitBtn.disabled = textarea.value.trim().length < MIN_LEN;
+  };
+  syncSubmitEnabled();
+  textarea.addEventListener('input', syncSubmitEnabled);
+
+  card.replaceChildren(heading, wrap, submitBtn, skipBtn);
+
+  return new Promise((resolve) => {
+    const finish = (value) => {
+      submitBtn.disabled = true;
+      skipBtn.disabled = true;
+      const spinner = document.createElement('span');
+      spinner.className = 'sb-spinner';
+      spinner.setAttribute('aria-label', 'טוען');
+      (value ? submitBtn : skipBtn).replaceChildren(spinner);
+      resolve(value);
+    };
+    submitBtn.addEventListener('click', () => {
+      if (submitBtn.disabled) return;
+      finish(textarea.value.trim());
+    });
+    skipBtn.addEventListener('click', () => finish(''));
+    textarea.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (textarea.value.trim().length >= MIN_LEN) {
+          finish(textarea.value.trim());
+        }
+      }
+    });
+  });
 }
 
 // ---------- Round 2 loading screen (while R2 Gemini call is in flight) ----------

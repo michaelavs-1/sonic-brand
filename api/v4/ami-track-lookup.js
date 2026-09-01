@@ -134,8 +134,9 @@ export default async function handler(req, res) {
 
         const [playlistTrackRows, analysisRows] = await Promise.all([
             pgrSelect('playlist_tracks', { spotify_id: `eq.${canonicalId}` }, { select: 'playlist_id' }),
-            pgrSelect('track_analyses', { spotify_id: `eq.${canonicalId}` }, { select: 'spotify_id', limit: 1 }),
+            pgrSelect('track_analyses', { spotify_id: `eq.${canonicalId}` }, { select: '*', limit: 1 }),
         ]);
+        const analysis = (analysisRows || [])[0] || null;
 
         const playlistIds = Array.from(new Set((playlistTrackRows || []).map((r) => r.playlist_id))).sort();
 
@@ -156,7 +157,8 @@ export default async function handler(req, res) {
             inPlaylistCount: playlistIds.length,
             playlistIds,
             genres,
-            hasAnalysis:     (analysisRows || []).length > 0,
+            hasAnalysis:     analysis !== null,
+            analysis,
         });
     } catch (err) {
         return res.status(500).json({ error: err.message || 'Server error' });

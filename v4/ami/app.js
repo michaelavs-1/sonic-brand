@@ -828,6 +828,10 @@ function renderTrackLookupResult({ mode, track, message }) {
            </div>`
         : '';
 
+    const analysisHtml = (mode === 'found' && t.analysis)
+        ? renderTrackAnalysis(t.analysis)
+        : '';
+
     trackLookupResult.innerHTML = `
         <div class="track-card ${mode === 'deleted' ? 'deleted' : ''}">
             <div class="track-title">${escapeHtml(t.title || '(unknown)')}</div>
@@ -840,6 +844,7 @@ function renderTrackLookupResult({ mode, track, message }) {
             </div>
             ${genresHtml}
             ${playlistsHtml}
+            ${analysisHtml}
             <div class="track-actions">${buttonsHtml}</div>
         </div>
     `;
@@ -848,6 +853,41 @@ function renderTrackLookupResult({ mode, track, message }) {
     const undoBtn   = trackLookupResult.querySelector('.track-undo-btn');
     if (deleteBtn) deleteBtn.addEventListener('click', runTrackDelete);
     if (undoBtn)   undoBtn.addEventListener('click',   runTrackUndo);
+}
+
+// Full track_analyses row from api/v4/ami-track-lookup.js: typed audio-feature
+// columns rendered as a key/value grid, plus the raw_analysis jsonb blob in a
+// collapsed <details> so Ami can see everything RapidAPI returned without it
+// dominating the card by default.
+function renderTrackAnalysis(a) {
+    const typedKeys = [
+        'popularity', 'tempo', 'energy', 'danceability',
+        'valence', 'acousticness', 'instrumentalness',
+        'status', 'analyzed_at',
+    ];
+    const cells = typedKeys
+        .filter((k) => a[k] !== null && a[k] !== undefined)
+        .map((k) => `<div><span class="k">${escapeHtml(k)}:</span><span class="v">${escapeHtml(String(a[k]))}</span></div>`)
+        .join('');
+
+    let rawHtml = '';
+    if (a.raw_analysis !== null && a.raw_analysis !== undefined) {
+        const rawStr = typeof a.raw_analysis === 'string'
+            ? a.raw_analysis
+            : JSON.stringify(a.raw_analysis, null, 2);
+        rawHtml = `
+            <details class="track-analysis-raw">
+                <summary>raw_analysis (${formatNumber(rawStr.length)} chars)</summary>
+                <pre>${escapeHtml(rawStr)}</pre>
+            </details>`;
+    }
+
+    return `
+        <div class="track-analysis">
+            <div class="track-analysis-title">Analysis</div>
+            <div class="track-analysis-grid">${cells}</div>
+            ${rawHtml}
+        </div>`;
 }
 
 // -----------------------------------------------------------------------------

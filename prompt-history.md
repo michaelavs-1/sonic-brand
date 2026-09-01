@@ -27,6 +27,57 @@ history matters for debugging old rows.
 
 ---
 
+## 2026-09-01 — Round 2 gains a refinement-emphases input (highest-priority signal)
+
+**Applies to:** Round 2
+
+New sub-step inserted between the end of the Round-1 preview swipe deck and the R2 Gemini call, active only when Round 1 yielded < 3 liked directions. The owner sees:
+
+> לא בחרת הרבה - נציע לך עוד קצת מוזיקה על סמך מה שכן אהבת. תרצה גם לדייק אותנו?
+
+...followed by an optional textarea (MIN_LEN=4 gate on the primary "המשך" button; "דלג" always available as an escape hatch). Whatever they type becomes the highest-priority input signal to the R2 Gemini call — treated as the SINGLE STRONGEST signal, above the original Round-1 Musical Emphases, above atmospheres, above super-liked genres, and above the like/dislike buckets. Rationale: it's the owner's freshest, most context-aware feedback — written after they saw actual tracks and reacted, so it overrides earlier abstract preferences when the two conflict.
+
+Two prompt sub-constants edited (both in `v6/generation/refined-directions.js`, R2 only):
+
+**`REFINED_INPUTS_SECTION`** — new bullet inserted (also relabels the R1 emphases bullet to disambiguate):
+
+```
+- Optionally: **Musical emphases (from Round 1 onboarding)** — the initial free-text preferences the owner supplied before seeing any tracks.
+- Optionally: **Round 2 refinement emphases** — free-text feedback the owner typed AFTER seeing Round 1's 8 preview tracks and choosing fewer than 3. Their freshest, most context-aware guidance. When present, this is the SINGLE STRONGEST signal you have — see Learning step 6. May be empty.
+```
+
+**`LEARNING_LOGIC_SECTION`** — new step 6 appended, and step 5 slightly extended:
+
+```
+### 5. Special case: zero Liked directions
+If the Liked list is empty:
+- Treat Description + Atmospheres + Musical Emphases + Round 2 refinement emphases as your positive signal.
+- Use Disliked strictly as a negative filter.
+- If those positive inputs give too little signal AND the Disliked directions are internally contradictory (e.g., the owner disliked both a purely acoustic AND a purely electronic direction, offering no coherent negative filter), return `{"error": "insufficient_signal", ...}` rather than fabricating directions from thin air.
+
+### 6. Round 2 refinement emphases (highest priority when present)
+When the owner supplied Round 2 refinement emphases, treat it as the STRONGEST signal available — above everything else, including the initial Round-1 Musical Emphases, the atmospheres, the super-liked genres, and the like/dislike buckets. It was written after they saw actual tracks and knew what they wanted more of or less of. When it contradicts any other signal, IT WINS.
+- Genres or families explicitly requested: at least half of your 4 output directions should center on them.
+- Genres or families explicitly rejected: DROP them from every direction, even if a Liked or super-liked genre would suggest them.
+- General leanings ("more upbeat", "less electronic", "make them more surprising"): must shape every one of the 4 directions, not just some.
+- If empty or missing, fall back to steps 1–5 above.
+```
+
+**User-message change (buildRefinedUserMessage):** the R1 emphases line label now includes an explicit "(from Round 1 onboarding)" qualifier so the model doesn't confuse the two, and a new line renders below it when R2 emphases is present:
+
+```
+Musical emphases (from Round 1 onboarding): <text>
+Round 2 refinement emphases (after seeing R1 tracks — HIGHEST PRIORITY): <text>
+```
+
+Both lines are omitted when their respective input is empty (skip / never provided).
+
+**Client flow (context, not part of the prompt):** `v6/app.js` step-5 handler runs `runRefinedEmphasesStep()` (new export in `v6/preview.js`) BEFORE firing the R2 Gemini call. The textarea input is captured into `state.round2Emphases`, preserved across step re-entry, and cleared whenever `state.directions` is invalidated (fresh R1 → fresh R2 emphases).
+
+No shared sub-constants changed. Round 1 prompt untouched. Downstream schema, error contract, persistence paths: all unchanged.
+
+---
+
 ## 2026-09-01 — Round 2 super-like signal shifts from direction-level to genre-level
 
 **Applies to:** Round 2

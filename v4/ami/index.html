@@ -649,6 +649,65 @@
       gap: 10px;
     }
 
+    .track-analysis {
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm, 6px);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .track-analysis-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .track-analysis-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 4px 12px;
+    }
+
+    .track-analysis-grid .k {
+      color: var(--muted);
+      margin-right: 6px;
+    }
+
+    .track-analysis-grid .v {
+      color: var(--text);
+    }
+
+    .track-analysis-raw {
+      margin-top: 8px;
+    }
+
+    .track-analysis-raw summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      user-select: none;
+    }
+
+    .track-analysis-raw pre {
+      margin: 6px 0 0;
+      padding: 8px 10px;
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm, 6px);
+      font-size: 11px;
+      max-height: 320px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
     .track-delete-btn,
     .track-undo-btn {
       padding: 8px 18px;
@@ -1043,7 +1102,7 @@
     </div>
   </div>
 
-  <script src="/v4/ami/app.js?v=02072026x"></script>
+  <script src="/v4/ami/app.js?v=01092026a"></script>
 </body>
 
 </html>

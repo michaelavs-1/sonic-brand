@@ -52,7 +52,8 @@ You will receive all Round 1 inputs plus the full Round 1 model output and the o
 - Free-text description of the business (any language).
 - Optionally: Business name.
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
-- Optionally: **Musical emphases** — same text the owner supplied in Round 1.
+- Optionally: **Musical emphases (from Round 1 onboarding)** — the initial free-text preferences the owner supplied before seeing any tracks.
+- Optionally: **Round 2 refinement emphases** — free-text feedback the owner typed AFTER seeing Round 1's 8 preview tracks and choosing fewer than 3. Their freshest, most context-aware guidance. When present, this is the SINGLE STRONGEST signal you have — see Learning step 6. May be empty.
 - Optionally: Google Places context — factual metadata about the venue, same shape as Round 1.
 - **Round 1 directions** — the full set the model produced, each with rank, title, genres, bpm_range, description, and instrumentalness_preference.
 - **Liked directions** — the 0, 1, or 2 directions the owner selected (may be empty).
@@ -84,9 +85,16 @@ Perform this analysis BEFORE generating new directions.
 
 ### 5. Special case: zero Liked directions
 If the Liked list is empty:
-- Treat Description + Atmospheres + Musical Emphases as your sole positive signal.
+- Treat Description + Atmospheres + Musical Emphases + Round 2 refinement emphases as your positive signal.
 - Use Disliked strictly as a negative filter.
-- If those three positive inputs give too little signal AND the Disliked directions are internally contradictory (e.g., the owner disliked both a purely acoustic AND a purely electronic direction, offering no coherent negative filter), return \`{"error": "insufficient_signal", ...}\` rather than fabricating directions from thin air.`;
+- If those positive inputs give too little signal AND the Disliked directions are internally contradictory (e.g., the owner disliked both a purely acoustic AND a purely electronic direction, offering no coherent negative filter), return \`{"error": "insufficient_signal", ...}\` rather than fabricating directions from thin air.
+
+### 6. Round 2 refinement emphases (highest priority when present)
+When the owner supplied Round 2 refinement emphases, treat it as the STRONGEST signal available — above everything else, including the initial Round-1 Musical Emphases, the atmospheres, the super-liked genres, and the like/dislike buckets. It was written after they saw actual tracks and knew what they wanted more of or less of. When it contradicts any other signal, IT WINS.
+- Genres or families explicitly requested: at least half of your 4 output directions should center on them.
+- Genres or families explicitly rejected: DROP them from every direction, even if a Liked or super-liked genre would suggest them.
+- General leanings ("more upbeat", "less electronic", "make them more surprising"): must shape every one of the 4 directions, not just some.
+- If empty or missing, fall back to steps 1–5 above.`;
 
 const REFINED_NON_OVERLAP_SECTION = `## Direction Diversity & Non-Overlap Rules (Round 2)
 
@@ -213,14 +221,17 @@ function formatDirection(d) {
 }
 
 function buildRefinedUserMessage({
-  bizName, bizDesc, atmospheres, musicalEmphases, place,
+  bizName, bizDesc, atmospheres, musicalEmphases, round2Emphases, place,
   round1Directions, likedDirections, dislikedDirections, superLikedGenres,
 }) {
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
   const atmLine = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
   let base = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
   if (typeof musicalEmphases === 'string' && musicalEmphases.trim().length) {
-    base += `\nMusical emphases: ${musicalEmphases.trim()}`;
+    base += `\nMusical emphases (from Round 1 onboarding): ${musicalEmphases.trim()}`;
+  }
+  if (typeof round2Emphases === 'string' && round2Emphases.trim().length) {
+    base += `\nRound 2 refinement emphases (after seeing R1 tracks — HIGHEST PRIORITY): ${round2Emphases.trim()}`;
   }
   const placeBlock = formatPlaceContext(place);
   if (placeBlock) base += `\n${placeBlock}`;
@@ -318,7 +329,7 @@ async function callRefined({ userMessage, label, onboardingSessionId }) {
 // caller (app.js) merges Round 2 picks into state.picked, and signup.js
 // renumbers ranks 1..N at persistence time.
 export async function generateRefinedMusicalDirections({
-  bizName, bizDesc, atmospheres, musicalEmphases, place,
+  bizName, bizDesc, atmospheres, musicalEmphases, round2Emphases, place,
   round1Directions, likedDirections, dislikedDirections, superLikedGenres,
   onboardingSessionId,
 }) {
@@ -330,7 +341,7 @@ export async function generateRefinedMusicalDirections({
   }
 
   const userMessage = buildRefinedUserMessage({
-    bizName, bizDesc, atmospheres, musicalEmphases, place,
+    bizName, bizDesc, atmospheres, musicalEmphases, round2Emphases, place,
     round1Directions, likedDirections, dislikedDirections, superLikedGenres,
   });
 

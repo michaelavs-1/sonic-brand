@@ -15,15 +15,17 @@ import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v6/atmosphere
 import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
 import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=31082026a';
-import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=01092026a';
+import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=01092026b';
 import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
 import {
   runDirectionPreviewFlow,
   runRefinedDirectionPreviewFlow,
+  runRefinedEmphasesStep,
   showRefinedDirectionsLoading,
+  showR2FailureScreen,
   showRestartOnboardingScreen,
   preparePreview,
-} from '/v6/preview.js?v=01092026a';
+} from '/v6/preview.js?v=01092026c';
 import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=21082026a';
 import {
   initPlaylistResultsShell,
@@ -62,6 +64,12 @@ const state = {
   atmosphereRows: null,       // cached once per session
   selectedAtmos: [],
   musicalEmphases: '',        // step 3 — free-text preferences (love/hate). Optional.
+  // Round-2-only refinement emphases. Captured mid-step-5 via
+  // runRefinedEmphasesStep after R1 preview ends with < 3 likes. Feeds the
+  // R2 Gemini call as its HIGHEST-priority signal. Tied to the specific R1
+  // outcome — cleared whenever state.directions is invalidated so a fresh
+  // R1 attempt starts with an empty textarea.
+  round2Emphases: '',
   // Spotify IDs the user tapped the super-like button on during the preview
   // swipe deck. Set (not Array) so add/remove is O(1) and the shared
   // reference in preview.js can mutate in-place. Persisted to the
@@ -142,6 +150,10 @@ function invalidateFrom(step) {
     state.directions = null;
     state.page2Promise = null;
     state.popularityWindow = null;
+    // round2Emphases is feedback on a specific R1 outcome — clear
+    // whenever directions regenerate so it doesn't leak stale context
+    // into the next R2 attempt.
+    state.round2Emphases = '';
     // superLikedTracks + superLikedGenres are user-taste signals keyed by
     // stable identifiers (spotify_id / genre name from the DB genre
     // universe), so they stay meaningful across direction regenerations
@@ -628,6 +640,7 @@ async function goToStep(start) {
           state.popularityWindow = null;
           state.picked = null;
           state.results = null;
+          state.round2Emphases = '';
           // superLikedTracks + superLikedGenres survive — see invalidateFrom.
         }
         state.selectedAtmos = selectedAtmos;
@@ -655,6 +668,7 @@ async function goToStep(start) {
           state.popularityWindow = null;
           state.picked = null;
           state.results = null;
+          state.round2Emphases = '';
           // superLikedTracks + superLikedGenres survive — see invalidateFrom.
         }
         state.musicalEmphases = emphases;
@@ -797,7 +811,19 @@ async function goToStep(start) {
         // directions.js for the R2 prompt spec.
         let mergedPicked = picked;
         if (picked.length < 3) {
-          showRefinedDirectionsLoading();
+          // First: ask the owner for optional refinement guidance — a
+          // free-text field with a המשך / דלג pair. The captured text
+          // (may be empty on skip) becomes the HIGHEST-priority signal
+          // fed to the R2 Gemini call (see Learning step 6 in
+          // refined-directions.js). Pre-fills from state.round2Emphases
+          // so re-entering the step preserves the input; state is
+          // cleared whenever state.directions is invalidated.
+          const round2Emphases = await abortable(
+            runRefinedEmphasesStep({ initialValue: state.round2Emphases }),
+            signal,
+          );
+          state.round2Emphases = round2Emphases;
+
           const r1Directions = state.directions;
           const dislikedDirs = r1Directions.filter((d) => !picked.includes(d));
           // Deduped list of every genre the owner super-liked a track
@@ -806,40 +832,94 @@ async function goToStep(start) {
           // genre did). Passed to R2 as its extra-weighted positive signal.
           const superLikedGenresList = [...new Set(state.superLikedGenres.values())];
 
-          let refinedResult;
-          try {
-            refinedResult = await abortable(generateRefinedMusicalDirections({
-              bizName: state.bizName,
-              bizDesc: state.bizDesc,
-              atmospheres: state.selectedAtmos,
-              musicalEmphases: state.musicalEmphases,
-              place: state.confirmedPlace,
-              round1Directions: r1Directions,
-              likedDirections: picked,
-              dislikedDirections: dislikedDirs,
-              superLikedGenres: superLikedGenresList,
-              onboardingSessionId: state.onboardingSessionId,
+          // Prewarm the Postgres plan cache before the Round-2 anchor-tracks
+          // fetch fires. R2's anchor-tracks call lands minutes after R1's
+          // (Gemini R1 → user swipes → emphases step → Gemini R2 = ~1-3
+          // minutes), long enough that the v5_anchor_tracks plan cache can
+          // decay on Supabase's shared PgBouncer and hit a 15s statement
+          // timeout (error 57014). Firing prewarm here (fire-and-forget,
+          // parallel with the Gemini call which takes ~30s) gives the plan
+          // cache a warm start before the anchor-tracks calls actually run.
+          fetch('/api/v5/prewarm').catch(() => { });
+
+          // Retry loop: any hard R2 failure (Gemini error OR anchor-tracks
+          // pool empty on all 4 refined directions — the latter usually
+          // means 57014 timeout even after client + server retries) shows
+          // a screen offering "נסה שוב" (refires the whole R2 pipeline,
+          // including another prewarm) or a secondary action (continue
+          // with R1 picks / restart onboarding). Loop exits when either
+          // the R2 preview successfully renders OR the owner picks the
+          // secondary action.
+          let refinedPicked = null;
+          while (refinedPicked === null) {
+            showRefinedDirectionsLoading();
+            let refinedResult;
+            try {
+              refinedResult = await abortable(generateRefinedMusicalDirections({
+                bizName: state.bizName,
+                bizDesc: state.bizDesc,
+                atmospheres: state.selectedAtmos,
+                musicalEmphases: state.musicalEmphases,
+                round2Emphases,
+                place: state.confirmedPlace,
+                round1Directions: r1Directions,
+                likedDirections: picked,
+                dislikedDirections: dislikedDirs,
+                superLikedGenres: superLikedGenresList,
+                onboardingSessionId: state.onboardingSessionId,
+              }), signal);
+            } catch (e) {
+              if (e?.name === 'AbortError') return;
+              console.warn('refined-directions call failed:', e);
+              refinedResult = { error: 'matcher_error', reasoning_en: e.message };
+            }
+
+            const hasDirections = refinedResult && !refinedResult.error
+              && Array.isArray(refinedResult.directions) && refinedResult.directions.length;
+            let previewSucceeded = false;
+            if (hasDirections) {
+              try {
+                refinedPicked = await abortable(runRefinedDirectionPreviewFlow({
+                  refinedDirections: refinedResult.directions,
+                  popularityWindow: state.popularityWindow,
+                  superLikedTracks: state.superLikedTracks,
+                  superLikedGenres: state.superLikedGenres,
+                }), signal);
+                // preview rendered (may be [] if the owner swiped left on
+                // every R2 card — that's a valid outcome, not a failure)
+                previewSucceeded = true;
+              } catch (e) {
+                if (e?.name === 'AbortError') return;
+                console.warn('R2 preview failed:', e.message);
+                refinedPicked = null;
+              }
+            } else {
+              console.warn('R2 Gemini skipped:', refinedResult?.error || 'no directions', refinedResult?.reasoning_en || '');
+            }
+
+            if (previewSucceeded) break;
+
+            // Something failed — either Gemini or preview. Ask the owner
+            // what to do. Loop again on 'retry', bail on 'continue' /
+            // 'restart'.
+            const choice = await abortable(showR2FailureScreen({
+              hasR1Picks: picked.length > 0,
             }), signal);
-          } catch (e) {
-            if (e?.name === 'AbortError') return;
-            console.warn('refined-directions call failed:', e);
-            refinedResult = { error: 'matcher_error', reasoning_en: e.message };
+            if (choice === 'retry') {
+              fetch('/api/v5/prewarm').catch(() => { }); // fresh prewarm before retry
+              refinedPicked = null; // loop
+              continue;
+            }
+            if (choice === 'restart') {
+              showRestartOnboardingScreen(() => goToStep(1));
+              return;
+            }
+            // 'continue' — proceed with R1 picks only
+            refinedPicked = [];
+            break;
           }
 
-          if (refinedResult && !refinedResult.error && Array.isArray(refinedResult.directions) && refinedResult.directions.length) {
-            const refinedPicked = await abortable(runRefinedDirectionPreviewFlow({
-              refinedDirections: refinedResult.directions,
-              popularityWindow: state.popularityWindow,
-              superLikedTracks: state.superLikedTracks,
-              superLikedGenres: state.superLikedGenres,
-            }), signal);
-            mergedPicked = [...picked, ...refinedPicked];
-          } else {
-            // R2 model errored (insufficient_signal / matcher_error / etc.)
-            // or preview pool came back empty. Fall through with just the
-            // R1 picks; the zero-total check below handles the worst case.
-            console.warn('R2 skipped:', refinedResult?.error || 'no directions', refinedResult?.reasoning_en || '');
-          }
+          mergedPicked = [...picked, ...refinedPicked];
 
           if (mergedPicked.length === 0) {
             // In-app restart: goToStep(1) preserves everything the owner has

@@ -57,9 +57,31 @@ import { pgrSelect, pgrInsert, pgrPatch, pgrUpsert } from '../../v5/supabase-cli
 import { requireBusinessOwner } from './_require-business-owner.js';
 import { setCors } from '../origin-guard.js';
 import { guard } from '../ratelimit.js';
-import { buildOneDailyPlaylist } from './_daily-builder.js';
+import { buildOneDailyPlaylist, playlistName } from './_daily-builder.js';
 import { expirePlaylistNow } from './_expire-playlist.js';
 import { computeTargetForToday, dailyPlaylistExpiryIso, nextIl4amIso } from '../../../v6/generation/playlist-length.js';
+
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
+
+// Mirror of the postSpotify helper in _expire-playlist.js — carries the
+// internal-key header so /api/new/spotify's origin-guard + rate-limit skip
+// this server-to-server call.
+async function postSpotify(origin, action, body) {
+  const r = await fetch(`${origin}/api/new/spotify`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-sonic-internal': INTERNAL_API_KEY,
+    },
+    body: JSON.stringify({ action, ...body }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = data?.error?.message || data?.error || r.statusText;
+    throw new Error(`spotify ${action} ${r.status}: ${msg}`);
+  }
+  return data;
+}
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -98,8 +120,8 @@ function snapshotDirection(dir) {
     description_he:              dir.description_he,
     genres:                      Array.isArray(dir.genres) ? dir.genres : [],
     bpm_range:                   dir.bpm_range,
-    popularity_window:           dir.popularity_window,
     instrumentalness_preference: dir.instrumentalness_preference || 'none',
+    popularity_preference:       dir.popularity_preference       || 'none',
     active:                      dir.active !== false,
   };
 }
@@ -129,6 +151,11 @@ function mergeUpdates(dir, updates) {
       || updates.instrumentalness_preference === 'soft'
       || updates.instrumentalness_preference === 'hard') {
     merged.instrumentalness_preference = updates.instrumentalness_preference;
+  }
+  if (updates.popularity_preference === 'none'
+      || updates.popularity_preference === 'soft'
+      || updates.popularity_preference === 'hard') {
+    merged.popularity_preference = updates.popularity_preference;
   }
   if (typeof updates.title_en === 'string' && updates.title_en.trim().length) {
     merged.title_en = updates.title_en.trim();
@@ -178,9 +205,6 @@ async function buildTodayPlaylist({ origin, ownerId, businessId, bizName, direct
   const target = computeTargetForToday({ hours });
   const expiryIso = dailyPlaylistExpiryIso({ hours }) || nextIl4amIso();
 
-  const popularityWindow = Array.isArray(direction.popularity_window)
-    ? direction.popularity_window : null;
-
   const result = await buildOneDailyPlaylist({
     origin,
     ownerId,
@@ -192,8 +216,8 @@ async function buildTodayPlaylist({ origin, ownerId, businessId, bizName, direct
       genres:                      direction.genres,
       bpm_range:                   direction.bpm_range,
       instrumentalness_preference: direction.instrumentalness_preference || 'none',
+      popularity_preference:       direction.popularity_preference       || 'none',
     },
-    popularityWindow,
     target,
     bizName,
     expiryIso,
@@ -272,15 +296,9 @@ export default async function handler(req, res) {
         });
       }
 
-      // Existing directions inherit a shared popularity_window; borrow one
-      // if any exist, so the new direction feels consistent with the rest.
-      let popularityWindow = null;
-      const anyRow = await pgrSelect('business_directions',
-        { business_id: `eq.${businessId}` },
-        { select: 'popularity_window', limit: 20, useService: true });
-      const anyWindow = (anyRow || []).find((r) => Array.isArray(r.popularity_window));
-      if (anyWindow) popularityWindow = anyWindow.popularity_window;
-
+      // popularity_window column is legacy (dropped from writes 2026-09-02).
+      // New rows leave it NULL. The column stays in schema so existing rows
+      // preserve their historical values; nothing reads them.
       const inserted = await pgrInsert('business_directions', {
         business_id:                 businessId,
         rank:                        null,
@@ -288,9 +306,10 @@ export default async function handler(req, res) {
         description_he:              String(spec.description_he || '').trim().slice(0, 800),
         genres:                      spec.genres,
         bpm_range:                   { min: Math.round(spec.bpm_range.min), max: Math.round(spec.bpm_range.max) },
-        popularity_window:           popularityWindow,
         instrumentalness_preference: (spec.instrumentalness_preference === 'soft' || spec.instrumentalness_preference === 'hard')
                                        ? spec.instrumentalness_preference : 'none',
+        popularity_preference:       (spec.popularity_preference       === 'soft' || spec.popularity_preference       === 'hard')
+                                       ? spec.popularity_preference       : 'none',
         active:                      true,
       }, { returnRows: true });
       const dirRow = Array.isArray(inserted) ? inserted[0] : inserted;
@@ -335,7 +354,7 @@ export default async function handler(req, res) {
 
       const rows = await pgrSelect('business_directions',
         { id: `eq.${directionId}`, business_id: `eq.${businessId}` },
-        { select: 'id,rank,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference,active',
+        { select: 'id,rank,title_en,description_he,genres,bpm_range,instrumentalness_preference,popularity_preference,active',
           limit: 1, useService: true });
       const dir = rows?.[0];
       if (!dir) return res.status(404).json({ error: 'direction not found' });
@@ -351,6 +370,7 @@ export default async function handler(req, res) {
       if (JSON.stringify(merged.genres)         !== JSON.stringify(before.genres))         patch.genres = merged.genres;
       if (JSON.stringify(merged.bpm_range)      !== JSON.stringify(before.bpm_range))      patch.bpm_range = merged.bpm_range;
       if (merged.instrumentalness_preference    !== before.instrumentalness_preference)    patch.instrumentalness_preference = merged.instrumentalness_preference;
+      if (merged.popularity_preference          !== before.popularity_preference)          patch.popularity_preference       = merged.popularity_preference;
       if (merged.title_en                       !== before.title_en)                       patch.title_en = merged.title_en;
       if (merged.description_he                 !== before.description_he)                 patch.description_he = merged.description_he;
       if (Object.keys(patch).length) {
@@ -360,21 +380,70 @@ export default async function handler(req, res) {
       }
       const updatedDir = { ...dir, ...patch };
 
-      // Two playlist regimes, chosen by the caller (chat asks the owner
-      // after they confirm the direction change):
-      //   - expireLivePlaylist=true  → expire today's playlist for this
-      //     direction on Spotify + rebuild NOW from the merged spec.
-      //     'rebuilt' in the audit row.
-      //   - expireLivePlaylist=false → leave the old playlist alone.
-      //     Tomorrow's daily cron will pick up the updated spec (the
-      //     already-built-today guard is per calendar day, so it won't
-      //     interfere). 'kept' in the audit row.
-      // Default is false so a caller that forgets the field never
-      // accidentally nukes today's music. The chat's client sends the
-      // field explicitly per the owner's choice.
+      // Cosmetic-only fast path — the merge only moved title_en and/or
+      // description_he (no genres, BPM, or preference changes). Same music,
+      // just a new label. Rebuilding here would waste an API budget's worth
+      // of Spotify writes and produce a completely different playlist
+      // (fresh random draw from the same spec) — the owner asked for a
+      // rename, not a reshuffle. Instead: rename the live playlist in place
+      // via Spotify's PUT /playlists/{id} and update business_playlists.label
+      // to match. `expireLivePlaylist` is intentionally IGNORED on this
+      // path — cosmetic edits never rebuild.
+      const changedFields = Object.keys(patch).filter((k) => k !== 'updated_at');
+      const cosmeticOnly  = changedFields.length > 0
+        && changedFields.every((k) => k === 'title_en' || k === 'description_he');
+
       let playlistRow    = null;
       let playlistAction = 'kept';
-      if (expireLivePlaylist) {
+
+      if (cosmeticOnly) {
+        const live = await findLivePlaylistForDirection(businessId, dir);
+        if (live?.spotify_id) {
+          const newSpotifyName = playlistName(business.name, updatedDir);
+          const newDescription = updatedDir.description_he || updatedDir.title_en || '';
+          try {
+            await postSpotify(origin, 'update_playlist', {
+              playlist_id: live.spotify_id,
+              name:        newSpotifyName,
+              description: newDescription,
+            });
+            // Mirror the label change onto business_playlists so the home
+            // tab picks up the new title on its next loadDashboardData.
+            // Only PATCH the label column when title_en actually moved —
+            // description-only edits don't need a label change.
+            const bpPatch = {};
+            if (patch.title_en) bpPatch.label = updatedDir.title_en || 'פלייליסט';
+            if (Object.keys(bpPatch).length) {
+              await pgrPatch('business_playlists',
+                { spotify_id: `eq.${live.spotify_id}`, business_id: `eq.${businessId}` },
+                bpPatch);
+            }
+            // Also refresh the created_playlists ledger's mirror of the
+            // Spotify name so the expire cron's "(expired) <name>" rename
+            // uses the current title when the playlist eventually ages out.
+            try {
+              await pgrPatch('created_playlists',
+                { spotify_id: `eq.${live.spotify_id}` },
+                { name: newSpotifyName });
+            } catch (e) {
+              console.warn('[apply-direction-change:edit-rename] ledger name mirror failed:', e.message);
+            }
+            playlistAction = 'renamed';
+            // Deliberately leave playlistRow null. The client uses
+            // `res.playlist?.url` to decide whether to render a "פתחו את
+            // הפלייליסט" link on the success bubble; for a rename there IS
+            // no new thing to open (same playlist, same tracks, new label),
+            // so we want the success bubble to stand alone. The home tab
+            // still picks up the new label via the direction-change-applied
+            // event → loadDashboardData reread of business_playlists.
+          } catch (e) {
+            console.warn('[apply-direction-change:edit-rename] spotify rename failed:', e.message);
+            // Row was updated; Spotify rename failed. Audit as 'kept' since
+            // the playlist wasn't actually renamed on Spotify's side.
+          }
+        }
+      } else if (expireLivePlaylist) {
+        // Non-cosmetic edit + owner opted to replace today's playlist.
         const live = await findLivePlaylistForDirection(businessId, dir);
         if (live?.spotify_id) {
           try {
@@ -398,6 +467,9 @@ export default async function handler(req, res) {
           playlistAction = null;
         }
       }
+      // else: non-cosmetic edit + expireLivePlaylist=false → leave the old
+      // playlist alone. Tomorrow's daily cron picks up the updated spec.
+      // 'kept' in the audit row.
 
       const changeInserted = await pgrInsert('business_direction_changes', {
         business_id:      businessId,
@@ -425,7 +497,7 @@ export default async function handler(req, res) {
 
       const rows = await pgrSelect('business_directions',
         { id: `eq.${directionId}`, business_id: `eq.${businessId}` },
-        { select: 'id,rank,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference,active',
+        { select: 'id,rank,title_en,description_he,genres,bpm_range,instrumentalness_preference,popularity_preference,active',
           limit: 1, useService: true });
       const dir = rows?.[0];
       if (!dir) return res.status(404).json({ error: 'direction not found' });

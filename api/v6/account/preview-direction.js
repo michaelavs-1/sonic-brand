@@ -65,8 +65,8 @@ function mergeUpdates(dir, updates) {
     description_he:              dir.description_he,
     genres:                      Array.isArray(dir.genres) ? [...dir.genres] : [],
     bpm_range:                   dir.bpm_range,
-    popularity_window:           dir.popularity_window,
     instrumentalness_preference: dir.instrumentalness_preference || 'none',
+    popularity_preference:       dir.popularity_preference       || 'none',
   };
   if (!updates) return merged;
   if (Array.isArray(updates.exclude_genres) && updates.exclude_genres.length) {
@@ -90,6 +90,11 @@ function mergeUpdates(dir, updates) {
       || updates.instrumentalness_preference === 'hard') {
     merged.instrumentalness_preference = updates.instrumentalness_preference;
   }
+  if (updates.popularity_preference === 'none'
+      || updates.popularity_preference === 'soft'
+      || updates.popularity_preference === 'hard') {
+    merged.popularity_preference = updates.popularity_preference;
+  }
   if (typeof updates.title_en === 'string' && updates.title_en.trim().length) {
     merged.title_en = updates.title_en.trim();
   }
@@ -106,32 +111,36 @@ function specFromInline(spec) {
     description_he:              typeof spec.description_he === 'string' ? spec.description_he.trim() : '',
     genres:                      Array.isArray(spec.genres) ? spec.genres.filter((g) => typeof g === 'string' && g.length) : [],
     bpm_range:                   spec.bpm_range || null,
-    popularity_window:           null,        // add flow → no atmosphere pinning; RPC defaults to [0,100]
     instrumentalness_preference: (spec.instrumentalness_preference === 'soft' || spec.instrumentalness_preference === 'hard')
                                    ? spec.instrumentalness_preference : 'none',
+    popularity_preference:       (spec.popularity_preference       === 'soft' || spec.popularity_preference       === 'hard')
+                                   ? spec.popularity_preference       : 'none',
   };
 }
 
 // Walk the genres in a rotating cycle starting at `startIdx`, fetching a
 // small pool per genre and returning the first track not in `excludeSet`.
-// If nothing new lands in the tight (BPM + popularity) window, retry the
-// whole cycle with a wide window ([0..300] BPM, [0..100] popularity) —
-// same "widen fallback" the client swap button uses in onboarding.
+// If nothing new lands with the direction's BPM, retry with a wide window
+// ([0..300] BPM) — same "widen fallback" the client swap button uses in
+// onboarding. Popularity is controlled per-spec via pop_pref (no more
+// atmosphere-derived window — removed 2026-09-02); base pool is [0,100].
 async function pickTrackRoundRobin({ spec, excludeSet, startIdx }) {
   const genres = spec.genres || [];
   if (!genres.length) return null;
 
-  const pop = Array.isArray(spec.popularity_window) && spec.popularity_window.length === 2
-    ? spec.popularity_window.map((v) => Math.round(v))
-    : [0, 100];
   const inst = (spec.instrumentalness_preference === 'hard' || spec.instrumentalness_preference === 'soft')
     ? spec.instrumentalness_preference : 'none';
+  const popPref = (spec.popularity_preference === 'hard' || spec.popularity_preference === 'soft')
+    ? spec.popularity_preference : 'none';
 
-  async function tryGenre(genre, bpmLo, bpmHi, popLo, popHi) {
+  async function tryGenre(genre, bpmLo, bpmHi) {
+    // Popularity window fixed at [0, 100] — the atmosphere-derived window
+    // was removed 2026-09-02. pop_pref='hard' narrows to [60, 100] inside
+    // the RPC; 'soft' biases hits via ORDER BY.
     const rows = await pgrRpc('v5_anchor_tracks', {
-      p_specs: [{ rank: 1, genre, bpm_lo: bpmLo, bpm_hi: bpmHi, inst_pref: inst }],
-      p_pop_lo: popLo,
-      p_pop_hi: popHi,
+      p_specs: [{ rank: 1, genre, bpm_lo: bpmLo, bpm_hi: bpmHi, inst_pref: inst, pop_pref: popPref }],
+      p_pop_lo: 0,
+      p_pop_hi: 100,
     }, { useService: true });
     const id = rows?.[0]?.spotify_id;
     if (id && !excludeSet.has(id)) return id;
@@ -140,9 +149,10 @@ async function pickTrackRoundRobin({ spec, excludeSet, startIdx }) {
     const bulk = await pgrRpc('v5_direction_tracks', {
       p_genres: [genre],
       p_bpm_lo: bpmLo, p_bpm_hi: bpmHi,
-      p_pop_lo: popLo, p_pop_hi: popHi,
+      p_pop_lo: 0, p_pop_hi: 100,
       p_limit:  POOL_SIZE_PER_GENRE,
       p_inst_pref: inst,
+      p_pop_pref:  popPref,
     }, { useService: true });
     for (const r of bulk || []) {
       if (r?.spotify_id && !excludeSet.has(r.spotify_id)) return r.spotify_id;
@@ -153,25 +163,26 @@ async function pickTrackRoundRobin({ spec, excludeSet, startIdx }) {
   const bpmLo = spec.bpm_range && Number.isFinite(spec.bpm_range.min) ? Math.floor(spec.bpm_range.min) : 0;
   const bpmHi = spec.bpm_range && Number.isFinite(spec.bpm_range.max) ? Math.ceil(spec.bpm_range.max)  : 300;
 
-  // Tight pass.
+  // Tight pass — respect the direction's BPM.
   for (let step = 0; step < genres.length; step++) {
     const idx = (startIdx + step) % genres.length;
     const g = genres[idx];
     try {
-      const id = await tryGenre(g, bpmLo, bpmHi, pop[0], pop[1]);
+      const id = await tryGenre(g, bpmLo, bpmHi);
       if (id) return { spotifyId: id, genre: g, nextIdx: (idx + 1) % genres.length };
     } catch (e) {
       console.warn(`[preview-direction] tight tryGenre "${g}" failed:`, e.message);
     }
   }
 
-  // Wide pass — drop BPM + popularity constraints. Keeps the owner
-  // swapping even after the tight pool is exhausted.
+  // Wide pass — drop BPM constraint. Keeps the owner swapping even after
+  // the tight pool is exhausted. Popularity is unaffected here — pop_pref
+  // still applies via inst/popPref passed to tryGenre.
   for (let step = 0; step < genres.length; step++) {
     const idx = (startIdx + step) % genres.length;
     const g = genres[idx];
     try {
-      const id = await tryGenre(g, 0, 300, 0, 100);
+      const id = await tryGenre(g, 0, 300);
       if (id) return { spotifyId: id, genre: g, nextIdx: (idx + 1) % genres.length };
     } catch (e) {
       console.warn(`[preview-direction] wide tryGenre "${g}" failed:`, e.message);
@@ -212,7 +223,7 @@ export default async function handler(req, res) {
     } else if (directionId) {
       const rows = await pgrSelect('business_directions',
         { id: `eq.${directionId}`, business_id: `eq.${businessId}` },
-        { select: 'id,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference',
+        { select: 'id,title_en,description_he,genres,bpm_range,instrumentalness_preference,popularity_preference',
           limit: 1, useService: true });
       const dir = rows?.[0];
       if (!dir) return res.status(404).json({ error: 'direction not found' });

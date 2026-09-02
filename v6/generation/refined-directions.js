@@ -24,7 +24,12 @@
 // should treat it identically to "R2 finished with 0 likes" — jump the
 // user to the restart-onboarding screen rather than fabricating output.
 
-import { callModel, parseJSONFromText } from '/v6/generation/ai-provider.js?v=25082026a';
+// Relative paths (not `/v6/...`) so Node's ESM resolver can load this file
+// server-side. Browsers resolve `./ai-provider.js` and `./musical-directions.js`
+// against this file's URL, so the resolved URLs are identical to what the
+// old absolute paths produced. Cache-bust `?v=` still bumps the browser
+// cache when the imports' contents change.
+import { callModel, parseJSONFromText } from './ai-provider.js?v=25082026a';
 import {
   GENRE_UNIVERSE_SECTION,
   PROCESSING_RULES_SECTION,
@@ -34,7 +39,7 @@ import {
   HEBREW_DESCRIPTION_SECTION,
   WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION,
   injectPlaces,
-} from '/v6/generation/musical-directions.js?v=02092026a';
+} from './musical-directions.js?v=02092026a';
 
 // Same output cap as Round 1 — Gemini 3.6-flash hard limit. Only 4
 // directions expected, so we're well under real usage; the ceiling
@@ -80,8 +85,9 @@ Perform this analysis BEFORE generating new directions.
 - Combine the Positive Genre Pool with these Bridge Genres to form your Round 2 Working Pool.
 
 ### 4. Honor Musical Emphases even in Round 2
-- The Musical Emphases text from Round 1 still applies with its FULL priority — including any include-genre / exclude-genre / general-leaning rule, AND the Instrumentalness preference classification. If Round 1's likes contradict the Musical Emphases (rare), the Musical Emphases still win.
+- The Musical Emphases text from Round 1 still applies with its FULL priority — including any include-genre / exclude-genre / general-leaning rule, AND the Instrumentalness preference classification, AND the Popularity preference classification. If Round 1's likes contradict the Musical Emphases (rare), the Musical Emphases still win.
 - Set every direction's \`instrumentalness_preference\` to the same value you would emit for Round 1 given the same emphases text (consistent across all 4 directions).
+- Set every direction's \`popularity_preference\` the same way — same rule applies (uniform across the 4 directions unless the emphases text explicitly asked for per-direction variance).
 
 ### 5. Special case: zero Liked directions
 If the Liked list is empty:
@@ -111,6 +117,7 @@ const REFINED_TASK_WORKFLOW = `## Task Workflow (Round 2)
    - **Genres list:** 4 to 6 genres from the Working Pool (or 1–3 for justified isolated niche genres / standalone allowed genres).
    - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit \`bpm_range\` as \`{"min": 0, "max": <ceiling>}\`. Same rule as Round 1.
    - **instrumentalness_preference:** Same value across all 4 directions, derived from the Musical Emphases text using the same rules as Round 1 (\`"none"\` | \`"soft"\` | \`"hard"\`).
+   - **popularity_preference:** Same value across all 4 directions by default, derived from the Musical Emphases text using the same rules as Round 1 (\`"none"\` | \`"soft"\` | \`"hard"\`). If the emphases text explicitly asks for per-direction variance (time-of-day / context-based), vary it to match. When set to \`"hard"\` or \`"soft"\`, it also influences your GENRE picks — skew away from esoteric genres, lean toward hit-friendly catalogs (see the Round-1 sub-rule for the full lists).
 5. Rank directions best-fit first based on strength of the taste signal.`;
 
 const REFINED_OUTPUT_FORMAT = `## Output format
@@ -126,13 +133,16 @@ Normal case:
       "genres": ["...", "...", "..."],
       "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
       "bpm_range": {"min": 0, "max": 115},
-      "instrumentalness_preference": "none"
+      "instrumentalness_preference": "none",
+      "popularity_preference": "none"
     }
     // exactly 4 directions
   ]
 }
 
 The \`instrumentalness_preference\` field is one of \`"none"\` | \`"soft"\` | \`"hard"\`. Consistent across all 4 directions, derived from the Musical Emphases text.
+
+The \`popularity_preference\` field is also one of \`"none"\` | \`"soft"\` | \`"hard"\`. Same default of uniformity across the 4 directions, with the per-direction variance exception when the emphases text explicitly requests it. See the Round-1 "Popularity preference" sub-rule for classification.
 
 Error case (return instead of directions):
 {"error": "<code>", "reasoning_en": "one short English sentence"}`;
@@ -279,10 +289,16 @@ function validateDirection(d) {
 }
 
 const INST_PREFS = new Set(['none', 'soft', 'hard']);
+const POP_PREFS  = new Set(['none', 'soft', 'hard']);
 function normalizeInstPref(raw) {
   if (typeof raw !== 'string') return 'none';
   const v = raw.trim().toLowerCase();
   return INST_PREFS.has(v) ? v : 'none';
+}
+function normalizePopPref(raw) {
+  if (typeof raw !== 'string') return 'none';
+  const v = raw.trim().toLowerCase();
+  return POP_PREFS.has(v) ? v : 'none';
 }
 
 function containsHouseGenre(d) {
@@ -298,6 +314,7 @@ function normalizeDirections(parsed, rankStart) {
         .filter((g) => typeof g === 'string' && g.length);
     }
     d.instrumentalness_preference = normalizeInstPref(d.instrumentalness_preference);
+    d.popularity_preference       = normalizePopPref(d.popularity_preference);
     delete d.anchor_genre;
     delete d.secondary_genres;
   });

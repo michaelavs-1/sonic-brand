@@ -94,6 +94,17 @@ export const PROCESSING_RULES_SECTION = `### Processing Rules:
   - \`"soft"\` — user prefers instrumentals but hasn't ruled out vocals ("prefer instrumentals", "a lot of instrumentals", "mostly instrumental", "less vocals", "יותר אינסטרומנטלי", "פחות שירה", "הרבה אינסטרומנטליים").
   - \`"none"\` — the emphases text doesn't mention instrumentals at all (default).
   Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
+- **Popularity preference (special sub-rule):** If the emphases text expresses a preference for well-known / familiar / hit tracks (or its inverse — deep cuts / lesser-known music), set the \`popularity_preference\` field on every direction accordingly.
+
+  **Fixed definition — a "hit" ALWAYS means popularity ∈ [60, 100].** However the owner phrases their ask ("hits", "well-known", "familiar", "mainstream", "songs everyone knows", "top 40", "chart-toppers", "recognizable", "safe picks", "להיטים", "מוכרים", "שירים שכולם מכירים", "מיינסטרים", "שירי מצעד", or any equivalent phrasing in any language), the concept ALWAYS maps to this exact popularity window. This is a hard-coded constant — NOT a knob you tune per venue or per direction. Your only classification job is to detect whether the ask is present and how strong it is (\`hard\` vs \`soft\`); the DB layer enforces the 60–100 window automatically when you set the preference.
+
+  - \`"hard"\` — user is emphatic that they want ONLY hits ("only hits", "well-known only", "familiar songs only", "mainstream only", "רק להיטים", "רק שירים מוכרים", "רק מוזיקה מוכרת"). DB strictly filters to popularity 60–100.
+  - \`"soft"\` — user prefers hits but hasn't ruled out deeper cuts ("mostly hits", "lots of hits", "familiar with some surprises", "יותר להיטים", "בעיקר שירים מוכרים", "רוב הזמן להיטים"). DB keeps the atmosphere-derived pool wide but bias-sorts the hit range (60+) to the front of the random draw.
+  - \`"none"\` — the emphases text doesn't mention popularity or familiarity at all (default). This is also correct if the user asks for the OPPOSITE (deep cuts, lesser-known, esoteric) — that's what the atmosphere-derived popularity window already delivers when unmodified.
+
+  UNLIKE the instrumentalness rule, this preference DOES influence your genre choices: when set to \`"hard"\` or \`"soft"\`, skew AWAY from esoteric or niche-only genres (e.g., \`Peruvian Chicha\`, \`Anatolian Psychedelic Rock\`, \`Tishoumaren\`, \`Dabke\`, \`Neo Exotica\`, \`Ethio-Jazz\`, \`Rebetiko\`, \`Laiko\`, \`Turk Arabesk\`, \`Medieval Music\`, \`Piano Impressionism\`) — those genres have deep pools but few tracks in the hit window. Lean toward genres with rich hit catalogs (\`Modern Pop\`, \`80s Pop\`, \`90's pop party\`, \`Rock\`, \`Hip Hop\`, \`RnB\`, \`Funk\`, \`Disco\`, \`Indie Rock\`, \`Bossa Nova\`, \`Jazz (Standards)\`, and other mainstream-adjacent styles). This is your one lever — you decide the genre mix per direction; the DB then filters/biases each genre's pool to the hit window uniformly.
+
+  **Uniform across directions unless the owner explicitly asks otherwise.** Set the same \`popularity_preference\` on ALL your directions by default — one classification per emphases text, applied everywhere. EXCEPTION: if the emphases text explicitly asks for time-of-day or context-based variance ("hits during lunch, deeper cuts in the evening", "מסיבתי בסוף השבוע, יותר אינטימי באמצע השבוע", "background jazz in the morning but hits for happy hour"), vary the value per-direction to match. Do NOT invent per-direction variance the owner didn't ask for.
 - **Japanese Folk Restriction Rule:** \`Japanese Folk\` is a specialized style that must **NEVER** be included in any direction for a venue that is not explicitly a Japanese business requiring particularly calm/relaxing music — UNLESS the owner explicitly requested it (or a style very closely related to it) in their free-text description or musical emphases.
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.`;
@@ -254,13 +265,16 @@ Normal case:
       "genres": ["...", "...", "..."],
       "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
       "bpm_range": {"min": 0, "max": 115},
-      "instrumentalness_preference": "none"
+      "instrumentalness_preference": "none",
+      "popularity_preference": "none"
     }
     // ... up to 8 directions
   ]
 }
 
 The \`instrumentalness_preference\` field is one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Instrumentalness preference" sub-rule under Processing Rules for when to use each. Default is \`"none"\` — that's what you output when the emphases text doesn't mention instrumentals at all.
+
+The \`popularity_preference\` field is also one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Popularity preference" sub-rule under Processing Rules. Default is \`"none"\`. Unlike \`instrumentalness_preference\`, this field DOES influence your genre picks — see the sub-rule for the hit-friendly vs esoteric genre lists.
 
 Error case (return instead of directions):
 {"error": "<code>", "reasoning_en": "one short English sentence"}`;
@@ -481,15 +495,21 @@ function containsHouseGenre(d) {
   return Array.isArray(d.genres) && d.genres.some((g) => typeof g === 'string' && /house/i.test(g));
 }
 
-// Coerce Gemini's `instrumentalness_preference` into one of the three
-// values the downstream RPCs understand. Missing / garbage / wrong-case
-// all collapse to 'none' — the safe default that leaves the query pool
-// unfiltered and unbiased.
+// Coerce Gemini's `instrumentalness_preference` / `popularity_preference`
+// into one of the three values the downstream RPCs understand. Missing /
+// garbage / wrong-case all collapse to 'none' — the safe default that
+// leaves the query pool unfiltered and unbiased.
 const INST_PREFS = new Set(['none', 'soft', 'hard']);
+const POP_PREFS  = new Set(['none', 'soft', 'hard']);
 function normalizeInstPref(raw) {
   if (typeof raw !== 'string') return 'none';
   const v = raw.trim().toLowerCase();
   return INST_PREFS.has(v) ? v : 'none';
+}
+function normalizePopPref(raw) {
+  if (typeof raw !== 'string') return 'none';
+  const v = raw.trim().toLowerCase();
+  return POP_PREFS.has(v) ? v : 'none';
 }
 
 function normalizeDirections(parsed, rankStart) {
@@ -504,6 +524,7 @@ function normalizeDirections(parsed, rankStart) {
         .filter((g) => typeof g === 'string' && g.length);
     }
     d.instrumentalness_preference = normalizeInstPref(d.instrumentalness_preference);
+    d.popularity_preference       = normalizePopPref(d.popularity_preference);
     delete d.anchor_genre;
     delete d.secondary_genres;
   });

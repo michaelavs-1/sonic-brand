@@ -76,7 +76,7 @@ export default async function handler(req, res) {
     // Cascade-failure-proof: the direction rotation doesn't depend on any
     // particular past playlist row surviving. activeDirections uses the
     // service role internally.
-    const { directions, popularityWindow } = await activeDirections(businessId);
+    const { directions } = await activeDirections(businessId);
     if (!directions.length) {
       return res.status(400).json({ error: 'לא נמצאו כיוונים מוסיקליים לבניית פלייליסטים' });
     }
@@ -86,7 +86,6 @@ export default async function handler(req, res) {
       businessId,
       bizName,
       directions,
-      popularityWindow,
       target,
       expiryIso:  null,       // closed-day playlists keep the 24h default
       origin:     selfOrigin(req),

@@ -11,7 +11,7 @@
 
    Exports:
      buildDailyBatch({ ownerId, businessId, bizName,
-                       directions, popularityWindow, target,
+                       directions, target,
                        expiryIso, origin })
        → { built: [rowObj, ...], failures: [{ title, reason }, ...] }
        Builds N Spotify playlists in parallel, upserts N ledger rows, and
@@ -21,9 +21,9 @@
 
      latestDirections(rows)
        Accepts business_playlists rows (snake_case: expansion, event_id,
-       created_at). Returns { directions, popularityWindow } — most-recent
-       batch of onboarding/daily playlists (grouped by created_at date),
-       dedup'd by title/anchor. Skips event playlists.
+       created_at). Returns { directions } — most-recent batch of
+       onboarding/daily playlists (grouped by created_at date), dedup'd
+       by title/anchor. Skips event playlists.
 
      fetchTracksWithHistory / recordTrackHistory
        RPC helpers, unchanged from the pre-migration file — the track
@@ -55,31 +55,27 @@ const SPOTIFY_ADD_CHUNK = 50;
 // day-over-day. Since directions are now a first-class permanent entity,
 // the source is unambiguous: "the rows marked active for this business."
 //
-// Return shape kept compatible with buildDailyBatch's expectations:
-// { directions: [directionObj, ...], popularityWindow: [lo, hi] | null }.
-// Each direction has title_en / description_he / genres / bpm_range plus
-// the `id` column (needed to tag freshly-built business_playlists rows
-// with direction_id).
+// Return shape: { directions: [directionObj, ...] }. Each direction has
+// title_en / description_he / genres / bpm_range plus the `id` column
+// (needed to tag freshly-built business_playlists rows with direction_id).
 //
-// popularityWindow: taken from the first direction that has one. In
-// practice all directions for a business share the same window (same
-// atmosphere selection at onboarding). If none do (very old data), null
-// falls through and callers default to [0, 100] via the RPC.
+// Popularity is controlled entirely per-direction via popularity_preference
+// (added 2026-09-02, replacing the atmosphere-derived popularity_window).
+// The base pool is always [0, 100]; hard/soft narrow or bias from there.
 export async function activeDirections(businessId) {
   let rows = [];
   try {
     rows = await pgrSelect('business_directions',
       { business_id: `eq.${businessId}`, active: 'is.true' },
-      { select: 'id,rank,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference',
+      { select: 'id,rank,title_en,description_he,genres,bpm_range,instrumentalness_preference,popularity_preference',
         order: 'rank.asc.nullslast', useService: true },
     );
   } catch (e) {
     console.warn(`[daily-builder] business_directions read failed for biz=${businessId}:`, e.message);
-    return { directions: [], popularityWindow: null };
+    return { directions: [] };
   }
-  if (!rows?.length) return { directions: [], popularityWindow: null };
-  const popularityWindow = rows.find((r) => Array.isArray(r.popularity_window))?.popularity_window || null;
-  return { directions: rows, popularityWindow };
+  if (!rows?.length) return { directions: [] };
+  return { directions: rows };
 }
 
 // -------- Supabase RPC + Spotify helpers --------
@@ -88,14 +84,11 @@ export async function activeDirections(businessId) {
 // tracks served to that same pair within DEDUP_WINDOW_DAYS. If the filtered
 // pool comes back short (narrow direction / small track catalogue), refill
 // from the full pool so the playlist still reaches target length.
-export async function fetchTracksWithHistory({ businessId, direction, popularityWindow, target }) {
+export async function fetchTracksWithHistory({ businessId, direction, target }) {
   const key = directionKey(direction);
   const genres = Array.isArray(direction.genres) && direction.genres.length
     ? direction.genres
     : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean);
-  const [pop_lo, pop_hi] = Array.isArray(popularityWindow)
-    ? popularityWindow.map((v) => Math.round(v))
-    : [0, 100];
   // Instrumentalness preference travels with the direction — persisted at
   // signup on business_directions.instrumentalness_preference, read back
   // by activeDirections above and by expand-playlist's business_directions
@@ -104,15 +97,23 @@ export async function fetchTracksWithHistory({ businessId, direction, popularity
   const inst_pref = (direction.instrumentalness_preference === 'hard'
                      || direction.instrumentalness_preference === 'soft')
     ? direction.instrumentalness_preference : 'none';
+  // Popularity preference travels with the direction the same way (added
+  // 2026-09-02). Base pool is always [0, 100] since atmosphere-derived
+  // popularity_window was removed the same day; pop_pref='hard' narrows
+  // to [60, 100], 'soft' biases hits via ORDER BY, 'none' unchanged.
+  const pop_pref  = (direction.popularity_preference === 'hard'
+                     || direction.popularity_preference === 'soft')
+    ? direction.popularity_preference : 'none';
   const baseArgs = {
     p_genres:        genres,
     p_bpm_lo:        Math.floor(direction.bpm_range.min),
     p_bpm_hi:        Math.ceil(direction.bpm_range.max),
-    p_pop_lo:        pop_lo,
-    p_pop_hi:        pop_hi,
+    p_pop_lo:        0,
+    p_pop_hi:        100,
     p_biz_id:        businessId,
     p_direction_key: key,
     p_inst_pref:     inst_pref,
+    p_pop_pref:      pop_pref,
   };
 
   // Primary: exclude tracks served in the last 7 days.
@@ -244,7 +245,7 @@ function todayHe() {
   return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}.${d.getFullYear()}`;
 }
 
-function playlistName(bizName, direction) {
+export function playlistName(bizName, direction) {
   // Title fallback: direction.title_en, then the first genre (arbitrary but
   // stable) if title is missing on a legacy row, then a hard default.
   const firstGenre = Array.isArray(direction.genres) && direction.genres.length
@@ -262,10 +263,10 @@ function playlistName(bizName, direction) {
 // for INSERT into business_playlists. The batch caller then INSERTs all N
 // rows in one call.
 export async function buildOneDailyPlaylist({
-  origin, ownerId, businessId, direction, popularityWindow, target, bizName, expiryIso,
+  origin, ownerId, businessId, direction, target, bizName, expiryIso,
 }) {
   const { ids, directionKey: key } = await fetchTracksWithHistory({
-    businessId, direction, popularityWindow, target,
+    businessId, direction, target,
   });
   if (!ids.length) {
     return { skipped: true, reason: 'no tracks matched', title: direction.title_en };
@@ -324,7 +325,9 @@ export async function buildOneDailyPlaylist({
         genres:         genresList,
         bpm_range:      direction.bpm_range,
       },
-      popularityWindow,
+      // popularityWindow dropped 2026-09-02 — atmosphere-derived popularity
+      // window removed; per-direction popularity_preference is the sole
+      // popularity control now.
     },
     event_id:     null,
     direction_id: direction.id || null,      // populated when caller passes an activeDirections() row
@@ -355,7 +358,7 @@ const BUILD_STAGGER_MS  = 3000;
 
 export async function buildDailyBatch({
   ownerId, businessId, bizName,
-  directions, popularityWindow, target, expiryIso, origin,
+  directions, target, expiryIso, origin,
 }) {
   if (!Array.isArray(directions) || !directions.length) {
     return { built: [], failures: [] };
@@ -373,7 +376,7 @@ export async function buildDailyBatch({
     const { direction } = jobs[idx];
     try {
       results[idx] = await buildOneDailyPlaylist({
-        origin, ownerId, businessId, direction, popularityWindow, target, bizName, expiryIso,
+        origin, ownerId, businessId, direction, target, bizName, expiryIso,
       });
     } catch (err) {
       console.warn(`[daily-builder] "${direction.title_en}" failed:`, err.message);

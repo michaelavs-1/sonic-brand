@@ -23,8 +23,8 @@
 
    Idempotency:
      - If business_playlists.expanded_at is already set, we short-circuit.
-     - Otherwise we read the row's `expansion` field ({direction, popularityWindow})
-       to know what to fetch, request enough NEW tracks to fill the gap, and
+     - Otherwise we read the row's `expansion.direction` field (title + genres +
+       bpm_range) to know what to fetch, request enough NEW tracks to fill the gap, and
        add them to Spotify. Intermediate progress is streamed but only the
        final `track_count + expanded_at` update is committed — if the tab
        closes mid-stream the next dashboard load will just re-run.
@@ -168,7 +168,7 @@ export default async function handler(req, res) {
       try {
         const dirRes = await pgrSelect('business_directions',
           { id: `eq.${row.direction_id}` },
-          { select: 'id,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference',
+          { select: 'id,title_en,description_he,genres,bpm_range,instrumentalness_preference,popularity_preference',
             limit: 1, useService: true },
         );
         dir = dirRes?.[0] || null;
@@ -216,15 +216,12 @@ export default async function handler(req, res) {
     // is a no-op on day 1. But if the user reonboards or re-triggers
     // expansion, the helper avoids repeating recent tracks. The helper's
     // internal pool-shortage fallback fills any gap for narrow directions.
-    // popularity_window preference: business_directions column (canonical
-     // per-direction snapshot) → legacy expansion.popularityWindow fallback.
-    const popularityWindow = dir.popularity_window
-      || row.expansion?.popularityWindow
-      || null;
+    // Popularity is controlled per-direction via popularity_preference on
+    // the business_directions row (which the helper reads out of `dir`);
+    // no atmosphere-derived popularity_window since 2026-09-02.
     const { ids: newIds, directionKey: dKey } = await fetchTracksWithHistory({
       businessId,
       direction:        dir,
-      popularityWindow,
       target:           need,
     });
     if (!newIds.length) {

@@ -111,7 +111,7 @@ export default async function handler(req, res) {
       pgrSelect('business_place',      { business_id: `eq.${id}` }, { useService: true }),
       pgrSelect('business_hours',      { business_id: `eq.${id}` }, { useService: true }),
       pgrSelect('business_directions', { business_id: `eq.${id}` }, {
-        select: 'id,rank,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference,active,created_at,updated_at',
+        select: 'id,rank,title_en,description_he,genres,bpm_range,instrumentalness_preference,popularity_preference,active,created_at,updated_at',
         order: 'rank.asc.nullslast',
         useService: true,
       }),

@@ -16,7 +16,14 @@ import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
 import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
 import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=02092026a';
 import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=02092026a';
-import { derivePopularityWindow } from '/v6/generation/popularity-window.js?v=02082026a';
+// derivePopularityWindow was removed 2026-09-02 — atmospheres no longer
+// derive a popularity window. Atmosphere strings still enter the prompt
+// as context (see buildUserMessage in musical-directions.js), but
+// popularity screening is now controlled entirely by Gemini's per-direction
+// `popularity_preference` classification (see the "Popularity preference"
+// sub-rule in PROCESSING_RULES_SECTION). Track pools default to [0, 100]
+// unless popularity_preference='hard' overrides to [60, 100] or 'soft'
+// biases the ORDER BY toward hits.
 import {
   runDirectionPreviewFlow,
   runRefinedDirectionPreviewFlow,
@@ -91,7 +98,6 @@ const state = {
   longestMinutes: 0,          // longest open window across days — feeds daily-playlist target
   directions: null,
   page2Promise: null,
-  popularityWindow: null,
   picked: null,
   results: null,
 };
@@ -149,7 +155,6 @@ function invalidateFrom(step) {
   if (step <= 3) {
     state.directions = null;
     state.page2Promise = null;
-    state.popularityWindow = null;
     // round2Emphases is feedback on a specific R1 outcome — clear
     // whenever directions regenerate so it doesn't leak stale context
     // into the next R2 attempt.
@@ -637,7 +642,6 @@ async function goToStep(start) {
         if (!sameAtmos) {
           state.directions = null;
           state.page2Promise = null;
-          state.popularityWindow = null;
           state.picked = null;
           state.results = null;
           state.round2Emphases = '';
@@ -665,7 +669,6 @@ async function goToStep(start) {
         if (emphases !== state.musicalEmphases) {
           state.directions = null;
           state.page2Promise = null;
-          state.popularityWindow = null;
           state.picked = null;
           state.results = null;
           state.round2Emphases = '';
@@ -701,11 +704,9 @@ async function goToStep(start) {
           // immediately; page 2 anchors chain onto Gemini's second call).
           preparedPromise = rawDirections.then((r) => {
             if (r?.error) return emptyPreparedPreview();
-            const popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
             return preparePreview({
               directions: r.directions,
               page2Promise: r.page2Promise,
-              popularityWindow,
             });
           }).catch((e) => {
             console.warn('preparePreview failed:', e);
@@ -716,7 +717,6 @@ async function goToStep(start) {
           preparedPromise = preparePreview({
             directions: state.directions,
             page2Promise: state.page2Promise,
-            popularityWindow: state.popularityWindow,
           }).catch((e) => {
             console.warn('preparePreview failed:', e);
             return emptyPreparedPreview();
@@ -753,11 +753,9 @@ async function goToStep(start) {
           );
           preparedPromise = rawDirections.then((r) => {
             if (r?.error) return emptyPreparedPreview();
-            const popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
             return preparePreview({
               directions: r.directions,
               page2Promise: r.page2Promise,
-              popularityWindow,
             });
           }).catch((e) => {
             console.warn('preparePreview failed:', e);
@@ -767,7 +765,6 @@ async function goToStep(start) {
           preparedPromise = preparePreview({
             directions: state.directions,
             page2Promise: state.page2Promise,
-            popularityWindow: state.popularityWindow,
           }).catch((e) => {
             console.warn('preparePreview failed:', e);
             return emptyPreparedPreview();
@@ -786,13 +783,11 @@ async function goToStep(start) {
           }
           state.directions = dResult.directions;
           state.page2Promise = dResult.page2Promise;
-          state.popularityWindow = derivePopularityWindow(state.selectedAtmos, state.atmosphereRows);
         }
 
         const picked = await abortable(runDirectionPreviewFlow({
           directions: state.directions,
           page2Promise: state.page2Promise,
-          popularityWindow: state.popularityWindow,
           preparedPromise,
           // Shared references — the swipe deck mutates these directly.
           superLikedTracks: state.superLikedTracks,
@@ -881,7 +876,6 @@ async function goToStep(start) {
               try {
                 refinedPicked = await abortable(runRefinedDirectionPreviewFlow({
                   refinedDirections: refinedResult.directions,
-                  popularityWindow: state.popularityWindow,
                   superLikedTracks: state.superLikedTracks,
                   superLikedGenres: state.superLikedGenres,
                 }), signal);
@@ -945,7 +939,6 @@ async function goToStep(start) {
         const results = await abortable(buildDirectionPlaylists({
           selectedDirections: state.picked,
           bizName: state.bizName,
-          popularityWindow: state.popularityWindow,
           onProgress: (index, r) => updateOnePlaylistResult(index, r),
         }), signal);
         finalizePlaylistResultsHeading(results);

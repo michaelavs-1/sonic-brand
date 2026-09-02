@@ -1,33 +1,26 @@
 /* /api/v5/direction-tracks.js
    v5 per-direction playlist source. Given a direction's genres (anchor +
-   secondaries), a BPM range (from the GPT output), and a popularity range
-   (derived from the user's selected atmospheres), returns up to `limit`
-   random cached track IDs matching all three constraints.
+   secondaries) and a BPM range (from the Gemini output), returns up to
+   `limit` random cached track IDs matching. Popularity is controlled
+   entirely per-direction via popularity_preference (removed atmosphere-
+   derived popularity window on 2026-09-02).
 
    Request body:
      {
-       "genres":       ["Jazz (Standards)", "Bossa Nova", ...],
-       "bpm_range":    { "min": 80, "max": 110 },
-       "popularity":   [lo, hi],     // 0-100; optional, defaults to [0, 100]
-       "limit":        10             // optional; defaults to 10
+       "genres":                      ["Jazz (Standards)", "Bossa Nova", ...],
+       "bpm_range":                   { "min": 80, "max": 110 },
+       "limit":                       10,                                       // optional; defaults to 10
+       "instrumentalness_preference": "none"|"soft"|"hard",                     // optional
+       "popularity_preference":       "none"|"soft"|"hard"                      // optional; 'hard' → [60,100]
      }
 
    Response:
      { "spotify_ids": ["...", ...] }
-
-   No filtering other than BPM + popularity — this is intentional.
 */
 
 import { pgrRpc } from './supabase-client.js';
 import { requireSite, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
-
-function intRange(param, dfltLo, dfltHi) {
-  if (Array.isArray(param) && param.length === 2 && param.every((v) => Number.isFinite(v))) {
-    return [Math.round(param[0]), Math.round(param[1])];
-  }
-  return [dfltLo, dfltHi];
-}
 
 export default async function handler(req, res) {
   setCors(req, res);
@@ -39,7 +32,7 @@ export default async function handler(req, res) {
   if (!await guard(req, res, 'direction-tracks', 60, 60)) return;
 
   try {
-    const { genres, bpm_range, popularity, limit, instrumentalness_preference } = req.body || {};
+    const { genres, bpm_range, limit, instrumentalness_preference, popularity_preference } = req.body || {};
     if (!Array.isArray(genres) || !genres.length) {
       return res.status(400).json({ error: 'genres required (non-empty array)' });
     }
@@ -47,21 +40,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'bpm_range { min, max } required' });
     }
 
-    const [pop_lo, pop_hi] = intRange(popularity, 0, 100);
     const capped = Number.isFinite(limit) && limit > 0 ? Math.min(Math.round(limit), 100) : 10;
     // 'hard' = strict WHERE, 'soft' = ORDER BY bias, 'none' = unchanged.
     // Anything unrecognized collapses to 'none' in the RPC's default.
     const inst_pref = (instrumentalness_preference === 'hard' || instrumentalness_preference === 'soft')
       ? instrumentalness_preference : 'none';
+    // Popularity preference (added 2026-09-02). 'hard' OVERRIDES the
+    // popularity window to [60,100]; 'soft' keeps the [0,100] pool wide
+    // and biases hits (popularity >= 60) via ORDER BY.
+    const pop_pref = (popularity_preference === 'hard' || popularity_preference === 'soft')
+      ? popularity_preference : 'none';
 
     const rows = await pgrRpc('v5_direction_tracks', {
       p_genres:    genres,
       p_bpm_lo:    Math.floor(bpm_range.min),
       p_bpm_hi:    Math.ceil(bpm_range.max),
-      p_pop_lo:    pop_lo,
-      p_pop_hi:    pop_hi,
+      // Popularity window fixed at [0, 100] since 2026-09-02 (atmosphere-
+      // derived window removed). pop_pref narrows/biases from this base.
+      p_pop_lo:    0,
+      p_pop_hi:    100,
       p_limit:     capped,
       p_inst_pref: inst_pref,
+      p_pop_pref:  pop_pref,
     });
 
     const spotify_ids = (rows || []).map((r) => r.spotify_id).filter(Boolean);

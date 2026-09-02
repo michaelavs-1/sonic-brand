@@ -1,36 +1,35 @@
 /* /api/v5/anchor-tracks.js
    v5 direction preview source. Given per-direction specs (rank + anchor
-   genre + BPM range) and a shared popularity window, returns one random
-   cached track per direction that passes both filters.
+   genre + BPM range + optional inst_pref/pop_pref), returns one random
+   cached track per direction that matches.
 
    Request body:
      {
        "specs": [
-         { "rank": 1, "genre": "Jazz (Standards)", "bpm_lo": 80, "bpm_hi": 110 },
+         { "rank": 1, "genre": "Jazz (Standards)", "bpm_lo": 80, "bpm_hi": 110,
+           "inst_pref": "none"|"soft"|"hard",     // optional
+           "pop_pref":  "none"|"soft"|"hard"      // optional; 'hard' → [60,100]
+         },
          ...
-       ],
-       "popularity": [lo, hi]      // optional; defaults to [0, 100]
+       ]
      }
 
    Response:
      { "byRank": { "1": "<spotify_id>", "2": "...", ... } }
 
-   - Directions whose anchor pool has no track passing BPM + popularity are
-     absent from byRank. The caller drops those directions from the preview.
+   - Directions whose anchor pool has no matching track are absent from
+     byRank. The caller drops those directions from the preview.
    - Keyed by rank so directions with the same anchor genre still get
      distinct preview tracks.
+   - Popularity filter is applied entirely per-spec via pop_pref. The
+     atmosphere-derived popularity window (top-level `popularity` param)
+     was removed 2026-09-02; the RPC now always receives [0, 100] and
+     each spec's pop_pref narrows/biases from there.
 */
 
 import { pgrRpc } from './supabase-client.js';
 import { requireSite, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
-
-function intRange(param, dfltLo, dfltHi) {
-  if (Array.isArray(param) && param.length === 2 && param.every((v) => Number.isFinite(v))) {
-    return [Math.round(param[0]), Math.round(param[1])];
-  }
-  return [dfltLo, dfltHi];
-}
 
 function validateSpec(s) {
   return s
@@ -51,7 +50,7 @@ export default async function handler(req, res) {
   if (!await guard(req, res, 'anchor-tracks', 60, 60)) return;
 
   try {
-    const { specs, popularity } = req.body || {};
+    const { specs } = req.body || {};
     if (!Array.isArray(specs) || !specs.length) {
       return res.status(400).json({ error: 'specs required (non-empty array)' });
     }
@@ -64,17 +63,24 @@ export default async function handler(req, res) {
       // 'hard' = strict WHERE, 'soft' = ORDER BY bias, 'none' = unfiltered.
       // Anything unrecognized collapses to 'none' in the RPC.
       inst_pref: (s.inst_pref === 'hard' || s.inst_pref === 'soft') ? s.inst_pref : 'none',
+      // Optional per-spec popularity preference (added 2026-09-02). Same
+      // three-state shape as inst_pref but with a twist: 'hard' OVERRIDES
+      // the effective popularity window to [60,100] regardless of the
+      // shared popularity param. 'soft' keeps the shared window in WHERE
+      // and adds an ORDER BY bias so hits (popularity >= 60) surface first.
+      pop_pref:  (s.pop_pref  === 'hard' || s.pop_pref  === 'soft') ? s.pop_pref  : 'none',
     }));
     if (!clean.length) {
       return res.status(400).json({ error: 'no valid specs after validation' });
     }
 
-    const [pop_lo, pop_hi] = intRange(popularity, 0, 100);
-
+    // Popularity window fixed at [0, 100] since 2026-09-02 (atmosphere-derived
+    // window removed). Per-spec pop_pref='hard' overrides to [60,100] inside
+    // the RPC; 'soft' biases via ORDER BY.
     const rows = await pgrRpc('v5_anchor_tracks', {
       p_specs:  clean,
-      p_pop_lo: pop_lo,
-      p_pop_hi: pop_hi,
+      p_pop_lo: 0,
+      p_pop_hi: 100,
     });
 
     const byRank = {};

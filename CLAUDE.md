@@ -322,6 +322,7 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
     - `edit` → append a follow-up question bubble ("החליפו עכשיו" / "השאירו עד סגירה"). No server work happens until the owner picks. On pick, the same bubble rewrites into a spinner (with a label that reflects the choice), then into the ✓ marker on success (with an inline "פתחו את הפלייליסט" link when a fresh playlist was built).
     - `remove` → after the initial "הסירו את הכיוון" click, a follow-up bubble appears with two buttons ("כבו עכשיו" / "השאירו עד סגירה"). Same in-place mutation pattern as edit: pick → spinner → ✓ marker.
     Playlist rebuild takes multiple seconds; keeping the owner staring at a modal spinner for that long was worse UX than moving them back to the transcript where they can read prior messages while the work runs.
+  - **Cosmetic-only edit fast path** (title_en and/or description_he ONLY, no genre / BPM / preference changes). Detected client-side by `isCosmeticOnlyUpdates(updates)` in `direction-chat.js`. On this path the entire preview modal + "החליפו עכשיו / השאירו עד סגירה" question is skipped — the proposal bubble carries a single "אשרו את השינוי" button that goes straight to `apply-direction-change`. Server also auto-detects the same shape from its computed `patch` and takes a rename-only branch: `PUT /playlists/{id}` on Spotify (name via the shared `playlistName(bizName, mergedDir)` template + description = new description_he), plus a PATCH on `business_playlists.label` (only when `title_en` moved) and a PATCH on `created_playlists.name` so the eventual expire-cron's "(expired) <name>" rename uses the current title. No track pool is touched — the music is unchanged. Audit row records `playlist_action='renamed'` (added 2026-09-02 — see the CHECK-constraint widening migration). `expireLivePlaylist` is ignored on this path. On success the chat's spinner bubble mutates in place into "✓ השם עודכן" / "✓ התיאור עודכן" / "✓ הכיוון עודכן" (labels vary by which field moved) with NO open-playlist link — the tracks are unchanged, so there's nothing new to jump to. Server signals this by returning `playlist: null`, which the shared spinner-bubble helper already treats as "hide the link".
 
 - **Chat prompt** (`v6/generation/direction-edit-chat-prompt.js`) enforces:
   - Exposure rules: chat may freely mention title / description_he / qualitative BPM feel, but never enumerates a direction's genres unprompted. Owner-named genres are fair game. Never exposes numeric BPM or the inst_pref enum.
@@ -1001,6 +1002,80 @@ from the chat, not from onboarding emphases.
 
 Integration test: `scripts/test-instrumentalness-preference.mjs`.
 
+### Popularity preference (`popularity_preference`)
+
+Added 2026-09-02. Same shape as `instrumentalness_preference` (three-state enum
+`'none' | 'soft' | 'hard'` threaded through prompt → per-direction JSON → RPC →
+`business_directions` column → daily-gen / expand / chat-edit downstream), but
+with two meaningful differences from the instrumentalness rule:
+
+1. **Gemini's genre choices ARE affected.** When set to `hard` or `soft`,
+   Gemini also biases which GENRES it picks — skewing away from esoteric /
+   niche-only genres (Peruvian Chicha, Anatolian Psychedelic Rock,
+   Tishoumaren, Dabke, Neo Exotica, Ethio-Jazz, Rebetiko, Laiko, Turk
+   Arabesk, Medieval Music, Piano Impressionism) and leaning toward
+   hit-friendly catalogs (Modern Pop, 80s Pop, 90's pop party, Rock, Hip
+   Hop, RnB, Funk, Disco, Indie Rock, Bossa Nova, Jazz (Standards)).
+2. **Per-direction schema.** Unlike inst_pref (which R1/R2 stamp uniformly
+   on every direction), popularity_preference is per-direction. Gemini
+   still DEFAULTS to uniform across all directions, but MAY vary it per
+   direction if the emphases text explicitly asks for time-of-day or
+   context-based variance ("hits during lunch, deeper cuts in the
+   evening").
+
+**Classification (Gemini's job).** The "Popularity preference (special
+sub-rule)" in `PROCESSING_RULES_SECTION` (shared with R2 via import)
+instructs Gemini:
+- `'hard'` — "only hits" / "well-known only" / "רק להיטים" / "רק שירים מוכרים".
+- `'soft'` — "mostly hits" / "יותר להיטים" / "בעיקר מוכרים".
+- `'none'` — no mention (default). Also correct if the user asks for the
+  OPPOSITE (deep cuts, lesser-known) — that's what the atmosphere-derived
+  popularity window delivers when unmodified.
+
+**Enforcement (SQL).** All three RPCs (`v5_anchor_tracks`,
+`v5_direction_tracks`, `v6_direction_tracks_recent`) accept `pop_pref` (per
+spec on `v5_anchor_tracks`) / `p_pop_pref` (top-level on the other two).
+Default `'none'`.
+- `'hard'` OVERRIDES the popularity WHERE window to `BETWEEN 60 AND 100`
+  regardless of the atmosphere-derived `popularity_window` passed by the
+  caller.
+- `'soft'` keeps the atmosphere window in WHERE (candidate pool stays
+  wide), and adds `(pop_pref='soft' AND coalesce(ta.popularity,0) < 60)::int`
+  as an ORDER BY key so tracks with popularity ≥ 60 surface first;
+  deep cuts fill in when the hit pool is thin.
+- `'none'` — unchanged (atmosphere window applies as before).
+
+**Threading path.** Same shape as instrumentalness — emphases text →
+Gemini → per-direction `popularity_preference` in the response →
+`normalizeDirections` → threaded through `fetchAnchorTracks` (per-spec
+`pop_pref` inside `p_specs`) and `fetchDirectionTracks` (top-level
+`popularity_preference` body field) → forwarded by `/api/v5/anchor-tracks`
+and `/api/v5/direction-tracks` proxies → persisted at signup into
+`business_directions.popularity_preference` → read back by
+`activeDirections()` and by `expand-playlist.js`'s SELECT → forwarded
+on every daily-gen / expand call so the preference persists for the life
+of the business until the owner overrides it via the direction-edit chat.
+
+**Direction-edit chat (post-signup owner control).** The chat prompt
+teaches the model to detect natural-language asks like "תעשה את הכיוון
+הזה יותר להיטי" / "add some deeper cuts here" and emit an edit proposal
+with `popularity_preference`. `preview-direction`, `apply-direction-change`,
+and `direction-chat.js`'s `mergeUpdates` / `sanitizeUpdates` all handle
+the field the same way they handle `instrumentalness_preference`. The
+Exposure rules forbid quoting the enum values or the numeric window —
+talk in feel ("יותר שירים מוכרים", "פחות מיינסטרים, יותר גילויים").
+
+**Backward-compat.** Default `'none'` on both the column and the RPC
+params. Anything pre-2026-09-02 keeps behaving exactly as before. Event
+playlists (chat-created via the event chat) always pass `'none'`.
+
+**Migration:** `v5/precompute/migrations/2026-09-02-direction-popularity-preference.sql`
+adds the column + CHECK constraint. Idempotent. Code was written null-tolerant
+(`|| 'none'` throughout), so it can ship before the migration runs; running
+the migration afterward is a no-op for existing rows.
+
+Integration test: `scripts/test-popularity-preference.mjs`.
+
 ### Cross-day track dedup (`v6_daily_track_history`)
 
 To prevent the same tracks appearing in a business's daily playlists day
@@ -1088,7 +1163,7 @@ Everything the account dashboard reads lives here:
 
 **Per-business production data (owned by v6 signup + dashboard):**
 - `businesses` — { id, owner_id, name, monthly_credits, credits_remaining, business_description, musical_emphases, onboarding_expanded }. Written by signup. `business_description` + `musical_emphases` are the free-text prompt inputs the owner typed during onboarding (bizDesc + step-3 emphases); added 2026-08-23 for the internal admin API. PATCH path in signup.js skips blank values so repeat-onboarding with an empty field doesn't clobber a previously-recorded prompt.
-- `business_directions` — permanent per-business direction storage. Columns: { id, business_id, rank, title_en, description_he, genres (jsonb), bpm_range (jsonb), popularity_window (jsonb), **instrumentalness_preference** (`'none'|'soft'|'hard'`, added 2026-08-21), active (bool, soft-disable), created_at, updated_at }. Added 2026-08-20 migration — replaced the fragile "reconstruct directions from recent playlist_playlists.expansion" approach that cascaded to zero when the cron partially failed. Now the source of truth for daily-gen; `activeDirections(bizId)` in `_daily-builder.js` reads from here.
+- `business_directions` — permanent per-business direction storage. Columns: { id, business_id, rank, title_en, description_he, genres (jsonb), bpm_range (jsonb), popularity_window (jsonb), **instrumentalness_preference** (`'none'|'soft'|'hard'`, added 2026-08-21), **popularity_preference** (`'none'|'soft'|'hard'`, added 2026-09-02), active (bool, soft-disable), created_at, updated_at }. Added 2026-08-20 migration — replaced the fragile "reconstruct directions from recent playlist_playlists.expansion" approach that cascaded to zero when the cron partially failed. Now the source of truth for daily-gen; `activeDirections(bizId)` in `_daily-builder.js` reads from here.
   - **8-active cap enforced by DB trigger** (`business_directions_cap`, added 2026-08-29). BEFORE INSERT OR UPDATE, per-business advisory-lock + count-active, raises `check_violation` if the write would push active count > 8. Closes the TOCTOU race in apply-direction-change's app-level check and rejects crafted signup payloads. Signup.js still trims client-side to the first 8 so a legitimate 8-pick onboarding never hits the trigger; apply-direction-change still returns its own friendly `cap_reached` code before the trigger fires so end-users see a nice message rather than a raw exception. Trigger is the last-line defense. See `v5/precompute/migrations/2026-08-29-directions-cap-trigger.sql`.
 - `business_playlists` — one row per built Spotify playlist (onboarding sample, expanded daily, cron-generated daily, or event). Columns include { spotify_id, business_id, url, label, ico, track_count, genres, bpm_range, expansion (jsonb, legacy), event_id (nullable back-ref), direction_id (nullable FK → business_directions), track_ids (jsonb, ordered), expanded_at, expires_at, created_at }. Nothing deletes rows — `expires_at` gates dashboard visibility only.
 - `business_hours` — one row per business: { business_id, hours (jsonb — 0..6 day map with `{open,close,closed}`), longest_minutes, updated_at }. Upsert on business_id.
@@ -1097,7 +1172,7 @@ Everything the account dashboard reads lives here:
 - `super_liked_tracks` — { id, business_id, spotify_id, created_at, UNIQUE(business_id, spotify_id) }. Persisted at signup from `state.superLikedTracks`; also topped up by the direction-edit preview modal when the owner taps super-like on a track. Nothing consumes yet — captured for future taste-tuning.
 - `business_playlist_opens` — { id bigserial, business_id, spotify_id, source ('home-daily' | 'home-event' | future), opened_at }. Append-only engagement log. One row per dashboard "▶ פתח" click. Not FK'd to `business_playlists` (matches `super_liked_tracks` pattern) — join manually on `spotify_id` when analyzing. `business_playlists` rows are never deleted (only `expires_at`-gated), so a click yesterday still resolves to its direction / genres / track_ids today. Client writes via fire-and-forget `POST /api/v6/account/log-playlist-open`; navigation to Spotify is never blocked on the write. Added 2026-08-26.
 - `business_direction_chats` — { id, business_id, role ('user'|'assistant'), content (raw JSON for assistant / plain text for user), proposal (jsonb — parsed structured payload attached to an assistant turn: `{kind, direction_id?, updates?, spec?}`), selected_direction_id (nullable FK, which card the owner had selected when they sent this), created_at }. Rolling per-business message log for the profile-tab direction-edit chat. Client renders the transcript on tab open; server loads the tail (last 40) as Gemini chat history each turn.
-- `business_direction_changes` — { id, business_id, direction_id (nullable — null when the pre-insert direction hasn't landed yet), kind ('add'|'edit'|'remove'), before (jsonb direction snapshot), after (jsonb direction snapshot), message_id_first, message_id_last (nullable FKs into business_direction_chats — the message range that produced this change), playlist_action ('rebuilt'|'expired'|'kept'|null), applied_at }. Written by `/api/v6/account/apply-direction-change` on every commit; surfaced by the internal admin API as the audit feed per business.
+- `business_direction_changes` — { id, business_id, direction_id (nullable — null when the pre-insert direction hasn't landed yet), kind ('add'|'edit'|'remove'), before (jsonb direction snapshot), after (jsonb direction snapshot), message_id_first, message_id_last (nullable FKs into business_direction_chats — the message range that produced this change), playlist_action ('rebuilt'|'expired'|'kept'|'renamed'|null), applied_at }. Written by `/api/v6/account/apply-direction-change` on every commit; surfaced by the internal admin API as the audit feed per business. `'renamed'` was added 2026-09-02 for the cosmetic-only edit fast path (title / description-only chat edits) — see the migration `2026-09-02-direction-changes-renamed-action.sql`.
 
 **Ledgers + operational state:**
 - `created_playlists` — the expiry ledger. Columns: `spotify_id` (PK), `name`, `expires_at`, `deleted_at`, `error`, `owner_id` (nullable FK → auth.users), `business_id` (nullable FK → businesses). Both FKs use ON DELETE SET NULL so the cron can still unfollow expired playlists after their owner/business is deleted. Rows written by onboarding (via /api/v5/record-playlist) start with NULL owner/business — signup.js back-fills them. Renamed from `v5_created_playlists` on 2026-08-02; migration in `v5/precompute/migrations/`.

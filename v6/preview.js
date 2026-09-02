@@ -177,7 +177,7 @@ function pickPreviewGenre(d) {
 // finish its own plan compile. If the retry still fails, the throw
 // propagates to preparePreview's outer catch and page 2 falls back to
 // empty (existing degradation).
-async function fetchAnchorTracks(specs, popularityWindow) {
+async function fetchAnchorTracks(specs) {
   const payload = specs.map((s) => ({
     rank: s.rank,
     genre: s.genre,
@@ -187,12 +187,19 @@ async function fetchAnchorTracks(specs, popularityWindow) {
     // Gemini-assigned instrumentalness_preference — the SQL RPC applies
     // the matching WHERE filter (hard) or ORDER BY bias (soft).
     inst_pref: s.inst_pref || 'none',
+    // Per-spec popularity_preference (added 2026-09-02). 'hard' OVERRIDES
+    // to [60,100]; 'soft' keeps the base pool [0,100] and biases hits via
+    // ORDER BY. No more atmosphere-derived popularity window (removed
+    // 2026-09-02) — this is the sole popularity control.
+    pop_pref:  s.pop_pref  || 'none',
   }));
   const attempt = async () => {
     const r = await fetch('/api/v5/anchor-tracks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ specs: payload, popularity: popularityWindow }),
+      // No `popularity` field — API defaults to [0,100]. Popularity is now
+      // controlled per-direction via each spec's pop_pref only.
+      body: JSON.stringify({ specs: payload }),
     });
     if (!r.ok) {
       const data = await r.json().catch(() => ({}));
@@ -216,15 +223,16 @@ async function fetchAnchorTracks(specs, popularityWindow) {
 // super-like on that card contributes to state.superLikedGenres — a
 // sharper positive signal for Round 2 than the whole direction's genre
 // list would be.
-async function fetchInitialPreviewTracks(directions, popularityWindow) {
+async function fetchInitialPreviewTracks(directions) {
   const specs = directions.map((d) => ({
     rank: d.rank,
     genre: pickPreviewGenre(d),
     bpm_range: d.bpm_range,
     inst_pref: d.instrumentalness_preference || 'none',
+    pop_pref:  d.popularity_preference       || 'none',
   })).filter((s) => s.genre);
   if (!specs.length) return { byRank: {}, genreByRank: {} };
-  const byRank = await fetchAnchorTracks(specs, popularityWindow);
+  const byRank = await fetchAnchorTracks(specs);
   const genreByRank = {};
   for (const s of specs) genreByRank[String(s.rank)] = s.genre;
   return { byRank, genreByRank };
@@ -281,7 +289,7 @@ function directionsToPreviews(directions, byRank, genreByRank) {
 // the same deck so the user can keep swiping seamlessly. If the user
 // reaches the end of page 1 before page 2 arrives, we show a brief
 // "loading more" state until it does.
-async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, popularityWindow, page2Ready, superLikedTracks, opts = {}) {
+async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Ready, superLikedTracks, opts = {}) {
   // `opts.expectedTotal` — total number of cards expected across pages. Round 1
   // is 8 (page 1 + page 2), Round 2 is 4 (single page). Drives the progress
   // label's denominator. Defaults to 8 for backward-compat.
@@ -676,11 +684,11 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       // The super-like handler reads this to record the specific genre the
       // user reacted to (not the whole direction's genre list).
       let currentGenre = p.genre || null;
-      const drawUnique = async (spec, pop) => {
+      const drawUnique = async (spec) => {
         for (let attempt = 0; attempt < 2; attempt++) {
           let byRank;
           try {
-            byRank = await fetchAnchorTracks([spec], pop);
+            byRank = await fetchAnchorTracks([spec]);
           } catch (e) {
             // Server-side failure (usually Postgres 57014 statement timeout on
             // a cold query plan). Don't block the swap — skip this genre so
@@ -696,7 +704,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
       };
       // Returns { trackId, genre } so the caller can update currentGenre
       // alongside the visible track.
-      const walkCycle = async (bpmRange, pop) => {
+      const walkCycle = async (bpmRange) => {
         for (let step = 0; step < cycleGenres.length; step++) {
           const idx = (cycleIdx + step) % cycleGenres.length;
           const spec = {
@@ -704,8 +712,9 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
             genre: cycleGenres[idx],
             bpm_range: bpmRange,
             inst_pref: d.instrumentalness_preference || 'none',
+            pop_pref:  d.popularity_preference       || 'none',
           };
-          const hit = await drawUnique(spec, pop);
+          const hit = await drawUnique(spec);
           if (hit) { cycleIdx = (idx + 1) % cycleGenres.length; return { trackId: hit, genre: cycleGenres[idx] }; }
         }
         return null;
@@ -719,9 +728,11 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
         // songs keep loading.
         swap.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים…';
         try {
-          let hit = await walkCycle(d.bpm_range, popularityWindow);
+          let hit = await walkCycle(d.bpm_range);
           if (!hit) {
-            hit = await walkCycle({ min: 0, max: 300 }, [0, 100]);
+            // Widen BPM only — popularity is now controlled per-spec via
+            // pop_pref and doesn't need a fallback here.
+            hit = await walkCycle({ min: 0, max: 300 });
           }
           if (!hit) {
             swap.textContent = 'אין עוד שירים בכיוון הזה';
@@ -930,7 +941,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, populari
 // batches contended and page 2 lost. Sequencing lets page 2's queries reuse
 // page 1's warm plan and connections. Total prep goes from max() to sum()
 // (~1-2s slower), but that stays hidden behind the hours picker.
-export async function preparePreview({ directions, page2Promise, popularityWindow }) {
+export async function preparePreview({ directions, page2Promise }) {
   // Sequence anchor-tracks calls (page 2's anchor fetch waits for page 1's
   // to finish) so page 2's query hits the warm v5_anchor_tracks plan cache
   // and doesn't trip Supabase's statement_timeout. Metadata (get_track)
@@ -940,7 +951,7 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
     const prev = anchorSeq;
     const next = (async () => {
       await prev.catch(() => { });
-      return fetchInitialPreviewTracks(dirs, popularityWindow);
+      return fetchInitialPreviewTracks(dirs);
     })();
     anchorSeq = next;
     return next;
@@ -1041,7 +1052,7 @@ export async function preparePreview({ directions, page2Promise, popularityWindo
 // background. Otherwise we do the prep synchronously here as a fallback.
 // When the prepared payload is already resolved, `await` returns in the same
 // microtask so the swipe deck appears without a visible loading flash.
-export async function runDirectionPreviewFlow({ directions, page2Promise, popularityWindow, preparedPromise, superLikedTracks, superLikedGenres }) {
+export async function runDirectionPreviewFlow({ directions, page2Promise, preparedPromise, superLikedTracks, superLikedGenres }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('preview: .screen-card not found');
 
@@ -1049,7 +1060,7 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, popula
 
   const prepared = preparedPromise
     ? await preparedPromise
-    : await preparePreview({ directions, page2Promise, popularityWindow });
+    : await preparePreview({ directions, page2Promise });
 
   // The deck starts rendering as soon as page 1 is ready. Page 2's promise
   // is handed to renderSwipeDeck, which appends its previews to the deck
@@ -1070,10 +1081,10 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, popula
     // Page 1 empty — fall back to page 2 as a last chance.
     const page2 = await prepared.page2Ready;
     if (!page2.previews.length) return [];
-    return renderSwipeDeck(container, page2.previews, page2.trackMeta, popularityWindow, null, superLikedTracks, { superLikedGenres });
+    return renderSwipeDeck(container, page2.previews, page2.trackMeta, null, superLikedTracks, { superLikedGenres });
   }
 
-  return renderSwipeDeck(container, page1.previews, page1.trackMeta, popularityWindow, prepared.page2Ready, superLikedTracks, { superLikedGenres });
+  return renderSwipeDeck(container, page1.previews, page1.trackMeta, prepared.page2Ready, superLikedTracks, { superLikedGenres });
 }
 
 // ---------- Round 2: refinement preview ----------
@@ -1088,7 +1099,7 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, popula
 //   generateRefinedMusicalDirections. This flow does NOT trigger the R2
 //   Gemini call itself; the caller in app.js does that so the loading UI
 //   can render while the call is in flight.
-export async function runRefinedDirectionPreviewFlow({ refinedDirections, popularityWindow, superLikedTracks, superLikedGenres }) {
+export async function runRefinedDirectionPreviewFlow({ refinedDirections, superLikedTracks, superLikedGenres }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('refined preview: .screen-card not found');
 
@@ -1099,7 +1110,6 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, popula
   const prepared = await preparePreview({
     directions: refinedDirections,
     page2Promise: null,
-    popularityWindow,
   });
 
   const page1 = await prepared.page1Ready;
@@ -1119,7 +1129,6 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, popula
     container,
     page1.previews,
     page1.trackMeta,
-    popularityWindow,
     null,
     superLikedTracks,
     { expectedTotal: refinedDirections.length, superLikedGenres },

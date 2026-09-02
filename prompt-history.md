@@ -31,6 +31,108 @@ history matters for debugging old rows.
 
 ---
 
+## 2026-09-02 (latest) — Direction-edit chat: owner-verbatim titles + cosmetic-only edit fast path signalling
+
+**Applies to:** `direction-edit chat`
+
+Two adjacent clarifications in `v6/generation/direction-edit-chat-prompt.js` supporting the new client + server cosmetic-only edit fast path (title / description-only edits skip the preview modal and go straight to a single-tap confirm; server auto-detects the same shape and renames the live Spotify playlist in place instead of rebuilding).
+
+**Owner-verbatim titles** — the OPERATIONS_CATALOG entry for the `title_en` update field previously said "Follow the English Title rules below (3-element structure, 4–7 words)". Under that guidance Gemini was translating owner-supplied Hebrew names into English when the owner explicitly asked to rename in Hebrew (e.g., owner: "תעדכן את השם ל־'ג׳אז שקט לערב'" → Gemini emitted `title_en: "Quiet Jazz Evening"`). Rewrote to:
+
+> "**When the owner explicitly gives you a new title in their message (in ANY language — Hebrew, English, mixed, transliterated, whatever), copy their exact wording into `title_en` VERBATIM.** Do NOT translate it. Do NOT re-phrase it. Do NOT enforce the English Title rules below. The English Title rules apply ONLY when you're inventing a title yourself — either inside an `add` proposal, or when the owner asked for a rename in vague terms ('תן לו שם יותר טוב', 'rename it to something jazzier') and left the wording to you. Despite the field's name, the underlying column accepts any language; the 'en' is historical."
+
+Downstream columns (`business_directions.title_en`, `business_playlists.label`, Spotify playlist name) all accept any Unicode; nothing on the read path cares about language. `TITLE_RULES_SECTION` import is preserved for the vague-rename and `add` cases.
+
+**Cosmetic-only edit reply guidance** — added at the end of the OPERATIONS_CATALOG `edit` entry, and referenced from OUTPUT_FORMAT's edit example:
+
+> "**Cosmetic-only edits (title_en and/or description_he ONLY, no other fields):** the music is unchanged, so the client skips the preview modal entirely and offers a single confirm button. Your `reply_he` for a cosmetic edit MUST NOT promise a listening step — no 'נראה איך זה נשמע', no 'בואו נשמע', no 'תשמע ותגיד'. Confirm the ask in one plain sentence ('בסדר, נעדכן את השם לX', 'משנים את התיאור')."
+
+OUTPUT_FORMAT example lead-in changed from "Ready to propose an EDIT (client will show the preview swipe modal)" to "Ready to propose an EDIT (client shows the preview swipe modal for musical edits, or a single confirm button for cosmetic-only title/description edits)" so the same shape is documented as producing two client-side flows.
+
+Only reply-copy and update-field wording changed — the JSON schema of the `edit` proposal, the set of allowed `updates` keys, and downstream parsing are unchanged.
+
+---
+
+## 2026-09-02 (later still) — Popularity preference: hoisted "hit = popularity 60–100" to a Fixed definition line
+
+**Applies to:** both (shared `PROCESSING_RULES_SECTION` sub-rule flows to R1 + R2 via composition/import)
+
+The popularity_preference sub-rule already mentioned "the 60-100 hit zone" mid-paragraph, but this was implicit — Gemini could conceivably invent a wider or narrower "hit" concept and adjust genre picks around a fuzzy definition. Restructured the sub-rule to hoist a **Fixed definition** line to the top:
+
+> "Fixed definition — a 'hit' ALWAYS means popularity ∈ [60, 100]. However the owner phrases their ask ('hits', 'well-known', 'familiar', 'mainstream', 'songs everyone knows', 'top 40', 'chart-toppers', 'recognizable', 'safe picks', 'להיטים', 'מוכרים', 'שירים שכולם מכירים', 'מיינסטרים', 'שירי מצעד', or any equivalent phrasing in any language), the concept ALWAYS maps to this exact popularity window. This is a hard-coded constant — NOT a knob you tune per venue or per direction."
+
+Also broadened the trigger-phrase list (added top 40, chart-toppers, recognizable, safe picks, שירי מצעד + explicit "or any equivalent phrasing in any language") to reduce misses on unusual phrasings. And explicitly labeled the DB behavior next to each of the three states so Gemini can reason about the downstream effect:
+
+- `hard` — DB strictly filters to popularity 60–100.
+- `soft` — DB keeps the atmosphere-derived pool wide but bias-sorts hits (60+) to the front of the random draw.
+- `none` — atmosphere window unchanged.
+
+Also clarified the genre-bias paragraph: this is Gemini's ONE lever — Gemini decides the genre mix per direction; the DB then filters/biases each genre's pool to the hit window uniformly. No per-genre-within-direction filter override exists at the DB layer, and none is needed — Gemini's genre selection IS the per-direction control.
+
+Rule shape and behavior unchanged; DB constants (60, 100) unchanged; RPC signatures unchanged. Only the sub-rule text tightened for definitional clarity.
+
+---
+
+## 2026-09-02 (even later same day) — Popularity preference sub-rule added to R1/R2 processing rules + direction-edit chat
+
+**Applies to:** both (shared `PROCESSING_RULES_SECTION` sub-rule flows to R1 + R2 via composition/import) + `direction-edit chat` (new edit field + exposure rule + operations catalog entry)
+
+New three-state per-direction preference — `popularity_preference` ∈ `'none' | 'soft' | 'hard'` — parallel to `instrumentalness_preference` (added 2026-08-21) but with two meaningful differences:
+
+1. **Gemini's genre choices ARE affected** by this preference (unlike `instrumentalness_preference`, whose sub-rule explicitly says "Do NOT change your genre choices"). When `hard` or `soft`, Gemini skews AWAY from esoteric-only genres (Peruvian Chicha, Anatolian Psychedelic Rock, Tishoumaren, Dabke, Neo Exotica, Ethio-Jazz, Rebetiko, Laiko, Turk Arabesk, Medieval Music, Piano Impressionism) and TOWARD hit-friendly catalogs (Modern Pop, 80s Pop, 90's pop party, Rock, Hip Hop, RnB, Funk, Disco, Indie Rock, Bossa Nova, Jazz (Standards), etc.).
+2. **Per-direction schema.** Unlike inst_pref (R1/R2 stamp uniformly on every direction), popularity_preference is per-direction. Gemini DEFAULTS to uniform across all directions, but MAY vary per direction if the emphases text explicitly asks for time-of-day / context-based variance ("hits during lunch, deeper cuts in the evening", "מסיבתי בסוף השבוע, יותר אינטימי באמצע השבוע"). Do NOT invent per-direction variance the owner didn't ask for.
+
+### R1/R2 changes (composed prompt)
+
+- `PROCESSING_RULES_SECTION` (shared, imported by R2): added "Popularity preference (special sub-rule)" right after the Instrumentalness sub-rule. Full three-state classification with EN + HE trigger phrases, uniform-with-explicit-variance rule, hit-friendly + esoteric genre lists, note that this differs from inst_pref in that it DOES bias genre picks.
+- `ROUND1_OUTPUT_FORMAT` example: added `"popularity_preference": "none"` to the direction object.
+- `REFINED_OUTPUT_FORMAT` (R2): same addition.
+- `LEARNING_LOGIC_SECTION` (R2) step 4: added popularity_preference to the Musical Emphases inheritance.
+- `REFINED_TASK_WORKFLOW` (R2) step 4: added popularity_preference to the per-direction fields list, noting the same uniform-with-variance-exception rule and the genre-bias secondary effect.
+- `normalizeDirections` in v6/v5 `musical-directions.js` and in `refined-directions.js`: added `normalizePopPref` + `POP_PREFS` set; called from the direction normalization loop. Anything unrecognized collapses to `'none'`.
+
+### DB / RPC changes
+
+- New migration `v5/precompute/migrations/2026-09-02-direction-popularity-preference.sql` — adds `popularity_preference text NOT NULL DEFAULT 'none' CHECK (popularity_preference IN ('none','soft','hard'))` to `business_directions`. Idempotent. Same drop-and-recreate pattern for the CHECK constraint as the instrumentalness migration.
+- `v5-rpc-functions.sql` — all three RPCs updated:
+  - `v5_anchor_tracks`: added `pop_pref` to per-spec JSON (mirrors `inst_pref`). Effective popularity window computed per spec — `hard` overrides to `[60, 100]`, else uses passed `p_pop_lo/p_pop_hi`. `soft` adds ORDER BY bias `(pop_pref='soft' AND popularity < 60)::int`.
+  - `v5_direction_tracks`: added `p_pop_pref text DEFAULT 'none'` param. Same effective-window compute + ORDER BY bias.
+  - `v6_direction_tracks_recent`: same.
+
+### API / client / persistence changes
+
+- `api/v5/anchor-tracks.js` — added `pop_pref` to per-spec forwarding.
+- `api/v5/direction-tracks.js` — added `popularity_preference` top-level body field, forwarded as `p_pop_pref`.
+- `v6/preview.js` — 3 call-sites updated (`fetchAnchorTracks`, `fetchInitialPreviewTracks`, swap-track `walkCycle`) to thread `pop_pref` from `direction.popularity_preference`.
+- `v6/generation/playlist-builder.js` — `fetchDirectionTracks` sends `popularity_preference`.
+- `api/v6/account/signup.js` — persists `popularity_preference` per direction into `business_directions` (null-tolerant: normalizes to `'none'` before insert, so the endpoint works even before the migration runs).
+- `api/v6/account/_daily-builder.js` — `activeDirections()` SELECT includes the column; `fetchTracksWithHistory` forwards `p_pop_pref`.
+- `api/v6/account/expand-playlist.js` — `business_directions` SELECT includes the column.
+
+### Direction-edit chat pipeline
+
+- `v6/generation/direction-edit-chat-prompt.js` — added `popularity_preference` to the edit fields catalog with EN + HE trigger phrases; added to both output-format examples (edit + add); added to the Exposure rules "never expose the internal enums" list (talk in feel: "יותר שירים מוכרים", "פחות מיינסטרים, יותר גילויים").
+- `api/v6/account/direction-chat.js` — `serializeDirection` includes the field so Gemini sees current values in the Current directions context block; `sanitizeUpdates` + `sanitizeAddSpec` accept and normalize the field; `serializeChangeSummary`'s `edited_fields` diff includes the field.
+- `api/v6/account/preview-direction.js` — `mergeUpdates` + `specFromInline` handle the field; RPC calls forward `pop_pref` per spec.
+- `api/v6/account/apply-direction-change.js` — `snapshotDirection` + `mergeUpdates` include the field; SELECTs include the column; PATCH detection sends `popularity_preference` when it moves; add-flow INSERT persists it; buildTodayPlaylist forwards it.
+
+### Admin API
+
+- `api/internal/business.js` — direction SELECT includes the column so Michael's dashboard sees it in the response.
+
+### Migration timing — MUST run BEFORE deploying code
+
+Two Supabase SQL Editor runs are required, in this order, BEFORE `vercel --prod`:
+
+1. **RPC update** — paste and run the updated `v5/precompute/v5-rpc-functions.sql`. `CREATE OR REPLACE` is safe: the new `p_pop_pref` param defaults to `'none'` so pre-existing (non-updated) callers keep working. But NEW callers that pass `p_pop_pref` will fail against the OLD signature (postgrest rejects unknown params) — so this MUST land before code deploy.
+2. **Column migration** — run `v5/precompute/migrations/2026-09-02-direction-popularity-preference.sql`. Idempotent. Adds `popularity_preference` column with default `'none'` + CHECK constraint. Signup's INSERT will start including the field; without the column, PG rejects the whole INSERT with "column does not exist".
+
+Once both SQL runs complete, deploy the code (`vercel --prod`). App-side null tolerance (`|| 'none'` throughout) means old rows without the column are fine — but the schema must be there or writes fail.
+
+Rollback path (if the code deploy needs to be reverted): the SQL changes are additive and non-destructive. The old code doesn't reference the new column or new RPC param; leaving them in place is a no-op.
+
+---
+
 ## 2026-09-02 (later same day) — Exposure rules tightened after live-test leaks + 8-cap carve-out + cap-first add shortcut
 
 **Applies to:** `direction-edit chat`

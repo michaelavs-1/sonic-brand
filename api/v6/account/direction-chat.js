@@ -117,6 +117,7 @@ function serializeDirection(d) {
     genres:                      Array.isArray(d.genres) ? d.genres : [],
     bpm_range:                   d.bpm_range || null,
     instrumentalness_preference: d.instrumentalness_preference || 'none',
+    popularity_preference:       d.popularity_preference       || 'none',
     active:                      d.active !== false,
   };
 }
@@ -137,7 +138,7 @@ function serializeChangeSummary(c) {
     const changed = [];
     const b = c.before || {};
     const a = c.after || {};
-    for (const k of ['title_en', 'description_he', 'genres', 'bpm_range', 'instrumentalness_preference']) {
+    for (const k of ['title_en', 'description_he', 'genres', 'bpm_range', 'instrumentalness_preference', 'popularity_preference']) {
       if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) changed.push(k);
     }
     out.edited_fields = changed;
@@ -260,6 +261,9 @@ function sanitizeUpdates(u) {
   if (u.instrumentalness_preference === 'none' || u.instrumentalness_preference === 'soft' || u.instrumentalness_preference === 'hard') {
     out.instrumentalness_preference = u.instrumentalness_preference;
   }
+  if (u.popularity_preference === 'none' || u.popularity_preference === 'soft' || u.popularity_preference === 'hard') {
+    out.popularity_preference = u.popularity_preference;
+  }
   if (typeof u.title_en === 'string' && u.title_en.trim().length) {
     out.title_en = u.title_en.trim().slice(0, 120);
   }
@@ -282,12 +286,15 @@ function sanitizeAddSpec(s) {
   if (!Number.isFinite(bpm.min) || !Number.isFinite(bpm.max) || bpm.min > bpm.max) return null;
   const inst = (s.instrumentalness_preference === 'soft' || s.instrumentalness_preference === 'hard')
     ? s.instrumentalness_preference : 'none';
+  const pop  = (s.popularity_preference       === 'soft' || s.popularity_preference       === 'hard')
+    ? s.popularity_preference       : 'none';
   return {
     title_en:                    title.slice(0, 120),
     description_he:              desc.slice(0, 800),
     genres,
     bpm_range:                   { min: Math.round(bpm.min), max: Math.round(bpm.max) },
     instrumentalness_preference: inst,
+    popularity_preference:       pop,
   };
 }
 
@@ -402,7 +409,7 @@ export default async function handler(req, res) {
         { select: 'primary_type,types,editorial_summary,price_level,vibe', limit: 1, useService: true }),
       pgrSelect('business_directions',
         { business_id: `eq.${businessId}` },
-        { select: 'id,rank,title_en,description_he,genres,bpm_range,popularity_window,instrumentalness_preference,active,created_at',
+        { select: 'id,rank,title_en,description_he,genres,bpm_range,instrumentalness_preference,popularity_preference,active,created_at',
           order: 'rank.asc.nullslast', useService: true }),
       pgrSelect('business_direction_changes',
         { business_id: `eq.${businessId}` },

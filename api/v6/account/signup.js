@@ -27,10 +27,11 @@
      business_name?, business_type?, atmospheres?, place?,
      hours?, longestMinutes?,   // from the onboarding hours picker
      playlists?: [ { ico, label, url, id, trackCount, genres, createdAt, expansion? } ]
-                  // `expansion` = { direction, popularityWindow } — carried
-                  //  through verbatim so the dashboard's expand-playlist
-                  //  endpoint can grow the playlist without re-running the
-                  //  atmosphere/directions flow.
+                  // `expansion` = { direction } — carried through verbatim
+                  //  so the dashboard's expand-playlist endpoint can grow
+                  //  the playlist without re-running the directions flow.
+                  //  Pre-2026-09-02 `popularityWindow` may be present in
+                  //  legacy payloads; it's read (below) but not persisted.
    }
    Response: { ok: true, existing_user, business_id, emailed: true, email }
 */
@@ -384,6 +385,11 @@ export default async function handler(req, res) {
         // 'none' so the insert never fails on a bad value from the client.
         const rawInst = d.instrumentalness_preference;
         const instPref = (rawInst === 'hard' || rawInst === 'soft') ? rawInst : 'none';
+        // popularity_preference (added 2026-09-02): same shape. DB column
+        // has CHECK ('none','soft','hard') + default 'none'; 'none' is a
+        // no-op so this stays valid even before the migration runs.
+        const rawPop  = d.popularity_preference;
+        const popPref  = (rawPop  === 'hard' || rawPop  === 'soft') ? rawPop  : 'none';
         uniqueByFp.set(fp, {
           business_id:                 businessId,
           rank:                        Number.isFinite(d.rank) ? d.rank : null,
@@ -391,8 +397,11 @@ export default async function handler(req, res) {
           description_he:              d.description_he || null,
           genres,
           bpm_range:                   d.bpm_range || null,
-          popularity_window:           Array.isArray(p.expansion?.popularityWindow) ? p.expansion.popularityWindow : null,
+          // popularity_window column left NULL for new rows since 2026-09-02
+          // (atmosphere-derived window removed). Popularity is now controlled
+          // per-direction via popularity_preference alone.
           instrumentalness_preference: instPref,
+          popularity_preference:       popPref,
           active:                      true,
         });
       }

@@ -303,31 +303,62 @@ function appendProposalActions(bubble, messageId, proposal) {
   row.className = 'chat-actions';
 
   if (proposal.kind === 'edit') {
-    ensurePreviewPrefetch(messageId, proposal);
-    const previewBtn = document.createElement('button');
-    previewBtn.className = 'btn';
-    previewBtn.textContent = 'שמעו את הכיוון החדש';
-    previewBtn.addEventListener('click', () => openPreviewModal({
-      kind: 'edit',
-      directionId: proposal.direction_id,
-      updates: proposal.updates || {},
-      messageId,
-    }));
-    row.append(previewBtn);
+    const updates = proposal.updates || {};
+    // Cosmetic-only fast path: owner asked to rename or reword only, no
+    // musical changes. The music doesn't change, so there's nothing to
+    // preview — one confirm button, straight to the apply endpoint. The
+    // server auto-detects this same shape and takes the rename-only path
+    // (no rebuild, live Spotify playlist gets renamed in place).
+    const isCosmeticOnly = isCosmeticOnlyUpdates(updates);
+    if (isCosmeticOnly) {
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'btn';
+      confirmBtn.textContent = 'אשרו את השינוי';
+      confirmBtn.addEventListener('click', () => {
+        confirmBtn.disabled = true;
+        runApplyWithSpinnerBubble({
+          body: {
+            kind: 'edit',
+            directionId: proposal.direction_id,
+            updates,
+            // Explicit false — cosmetic edits never rebuild. Server also
+            // ignores this flag when it detects the cosmetic-only shape.
+            expireLivePlaylist: false,
+            messageIdFirst: messageId || null,
+            messageIdLast: messageId || null,
+          },
+          inProgressLabel: cosmeticInProgressLabel(updates),
+          successLabel:    cosmeticSuccessLabel(updates),
+        });
+      });
+      row.append(confirmBtn);
+    } else {
+      ensurePreviewPrefetch(messageId, proposal);
+      const previewBtn = document.createElement('button');
+      previewBtn.className = 'btn';
+      previewBtn.textContent = 'שמעו את הכיוון החדש';
+      previewBtn.addEventListener('click', () => openPreviewModal({
+        kind: 'edit',
+        directionId: proposal.direction_id,
+        updates,
+        messageId,
+      }));
+      row.append(previewBtn);
 
-    // Skip-preview shortcut: same eventual outcome as swiping right in
-    // the modal, minus the listening step. Goes straight to the "החליפו
-    // עכשיו / השאירו עד סגירה" follow-up so the owner still gets to
-    // decide about today's live playlist.
-    const skipBtn = document.createElement('button');
-    skipBtn.className = 'btn btn-ghost';
-    skipBtn.textContent = 'דלגו על ההאזנה ואשרו';
-    skipBtn.addEventListener('click', () => {
-      previewBtn.disabled = true;
-      skipBtn.disabled = true;
-      askEditPlaylistOption(proposal.direction_id, proposal.updates || {}, messageId);
-    });
-    row.append(skipBtn);
+      // Skip-preview shortcut: same eventual outcome as swiping right in
+      // the modal, minus the listening step. Goes straight to the "החליפו
+      // עכשיו / השאירו עד סגירה" follow-up so the owner still gets to
+      // decide about today's live playlist.
+      const skipBtn = document.createElement('button');
+      skipBtn.className = 'btn btn-ghost';
+      skipBtn.textContent = 'דלגו על ההאזנה ואשרו';
+      skipBtn.addEventListener('click', () => {
+        previewBtn.disabled = true;
+        skipBtn.disabled = true;
+        askEditPlaylistOption(proposal.direction_id, updates, messageId);
+      });
+      row.append(skipBtn);
+    }
   } else if (proposal.kind === 'add') {
     // Prefetch even when the owner is at the cap — the cap check may
     // change (they might remove one first) and a wasted preview-direction
@@ -575,6 +606,41 @@ function activeDirectionCount() {
   return (state.directions || []).filter((d) => d.active !== false).length;
 }
 const MAX_ACTIVE_DIRECTIONS = 8;
+
+// An edit is "cosmetic-only" when the proposal's updates blob contains
+// nothing but title_en and/or description_he — no musical changes (genres,
+// BPM, inst_pref, popularity_pref). Same-music renames don't need a preview
+// swipe deck or a "החליפו עכשיו / השאירו עד סגירה" question — one confirm
+// tap, straight to apply, live Spotify playlist gets renamed in place.
+// Empty/undefined values are stripped first so a `{title_en: "", ...}` blob
+// (model regression) doesn't accidentally count as a rename.
+function isCosmeticOnlyUpdates(updates) {
+  if (!updates || typeof updates !== 'object') return false;
+  const meaningful = Object.entries(updates).filter(([_, v]) => {
+    if (v == null) return false;
+    if (typeof v === 'string') return v.trim().length > 0;
+    if (Array.isArray(v)) return v.length > 0;
+    return true;
+  }).map(([k]) => k);
+  if (!meaningful.length) return false;
+  return meaningful.every((k) => k === 'title_en' || k === 'description_he');
+}
+
+function cosmeticInProgressLabel(updates) {
+  const hasTitle = typeof updates?.title_en === 'string' && updates.title_en.trim().length > 0;
+  const hasDesc  = typeof updates?.description_he === 'string' && updates.description_he.trim().length > 0;
+  if (hasTitle && hasDesc) return 'מעדכנים את הכיוון…';
+  if (hasTitle) return 'מעדכנים את השם…';
+  return 'מעדכנים את התיאור…';
+}
+
+function cosmeticSuccessLabel(updates) {
+  const hasTitle = typeof updates?.title_en === 'string' && updates.title_en.trim().length > 0;
+  const hasDesc  = typeof updates?.description_he === 'string' && updates.description_he.trim().length > 0;
+  if (hasTitle && hasDesc) return '✓ הכיוון עודכן';
+  if (hasTitle) return '✓ השם עודכן';
+  return '✓ התיאור עודכן';
+}
 
 // Append a synthetic assistant bubble that isn't persisted to the DB —
 // used for out-of-band notices like "you're at the 8-direction cap".

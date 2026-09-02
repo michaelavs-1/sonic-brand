@@ -26,7 +26,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeTargetForToday } from '../generation/playlist-length.js?v=13082026a';
 import { mountHoursEditor } from '../hours-selector.js?v=03082026a';
 import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=20082026c';
-import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard } from './direction-chat.js?v=25082026j';
+import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard } from './direction-chat.js?v=02092026b';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -612,8 +612,44 @@ function renderPlaylists() {
   // the events section via activePlaylistForEvent → "▶ פתח" on the event
   // row. Filtering them out here avoids the duplicate listing.
   const playlists = (bmeta().playlists || []).filter((p) => playlistIsLive(p) && !p.eventId);
+  // A generate-daily build is in flight — render one placeholder row per
+  // active direction (falls back to a single generic placeholder while the
+  // direction-titles query is still resolving). Skipped once real playlists
+  // appear so a concurrent event insert doesn't leave orphan spinners.
+  if (!playlists.length && state.generating) {
+    const titles = state.generating.titles;
+    const rows = (titles && titles.length) ? titles : [null];
+    for (const title of rows) {
+      const row = document.createElement('div');
+      row.className = 'slot slot-pending';
+      row.innerHTML =
+        `<div class="s-info">` +
+        `<div class="s-title">🎵 ${escHtml(title || 'פלייליסט')}</div>` +
+        `<div class="s-meta">בונים…<span class="pl-inline-spinner" aria-label="בונים"></span></div>` +
+        `</div>`;
+      wrap.append(row);
+    }
+    return;
+  }
   if (!playlists.length) {
-    wrap.innerHTML = '<p class="muted">לא נוצרו פלייליסטים</p>';
+    const msg = document.createElement('p');
+    msg.className = 'muted';
+    msg.textContent = 'לא נוצרו פלייליסטים';
+    // On closed days the title already offers "המקום פתוח?" which opens the
+    // same modal — skip the body link there to avoid a redundant CTA.
+    if (!todayIsClosed()) {
+      msg.append(document.createTextNode(' '));
+      const genLink = document.createElement('a');
+      genLink.href = '#';
+      genLink.className = 'closed-open-link';
+      genLink.textContent = 'צור פלייליסטים';
+      genLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        openGenerateDailyModal();
+      });
+      msg.append(genLink);
+    }
+    wrap.append(msg);
     return;
   }
   const target = dayTargetTracks();
@@ -944,6 +980,11 @@ async function expandOne(playlist, token, target) {
 // which reuses the last direction set to build fresh 12h playlists.
 
 function openGenerateDailyModal() {
+  // Silently no-op if a build is already running — the closed-day title
+  // link stays visible during generation (placeholders don't count as
+  // "playlists for today"), so guard against a second confirmation opening
+  // the modal and firing a duplicate build.
+  if (state.generating) return;
   const modal = $('genDailyModal');
   if (!modal) return;
   modal.classList.remove('hide');
@@ -959,10 +1000,29 @@ function closeGenerateDailyModal() {
 }
 
 async function runGenerateDaily() {
-  const btn = $('genDailyConfirm');
-  if (!btn) return;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>בונים…';
+  if (state.generating) return;
+  // Close the modal immediately — the build takes ~15-60s and there's no
+  // reason to hold the owner on a modal spinner. Placeholder rows in the
+  // playlists list carry the in-progress signal instead.
+  closeGenerateDailyModal();
+  state.generating = { titles: null };
+  renderPlaylists();
+
+  // Fetch active direction titles in parallel with the build so the
+  // single generic placeholder upgrades to one titled row per direction
+  // as soon as the tiny SELECT resolves (~100-300ms).
+  sb.from('business_directions')
+    .select('title_en')
+    .eq('business_id', business.id)
+    .eq('active', true)
+    .order('rank', { ascending: true, nullsFirst: false })
+    .then(({ data, error }) => {
+      if (error) { console.warn('business_directions titles load:', error.message); return; }
+      if (!state.generating) return; // build already finished
+      state.generating.titles = (data || []).map((d) => d.title_en || 'פלייליסט');
+      renderPlaylists();
+    });
+
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
@@ -983,15 +1043,15 @@ async function runGenerateDaily() {
     // the local mirror so the title flips back to normal ("playlists for
     // today exist") and the new rows appear.
     await loadDashboardData(business.id);
-    closeGenerateDailyModal();
+    state.generating = null;
     renderPlaylistsTitle();
     renderPlaylists();
     toast(`נבנו ${data.count || 0} פלייליסטים ✓`);
   } catch (err) {
     console.error('generate-daily failed:', err);
+    state.generating = null;
+    renderPlaylists();
     toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
-    btn.disabled = false;
-    btn.textContent = 'צור פלייליסטים יומיים';
   }
 }
 

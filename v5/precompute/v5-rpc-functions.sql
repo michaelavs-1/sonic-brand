@@ -69,6 +69,14 @@ DROP FUNCTION IF EXISTS v5_anchor_tracks(jsonb, int, int);
 --            instrumental pool is thin. Preserves the "not omit vocals
 --            altogether" intent of a soft preference.
 --   'none' — unchanged behavior (default).
+--
+-- Per-spec `pop_pref` (added 2026-09-02): 'none' | 'soft' | 'hard'.
+-- Mirrors the shape of inst_pref but with a twist: 'hard' OVERRIDES the
+-- effective popularity window to [60, 100] regardless of p_pop_lo /
+-- p_pop_hi. 'soft' keeps the atmosphere-derived window in WHERE but adds
+-- an ORDER BY bias so tracks with popularity >= 60 surface first, and
+-- deep cuts (popularity < 60) only fill in when the hit pool is thin.
+-- 'none' — unchanged (atmosphere window applies as before).
 CREATE OR REPLACE FUNCTION v5_anchor_tracks(
     p_specs   jsonb,
     p_pop_lo  int,
@@ -85,7 +93,14 @@ AS $$
             lower(elem->>'genre')                            AS genre,
             (elem->>'bpm_lo')::int                           AS bpm_lo,
             (elem->>'bpm_hi')::int                           AS bpm_hi,
-            coalesce(lower(elem->>'inst_pref'), 'none')      AS inst_pref
+            coalesce(lower(elem->>'inst_pref'), 'none')      AS inst_pref,
+            coalesce(lower(elem->>'pop_pref'),  'none')      AS pop_pref,
+            -- Effective popularity window per spec: hard overrides to [60,100];
+            -- soft + none use the passed atmosphere window.
+            CASE WHEN coalesce(lower(elem->>'pop_pref'), 'none') = 'hard' THEN 60
+                 ELSE p_pop_lo END                           AS eff_pop_lo,
+            CASE WHEN coalesce(lower(elem->>'pop_pref'), 'none') = 'hard' THEN 100
+                 ELSE p_pop_hi END                           AS eff_pop_hi
         FROM jsonb_array_elements(p_specs) AS elem
     ),
     -- Tier 1: strict match (genre + BPM + popularity). Same cost as before.
@@ -102,13 +117,16 @@ AS $$
             WHERE pg.genre         = s.genre
               AND ta.status        = 'ok'
               AND ta.tempo      BETWEEN s.bpm_lo AND s.bpm_hi
-              AND ta.popularity BETWEEN p_pop_lo AND p_pop_hi
+              AND ta.popularity BETWEEN s.eff_pop_lo AND s.eff_pop_hi
               AND (s.inst_pref <> 'hard' OR coalesce(ta.instrumentalness, 0) >= 85)
-            -- 'soft' bumps vocals to score 1 (instrumentals stay 0), so
-            -- instrumentals come first in the random draw. 'hard' + 'none'
-            -- both give every row score 0 → pure random.
+            -- inst_pref 'soft' bumps vocals to score 1 (instrumentals stay 0).
+            -- pop_pref 'soft' bumps deep cuts (popularity < 60) to score 1.
+            -- Both biases can apply simultaneously; ORDER BY sums by
+            -- listing them as separate keys, so hits+instrumentals win
+            -- when both preferences are soft. 'hard' + 'none' contribute 0.
             ORDER BY
               (s.inst_pref = 'soft' AND coalesce(ta.instrumentalness, 0) < 85)::int,
+              (s.pop_pref  = 'soft' AND coalesce(ta.popularity, 0) < 60)::int,
               random()
             LIMIT 1
         ) AS sub
@@ -117,7 +135,7 @@ AS $$
     -- Since fallback is much more expensive per genre (bigger candidate pool),
     -- gating it to just the missing ranks keeps the common case fast.
     missing_specs AS (
-        SELECT rank, genre, inst_pref
+        SELECT rank, genre, inst_pref, pop_pref
         FROM specs
         WHERE rank NOT IN (SELECT rank FROM strict_matches)
     ),
@@ -132,8 +150,10 @@ AS $$
             WHERE pg.genre  = m.genre
               AND ta.status = 'ok'
               AND (m.inst_pref <> 'hard' OR coalesce(ta.instrumentalness, 0) >= 85)
+              AND (m.pop_pref  <> 'hard' OR ta.popularity BETWEEN 60 AND 100)
             ORDER BY
               (m.inst_pref = 'soft' AND coalesce(ta.instrumentalness, 0) < 85)::int,
+              (m.pop_pref  = 'soft' AND coalesce(ta.popularity, 0) < 60)::int,
               random()
             LIMIT 1
         ) AS sub
@@ -159,14 +179,34 @@ $$;
 --            non-instrumentals fill in only if the instrumental pool
 --            is thin.
 --   'none' — unchanged behavior.
+--
+-- p_pop_pref (added 2026-09-02): 'none' | 'soft' | 'hard'.
+--   'hard' — WHERE popularity BETWEEN 60 AND 100 (OVERRIDES the atmosphere
+--            window passed via p_pop_lo/p_pop_hi).
+--   'soft' — keeps p_pop_lo/p_pop_hi in WHERE; ORDER BY bumps deep cuts
+--            (popularity < 60) to score 1 so hits bubble up in the
+--            random draw and deep cuts fill in only if the hit pool is
+--            thin.
+--   'none' — unchanged (atmosphere window applies).
+
+-- Drop prior signatures so re-runs don't leave orphaned overloads. CREATE
+-- OR REPLACE only replaces on EXACT signature match, so adding a new arg
+-- (like p_pop_pref on 2026-09-02) would otherwise leave the previous
+-- version sitting alongside the new one — PostgREST would then have two
+-- candidates to disambiguate. Add a DROP line here whenever the arg list
+-- changes.
+DROP FUNCTION IF EXISTS v5_direction_tracks(text[], int, int, int, int, int, text);
+-- 2026-09-02: previous signature — added p_pop_pref after p_inst_pref.
+
 CREATE OR REPLACE FUNCTION v5_direction_tracks(
     p_genres    text[],
     p_bpm_lo    int,
     p_bpm_hi    int,
     p_pop_lo    int,
     p_pop_hi    int,
-    p_limit     int DEFAULT 10,
-    p_inst_pref text DEFAULT 'none'
+    p_limit     int  DEFAULT 10,
+    p_inst_pref text DEFAULT 'none',
+    p_pop_pref  text DEFAULT 'none'
 ) RETURNS TABLE (
     spotify_id text
 )
@@ -175,20 +215,26 @@ AS $$
     WITH candidates AS (
         SELECT DISTINCT
             ta.spotify_id,
-            ta.instrumentalness
+            ta.instrumentalness,
+            ta.popularity
         FROM playlist_genres pg
         JOIN playlist_tracks pt ON pt.playlist_id = pg.playlist_id
         JOIN track_analyses  ta ON ta.spotify_id  = pt.spotify_id
         WHERE ta.status = 'ok'
           AND pg.genre = ANY(SELECT lower(g) FROM unnest(p_genres) AS g)
-          AND ta.tempo      BETWEEN p_bpm_lo AND p_bpm_hi
-          AND ta.popularity BETWEEN p_pop_lo AND p_pop_hi
+          AND ta.tempo BETWEEN p_bpm_lo AND p_bpm_hi
+          -- Effective popularity window: hard pop_pref overrides to [60,100].
+          AND ta.popularity BETWEEN
+              (CASE WHEN p_pop_pref = 'hard' THEN 60  ELSE p_pop_lo END)
+              AND
+              (CASE WHEN p_pop_pref = 'hard' THEN 100 ELSE p_pop_hi END)
           AND (p_inst_pref <> 'hard' OR coalesce(ta.instrumentalness, 0) >= 85)
     )
     SELECT spotify_id
     FROM candidates
     ORDER BY
       (p_inst_pref = 'soft' AND coalesce(instrumentalness, 0) < 85)::int,
+      (p_pop_pref  = 'soft' AND coalesce(popularity, 0) < 60)::int,
       random()
     LIMIT p_limit;
 $$;
@@ -234,6 +280,17 @@ ALTER TABLE v6_daily_track_history ENABLE ROW LEVEL SECURITY;
 -- p_inst_pref (added 2026-08-21): 'none' | 'soft' | 'hard'. Same three-state
 -- semantics as v5_direction_tracks — hard = strict WHERE, soft = ORDER BY
 -- bias, none = unchanged.
+--
+-- p_pop_pref (added 2026-09-02): 'none' | 'soft' | 'hard'. Same three-state
+-- semantics as v5_direction_tracks — hard OVERRIDES popularity window to
+-- [60,100], soft biases hits (popularity >= 60) via ORDER BY, none unchanged.
+
+-- Drop prior signature so re-runs don't leave orphaned overloads (same
+-- reason as v5_direction_tracks above — CREATE OR REPLACE only replaces
+-- on exact signature match).
+DROP FUNCTION IF EXISTS v6_direction_tracks_recent(text[], int, int, int, int, int, uuid, text, int, text);
+-- 2026-09-02: previous signature — added p_pop_pref after p_inst_pref.
+
 CREATE OR REPLACE FUNCTION v6_direction_tracks_recent(
     p_genres        text[],
     p_bpm_lo        int,
@@ -244,7 +301,8 @@ CREATE OR REPLACE FUNCTION v6_direction_tracks_recent(
     p_biz_id        uuid,
     p_direction_key text,
     p_exclude_days  int  DEFAULT 7,
-    p_inst_pref     text DEFAULT 'none'
+    p_inst_pref     text DEFAULT 'none',
+    p_pop_pref      text DEFAULT 'none'
 ) RETURNS TABLE (
     spotify_id text
 )
@@ -253,14 +311,19 @@ AS $$
     WITH candidates AS (
         SELECT DISTINCT
             ta.spotify_id,
-            ta.instrumentalness
+            ta.instrumentalness,
+            ta.popularity
         FROM playlist_genres pg
         JOIN playlist_tracks pt ON pt.playlist_id = pg.playlist_id
         JOIN track_analyses  ta ON ta.spotify_id  = pt.spotify_id
         WHERE ta.status = 'ok'
           AND pg.genre = ANY(SELECT lower(g) FROM unnest(p_genres) AS g)
-          AND ta.tempo      BETWEEN p_bpm_lo AND p_bpm_hi
-          AND ta.popularity BETWEEN p_pop_lo AND p_pop_hi
+          AND ta.tempo BETWEEN p_bpm_lo AND p_bpm_hi
+          -- Effective popularity window: hard pop_pref overrides to [60,100].
+          AND ta.popularity BETWEEN
+              (CASE WHEN p_pop_pref = 'hard' THEN 60  ELSE p_pop_lo END)
+              AND
+              (CASE WHEN p_pop_pref = 'hard' THEN 100 ELSE p_pop_hi END)
           AND (p_inst_pref <> 'hard' OR coalesce(ta.instrumentalness, 0) >= 85)
           AND (
               p_exclude_days <= 0
@@ -277,6 +340,7 @@ AS $$
     FROM candidates
     ORDER BY
       (p_inst_pref = 'soft' AND coalesce(instrumentalness, 0) < 85)::int,
+      (p_pop_pref  = 'soft' AND coalesce(popularity, 0) < 60)::int,
       random()
     LIMIT p_limit;
 $$;

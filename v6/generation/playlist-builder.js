@@ -3,9 +3,8 @@
 // Input:
 //   {
 //     selectedDirections: [{ rank, title_en, description_he, genres,
-//                            bpm_range }, ...],
+//                            bpm_range, popularity_preference }, ...],
 //     bizName:            'שם העסק' | '',
-//     popularityWindow:   [lo, hi] | null,
 //   }
 //
 // Output:
@@ -13,7 +12,10 @@
 //
 // One playlist per selected direction:
 //   1) POST /api/v5/direction-tracks with the direction's genres + BPM +
-//      popularity window. Server returns up to TARGET_TRACKS random spotify_ids.
+//      per-direction popularity_preference (which the RPC translates into a
+//      [0,100] pool with optional 60-100 filter/bias). Server returns up to
+//      TARGET_TRACKS random spotify_ids. No atmosphere-derived popularity
+//      window is passed (removed 2026-09-02).
 //   2) Create a private+collaborative playlist on Rubin's account
 //      (reuses /api/new/spotify.js — same Rubin refresh token).
 //   3) Add the tracks.
@@ -39,7 +41,7 @@ function playlistName(bizName, direction) {
     : `${title} · ${date}`;
 }
 
-async function fetchDirectionTracks(direction, popularityWindow) {
+async function fetchDirectionTracks(direction) {
   // New shape uses a flat `genres` list; fall back to legacy anchor+secondaries
   // if this direction came from persisted pre-refactor metadata.
   const genres = Array.isArray(direction.genres) && direction.genres.length
@@ -48,11 +50,16 @@ async function fetchDirectionTracks(direction, popularityWindow) {
   const body = {
     genres,
     bpm_range:  direction.bpm_range,
-    popularity: popularityWindow,
     limit:      TARGET_TRACKS,
+    // No `popularity` field — API defaults to [0,100]. The atmosphere-derived
+    // popularity window was removed 2026-09-02; per-direction popularity is
+    // now controlled entirely via popularity_preference below.
     // 'none' | 'soft' | 'hard' — the SQL RPC applies a strict WHERE
     // filter (hard) or an ORDER BY bias (soft) on ta.instrumentalness.
     instrumentalness_preference: direction.instrumentalness_preference || 'none',
+    // 'none' | 'soft' | 'hard' — 'hard' filters to popularity 60-100;
+    // 'soft' keeps the [0,100] pool wide and biases hits via ORDER BY.
+    popularity_preference:       direction.popularity_preference       || 'none',
   };
   const r = await fetch('/api/v5/direction-tracks', {
     method:  'POST',
@@ -122,8 +129,8 @@ async function postSpotify(action, body) {
   throw last?.error || new Error(`spotify ${action} failed`);
 }
 
-async function buildOne({ direction, bizName, popularityWindow }) {
-  const ids = await fetchDirectionTracks(direction, popularityWindow);
+async function buildOne({ direction, bizName }) {
+  const ids = await fetchDirectionTracks(direction);
   if (!ids.length) {
     return { direction, skipped: true, reason: 'no tracks matched BPM + popularity' };
   }
@@ -170,6 +177,9 @@ async function buildOne({ direction, bizName, popularityWindow }) {
     // the "closed day → generate daily" flow which needs title_en +
     // description_he to name the fresh playlists. `genres` replaces the
     // previous anchor_genre+secondary_genres shape — all genres are equal.
+    // `popularityWindow` was dropped from this blob 2026-09-02 — the
+    // atmosphere-derived window was removed; readers that expect it fall
+    // through to the RPC default [0,100].
     expansion: {
       direction: {
         title_en:       direction.title_en,
@@ -179,7 +189,6 @@ async function buildOne({ direction, bizName, popularityWindow }) {
           : [direction.anchor_genre, ...(direction.secondary_genres || [])].filter(Boolean),
         bpm_range:      direction.bpm_range,
       },
-      popularityWindow,
     },
   };
 }
@@ -197,7 +206,7 @@ async function buildOne({ direction, bizName, popularityWindow }) {
 // caller — cron rather than onboarding).
 const INTER_BUILD_MS = 2000;
 
-export async function buildDirectionPlaylists({ selectedDirections, bizName, popularityWindow, onProgress }) {
+export async function buildDirectionPlaylists({ selectedDirections, bizName, onProgress }) {
   if (!Array.isArray(selectedDirections) || !selectedDirections.length) return [];
 
   const results = new Array(selectedDirections.length);
@@ -206,7 +215,7 @@ export async function buildDirectionPlaylists({ selectedDirections, bizName, pop
     const direction = selectedDirections[index];
     let result;
     try {
-      result = await buildOne({ direction, bizName, popularityWindow });
+      result = await buildOne({ direction, bizName });
     } catch (err) {
       console.error(`v5 playlist "${direction.title_en}" (rank ${direction.rank}) failed:`, err);
       result = { direction, skipped: true, reason: err.message };

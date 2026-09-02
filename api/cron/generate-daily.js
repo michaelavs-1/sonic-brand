@@ -183,7 +183,7 @@ async function processBusiness({ business, now, ilNow, origin }) {
   // reconstructed from playlist history). Cascade failures — partial daily
   // builds shrinking the extractable direction set day-over-day — are
   // impossible under this model.
-  const { directions, popularityWindow } = await activeDirections(business.id);
+  const { directions } = await activeDirections(business.id);
   if (!directions.length) {
     return { id: business.id, skipped: 'no-directions' };
   }
@@ -198,7 +198,6 @@ async function processBusiness({ business, now, ilNow, origin }) {
       businessId: business.id,
       bizName:    business.name || '',
       directions,
-      popularityWindow,
       target,
       expiryIso:  todaysExpiryIso,
       origin,

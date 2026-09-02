@@ -27,7 +27,14 @@
 // that file is loaded by `api/v6/account/direction-chat.js` under Node.
 // Browsers resolve `./ai-provider.js` against this file's URL, so the
 // resolved URL is identical to what `/v6/generation/ai-provider.js` was.
-import { callModel, parseJSONFromText } from './ai-provider.js?v=25082026a';
+//
+// NO `?v=` cache-bust on this import — Node's ESM loader treats query
+// strings as part of the filename and prod cold-deploys crash with
+// "Cannot find module './ai-provider.js?v=...'". Browser cache freshness
+// for ai-provider.js is handled by the `Cache-Control: no-cache` header
+// on `/v6/*` in vercel.json (browsers revalidate on every load), which
+// makes the query-string bump redundant here anyway.
+import { callModel, parseJSONFromText } from './ai-provider.js';
 
 // Raised from 16000 → 65536 (Gemini 3.6-flash's hard output-token cap;
 // values above that are silently clamped by Google). Removes our own

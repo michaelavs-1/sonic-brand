@@ -72,23 +72,25 @@ export const PROCESSING_RULES_SECTION = `### Processing Rules:
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.`;
 
-export const ENERGY_PAIRING_SECTION = `## Energy & Pairing Constraints
+// ENERGY_PAIRING_SECTION is composed at load time from six named sub-rules
+// (below). Byte-identical mirror of v6. See v6/generation/musical-directions.js
+// for why the split exists (chat prompt imports individual rules and skips §3).
 
-### 1. Absolute Energy & Dynamic Cohesion (Zero Tolerance for Mismatches)
+export const ENERGY_COHESION_RULE = `### 1. Absolute Energy & Dynamic Cohesion (Zero Tolerance for Mismatches)
 
 - **Unbroken Dynamic & Rhythm Compatibility:** Every direction MUST maintain a completely cohesive dynamic feel, rhythmic foundation, and energy level (1 to 10).
 - **Strict Beat/Percussion Pairing Rules:** NEVER pair genres with strong rhythmic grooves, prominent drum patterns, or sexy/upbeat vibes (e.g., \`RnB\`, \`French RnB\`, \`Funk\`, \`Neo Soul\`) with ambient, drumless, or slow acoustic genres (e.g., \`Late Night jazz\`, \`Piano Impressionism\`, \`Chamber music\`). Switching between a drum-driven beat and a beatless slow jazz track within the same direction is strictly forbidden.
-- **Strict Energy Filtering within Regional Blends:** When combining cultural/regional music, remove high-energy outliers that break the room's vibe (e.g., if creating a mid-tempo Mediterranean/Latin direction, pair Flamenco, Arab Classic, and Turk Arabesk, but strictly EXCLUDE high-energy festival genres like Samba, Salsa, or Dabke).
+- **Strict Energy Filtering within Regional Blends:** When combining cultural/regional music, remove high-energy outliers that break the room's vibe (e.g., if creating a mid-tempo Mediterranean/Latin direction, pair Flamenco, Arab Classic, and Turk Arabesk, but strictly EXCLUDE high-energy festival genres like Samba, Salsa, or Dabke).`;
 
-### 2. Jazz Isolation Rule
+export const JAZZ_ISOLATION_RULE = `### 2. Jazz Isolation Rule
 
 - **Jazz Sub-genres Containment:** All Jazz genres (\`Jazz (Standards)\`, \`Late Night jazz\`, \`Smooth Jazz\`, \`Swing Jazz\`, \`French Jazz\`, \`Gypsy jazz\`, \`JazzHop\`) are intrinsically laid-back, background, or seated styles. They MUST NEVER be paired with dancing, energetic, or heavy beat-driven genres (such as RnB, Hip Hop, Funk, Pop, or Dance).
 - **Allowed Jazz Pairings:** Except for \`Ethio-Jazz\` and \`Acid Jazz\` (both rhythmic/uplifting and can blend with Afro/Funk/R&B styles) and \`Jazz House\` (enclosed under House rules), all Jazz genres can ONLY be paired with:
   - Other Jazz genres.
   - \`Bossa Nova\`
-  - \`Fado\`
+  - \`Fado\``;
 
-### 3. Multi-Cultural & Cross-Regional Genre Fusion
+export const MULTI_CULTURAL_RULE = `### 3. Multi-Cultural & Cross-Regional Genre Fusion
 
 - **Avoid Monocultural Silos:** Do NOT restrict directions to a single geographic or stylistic domain (e.g., avoid creating a "purely Latin" or "purely Arabic" direction if the energy tier allows for cross-cultural integration).
 - **Maximize Complementary Global Genres:** Proactively weave together genres from different regions and cultural scenes that share the exact same energy and dynamic feel.
@@ -96,9 +98,9 @@ export const ENERGY_PAIRING_SECTION = `## Energy & Pairing Constraints
   - *Example 2 (Cross-Cultural Energetic Dining):* Blend Latin, Middle Eastern, Asian, and European flavours (Cha Cha Cha, Peruvian Cumbia, Anatolian Psychedelic Rock, Tishoumaren, Thai Molam, Samba-Choro) under one cohesive, not danceable yet groove-filled vibe.
   - *Example 3 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, Neo Soul, Acid Jazz, French RnB, Japanese RnB, and Korean RnB.
   - *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk, Latin Funk).
-  - *Example 5 (Global Disco and City Pop):* Genres from around the world that share a similar groove background, such as a disco groove, pair naturally. In this case, Disco (not Nu Disco or Italo Disco) along with Japanese City Pop and Chinese City Pop.
+  - *Example 5 (Global Disco and City Pop):* Genres from around the world that share a similar groove background, such as a disco groove, pair naturally. In this case, Disco (not Nu Disco or Italo Disco) along with Japanese City Pop and Chinese City Pop.`;
 
-### 4. Equal Genre Weight & Density (No Anchor Genre)
+export const EQUAL_GENRE_WEIGHT_RULE = `### 4. Equal Genre Weight & Density (No Anchor Genre)
 
 - **Holistic Direction Composition:** There is NO anchor genre. Every direction is defined as the unified sum of all its constituent genres.
 - **Target Genre Count:** Actively aim for 4 to 6 genres per direction to create rich, varied sonic identities.
@@ -109,18 +111,29 @@ export const ENERGY_PAIRING_SECTION = `## Energy & Pairing Constraints
   - \`Punk\`
   - \`Blues\`
   - \`Folk\`
-  - \`Jazz House\`
+  - \`Jazz House\``;
 
-### 5. Strict Pop Isolation Rule
+export const POP_ISOLATION_RULE = `### 5. Strict Pop Isolation Rule
 
 - **Pop Isolation:** ALL Pop genres (including \`Bedroom Pop\`, \`Modern Pop\`, \`Female Pop\`, \`80s Pop\`, \`90's pop party\`, \`Electro Pop\`, \`Alternative Pop\`, \`K-Pop\`, \`פופ מזרחית\`, \`Cantopop\`) must NEVER be mixed with non-pop, niche, esoteric, acoustic, or electronic dance genres.
 - **Pop-Only Pairs:** Pop sub-genres can ONLY be paired with other Pop sub-genres of matching energy tiers.
-- **City Pop Exception:** City Pop sub-genres (\`Japanese City Pop\` and \`Chinese City Pop\`) are explicitly **EXEMPT** from the Pop Isolation rule and may be mixed with appropriate non-pop genres (such as Funk, Disco, or DownTempo) based on energy cohesion.
+- **City Pop Exception:** City Pop sub-genres (\`Japanese City Pop\` and \`Chinese City Pop\`) are explicitly **EXEMPT** from the Pop Isolation rule and may be mixed with appropriate non-pop genres (such as Funk, Disco, or DownTempo) based on energy cohesion.`;
 
-### 6. House & Techno Containment Rule
+export const HOUSE_TECHNO_RULE = `### 6. House & Techno Containment Rule
 
 - **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
 - **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.`;
+
+// Composed. Byte-identical to the pre-2026-09-02 single template literal.
+export const ENERGY_PAIRING_SECTION = [
+  '## Energy & Pairing Constraints',
+  ENERGY_COHESION_RULE,
+  JAZZ_ISOLATION_RULE,
+  MULTI_CULTURAL_RULE,
+  EQUAL_GENRE_WEIGHT_RULE,
+  POP_ISOLATION_RULE,
+  HOUSE_TECHNO_RULE,
+].join('\n\n');
 
 export const NON_OVERLAP_SECTION = `## Direction Diversity & Non-Overlap Rules
 

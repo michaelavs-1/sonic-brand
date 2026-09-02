@@ -1,13 +1,15 @@
 // Canonical list of genres v5/v6 pipelines are allowed to reference.
 // Consumed by the event-playlist Haiku prompt (api/v6/account/event-playlist.js).
 //
-// ⚠️ FOUR PLACES enumerate the genre universe today. The musical-directions
-// R1 prompt is the SOURCE OF TRUTH; any change must be applied to all four
-// or downstream lookups will silently drop the affected genre:
-//   1. v6/generation/musical-directions.js → GENRE_UNIVERSE_SECTION  (source of truth; R1 + R2 prompts)
+// ⚠️ THREE CODE LOCATIONS enumerate the genre universe today (down from four
+// on 2026-09-02 when the direction-edit chat prompt started importing R1's
+// GENRE_UNIVERSE_SECTION instead of embedding a verbatim copy). The
+// musical-directions R1 prompt is the SOURCE OF TRUTH; any change must be
+// applied to all three or downstream lookups will silently drop the affected
+// genre:
+//   1. v6/generation/musical-directions.js → GENRE_UNIVERSE_SECTION  (source of truth; R1 + R2 prompts, and transitively the direction-edit chat prompt via import)
 //   2. v5/generation/musical-directions.js → GENRE_UNIVERSE_SECTION  (byte-identical mirror; Ami's dashboard reads it)
 //   3. v6/generation/genre-list.js         → this file               (event-playlist Haiku prompt)
-//   4. v6/generation/direction-edit-chat-prompt.js → ## Genre universe block (profile-tab direction-edit chat)
 // DB matches are case-insensitive but spelling must match verbatim.
 //
 // Order here is roughly thematic (rock → funk → jazz → classical/world →

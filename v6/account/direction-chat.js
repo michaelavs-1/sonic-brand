@@ -321,7 +321,7 @@ function appendProposalActions(bubble, messageId, proposal) {
     // decide about today's live playlist.
     const skipBtn = document.createElement('button');
     skipBtn.className = 'btn btn-ghost';
-    skipBtn.textContent = 'דלג על ההאזנה ואשר';
+    skipBtn.textContent = 'דלגו על ההאזנה ואשרו';
     skipBtn.addEventListener('click', () => {
       previewBtn.disabled = true;
       skipBtn.disabled = true;
@@ -362,7 +362,7 @@ function appendProposalActions(bubble, messageId, proposal) {
     // stale proposal doesn't bypass it.
     const skipBtn = document.createElement('button');
     skipBtn.className = 'btn btn-ghost';
-    skipBtn.textContent = 'דלג על ההאזנה ואשר';
+    skipBtn.textContent = 'דלגו על ההאזנה ואשרו';
     skipBtn.addEventListener('click', () => {
       if (activeDirectionCount() >= MAX_ACTIVE_DIRECTIONS) {
         appendSyntheticAssistantMessage(

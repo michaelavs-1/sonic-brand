@@ -14,16 +14,147 @@ Output Language, Title Rules, Hebrew Description rules, plus the full
 "When NOT to return directions" error contract).
 
 **Update this file every time either prompt changes.** New entries at the TOP.
-Each entry starts with an **Applies to:** line (`Round 1` / `Round 2` / `both`).
-Include: date, one-line summary of what changed and why, full text of the new
-version (or the changed sub-constants). Never delete old entries.
+Each entry starts with an **Applies to:** line (`Round 1` / `Round 2` / `both` /
+`direction-edit chat` / `all`). Include: date, one-line summary of what changed
+and why, full text of the new version (or the changed sub-constants). Never
+delete old entries.
 
 Entries dated before 2026-08-31 predate the two-round split and implicitly
-apply to Round 1 only (Round 2 didn't exist yet).
+apply to Round 1 only (Round 2 didn't exist yet). Entries dated before
+2026-09-02 predate the shared sub-constants being consumed by the direction-edit
+chat prompt — the chat used to paraphrase R1's rules inline; it now imports
+them directly.
 
 The `FIXED_PROMPT_SECTION` / R2's output format contract is tracked here whenever
 it changes — it's tightly coupled to downstream parsing code but the schema
 history matters for debugging old rows.
+
+---
+
+## 2026-09-02 (later same day) — Exposure rules tightened after live-test leaks + 8-cap carve-out + cap-first add shortcut
+
+**Applies to:** `direction-edit chat`
+
+Post-refactor live testing surfaced three cases where the chat exposed internal machinery to the owner:
+
+1. On unknown-genre asks it said "לא מכיר ז'אנר בשם 'כחול בהיר' במאגר שלנו" — acknowledged the existence of a curated catalog.
+2. When refusing to empty a direction, it prefixed with "כיוון מוזיקלי חייב להכיל לפחות ז'אנר אחד" — quoted the internal invariant.
+3. When asked "how many genres can be in a direction?" it answered "4–6" — leaked the exact threshold band.
+
+`EXPOSURE_RULES` in `v6/generation/direction-edit-chat-prompt.js` restructured into "What you MAY say" / "What you MAY NOT say" with these prohibitions:
+
+- Never acknowledge the existence of a curated genre catalog / list / database. Forbidden phrasings enumerated ("לא נמצא במאגר", "not in the list", etc.). Deflect to "אני לא בטוח מה הסגנון הזה — תוכל לתאר לי איך זה נשמע?".
+- Never quote internal numeric thresholds — genre-count band, BPM shape rules, popularity windows. Worked-example deflections for genre-count and BPM questions.
+- Never cite internal rules when refusing on a hard invariant. Instead of "כיוון מוזיקלי חייב להכיל לפחות ז'אנר אחד" → "אז הכיוון יתרוקן — מה תרצה שיישאר בו במקום?".
+
+**Carve-out — the 8-direction cap IS product-facing.** After the initial tightening pass, owner clarification: the 8-direction cap is the ONE internal number the owner is allowed to know. If they ask "כמה כיוונים אני יכול להוסיף?" chat answers plainly ("אפשר עד 8 כיוונים פעילים במקביל; יש לך כרגע N."). No deflection. All the other threshold prohibitions still stand — the cap is a deliberate single exception.
+
+**New: Cap-first shortcut for `add` (HIGHEST PRIORITY in OPERATIONS_CATALOG).** Before paraphrasing, before asking a clarifying question, before ANY other conversation about a new direction, the chat counts active directions in the `## Current directions` context block. If it's exactly 8 AND the owner expressed any intent to add, the entire first reply MUST be the cap notice — no paraphrasing, no clarifying question. Target phrasing: "יש לך כבר 8 כיוונים פעילים וזה המקסימום. כדי להוסיף כיוון חדש נצטרך קודם להסיר אחד קיים — יש כיוון שאתה משתמש בו פחות?". State="gathering", NO proposal. Only after the owner removes one (subsequent turn with the "✓ בוצע" system marker for a remove) does the normal two-step add flow fire.
+
+`ENFORCEMENT_MODEL`'s Hard-invariants list gained a trailing sentence cross-referencing the Exposure rules for HOW to phrase refusals ("natural conversation, never a rule quote") with the 8-cap called out as the exception.
+
+Genre Universe / rule imports unchanged. No other prompt changes.
+
+---
+
+## 2026-09-02 — Direction-edit chat rewritten to import R1 sub-constants; ENERGY_PAIRING_SECTION split into 6 sub-rules
+
+**Applies to:** `direction-edit chat` (behavioral change) + `Round 1` / `Round 2` (structural refactor, output byte-identical to previous version)
+
+### Background
+
+Audit surfaced that `direction-edit-chat-prompt.js` was paraphrasing R1's musical rules inline instead of importing them. Three concrete drifts had accumulated (genre count `3–5` vs R1's `4–6`, BPM shape `{min, max}` with width cap vs R1's `{min: 0, max: N}` ceiling-only, title format vague vs R1's 3-element structure) plus five silent gaps: chat had NO Jazz Isolation, Pop Isolation, House/Techno Containment, Non-Overlap, or Beat/Percussion Pairing rules — and no Hebrew-description vocabulary constraints. Server-side `apply-direction-change.js` does zero content validation, so any spec the chat model produced went straight to the DB, dashboard, and daily-gen. Chat-created / chat-edited directions could legitimately violate every one of these R1 invariants.
+
+### Design decision — advisory model, not hard enforcement
+
+The chat prompt does NOT hard-enforce R1's musical-coherence rules. Owner has more agency in chat than an autonomous generator does; treating R1's rules as gates would prevent legitimate owner asks (e.g. "add Neo Soul to my Late Night jazz direction"). Instead, all musical-coherence rules become **taste advisories**, surfaced via the existing Contradiction rule and honored on owner affirmation ("כן", "בטוח", "יאללה"). Only genre-universe / enum / cap constraints stay HARD invariants. Same policy applies to `add` and `edit`.
+
+### Structural refactor in R1/R2 (byte-identical output)
+
+`ENERGY_PAIRING_SECTION` split into six named exports in both `v6/generation/musical-directions.js` and the byte-identical v5 mirror:
+
+- `ENERGY_COHESION_RULE` (§1)
+- `JAZZ_ISOLATION_RULE` (§2)
+- `MULTI_CULTURAL_RULE` (§3)
+- `EQUAL_GENRE_WEIGHT_RULE` (§4)
+- `POP_ISOLATION_RULE` (§5)
+- `HOUSE_TECHNO_RULE` (§6)
+
+`ENERGY_PAIRING_SECTION` is now composed via `[heading, §1, §2, §3, §4, §5, §6].join('\n\n')`. Verified byte-identical to git HEAD (5445 chars, matched exactly). R1's composed `EDITABLE_PROMPT_SECTION` and R2's composed system prompt unchanged. Ami's dashboard textarea contents unchanged.
+
+### Chat prompt rewrite
+
+`v6/generation/direction-edit-chat-prompt.js` now imports from `musical-directions.js`:
+
+```js
+import {
+  GENRE_UNIVERSE_SECTION,
+  ENERGY_COHESION_RULE,
+  JAZZ_ISOLATION_RULE,
+  EQUAL_GENRE_WEIGHT_RULE,
+  POP_ISOLATION_RULE,
+  HOUSE_TECHNO_RULE,
+  NON_OVERLAP_SECTION,
+  OUTPUT_LANGUAGE_SECTION,
+  TITLE_RULES_SECTION,
+  HEBREW_DESCRIPTION_SECTION,
+} from './musical-directions.js';
+```
+
+Deliberately NOT imported (with in-file comment explaining why):
+
+- `PROCESSING_RULES_SECTION` — every sub-rule is N/A in chat (no emphases textarea; inst_pref set from explicit ask; Japanese Folk restriction already carves out any explicit owner request, which every chat request is; atmospheres-vs-text tension is upstream; business-name signal doesn't apply).
+- `MULTI_CULTURAL_RULE` (§3) — autonomous-mode design taste. Would nudge every chat edit toward more cross-regional genres than the owner asked for.
+- `WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION` — R1's "is this a music venue?" gate; chat has its own Off-topic rule.
+
+Composition order in `DIRECTION_EDIT_CHAT_SYSTEM_PROMPT` (all pieces are local `const` unless noted `[imported]`):
+
+1. `CHAT_INTRO` — one paragraph, chat scope + tone.
+2. `CHAT_INPUTS` — describes the context blocks (Business context, Current directions, Prior changes, Selected direction id) prepended before every real turn.
+3. `EXPOSURE_RULES` — CRITICAL: chat MAY freely say title / description_he / qualitative BPM feel, MAY NOT enumerate genres unprompted, MAY use genres the owner named first, MAY NOT expose numeric BPM or the inst_pref enum.
+4. `ENFORCEMENT_MODEL` — **new**. Hard invariants (Genre Universe verbatim, inst_pref enum, ≥1 genre, 8-cap) vs taste advisories (everything else, surfaced + honored per Contradiction rule) vs defaults for `add` (4–6 genres, `{min: 0, max: N}` BPM, 3-element title, R1's Hebrew form).
+5. `CONTRADICTIONS` — the single lever, expanded to also cover musical-coherence advisory violations (was previously only initial-business-context conflicts).
+6. `OPERATIONS_CATALOG` — edit / remove / add semantics. BPM default `min: 0` spelled out; title/description rules cross-referenced to imported sections; add is still two-step (paraphrase → confirm → emit).
+7. `GENRE_UNIVERSE_SECTION` `[imported]` — R1's canonical genre list with intro.
+8. `GENRE_UNIVERSE_CHAT_SUPPLEMENT` — chat-specific mapping-from-casual-language + genre-exclusion honesty rules.
+9. `COHERENCE_RULES_HEADER` — one paragraph marking the block below as ADVISORIES + noting §3 (Multi-Cultural) is intentionally skipped.
+10. `ENERGY_COHESION_RULE` `[imported]` (§1)
+11. `JAZZ_ISOLATION_RULE` `[imported]` (§2)
+12. `EQUAL_GENRE_WEIGHT_RULE` `[imported]` (§4)
+13. `POP_ISOLATION_RULE` `[imported]` (§5)
+14. `HOUSE_TECHNO_RULE` `[imported]` (§6)
+15. `NON_OVERLAP_SECTION` `[imported]` — R1's ≤1-shared-genre rule.
+16. `NON_OVERLAP_CHAT_REFRAME` — one-paragraph reframe: R1 wrote this for its own 8-direction batch; in chat, compare the resulting merged direction against every OTHER active direction listed in the `## Current directions` block.
+17. `OUTPUT_LANGUAGE_SECTION` `[imported]`
+18. `TITLE_RULES_SECTION` `[imported]`
+19. `HEBREW_DESCRIPTION_SECTION` `[imported]`
+20. `OFF_TOPIC` — unchanged from previous version.
+21. `OUTPUT_FORMAT` — updated: BPM examples now `{min: 0, max: N}` (were `{min: 80, max: 110}`); add example uses 4 genres (was 3); title examples updated to R1's 3-element form; explicit note added that `min: 0` is the default.
+
+### Behavioral deltas from the previous chat prompt
+
+| Aspect | Before | After |
+|---|---|---|
+| Genre count for `add` | "3–5 genres" | Default 4–6 (matches R1); 1–3 for standalone genres per R1's §4 carve-out. Advisory — owner can override via Contradiction. |
+| BPM shape | `{min, max}` with width ≤ 40 BPM; examples had non-zero mins | `{min: 0, max: N}` default; non-zero min only on explicit owner ask + Contradiction affirmation. |
+| Title | "matching existing patterns", vague | 3-element `[Style/Genre] + [Dynamic Tier] + [Operational Use]` per R1's TITLE_RULES_SECTION. |
+| Hebrew description | "1–2 sentences, plain everyday Hebrew" | R1's full HEBREW_DESCRIPTION_SECTION (instrument whitelist, forbidden vocab, mandatory two-element structure). |
+| Jazz Isolation | absent | Advisory; imported from R1 §2. |
+| Pop Isolation | absent | Advisory; imported from R1 §5. |
+| House/Techno Containment | absent | Advisory; imported from R1 §6. |
+| Beat/Percussion Pairing | absent | Advisory; imported as part of R1 §1. |
+| Non-Overlap across directions | absent | Advisory; imported from R1 + reframed to compare against `## Current directions` context block. |
+| Instrumentalness classification prose | brief one-liner | Unchanged (chat sets from explicit owner ask; classification-from-prose is an R1 emphases-textarea concern that doesn't apply). |
+| Off-topic rule | present | Unchanged. |
+| Contradiction rule scope | onboarding context + prior changes | Extended to also cover any musical-coherence advisory violation. |
+
+### Downstream impact
+
+- Server-side `apply-direction-change.js`: no change needed. Contracts (genre-universe verbatim, enum values, non-empty genres, ≤8 cap) are still enforced or gracefully rejected.
+- Genre Universe invariant location count drops from **FOUR to THREE** for manual-sync purposes — chat now imports `GENRE_UNIVERSE_SECTION` from R1 at both code and runtime, so its list can't drift by accident. The MUST-FLAG rule in CLAUDE.md is updated accordingly.
+- Composed chat system prompt length grew from ~7.8K chars to 21806 chars — the shared R1 sub-constants add substantive content. Chat model handles it fine at Gemini 3.6-flash thinking=low.
+- `DIRECTION_EDIT_CHAT_SYSTEM_PROMPT` export name unchanged, so `api/v6/account/direction-chat.js` import continues to work without modification.
+- **`v6/generation/musical-directions.js` `ai-provider` import path change (required side effect):** the top-level import was `from '/v6/generation/ai-provider.js?v=25082026a'` (browser-style absolute-from-domain path). Server-side Node ESM can't resolve `/v6/...` — it treats the leading `/` as filesystem root. Because the chat prompt file now transitively pulls musical-directions.js into the server-side function bundle (via `api/v6/account/direction-chat.js` → `direction-edit-chat-prompt.js` → `musical-directions.js`), that import needed to work in Node too. Changed to `from './ai-provider.js?v=25082026a'` — browsers resolve it to the identical URL (`/v6/generation/ai-provider.js?v=25082026a`) against musical-directions.js's own URL, and Node accepts `?v=` query strings on relative paths. No other consumer of musical-directions.js is affected.
 
 ---
 

@@ -48,6 +48,15 @@ Splash (2.65s) → "Have a Rubin account?" login | signup gate → v6/app.js sta
         ↓
 STEP 1: Business input (v6/app.js runBusinessStep)
   - Name + free-text description
+  - Top-right of the .screen-card: **"יש לי חשבון"** back-arrow link → navigates
+    to /v6/account. Symmetric counterpart lives on the /v6/account login card
+    as **"אין לי חשבון עדיין"** (centered under the "שלח לי קישור כניסה" button)
+    → navigates to /v6/?start=1. Both are for owners who arrived on the wrong
+    side. The `?start=1` param (and its `?intro=1` sibling for post-logout)
+    bypasses the splash + "have a Rubin account?" gate and drops the user
+    straight into the description card, so the round-trip is invisible.
+    See `hasSupabaseSession` and the `runIntro` param-handling in
+    [v6/app.js](v6/app.js).
   - Voice dictation via round mic button → /api/v6/transcribe (OpenAI Whisper)
   - Background: /api/v5/databox-atmospheres fires as soon as this screen renders
   - Background: /api/v5/prewarm hits Supabase to warm the v5_anchor_tracks +
@@ -318,7 +327,8 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
   - Exposure rules: chat may freely mention title / description_he / qualitative BPM feel, but never enumerates a direction's genres unprompted. Owner-named genres are fair game. Never exposes numeric BPM or the inst_pref enum.
   - Contradiction rule: if the ask contradicts the initial onboarding context or a prior committed change, surface it in one sentence and let the owner override. Latest chat wins.
   - Add is two-step: paraphrase intent → owner confirms → full spec (title + description + genres + bpm + inst_pref) emitted as an `add` proposal.
-  - Genre universe pinned to the same canonical list as musical-directions (imported from `v6/generation/genre-list.js`, currently ~110 entries); the model must return canonical strings verbatim.
+  - Genre universe pinned to the same canonical list as musical-directions (imported from `v6/generation/genre-list.js`, currently ~113 entries); the model must return canonical strings verbatim.
+  - **Drift risk — chat prompt mirrors R1's rules manually.** `v6/generation/direction-edit-chat-prompt.js` teaches the model the shape of a valid direction (title patterns, genre-count band, BPM shape) by paraphrasing R1's rules inline — not by importing them. As of 2026-09-02 the chat prompt is behind R1 on THREE rules: (a) title format still references the pre-Sep-1 three-pattern menu ("Adjective + Genres" / "Genre Chain" / "Genre Chain + Flourish") rather than R1's current `[Style/Genre] + [Dynamic Tier] + [Operational Use/Context]` structure; (b) genre count says `3-5 genres` (R1 is now `4-6`); (c) BPM constraint says `{min, max} with width ≤ 40 BPM` (R1 is now ceiling-only `{min: 0, max: N}`, no width cap). Any future edit to R1's rules that touches title / genre-count / BPM needs a parallel edit in `direction-edit-chat-prompt.js`. This is a pending re-sync.
 
 - **Server endpoints**:
   - `POST /api/v6/account/direction-chat` — one Gemini turn. Loads business + atmospheres (via auth admin API) + place + all directions (active + inactive) + last 20 changes + last 40 messages. Composes a `## Business context` / `## Current directions` / `## Prior committed changes` / `## Selected direction id` block as the first user turn, followed by the multi-turn transcript, followed by the current user message. Persists both roles into `business_direction_chats`; returns both rows plus a parsed `{reply_he, state, proposal|null}` payload for the client.
@@ -425,8 +435,9 @@ sonic-brand/
 │   │   │                                      Fires via callModel with label='onboarding-refined'. No v5 mirror.
 │   │   ├── event-chat-prompt.js            ← System prompt for the special-events chat on /v6/account
 │   │   ├── direction-edit-chat-prompt.js   ← System prompt for the profile-tab direction-edit chat
-│   │   ├── genre-list.js                   ← Canonical genre list, currently ~110 entries — count moves as
-│   │   │                                      Ami digests new genres. Shared with event-playlist server.
+│   │   ├── genre-list.js                   ← Canonical genre list, currently 113 entries (2026-09-02) — count
+│   │   │                                      moves as Ami digests new genres. Shared with event-playlist server.
+│   │   │                                      One of FOUR genre-list locations — see PROMPT EDITING PROTOCOL.
 │   │   ├── popularity-window.js            ← Derives [lo,hi] from selected atmospheres
 │   │   ├── playlist-length.js              ← dailyPlaylistExpiryIso, computeTargetForToday, directionKey, ilPartsFromDate
 │   │   └── playlist-builder.js             ← buildDirectionPlaylists (10 tracks each, concurrency-capped)
@@ -706,7 +717,7 @@ Fires only when the R1 preview swipe deck yielded fewer than 3 liked directions 
 
 ### Genre list — `v6/generation/genre-list.js`
 
-Shared canonical menu, currently ~110 entries — count moves as Ami digests new genres. Both `musical-directions.js` (for the system prompt via `GENRE_UNIVERSE_SECTION`) and `api/v6/account/event-playlist.js` (Claude Haiku prompt) import from here. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`; further churn (add / remove) has continued since.
+Shared canonical menu, currently 113 entries (as of 2026-09-02) — count moves as Ami digests new genres. Both `musical-directions.js` (for the system prompt via `GENRE_UNIVERSE_SECTION`) and `api/v6/account/event-playlist.js` (Claude Haiku prompt) import from here. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`; further churn (add / remove) has continued since. **This file is one of FOUR genre-list locations — see the "Genre Universe invariant" rule under PROMPT EDITING PROTOCOL for the full list and the drift-check obligation.**
 
 ### Playlist auto-expiry
 
@@ -1188,7 +1199,7 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
 - `ami-atmospheres-scan.js` — sheet → Supabase upsert for atmospheres (writes `atmospheres.name`, `ranges`, `row_in_sheet`)
 - `ami-status.js`, `ami-logs.js` — poll scan progress
 - `ami-toggle-*.js` — manage skip flags
-- **Track cleanup** (`ami-track-lookup.js` / `-delete.js` / `-restore.js`) — reversible removal of one track. Lookup parses bare id / URL / URI / mobile-share short link and reports track_analyses + playlist_tracks state. Delete archives the track's rows into `deleted_tracks` before removing them. Restore replays the archive and drops the archive row.
+- **Track cleanup** (`ami-track-lookup.js` / `-delete.js` / `-restore.js`) — reversible removal of one track. Lookup parses bare id / URL / URI / mobile-share short link and reports playlist_tracks state PLUS the track's full `track_analyses` row (all typed audio-feature columns — tempo, popularity, energy, instrumentalness, valence, danceability, acousticness, etc. — added 2026-09-01 so Ami can eyeball why a specific track ended up somewhere it shouldn't have). Delete archives the track's rows into `deleted_tracks` before removing them. Restore replays the archive and drops the archive row.
 - **Playlist cleanup** (`ami-playlist-lookup.js` / `-delete.js` / `-restore.js`, added 2026-08-30) — the playlist equivalent. Lookup uses the same input parsing (bare id / URL / URI / mobile-share link resolved via redirect-follow) and reports playlist_genres row count + distinct genres + track_analyses coverage of the playlist's tracks. Delete archives every `playlist_genres` + `playlist_tracks` row for that `playlist_id` into `deleted_playlists`, then removes the live rows. **Critically does NOT touch `track_analyses`** — those audio-features rows are shared with any other playlist those tracks live in, and are expensive to rebuild via RapidAPI. If Ami wants a track's cache gone too, she uses the track-cleanup flow one-at-a-time. Restore replays the archive and drops the archive row for a re-deletable state.
 - `ami-cron-tick.js` — **cron schedule REMOVED from `vercel.json` on 2026-08-13**. Endpoint file kept so the batch worker can be revived, but no longer runs hourly. Was the driver for the RapidAPI-based track analysis pipeline; when we stopped needing it, keeping the hourly tick just consumed function invocations and served no purpose. Re-add `{"path": "/api/v4/ami-cron-tick", "schedule": "* * * * *"}` to `vercel.json crons` to bring it back.
 - `ami-sync-usage.js`, `ami-reorder.js` — housekeeping
@@ -1200,6 +1211,18 @@ dashboard uses the same `ai-provider.js` switch as v6, so whatever provider
 production is on, Ami's testing is on the same one. He also has a "דגשים
 מוזיקליים" textarea there that mirrors the onboarding field, so he can
 test emphases + instrumentalness classification behavior end-to-end.
+
+The dashboard's prompt assembly runs through a **lenient wrapper**
+`normalizeForProdAssembly` in `v5/ami-prompt-dashboard/app.js` (added 2026-08-30)
+before calling the prod `assembleSystemPrompt` helper. It widens the Google
+Places anchor regex so Ami's edits don't have to preserve the exact anchor
+whitespace / heading form that prod's strict `injectPlaces()` requires —
+without this, Ami saw cryptic "התגובה לא הייתה JSON תקין" errors when the
+Places blocks failed to inject and the model got a malformed prompt. The
+wrapper applies ONLY to the dashboard preview path; prod's `injectPlaces`
+is unchanged and still fails-loud on anchor mismatches. When Ami's tuned
+prompt is ready to ship, Roni is the one injecting it into prod and
+manually reconciling any anchor formatting.
 
 Because the atmospheres endpoint has no server cache, Ami's scan is
 immediately visible to v6 onboarding sessions without waiting for cache
@@ -1293,6 +1316,19 @@ Two musical-directions prompts exist and both are tracked in `prompt-history.md`
 
 If the edit touches a shared sub-constant, mark `Applies to: both` and note both prompts are affected. If it touches only Round-1-specific pieces (`ROUND1_*`), mark `Applies to: Round 1`. Same for R2. Verify v5 mirror is still byte-identical to v6 for `EDITABLE_PROMPT_SECTION` and `FIXED_PROMPT_SECTION` after every edit (composition should keep them in sync as long as you edit them in the same way).
 
+### Genre Universe invariant (MUST-FLAG rule)
+
+The genre universe is enumerated in **FOUR places** today. The Round-1 prompt is the SOURCE OF TRUTH; the other three are downstream copies that must stay in sync verbatim (case-insensitive, but spelling must match):
+
+1. `v6/generation/musical-directions.js` → `GENRE_UNIVERSE_SECTION` (**source of truth** — R1 + R2 prompts)
+2. `v5/generation/musical-directions.js` → `GENRE_UNIVERSE_SECTION` (byte-identical mirror; Ami's dashboard reads it)
+3. `v6/generation/genre-list.js` → `GENRES` array (event-playlist Haiku prompt)
+4. `v6/generation/direction-edit-chat-prompt.js` → the `## Genre universe` block inside the chat system prompt
+
+**Assistant behavior rule:** at the start of any session that touches prompts, genres, or the batch worker, verify all four lists contain the same set of genre strings. If ANY difference exists — a genre in one place and not another, an extra genre, a rename, a typo, a casing divergence between the source-of-truth and a downstream copy — **flag it to the user immediately and unprompted, before doing any other work on that request.** Do not silently pick one side or defer the flag; the drift is a real bug (silent DB-lookup drops for the affected genre) even when it looks cosmetic. The check is cheap; a scratch script can grep and compare all four in seconds.
+
+If the user is adding, removing, or renaming a genre, the change MUST land in all four places in the same commit. If one place is out of scope for the current work, tell the user so they can decide whether to fix the drift now or explicitly defer it.
+
 ---
 
 ## COMMON TASKS
@@ -1362,7 +1398,6 @@ node scripts/benchmark-directions.mjs --out=benchmark-results/run.json
 7. **Vercel dev + moved files race**: if you move a file, update `vercel.json` in the same edit — otherwise `vercel dev` picks up the mismatch and crashes with "pattern doesn't match any Serverless Functions". Recovery: fix vercel.json and restart.
 8. **Vercel dev's `VERCEL_URL=localhost:3000` quirk**: server-to-server URLs built as `https://${VERCEL_URL}` resolve to `https://localhost:3000` in dev — every fetch fails with a bare "fetch failed". Both cron files use a `resolveSpotifyBase()` helper that scheme-normalises via a `/^(localhost|127\.)/` regex → http, everything else → https. If you add another server-to-server caller that builds a base URL from `VERCEL_URL` / `VERCEL_PROJECT_PRODUCTION_URL`, copy the same helper — do NOT hard-code `https://`.
 9. **Vercel serverless kills fire-and-forget promises after `res.end()`**: this bit us on 2026-08-29 when cron cluster alerts never arrived despite the code running. Any Resend / logging / analytics send that started with `.catch(() => {})` and wasn't awaited was cut mid-flight when the function returned. If you're adding async work in a handler, either await it before responding OR collect the promises and `await Promise.allSettled(alertPromises)` at the end. See "Alerts via Resend" mechanism for the pattern.
-10. **`Latin Funk` pending re-add to prompt** — the genre was in the Genre Universe earlier but was cut 2026-08-31 because `playlist_genres` had zero rows for it (no track pool). Once RapidAPI batch scans seed enough playlists into `track_analyses` under a `latin funk` label, the genre needs to be re-added in TWO places to bring parity back: (a) the `GENRE_UNIVERSE_SECTION` list in `v6/generation/musical-directions.js` (and v5 mirror), and (b) `ENERGY_PAIRING_SECTION` §3 Example 4's closed Funk-family enumeration (currently `Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk` — append `, Latin Funk`). Ami's dashboard reads the same v5 file, so his textarea updates automatically. R2 uses the same shared constants, so R2 gets it too.
 
 ---
 

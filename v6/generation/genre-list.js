@@ -1,19 +1,19 @@
 // Canonical list of genres v5/v6 pipelines are allowed to reference.
-// Kept in sync with the identical comma-list embedded in
-// v6/generation/musical-directions.js → EDITABLE_PROMPT_SECTION.
+// Consumed by the event-playlist Haiku prompt (api/v6/account/event-playlist.js).
 //
-// The main onboarding flow's prompt is a large static string that gets
-// prompt-cached by Anthropic; we deliberately do NOT interpolate this array
-// into that string yet (would invalidate the cache prefix). This module is
-// the source of truth for other callers — currently the event-playlist
-// endpoint under /api/v6/account/.
+// ⚠️ FOUR PLACES enumerate the genre universe today. The musical-directions
+// R1 prompt is the SOURCE OF TRUTH; any change must be applied to all four
+// or downstream lookups will silently drop the affected genre:
+//   1. v6/generation/musical-directions.js → GENRE_UNIVERSE_SECTION  (source of truth; R1 + R2 prompts)
+//   2. v5/generation/musical-directions.js → GENRE_UNIVERSE_SECTION  (byte-identical mirror; Ami's dashboard reads it)
+//   3. v6/generation/genre-list.js         → this file               (event-playlist Haiku prompt)
+//   4. v6/generation/direction-edit-chat-prompt.js → ## Genre universe block (profile-tab direction-edit chat)
+// DB matches are case-insensitive but spelling must match verbatim.
 //
-// If you edit either list, edit both. TODO(future): switch musical-directions
-// to interpolate from here once we're ready to re-cache the prompt.
-//
-// Order matches Data Box Tab 2 sheet order (last synced 2026-08-XX). Keep it
-// that way — the sheet is authoritative and this file mirrors it exactly so
-// future diffs against the sheet are trivial.
+// Order here is roughly thematic (rock → funk → jazz → classical/world →
+// mediterranean → latin → caribbean → lofi/hiphop → r&b → pop clusters) and
+// does NOT need to match the prompt's alphabetical order — it just needs to
+// contain the same set of strings. Last synced against the prompt: 2026-09-02.
 
 export const GENRES = [
   'Heavy Rock+Metal',
@@ -38,10 +38,10 @@ export const GENRES = [
   'Easy Listening',
   'French Ye Ye',
   'Funk',
-  'World Funk',
   'Afro Funk',
   'French Funk',
   'Italian Funk',
+  'Greek Funk',
   'Ethio-Jazz',
   'Neo Exotica',
   'Chamber music',
@@ -69,6 +69,8 @@ export const GENRES = [
   'Argentine Tango',
   'Peruvian Cumbia',
   'Peruvian Chicha',
+  'Latin Boogaloo',
+  'Latin Funk',
   'Dancehall',
   'Reggaeton',
   'Reggae',
@@ -85,11 +87,13 @@ export const GENRES = [
   'Korean RnB',
   'Hip Hop',
   'French Hip Hop',
+  'German Hip Hop',
   'Icelandic Hip Hop',
   'Trap',
   'Grime & Drill',
   'Thai Molam',
   'Japanese City Pop',
+  'Chinese City Pop',
   'Disco',
   'Nu Disco',
   'Italo Disco',
@@ -111,8 +115,12 @@ export const GENRES = [
   'Progressive & Psy Trance',
   'Modern Pop',
   'Alternative pop',
+  'Bedroom Pop',
+  'Female Pop',
+  'Britpop',
   'Electro Pop',
   'K-Pop',
+  'Cantopop',
   '80s Pop',
   '90\'s pop party',
   'פופ מזרחית',

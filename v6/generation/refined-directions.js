@@ -34,7 +34,7 @@ import {
   HEBREW_DESCRIPTION_SECTION,
   WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION,
   injectPlaces,
-} from '/v6/generation/musical-directions.js?v=01092026d';
+} from '/v6/generation/musical-directions.js?v=02092026a';
 
 // Same output cap as Round 1 — Gemini 3.6-flash hard limit. Only 4
 // directions expected, so we're well under real usage; the ceiling

@@ -18,7 +18,7 @@
 import {
   EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt,
-} from '/v5/generation/musical-directions.js?v=01092026d';
+} from '/v5/generation/musical-directions.js?v=02092026a';
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
 import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=04082026a';
 

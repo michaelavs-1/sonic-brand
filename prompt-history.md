@@ -27,6 +27,24 @@ history matters for debugging old rows.
 
 ---
 
+## 2026-09-02 — Re-add `Latin Funk` to Genre Universe + Global Funk example
+
+**Applies to:** both (change is in shared sub-constants — flows to R1 and R2 via composition / imports)
+
+`Latin Funk` was cut from the Genre Universe on 2026-08-31 because `playlist_genres` had zero rows for it (no track pool → any direction the model would emit citing it would return an empty preview). RapidAPI batch runs since then have seeded a real pool: as of today the DB has **578 successfully-analyzed tracks** for `latin funk` across 7 playlists (~97% coverage of the 597 distinct tracks fetched). Above the safe re-add threshold.
+
+Two places updated:
+
+1. `GENRE_UNIVERSE_SECTION` (shared) — inserted `Latin Funk` between `Latin Boogaloo` and `Late Night jazz`, keeping the two "Latin *" entries adjacent for scannability. Composed EDITABLE grew from 14827 → 14839 chars.
+2. `ENERGY_PAIRING_SECTION` §3 Example 4 (shared) — appended `Latin Funk` to the closed Funk-family enumeration:
+   > *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk, Latin Funk).
+
+**Also removed** the corresponding "Latin Funk pending" Known Issue from CLAUDE.md — no longer a pending item.
+
+**Not changed:** nothing else. Every other sub-constant unchanged. Downstream code (validation / RPC / bpm_range shape) unaffected. Ami's dashboard reads the same v5 file and picks up the new entry automatically on next load (cache-bust bumped `01092026d` → `02092026a`).
+
+---
+
 ## 2026-09-01 — Ami content pass v2: Jazz Isolation Rule, City Pop Exception, expanded Multi-Cultural examples, richer titles, 4-6 genre target
 
 **Applies to:** both (all changes are in shared sub-constants — R1 and R2 receive them via composition / imports)

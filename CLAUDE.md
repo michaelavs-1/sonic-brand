@@ -304,6 +304,14 @@ the 10-track sample playlists each grow to today's opening hours + 1h.
     and builds one 12h playlist per direction, INSERTing them into
     business_playlists with today's created_at so the closed-day title
     flips back to normal.
+  - Empty-state fallback for OPEN days (added 2026-09-02): if the
+    dashboard renders today with zero playlists (cron errored, hadn't
+    fired yet, or every direction's build failed), the "לא נוצרו
+    פלייליסטים" body text is followed by an inline "צור פלייליסטים"
+    link that opens the SAME `genDailyModal` used by the closed-day
+    flow. Skipped when `todayIsClosed()` — the title already offers
+    "המקום פתוח?" and a second CTA would be redundant. See
+    `renderPlaylists` in [v6/account/app.js](v6/account/app.js).
 ```
 
 ### Direction-edit chat (profile tab)
@@ -437,7 +445,7 @@ sonic-brand/
 │   │   │                                      Fires via callModel with label='onboarding-refined'. No v5 mirror.
 │   │   ├── event-chat-prompt.js            ← System prompt for the special-events chat on /v6/account
 │   │   ├── direction-edit-chat-prompt.js   ← System prompt for the profile-tab direction-edit chat
-│   │   ├── genre-list.js                   ← Canonical genre list, currently 113 entries (2026-09-02) — count
+│   │   ├── genre-list.js                   ← Canonical genre list, currently 116 entries (2026-09-02) — count
 │   │   │                                      moves as Ami digests new genres. Shared with event-playlist server.
 │   │   │                                      One of FOUR genre-list locations — see PROMPT EDITING PROTOCOL.
 │   │   ├── popularity-window.js            ← Derives [lo,hi] from selected atmospheres
@@ -504,7 +512,8 @@ sonic-brand/
 │   │   │                                      Batch worker was killed; keep the file for future revival.
 │   │   ├── ami-atmospheres-scan.js         ← Diffs sheet against Supabase, upserts changes
 │   │   ├── ami-track-lookup.js             ← Look up a track (bare id / URL / URI / mobile-share link);
-│   │   │                                      reports track_analyses coverage + playlist mappings
+│   │   │                                      reports playlist mappings + the track's full track_analyses row
+│   │   │                                      (all typed audio-feature columns, since 2026-09-01)
 │   │   ├── ami-track-delete.js             ← Archive a track's rows into `deleted_tracks` then remove live rows
 │   │   ├── ami-track-restore.js            ← One-shot restore from the `deleted_tracks` archive
 │   │   ├── ami-playlist-lookup.js          ← Sibling of ami-track-lookup for playlist IDs. Handles mobile-share
@@ -719,7 +728,7 @@ Fires only when the R1 preview swipe deck yielded fewer than 3 liked directions 
 
 ### Genre list — `v6/generation/genre-list.js`
 
-Shared canonical menu, currently 113 entries (as of 2026-09-02) — count moves as Ami digests new genres. `api/v6/account/event-playlist.js` (Claude Haiku prompt) imports from here; `musical-directions.js` maintains its own copy via `GENRE_UNIVERSE_SECTION`. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`; further churn (add / remove) has continued since. **This file is one of THREE genre-list locations that need manual sync — see the "Genre Universe invariant" rule under PROMPT EDITING PROTOCOL for the full list and the drift-check obligation.** (The direction-edit chat prompt imports from `musical-directions.js` at runtime, so it's no longer a manual-sync target.)
+Shared canonical menu, currently 116 entries (as of 2026-09-02) — count moves as Ami digests new genres. `api/v6/account/event-playlist.js` (Claude Haiku prompt) imports from here; `musical-directions.js` maintains its own copy via `GENRE_UNIVERSE_SECTION`. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`. Late-Aug / early-Sep churn: `Latin Funk` and `Greek Funk` added (Greek Funk seeded from the 2 world-funk playlists that got reassigned during the world-funk purge); `World Funk` and `Brit Funk` fully removed from the DB (playlists + exclusive tracks purged); `Thai Molam Funk` renamed to `Thai Molam` to match Ami's sheet update; `Alternative R&B`, `Hawaii ukulele music`, `Musica Tropical` added on 2026-09-02 after their sheet seeds digested cleanly. **This file is one of THREE genre-list locations that need manual sync — see the "Genre Universe invariant" rule under PROMPT EDITING PROTOCOL for the full list and the drift-check obligation.** (The direction-edit chat prompt imports from `musical-directions.js` at runtime, so it's no longer a manual-sync target.)
 
 ### Playlist auto-expiry
 
@@ -1460,6 +1469,21 @@ Also visit `/v6/?reset=1` to wipe localStorage session.
 ```powershell
 node scripts/benchmark-directions.mjs --out=benchmark-results/run.json
 # Override with env vars: OPENAI_MODEL, ANTHROPIC_MODEL, BIZ_DESC, ATMOSPHERES
+```
+
+### Precompute batch flags (RapidAPI analysis pipeline)
+`v4/precompute/batch.mjs` gained three CLI knobs during the late-Aug / early-Sep batch push:
+- `--max-error-retries=N` — caps the 5xx/network retry ladder at N retries after the initial failure. Default is the full 6-step ladder. `=0` = true fail-fast: first server_error / network_error / gateway_html marks the track `status='error'` immediately, no backoff, no retry call. Doesn't affect 429 (rate-limit retries are always worth waiting).
+- `--no-storm-abort` — bypasses the 8-of-10 rolling-window terminal-failure abort. Pair with `--max-error-retries=0` when you know upstream is patchy and you don't care about quota — the batch churns through everything, marking failures for a later `--retry-errors` sweep. HTML-gateway abort and cap abort still fire (those are hard "impossible to proceed" signals).
+- Genre-name suffix on every outcome log line (added 2026-08-31) — batch startup bulk-loads `playlist_tracks` + `playlist_genres` for the run's toAnalyze set and appends the track's genres to each `ok` / `not_found` / `WARN terminal` line, so you can diagnose "which genre is storming" without grepping cross-tables.
+
+`v4/precompute/dry-run-orphans.mjs` gained:
+- `--exclude-genres="a,b,c"` — drops orphans whose playlist is tagged to any of the listed genres. Use when a specific genre's playlists are causing upstream storms and you want to keep filling everything else without touching the DB (they stay orphans, no blacklist).
+
+Typical fail-fast recovery run:
+```powershell
+node v4/precompute/dry-run-orphans.mjs --exclude-genres="samba-choro"
+node v4/precompute/batch.mjs --max-rapidapi-calls=1000000 --max-error-retries=0 --no-storm-abort
 ```
 
 ---

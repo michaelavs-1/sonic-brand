@@ -334,6 +334,24 @@ Replaces the previous three-pattern menu (`Adjective + Genres` / `Genre Chain` /
 
 ---
 
+## 2026-09-02 — Three genres added to the Genre Universe
+
+**Applies to:** both
+
+Adding three sheet-genres that had accumulated enough digested playlists to be usable in the pool: **Alternative R&B**, **Hawaii ukulele music**, **Musica Tropical**. `Samba-Choro` was already in the list — verified during the same sync pass. All three genre-list locations updated per CLAUDE.md's Genre Universe invariant (v6/v5 `GENRE_UNIVERSE_SECTION` in `musical-directions.js`, and the `GENRES` array in `v6/generation/genre-list.js`). Prompt-list positions are alphabetical; genre-list.js positions are thematic (per that file's convention — Hawaii ukulele after Neo Exotica in the world/exotic cluster, Musica Tropical after Latin Funk in the Latin cluster, Alternative R&B after Rnb in the R&B cluster).
+
+New `GENRE_UNIVERSE_SECTION`:
+
+```
+## Genre Universe
+
+The ONLY genres you may use are the ones in this list. Do not invent, rename, translate, or combine genres. If a musical style is not in the list, it does not exist for the purposes of this task.
+
+Alternative pop, Alternative R&B, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Bedroom Pop, Blues, Bolero, Bossa Nova, Britpop, Cantopop, Cha Cha Cha, Chamber music, Chinese City Pop, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Female Pop, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, German Hip Hop, Greek Funk, Grunge, Gypsy jazz, Hawaii ukulele music, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Latin Boogaloo, Latin Funk, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Musica Tropical, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה
+```
+
+---
+
 ## 2026-09-01 — Genre rename: "Thai Molam Funk" → "Thai Molam"
 
 **Applies to:** both

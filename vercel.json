@@ -58,7 +58,7 @@
       "maxDuration": 60
     },
     "api/v6/account/generate-daily.js": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "api/v6/account/direction-chat.js": {
       "maxDuration": 60
@@ -73,6 +73,9 @@
       "maxDuration": 10
     },
     "api/v6/account/log-playlist-open.js": {
+      "maxDuration": 10
+    },
+    "api/v6/account/update-business-name.js": {
       "maxDuration": 10
     },
     "api/cron/generate-daily.js": {

@@ -486,8 +486,12 @@ export default async function handler(req, res) {
       )];
       if (uniqueIds.length) {
         try {
+          // deleted_at:null resurrects any previously soft-deleted row so a
+          // repeat onboarding under the same business restores the owner's
+          // full super-like set (soft-delete pattern added 2026-09-05 — see
+          // toggle-super-like.js).
           await pgrUpsert('super_liked_tracks',
-            uniqueIds.map((spotify_id) => ({ business_id: businessId, spotify_id })),
+            uniqueIds.map((spotify_id) => ({ business_id: businessId, spotify_id, deleted_at: null })),
             { onConflict: 'business_id,spotify_id' },
           );
         } catch (e) {

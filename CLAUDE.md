@@ -248,7 +248,13 @@ Boot: loads user, businesses, then fans out four parallel Postgres reads
 renderAll:
   - Greeting + business name
   - Place banner (if Google Places was confirmed during onboarding)
-  - renderPlaylists: reads bmeta().playlists (mirror of business_playlists rows)
+  - renderPlaylists: reads bmeta().playlists (mirror of business_playlists rows).
+    **Sorted most-clicked first** via `sortPlaylistsByClicksDesc` (added 2026-09-03) —
+    aggregates `business_playlist_opens` per spotify_id in `loadDashboardData` into
+    `state.dashboard.clicksBySpotifyId`, then sorts DESC with a most-recently-created
+    tiebreaker (matches the previous default ordering for accounts with zero
+    clicks). Same click-based ranking drives the build order of user-triggered
+    generate-daily flows (see below).
     - Playlist entries with expansion:{...} and !expandedAt get an animated
       progress bar and a background expansion kicks off
     - Per-playlist edit + trash icons (added 2026-08-25): every row whose
@@ -312,6 +318,34 @@ the 10-track sample playlists each grow to today's opening hours + 1h.
     flow. Skipped when `todayIsClosed()` — the title already offers
     "המקום פתוח?" and a second CTA would be redundant. See
     `renderPlaylists` in [v6/account/app.js](v6/account/app.js).
+  - **Streaming build (2026-09-03).** Both entry points (closed-day title
+    link + empty-state body link) drive `runGenerateDaily`, which POSTs
+    to `/api/v6/account/generate-daily` and reads the response as ndjson.
+    Server contract: `{type:'plan', directions:[{direction_id,title}]}`
+    first (ordered set — see click-order below), then one
+    `{type:'built', direction_id, row}` OR `{type:'failed', direction_id,
+    error}` per direction as each finishes (3s inter-playlist stagger
+    preserved from the 2026-08-22 Spotify rate-limit lesson), then
+    `{type:'done', built, failed}`. Client uses `state.generating.plan`
+    + `state.generating.status` (per-direction pending/built/failed) +
+    `state.generating.builtRows` (finished client-shape rows) to
+    incrementally render placeholders → real rows in the plan's order.
+    First playlist appears in ~15s instead of the previous ~90-150s wait
+    for the whole batch. Owner can hit "▶ פתח" on it while the rest
+    stream in. Closing the tab mid-stream doesn't cancel — each finished
+    playlist is INSERTed per-line (vs. the previous single batch INSERT
+    at the end), so a Vercel timeout or client disconnect just means
+    the already-built rows persist and the next dashboard load shows
+    them. Endpoint has 300s maxDuration (bumped from 60s 2026-09-03).
+  - **Click-count ordering (2026-09-03).** Server sorts active directions
+    by SUM of `business_playlist_opens` rows across every historical
+    playlist that shared the direction_id — most-opened first. Ties
+    break by rank ASC (R1 ordering), then created_at DESC. Same ranking
+    (per spotify_id, not aggregated to direction_id) drives the home
+    tab's steady-state row order via `sortPlaylistsByClicksDesc`. A
+    popular direction's fresh playlist inherits the direction's
+    historical click weight and surfaces high immediately; brand-new
+    directions with zero clicks fall to the R1-rank tiebreaker.
 ```
 
 ### Direction-edit chat (profile tab)
@@ -343,14 +377,14 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
 - **Server endpoints**:
   - `POST /api/v6/account/direction-chat` — one Gemini turn. Loads business + atmospheres (via auth admin API) + place + all directions (active + inactive) + last 20 changes + last 40 messages. Composes a `## Business context` / `## Current directions` / `## Prior committed changes` / `## Selected direction id` block as the first user turn, followed by the multi-turn transcript, followed by the current user message. Persists both roles into `business_direction_chats`; returns both rows plus a parsed `{reply_he, state, proposal|null}` payload for the client.
   - `POST /api/v6/account/preview-direction` — one anchor track for the merged direction spec (existing direction + edit updates, OR an inline add spec). Round-robin over the genres via `cycleIndex` + `excludeSpotifyIds`. Tight pass (BPM + popularity) then wide pass (0–300 BPM, 0–100 popularity) for depleted pools.
-  - `POST /api/v6/account/toggle-super-like` — one row insert or delete on `super_liked_tracks` for a (business, spotify_id) pair. Called by the preview modal's super-like toggle. Rate-limited 60/min per IP.
+  - `POST /api/v6/account/toggle-super-like` — one row upsert (`active:true` → also clears `deleted_at`) or soft-delete PATCH (`active:false` → sets `deleted_at=now()`) on `super_liked_tracks` for a (business, spotify_id) pair. Called by the preview modal's super-like toggle. Rate-limited 60/min per IP. Soft-delete added 2026-09-05 so future taste-tuning still sees tracks the owner engaged with even if they later un-super-liked them.
   - `POST /api/v6/account/apply-direction-change` — commits the proposal:
     - `add` → INSERT `business_directions` (borrowing a `popularity_window` from any existing direction so the new one is consistent), then build ONE fresh Spotify playlist for today via `buildOneDailyPlaylist` (shared with cron / generate-daily), INSERT `business_playlists`, INSERT `business_direction_changes` (before=null, after=snapshot).
     - `edit` → merge `updates` into the direction spec (mirror of preview-direction's merge), PATCH `business_directions` (only fields that moved). Playlist side is gated by the request's `expireLivePlaylist` flag — default `false` so a caller that forgets the field never nukes today's music:
       - `expireLivePlaylist: true` → expire the direction's currently-live playlist via `expirePlaylistNow` (shared helper), then rebuild via `buildTodayPlaylist`. Audit `playlist_action='rebuilt'`.
       - `expireLivePlaylist: false` → leave today's playlist alone. Tomorrow's daily-gen cron picks up the updated spec (per-day `already-built-today` guard doesn't interfere). Audit `playlist_action='kept'`.
       - The chat client asks the owner in an inline follow-up bubble (mirror of the remove flow) after they confirm the direction change in the preview modal: "החליפו עכשיו" or "השאירו עד סגירה". Only then is the apply endpoint hit — no server work happens between modal confirm and the owner's answer.
-    - `remove` → PATCH `active=false` on `business_directions` (row preserved, not deleted — admin API + future queries can still see it). If `expireLivePlaylist=true`, run `expirePlaylistNow` on the direction's live playlist and mirror `expires_at=now()` onto the `business_playlists` row so the dashboard hides it immediately. `playlist_action` records what happened (`expired` | `kept`).
+    - `remove` → PATCH `active=false` on `business_directions` (row preserved, not deleted — admin API + future queries can still see it). If `expireLivePlaylist=true`, set `expires_at=now()` in PARALLEL on both the `business_playlists` row (drives dashboard visibility — card disappears immediately) AND the `created_playlists` ledger row (drives cleanup-cron eligibility — the next `:30` tick then does the actual Spotify-side rename+empty+unfollow via `expirePlaylistNow`). Changed 2026-09-05: this path used to call `expirePlaylistNow` inline, which made the trash-icon spinner stay on for 5-15s while three sequential Spotify calls completed; now the endpoint returns in ~500ms and the Spotify cleanup runs asynchronously via cron. Trade-off: the playlist stays under its original name in Rubin's library for up to 30 min before the cron sweeps it. Owners never see Rubin's library so this is invisible to them. `playlist_action` records `expired` on success, `kept` when the DB patch itself failed.
   - All three write an audit row to `business_direction_changes` referencing the message range that produced them.
   - Super-likes are NOT passed through the apply endpoint — they're persisted independently via `toggle-super-like`, so the DB reflects the owner's taps regardless of whether they end up confirming the direction change.
 
@@ -489,14 +523,17 @@ sonic-brand/
 │   │       ├── signup.js                   ← Supabase admin user + business + business_directions + super_liked_tracks; backfills gemini_call_log with new business_id via onboarding_session_id
 │   │       ├── event-playlist.js           ← Claude Haiku → direction-tracks → Spotify create+add + ledger
 │   │       ├── expand-playlist.js          ← Streaming ndjson: grow onboarding playlists to per-day target
-│   │       ├── generate-daily.js           ← Closed-day "המקום פתוח?" flow (delegates to _daily-builder)
-│   │       ├── update-hours.js             ← Profile-page hours edit
+│   │       ├── generate-daily.js           ← User-triggered daily build (closed-day "המקום פתוח?" + empty-state "צור פלייליסטים"). STREAMING ndjson: plan → built/failed per direction → done. Directions ordered by click-count DESC (see business_playlist_opens). 5min maxDuration.
+│   │       ├── update-hours.js             ← Profile-page hours edit; logs before/after into business_settings_changes
+│   │       ├── update-business-name.js     ← Profile-page business-name edit (added 2026-09-05, replaces client-direct
+│   │       │                                  sb.from('businesses').update); logs before/after into business_settings_changes
 │   │       ├── upsert-event.js             ← business_events insert/update from the event chat finalize
-│   │       ├── delete-event.js             ← Card-level delete
+│   │       ├── delete-event.js             ← Card-level delete; archives the row into `deleted_events` before deleting
 │   │       ├── direction-chat.js           ← One Gemini turn for the direction-edit chat; persists both messages
 │   │       ├── preview-direction.js        ← Round-robin anchor track for a merged (edit) or inline (add) spec
 │   │       ├── apply-direction-change.js   ← Commit add/edit/remove; rebuild playlist; audit row
-│   │       ├── toggle-super-like.js        ← Upsert/delete one super_liked_tracks row (decoupled from apply)
+│   │       ├── toggle-super-like.js        ← Upsert or SOFT-DELETE (`deleted_at=now()`) one super_liked_tracks row —
+│   │       │                                  soft-delete added 2026-09-05 so un-super-liking preserves engagement history
 │   │       └── log-playlist-open.js        ← Append one business_playlist_opens row per dashboard "▶ פתח" click
 │   ├── v5/
 │   │   ├── anthropic.js                    ← Anthropic Messages API proxy (uses ANTHROPIC_KEY)
@@ -737,8 +774,13 @@ Every playlist created via `/api/new/spotify` create_playlist gets a row in
 `error`, plus `attempts`, `last_error`, `next_attempt_at`, `alerted_at`
 added 2026-08-29). Hourly cron `/api/cron/expire-playlists` (scheduled
 `30 * * * *`) picks up eligible rows and unfollows on Rubin's side
-(rename → empty → unfollow → mark `deleted_at`; 404 treated as
-already-gone via `isGone`).
+(rename → empty → unfollow → mark `deleted_at`; unrecoverable errors
+treated as already-gone via `isGone` — currently 404, 410, and 400 with
+"Invalid base62 id" — see [api/v6/account/_expire-playlist.js](api/v6/account/_expire-playlist.js).
+The 400-branch was added 2026-09-04 after a leaked test-fixture row with
+a bogus spotify_id sat in backoff for a day and fired a chronic alert;
+without it, an unparseable id would loop forever since a 400 for "invalid
+id" is not transient).
 
 **Eligibility**: `deleted_at IS NULL AND expires_at <= now() AND
 (next_attempt_at IS NULL OR next_attempt_at <= now())`. The
@@ -808,9 +850,16 @@ plan cache):
    Spotify playlist per direction, with `BUILD_CONCURRENCY=1` + a 3s
    stagger between playlists (dropped from `Promise.all` → `CONCURRENCY=2
    / stagger=300ms` on 2026-08-22, then to fully serial with 3s stagger
-   on 2026-08-29 as part of the resilience layer). Outer loop also
-   sleeps 5s between businesses. Combined pacing keeps sustained write
-   rate < 30/min per cron tick. Single batch INSERT into
+   on 2026-08-29 as part of the resilience layer). Outer loop sleeps 5s
+   between businesses — but ONLY after a business that actually consumed
+   Spotify budget (built/failed/threw). Businesses that skipped without
+   touching Spotify (`not-onboarding-done` / `no-hours` / `closed-today`
+   / `past-close` / `already-built-today` / `too-early` / `no-directions`
+   / `bad-hours`) don't trigger the inter-business sleep. This
+   optimisation (added 2026-09-04) drops idle-tick duration from ~85s to
+   a few seconds and prevents the 300s-cron-timeout mode that first
+   surfaced with 17 businesses on Sep 4. Combined pacing keeps sustained
+   write rate < 30/min per cron tick. Single batch INSERT into
    business_playlists at the end.
 9. Ledger row's `expires_at` reuses the `todaysExpiryIso` computed for
    the past-close check in step 4 (same source of truth as the
@@ -953,6 +1002,20 @@ we chased for a day. If you add a new alert trigger, follow the pattern.
 - Cron expire: single row hitting `attempts >= 5` (chronic alert, once
   per row lifetime via `alerted_at` guard)
 - Daily Spotify write count crossing 500 (soft) or 800 (hard)
+- Cron daily-gen: top-level `pgrSelect('businesses')` fails (every
+  occurrence — means zero builds fleet-wide this tick)
+- Cron daily-gen: aggregate per-tick email listing businesses that hit
+  alertable skip reasons (added 2026-09-03). Persistent-state reasons
+  (`bad-hours` / `no-hours` / `no-directions` / `zero-built`) are deduped
+  once per (business, reason, IL-date) via Redis key
+  `alerted:daily-gen:<biz>:<reason>:<il-date>` with 26h TTL — so a broken
+  owner state generates one email per day, not one per hour. Exception
+  reasons (`build-failed` / `outer-throw`) fire on every occurrence since
+  they may recover next tick. `zero-built` is a derived signal: cron
+  passed every skip guard, called `buildDailyBatch`, and every direction
+  failed after retries — distinct from `no-directions` (never even tried).
+  Normal skips (`not-onboarding-done` / `closed-today` / `past-close` /
+  `already-built-today` / `too-early`) are silent.
 
 **Debugging the alert pipe** — `/api/alert-probe` (CRON_SECRET-gated).
 `GET` reports `{ env_present, from, to }` — tells you whether
@@ -1178,19 +1241,21 @@ Everything the account dashboard reads lives here:
 - `business_hours` — one row per business: { business_id, hours (jsonb — 0..6 day map with `{open,close,closed}`), longest_minutes, updated_at }. Upsert on business_id.
 - `business_place` — one row per business (Google Places snapshot): { business_id, place_id, name, address, primary_type, types, editorial_summary, price_level, website_uri, vibe (jsonb), updated_at }. Upsert on business_id.
 - `business_events` — { id, business_id, name, description, created_at }. Owner's chat-generated one-off event descriptions.
-- `super_liked_tracks` — { id, business_id, spotify_id, created_at, UNIQUE(business_id, spotify_id) }. Persisted at signup from `state.superLikedTracks`; also topped up by the direction-edit preview modal when the owner taps super-like on a track. Nothing consumes yet — captured for future taste-tuning.
+- `super_liked_tracks` — { id, business_id, spotify_id, created_at, deleted_at (nullable, added 2026-09-05), UNIQUE(business_id, spotify_id) }. Persisted at signup from `state.superLikedTracks`; also topped up by the direction-edit preview modal when the owner taps super-like on a track. Nothing consumes yet — captured for future taste-tuning. **Soft-delete via `deleted_at`**: un-super-liking sets `deleted_at = now()` rather than removing the row (so a track's engagement history isn't lost even if the owner toggles it off). Re-super-liking clears `deleted_at` back to NULL via the upsert path. Future readers should filter `deleted_at IS NULL` to see "currently super-liked."
 - `business_playlist_opens` — { id bigserial, business_id, spotify_id, source ('home-daily' | 'home-event' | future), opened_at }. Append-only engagement log. One row per dashboard "▶ פתח" click. Not FK'd to `business_playlists` (matches `super_liked_tracks` pattern) — join manually on `spotify_id` when analyzing. `business_playlists` rows are never deleted (only `expires_at`-gated), so a click yesterday still resolves to its direction / genres / track_ids today. Client writes via fire-and-forget `POST /api/v6/account/log-playlist-open`; navigation to Spotify is never blocked on the write. Added 2026-08-26.
 - `business_direction_chats` — { id, business_id, role ('user'|'assistant'), content (raw JSON for assistant / plain text for user), proposal (jsonb — parsed structured payload attached to an assistant turn: `{kind, direction_id?, updates?, spec?}`), selected_direction_id (nullable FK, which card the owner had selected when they sent this), created_at }. Rolling per-business message log for the profile-tab direction-edit chat. Client renders the transcript on tab open; server loads the tail (last 40) as Gemini chat history each turn.
 - `business_direction_changes` — { id, business_id, direction_id (nullable — null when the pre-insert direction hasn't landed yet), kind ('add'|'edit'|'remove'), before (jsonb direction snapshot), after (jsonb direction snapshot), message_id_first, message_id_last (nullable FKs into business_direction_chats — the message range that produced this change), playlist_action ('rebuilt'|'expired'|'kept'|'renamed'|null), applied_at }. Written by `/api/v6/account/apply-direction-change` on every commit; surfaced by the internal admin API as the audit feed per business. `'renamed'` was added 2026-09-02 for the cosmetic-only edit fast path (title / description-only chat edits) — see the migration `2026-09-02-direction-changes-renamed-action.sql`.
+- `business_settings_changes` — { id bigserial, business_id, field (text — `'name'` or `'hours'`), before (jsonb), after (jsonb), changed_at }. Audit log for business-level settings that upsert in-place (i.e. don't produce a versioned history on their own). Written by `api/v6/account/update-business-name.js` and `api/v6/account/update-hours.js` on every non-no-op save. `field` is free text (no CHECK-enum) so future settings can join without another migration; for `'name'` the before/after are JSON-quoted strings, for `'hours'` they're `{hours, longest_minutes}` objects. Added 2026-09-05 (migration `2026-09-05-owner-change-history.sql`).
 
 **Ledgers + operational state:**
 - `created_playlists` — the expiry ledger. Columns: `spotify_id` (PK), `name`, `expires_at`, `deleted_at`, `error`, `owner_id` (nullable FK → auth.users), `business_id` (nullable FK → businesses). Both FKs use ON DELETE SET NULL so the cron can still unfollow expired playlists after their owner/business is deleted. Rows written by onboarding (via /api/v5/record-playlist) start with NULL owner/business — signup.js back-fills them. Renamed from `v5_created_playlists` on 2026-08-02; migration in `v5/precompute/migrations/`.
 - `v6_daily_track_history` — { business_id, direction_key, spotify_id, served_at }. Per-(biz, direction) served-track history for cross-day dedup. See "Cross-day track dedup" mechanism below. Cron opportunistically prunes rows older than 14 days.
 - `gemini_call_log` — one row per Gemini API call. Columns: { id, created_at, model, label, input_tokens, output_tokens (includes thinking tokens for cost purposes), thinking_tokens (broken out for analytics), total_tokens, cost_usd (numeric 12,8), business_id (nullable FK), onboarding_session_id (nullable text), http_status, finish_reason }. Written fire-and-forget by `api/v6/gemini.js` after every call — success OR failure. Cost computed server-side via `api/v6/gemini-pricing.js` using date-aware per-model rates (Google's paid Standard tier; auto-switches on 2027-01-01 when the price doubles). Label values in use: `onboarding` (Round-1 musical directions), `onboarding-refined` (Round-2 refinement — added 2026-08-31; see the "Round 2 refinement flow" mechanism above), plus post-signup labels for event chat / direction-edit chat / preview-direction. Attribution: post-signup callers pass `business_id` directly; onboarding callers pass a client-generated tab-lifetime `onboarding_session_id` which `signup.js` backfills into `business_id` (and clears the session id) on account creation — this applies to both `onboarding` and `onboarding-refined` label rows since R2 fires during the same tab-lifetime session as R1. Rows with `onboarding_session_id` set but no `business_id` = "abandoned onboarding" bucket surfaced by the internal admin spend endpoint. Added 2026-08-25; RLS on with no policies (writes go through service_role).
 
-**Cleanup archives (Ami's dashboard):**
-- `deleted_tracks` — archive keyed by `spotify_id`. Snapshot of the track's `playlist_tracks` rows + its `track_analyses` row before deletion. Written by `api/v4/ami-track-delete.js`; consumed and dropped by `api/v4/ami-track-restore.js`. RLS on with no anon-read policy (dashboard hits go through service_role).
+**Archive tables (owner + Ami actions):**
+- `deleted_tracks` — archive keyed by `spotify_id`. Snapshot of the track's `playlist_tracks` rows + its `track_analyses` row before deletion. Written by `api/v4/ami-track-delete.js` (Ami's cleanup flow); consumed and dropped by `api/v4/ami-track-restore.js`. RLS on with no anon-read policy (dashboard hits go through service_role).
 - `deleted_playlists` — archive keyed by `playlist_id`. Columns: { playlist_id (PK), name, owner, playlist_genres_rows (jsonb), playlist_tracks_rows (jsonb), deleted_at }. Written by `api/v4/ami-playlist-delete.js`; consumed and dropped by `api/v4/ami-playlist-restore.js`. Added 2026-08-30 (migration `2026-08-25-deleted-playlists.sql`). Same RLS posture as `deleted_tracks`. **Does not archive `track_analyses`** — that cache is shared with any other playlist the tracks live in and is expensive to rebuild via RapidAPI.
+- `deleted_events` — archive keyed by `id` (same as the original `business_events.id`). Columns: { id (PK, uuid), business_id, name, description, original_created_at, deleted_at }. Written by `api/v6/account/delete-event.js` (owner-triggered, from the Home tab's event trash icon). No restore endpoint — the events chat flow is delete + re-chat by design (see Special event playlists section), so the archive is admin-visibility only, not a rollback mechanism. Added 2026-09-05 (migration `2026-09-05-owner-change-history.sql`). Same RLS posture as the other archives.
 
 **Historical / vestigial:** `analyses`, `track_feedback`, `app_settings` (old OpenAI key storage — the `openai_key` row + its permissive RLS were removed during the 2026-08-14 security audit), `spotify_tokens` (v1 era).
 

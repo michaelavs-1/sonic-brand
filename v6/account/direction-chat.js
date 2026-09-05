@@ -165,6 +165,25 @@ export async function removeDirectionFromCard(directionId, { expireLive = true }
   return result;
 }
 
+// Optimistic in-place update for a direction's user-visible fields. Called
+// by the Home tab's inline-rename flow so the Profile-tab direction cards
+// reflect the new title (or description) the instant the owner hits save,
+// before the network round trip. Safe no-op when the profile tab has
+// never been opened (state.directions is empty) — a subsequent tab open
+// will `reloadState` and pick up the persisted version.
+//
+// Revert path: caller passes the previous values on failure so we roll
+// back the same field. No dirty-tracking beyond that — if the caller
+// forgets to revert on failure, cards drift until the next reload.
+export function patchDirectionOptimistic(directionId, patch) {
+  if (!directionId || !patch || typeof patch !== 'object') return;
+  const dir = (state.directions || []).find((d) => d.id === directionId);
+  if (!dir) return;
+  if (typeof patch.title_en === 'string')       dir.title_en       = patch.title_en;
+  if (typeof patch.description_he === 'string') dir.description_he = patch.description_he;
+  renderDirectionCards();
+}
+
 // ---- boot / load --------------------------------------------------------
 
 async function bootOnce(businessId) {

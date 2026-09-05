@@ -11,7 +11,7 @@
    Response: { ok: true } | { error }
 */
 
-import { pgrDelete }             from '../../v5/supabase-client.js';
+import { pgrSelect, pgrUpsert, pgrDelete } from '../../v5/supabase-client.js';
 import { requireBusinessOwner }  from './_require-business-owner.js';
 import { setCors }               from '../origin-guard.js';
 
@@ -47,6 +47,33 @@ export default async function handler(req, res) {
     }
     try { await requireBusinessOwner(businessId, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
+
+    // Snapshot the row into `deleted_events` before deleting so the admin
+    // API can still show a full history of the business's events (mirrors
+    // Ami's deleted_tracks / deleted_playlists archive pattern). Upsert
+    // keyed on `id` so a re-delete of the same event id (shouldn't happen
+    // — the delete below removes the source row — but defensive) doesn't
+    // 409 on the PK. Best-effort: if the archive INSERT fails we still
+    // want the DELETE to run so the UI reflects the owner's action;
+    // losing one archive row is preferable to leaving a "deleted"
+    // event visible.
+    try {
+      const rows = await pgrSelect('business_events',
+        { id: `eq.${eventId}`, business_id: `eq.${businessId}` },
+        { select: 'id,business_id,name,description,created_at', limit: 1, useService: true });
+      const src = rows?.[0];
+      if (src) {
+        await pgrUpsert('deleted_events', [{
+          id:                  src.id,
+          business_id:         src.business_id,
+          name:                src.name,
+          description:         src.description,
+          original_created_at: src.created_at,
+        }], { onConflict: 'id' });
+      }
+    } catch (e) {
+      console.warn('[delete-event] archive to deleted_events failed:', e.message);
+    }
 
     await pgrDelete('business_events', {
       id:          `eq.${eventId}`,

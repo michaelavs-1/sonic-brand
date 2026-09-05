@@ -68,8 +68,12 @@
       background: linear-gradient(180deg, var(--card), var(--bg-2));
       border: 1px solid var(--border);
       border-radius: var(--r-lg);
+      /* padding-bottom reserves room for the fixed bottom nav (absolute-
+         positioned at bottom: 12px, ~46px tall). Removing the old
+         min-height: 660px so the card fits its actual content — profile
+         tab with both dropdowns collapsed no longer has a big empty
+         gap. Home tab is naturally tall enough via its own content. */
       padding: 18px 16px 96px;
-      min-height: 660px;
       box-shadow: var(--glow);
     }
 
@@ -1522,6 +1526,31 @@
       margin-bottom: 6px
     }
 
+    /* Inline save/cancel row that appears under the business-name input
+       only when the value has been edited. Buttons are sized down from
+       the full-width .btn default so they read as scoped-to-the-field. */
+    .name-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      align-items: center;
+      animation: name-actions-in .15s ease;
+    }
+    .name-actions .name-save {
+      width: auto;
+      padding: 8px 18px;
+      font-size: 13px;
+      margin: 0;
+    }
+    .name-actions .name-cancel {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+    @keyframes name-actions-in {
+      from { opacity: 0; transform: translateY(-2px); }
+      to   { opacity: 1; transform: none; }
+    }
+
     /* ---------- collapsible section (hours) ---------- */
     /* Header row: h2 + chevron, full-width clickable. Chevron points
        down when collapsed (rotate 0), rotates 180° to point up when
@@ -2028,6 +2057,98 @@
       color: var(--danger);
       border-color: var(--danger);
       box-shadow: 0 4px 14px rgba(224, 122, 106, .22);
+    }
+
+    /* ---------- inline direction rename on Home tab playlist rows ----------
+       The .s-label span wraps the display title inside .s-title (which also
+       holds the leading emoji). Clicking swaps the span for an input + two
+       tiny icon buttons (V=save, X=cancel). Hover on the span shows a subtle
+       chip background to hint editability. Only rows whose backing
+       business_playlists row has a direction_id get the .editable class — no
+       inline rename on pre-migration rows or on event playlists. */
+    .s-label {
+      display: inline;
+    }
+    .s-label.editable {
+      cursor: text;
+      padding: 1px 5px;
+      margin: -1px -5px;
+      border-radius: 5px;
+      transition: background .15s, box-shadow .15s;
+    }
+    .s-label.editable:hover {
+      background: rgba(255, 255, 255, .07);
+      box-shadow: inset 0 -1px 0 rgba(240, 167, 63, .35);
+    }
+    .s-label-edit {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      vertical-align: middle;
+    }
+    .s-label-edit input {
+      background: var(--card-2);
+      border: 1px solid var(--accent);
+      color: var(--text);
+      font: inherit;
+      font-weight: 800;
+      font-size: 14.5px;
+      padding: 3px 8px;
+      border-radius: 7px;
+      outline: none;
+      min-width: 120px;
+      max-width: 320px;
+    }
+    .s-label-edit-btn {
+      width: 26px;
+      height: 26px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--card-2);
+      border: 1px solid var(--border-2);
+      color: var(--muted);
+      border-radius: 7px;
+      cursor: pointer;
+      padding: 0;
+      transition: color .15s, border-color .15s, background .15s, transform .06s;
+    }
+    .s-label-edit-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+    .s-label-edit-btn:disabled {
+      opacity: .55;
+      cursor: default;
+      transform: none;
+    }
+    .s-label-edit-btn svg { width: 14px; height: 14px; display: block; }
+    .s-label-edit-save:hover:not(:disabled) {
+      color: var(--teal-soft);
+      border-color: var(--teal-soft);
+    }
+    .s-label-edit-cancel:hover:not(:disabled) {
+      color: var(--danger);
+      border-color: var(--danger);
+    }
+
+    /* Narrow viewports: the row's trash + edit icons and the input's
+       min-width fight for space during rename and the save/cancel buttons
+       get pushed off the row. Hide the row-level icons while renaming and
+       let the input flex-shrink to fill whatever the .s-title has left.
+       Above 480px there's plenty of room, so nothing changes. */
+    @media (max-width: 480px) {
+      .slot--renaming .slot-icon {
+        display: none;
+      }
+      .slot--renaming .s-label-edit {
+        display: flex;
+        width: 100%;
+      }
+      .slot--renaming .s-label-edit input {
+        flex: 1;
+        min-width: 0;
+        max-width: none;
+      }
     }
 
     /* Once the user has sent a first message, the textarea collapses to a
@@ -2726,25 +2847,14 @@
         <div class="frow">
           <label class="flabel" for="profileBizName">שם העסק</label>
           <input class="input" id="profileBizName" type="text" maxlength="40" placeholder="שם העסק">
+          <!-- Save/cancel appear only when the name is dirty. Enter saves,
+               Esc cancels while the input is focused. -->
+          <div class="name-actions hide" id="nameActions">
+            <button class="btn name-save" id="saveName" type="button" disabled>שמור</button>
+            <button class="btn-ghost name-cancel" id="cancelName" type="button">בטל</button>
+          </div>
+          <p class="muted" id="nameMsg" style="text-align:center;margin-top:8px;font-size:12.5px"></p>
         </div>
-      </div>
-
-      <!-- Direction-edit chat: cards of current active directions above
-           a chat transcript + input. Card click biases the chat toward
-           that direction; the chat can also address a direction by name.
-           Everything below the h2 is populated by v6/account/direction-chat.js. -->
-      <h2 style="margin:16px 0 6px"><span class="h-ico">🎚️</span>עריכת כיוונים מוזיקליים</h2>
-      <p class="muted sub" style="margin:0 0 12px">רוצים לשנות משהו בכיוונים? להוסיף, להסיר, או לחדד אחד? לחצו על כיוון
-        או פשוט כתבו לצ׳אט.</p>
-      <div id="dirCards" class="dir-cards"></div>
-      <div class="box dir-chat-box">
-        <div id="dirChatMessages" class="chat-messages" aria-live="polite"></div>
-        <textarea class="input" id="dirChatInput" rows="3" maxlength="500"
-          placeholder="לדוגמה: אני רוצה כיוון חדש של רוק אנרגטי / אני אוהב את הכיוון הזה אבל רוצה להוריד את כל הבוסה נובה ..."></textarea>
-        <button class="btn" id="dirChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 2L22 12H17V22H7V12H2Z" />
-          </svg></button>
-        <p class="muted" id="dirChatMsg" style="text-align:center;margin-top:8px"></p>
       </div>
 
       <!-- No .box wrapper here: .day-list (rendered by mountHoursEditor)
@@ -2772,11 +2882,45 @@
             כולם — סמנו "שעות שונות"
             ליום מסוים.</p>
           <div id="hoursHost"></div>
+          <!-- Save button lives inside the collapsible body so it's only
+               visible when the hours section is open. Disabled until the
+               user actually edits the schedule; Esc while focused inside
+               the editor cancels (reverts to the snapshot). -->
+          <button class="btn" id="saveHours" type="button" disabled>שמור שעות</button>
+          <p class="muted" id="hoursMsg" style="text-align:center;margin-top:8px;font-size:12.5px"></p>
         </div>
       </div>
 
-      <button class="btn" id="saveProfile" disabled>שמור</button>
-      <p class="muted" id="profileMsg" style="text-align:center;margin-top:10px"></p>
+      <!-- Direction-edit chat: cards of current active directions above
+           a chat transcript + input. Card click biases the chat toward
+           that direction; the chat can also address a direction by name.
+           Everything below the toggle is populated by v6/account/direction-chat.js.
+           Collapsible in the same pattern as the hours section — reuses
+           .hours-toggle / .hours-body class names (misnomer, but the
+           behavior + styling is generic). -->
+      <div class="hours-section">
+        <button type="button" class="hours-toggle" id="directionsToggle" aria-expanded="false" aria-controls="directionsBody">
+          <h2 style="margin:0"><span class="h-ico">🎚️</span>כיוונים מוזיקליים</h2>
+          <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+        <div class="hours-body hide" id="directionsBody">
+          <p class="muted sub" style="margin:6px 0 12px">רוצים לשנות משהו בכיוונים? להוסיף, להסיר, או לחדד אחד? לחצו על כיוון
+            או פשוט כתבו לצ׳אט.</p>
+          <div id="dirCards" class="dir-cards"></div>
+          <div class="box dir-chat-box">
+            <div id="dirChatMessages" class="chat-messages" aria-live="polite"></div>
+            <textarea class="input" id="dirChatInput" rows="3" maxlength="500"
+              placeholder="לדוגמה: אני רוצה כיוון חדש של רוק אנרגטי / אני אוהב את הכיוון הזה אבל רוצה להוריד את כל הבוסה נובה ..."></textarea>
+            <button class="btn" id="dirChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2L22 12H17V22H7V12H2Z" />
+              </svg></button>
+            <p class="muted" id="dirChatMsg" style="text-align:center;margin-top:8px"></p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- bottom nav -->
@@ -2826,6 +2970,23 @@
     </div>
   </div>
 
+  <!-- Confirmation modal for the Home tab's per-event trash icon.
+       Opens with the event id + trash button staged in
+       pendingTrashEventId / pendingTrashEventBtn (see app.js). Two-way
+       choice: remove (calls /api/v6/account/delete-event and re-renders
+       events) or cancel. No "edit" option here — the events chat flow is
+       delete + re-chat by design (see CLAUDE.md → Special event playlists). -->
+  <div class="gd-overlay hide" id="trashEventModal">
+    <div class="gd-modal">
+      <h3>למחוק את האירוע?</h3>
+      <p>האירוע והפלייליסט הפעיל שלו יימחקו. תמיד אפשר ליצור אירוע חדש דרך הצ'אט.</p>
+      <div class="gd-actions">
+        <button class="btn btn-danger" id="trashEventRemove" type="button">כן, למחוק</button>
+        <button class="btn-ghost" id="trashEventCancel" type="button">ביטול</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirmation modal for the closed-day "המקום פתוח?" flow. Hidden by
      default; app.js flips .hide off when the user clicks the link. -->
   <div class="gd-overlay hide" id="genDailyModal">
@@ -2839,7 +3000,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/account/app.js?v=02092026b"></script>
+  <script type="module" src="/v6/account/app.js?v=05092026c"></script>
 </body>
 
 </html>

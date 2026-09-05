@@ -14,7 +14,7 @@
      { ok: true, active }
 */
 
-import { pgrUpsert, pgrDelete } from '../../v5/supabase-client.js';
+import { pgrUpsert, pgrPatch } from '../../v5/supabase-client.js';
 import { requireBusinessOwner } from './_require-business-owner.js';
 import { setCors } from '../origin-guard.js';
 import { guard } from '../ratelimit.js';
@@ -60,19 +60,23 @@ export default async function handler(req, res) {
 
     if (active) {
       // Upsert on the (business_id, spotify_id) unique constraint — no-op
-      // on duplicate, safe to call repeatedly.
+      // on duplicate, safe to call repeatedly. Explicitly clears any prior
+      // `deleted_at` so a re-super-like restores the row rather than
+      // leaving it soft-deleted.
       await pgrUpsert('super_liked_tracks',
-        [{ business_id: businessId, spotify_id: spotifyId }],
+        [{ business_id: businessId, spotify_id: spotifyId, deleted_at: null }],
         { onConflict: 'business_id,spotify_id' });
       return res.status(200).json({ ok: true, active: true });
     }
 
-    // Remove — filtered DELETE. No error if the row doesn't exist (PostgREST
-    // treats DELETE of an empty match as a 204).
-    await pgrDelete('super_liked_tracks', {
-      business_id: `eq.${businessId}`,
-      spotify_id:  `eq.${spotifyId}`,
-    });
+    // Soft-delete via PATCH — set deleted_at=now() and leave the row in
+    // place so future taste-tuning work can see the owner engaged with
+    // this track at some point, even if they later un-super-liked it.
+    // PATCH is a no-op when no row matches (PostgREST returns 204), so
+    // an un-super-like on a track that was never super-liked is safe.
+    await pgrPatch('super_liked_tracks',
+      { business_id: `eq.${businessId}`, spotify_id: `eq.${spotifyId}` },
+      { deleted_at: new Date().toISOString() });
     return res.status(200).json({ ok: true, active: false });
   } catch (err) {
     console.error('[toggle-super-like] failed:', err.message);

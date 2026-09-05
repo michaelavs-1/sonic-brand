@@ -28,11 +28,22 @@ import { pgrPatch } from '../../v5/supabase-client.js';
 
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
 
-// Detect Spotify "playlist entity no longer exists" errors. Message shape
-// matches whatever postSpotify() threw — HTTP status is embedded.
+// Detect Spotify errors that mean "there is no point ever retrying this row."
+// The cron treats a "gone" error as success and marks the ledger row deleted,
+// so it never fires exponential backoff / chronic-failure alerts on the row.
+//
+// Cases covered:
+//   - 404 / 410 — the playlist entity is no longer on Spotify's side
+//   - 400 with "Invalid base62 id" — Spotify can't even parse the id, so no
+//     amount of retry will succeed. Happens when a bad id somehow lands in
+//     `created_playlists` (e.g. a test fixture leaked into prod, a truncated
+//     insert). Without this branch, the row alerts after ~15h of backoff and
+//     never resolves. Discovered 2026-09-04 via a stray `fake_...` fixture.
 function isGone(err) {
   const msg = String(err?.message || '');
-  return /\b(404|410)\b/.test(msg);
+  if (/\b(404|410)\b/.test(msg)) return true;
+  if (/\b400\b/.test(msg) && /Invalid base62 id/i.test(msg)) return true;
+  return false;
 }
 
 async function postSpotify(origin, action, body) {

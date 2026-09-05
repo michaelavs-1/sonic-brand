@@ -9,7 +9,7 @@
    Response: { ok: true } | { error }
 */
 
-import { pgrUpsert }             from '../../v5/supabase-client.js';
+import { pgrUpsert, pgrSelect, pgrInsert } from '../../v5/supabase-client.js';
 import { requireBusinessOwner }  from './_require-business-owner.js';
 import { setCors }               from '../origin-guard.js';
 
@@ -46,14 +46,51 @@ export default async function handler(req, res) {
     try { await requireBusinessOwner(businessId, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
 
+    // Snapshot the current hours before the upsert so we can write an
+    // audit row. Best-effort — a read failure here shouldn't block the
+    // write path.
+    let beforeHours = null;
+    try {
+      const rows = await pgrSelect('business_hours',
+        { business_id: `eq.${businessId}` },
+        { select: 'hours,longest_minutes', limit: 1, useService: true });
+      if (rows?.[0]) {
+        beforeHours = { hours: rows[0].hours, longest_minutes: rows[0].longest_minutes };
+      }
+    } catch (e) {
+      console.warn('[update-hours] before-snapshot read failed:', e.message);
+    }
+
+    const nextLongestMinutes = Number.isFinite(longestMinutes) && longestMinutes > 0
+      ? Math.round(longestMinutes)
+      : null;
     await pgrUpsert('business_hours', {
       business_id:     businessId,
       hours,
-      longest_minutes: Number.isFinite(longestMinutes) && longestMinutes > 0
-        ? Math.round(longestMinutes)
-        : null,
+      longest_minutes: nextLongestMinutes,
       updated_at:      new Date().toISOString(),
     }, { onConflict: 'business_id' });
+
+    // Log the change to business_settings_changes. Skip when nothing
+    // actually moved (owner hit save without editing) — otherwise the
+    // audit log fills with no-op rows. Comparison via JSON.stringify is
+    // fine here: `hours` is a small stable-key object emitted by the same
+    // editor, so key ordering is consistent.
+    const afterHours = { hours, longest_minutes: nextLongestMinutes };
+    const changed = !beforeHours
+      || JSON.stringify(beforeHours) !== JSON.stringify(afterHours);
+    if (changed) {
+      try {
+        await pgrInsert('business_settings_changes', {
+          business_id: businessId,
+          field:       'hours',
+          before:      beforeHours,
+          after:       afterHours,
+        });
+      } catch (e) {
+        console.warn('[update-hours] audit insert failed:', e.message);
+      }
+    }
 
     return res.status(200).json({ ok: true });
   } catch (err) {

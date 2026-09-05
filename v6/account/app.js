@@ -26,7 +26,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeTargetForToday } from '../generation/playlist-length.js?v=13082026a';
 import { mountHoursEditor } from '../hours-selector.js?v=03082026a';
 import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=20082026c';
-import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard } from './direction-chat.js?v=02092026b';
+import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=03092026a';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -109,23 +109,50 @@ function playlistRowToClient(r) {
 // is active). On error, we log and fall back to empty arrays / null so
 // the dashboard still renders instead of white-screening.
 async function loadDashboardData(businessId) {
-  const [plRes, evRes, hoursRes, placeRes] = await Promise.all([
+  const [plRes, evRes, hoursRes, placeRes, opensRes] = await Promise.all([
     sb.from('business_playlists').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
     sb.from('business_events').select('id,name,description,created_at').eq('business_id', businessId).order('created_at', { ascending: true }),
     sb.from('business_hours').select('hours,longest_minutes').eq('business_id', businessId).limit(1),
     sb.from('business_place').select('*').eq('business_id', businessId).limit(1),
+    // Click log for the "▶ פתח" open button. Small table per biz; aggregated
+    // client-side into a { spotify_id → total } map used by renderPlaylists
+    // to sort most-clicked first. See sortPlaylistsByClicksDesc below.
+    sb.from('business_playlist_opens').select('spotify_id').eq('business_id', businessId),
   ]);
-  if (plRes.error) console.warn('business_playlists load:', plRes.error.message);
-  if (evRes.error) console.warn('business_events load:', evRes.error.message);
-  if (hoursRes.error) console.warn('business_hours load:', hoursRes.error.message);
-  if (placeRes.error) console.warn('business_place load:', placeRes.error.message);
+  if (plRes.error)    console.warn('business_playlists load:',     plRes.error.message);
+  if (evRes.error)    console.warn('business_events load:',        evRes.error.message);
+  if (hoursRes.error) console.warn('business_hours load:',         hoursRes.error.message);
+  if (placeRes.error) console.warn('business_place load:',         placeRes.error.message);
+  if (opensRes.error) console.warn('business_playlist_opens load:', opensRes.error.message);
+  const clicksBySpotifyId = new Map();
+  for (const o of (opensRes.data || [])) {
+    if (!o.spotify_id) continue;
+    clicksBySpotifyId.set(o.spotify_id, (clicksBySpotifyId.get(o.spotify_id) || 0) + 1);
+  }
   state.dashboard = {
     playlists: (plRes.data || []).map(playlistRowToClient),
     events: evRes.data || [],
     hours: hoursRes.data?.[0]?.hours || null,
     longestMinutes: hoursRes.data?.[0]?.longest_minutes || null,
     place: placeRes.data?.[0] || null,
+    clicksBySpotifyId,
   };
+}
+
+// Order playlists most-clicked first. Ties break most-recently-created first,
+// which matches the previous default order (created_at DESC) — so a fresh
+// user with zero clicks anywhere sees exactly what they saw before this
+// change, and a click accumulator only kicks in once opens exist. Server-
+// side mirror of this same logic lives in generate-daily.js (per-direction
+// aggregation for build order).
+function sortPlaylistsByClicksDesc(playlists) {
+  const counts = state.dashboard?.clicksBySpotifyId || new Map();
+  return [...playlists].sort((a, b) => {
+    const ca = counts.get(a.id) || 0;
+    const cb = counts.get(b.id) || 0;
+    if (cb !== ca) return cb - ca;
+    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  });
 }
 
 // ---------- boot ----------
@@ -333,10 +360,17 @@ function renderAll() {
 }
 
 // Title above the playlists box. Two variants:
-//   Normal (open day OR closed day with playlists for today):
+//   Normal (open day OR closed day with playlists for today OR closed day
+//   during a manual generate in progress):
 //     "🎵 הפלייליסטים היומיים שלכם - יום א' - dd/mm/yy"
-//   Closed day, no playlists for today:
+//   Closed day, no playlists for today AND no generate in flight:
 //     "🎵 יום ש' - המקום סגור   [המקום פתוח?]"   ← link opens the generate popup
+//
+// The `state.generating` override flips the closed-day title to normal the
+// instant the owner clicks generate, rather than waiting for the first
+// playlist to land in business_playlists — otherwise the "המקום סגור"
+// title would stay onscreen (and the "המקום פתוח?" link would remain
+// clickable for a second duplicate build) while placeholders build.
 function renderPlaylistsTitle() {
   const h = $('playlistsTitle');
   if (!h) return;
@@ -350,7 +384,7 @@ function renderPlaylistsTitle() {
   const dayLetter = HE_DAY_LETTERS[todayDayIdx()];
   const dateStr = todayDdMmYy();
 
-  if (todayIsClosed() && !hasPlaylistsForToday()) {
+  if (todayIsClosed() && !hasPlaylistsForToday() && !state.generating) {
     h.append(document.createTextNode(`יום ${dayLetter}' - המקום סגור`));
     const openLink = document.createElement('a');
     openLink.href = '#';
@@ -392,10 +426,11 @@ function renderPlaceBanner() {
 // the hours editor rebuild its DOM from scratch instead of us wiring a
 // separate "reset" path.
 let hoursEditor = null;
-// Snapshot of the profile form values at last-saved (or at tab-open) so the
-// save button can dirty-track: disabled while the form matches the snapshot,
-// enabled the moment the user edits anything.
-let profileSnapshot = null;
+// Two independent snapshots so name and hours each dirty-track against
+// their own last-saved value. The name row and the hours section have
+// separate save/cancel controls now — no single "save profile" button.
+let nameSnapshot = '';
+let hoursSnapshot = '';
 
 document.querySelectorAll('.nav button[data-tab]').forEach((btn) => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
@@ -417,61 +452,160 @@ function switchTab(tab) {
 }
 
 function renderProfileTab() {
-  $('profileBizName').value = business?.name || '';
-  $('profileMsg').textContent = '';
+  const nameInput = $('profileBizName');
+  nameInput.value = business?.name || '';
+  nameSnapshot = (nameInput.value || '').trim();
+  $('nameMsg').textContent = '';
+
   const savedHours = bmeta().hours;
   hoursEditor = mountHoursEditor($('hoursHost'), {
     prechecked: savedHours ? { hours: savedHours } : null,
-    onChange: () => updateProfileSaveButton(),
+    onChange: () => updateSaveHoursButton(),
   });
-  profileSnapshot = {
-    name: ($('profileBizName').value || '').trim(),
-    hours: JSON.stringify(hoursEditor.getPayload().hours),
-  };
-  $('profileBizName').oninput = () => updateProfileSaveButton();
-  updateProfileSaveButton();
+  hoursSnapshot = JSON.stringify(hoursEditor.getPayload().hours);
+  $('hoursMsg').textContent = '';
 
-  // Reset the collapsible hours section to closed on every tab open.
-  // The editor above stays mounted so its state + dirty-tracking are
-  // ready if the owner expands.
-  const toggle = $('hoursToggle');
-  const body   = $('hoursBody');
-  if (toggle && body) {
+  nameInput.oninput = () => updateNameActions();
+  // Enter saves the name (when dirty + non-empty); Esc reverts to the
+  // last-saved value. Only wired on the input itself so it doesn't clash
+  // with keyboard interactions inside the hours editor below.
+  nameInput.onkeydown = (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); if (isNameDirty() && nameInput.value.trim()) saveName(); }
+    else if (e.key === 'Escape') { e.preventDefault(); cancelName(); }
+  };
+  updateNameActions();
+  updateSaveHoursButton();
+
+  // Reset every collapsible section (hours + directions) to closed on
+  // each tab open. The hours editor above stays mounted so its dirty-
+  // tracking + save-state are ready the moment the owner expands. The
+  // directions chat is populated lazily by openDirectionChat() elsewhere.
+  document.querySelectorAll('#tabProfile .hours-toggle').forEach((toggle) => {
+    const body = document.getElementById(toggle.getAttribute('aria-controls'));
     toggle.setAttribute('aria-expanded', 'false');
-    body.classList.add('hide');
+    body?.classList.add('hide');
+  });
+}
+
+// Toggle any `.hours-toggle` (naming is historical — same styling +
+// behavior now covers the directions section too). aria-controls points
+// to the body id. Wired once at module load so it survives tab switches.
+document.querySelectorAll('.hours-toggle').forEach((toggle) => {
+  toggle.addEventListener('click', () => {
+    const body = document.getElementById(toggle.getAttribute('aria-controls'));
+    if (!body) return;
+    const open = toggle.getAttribute('aria-expanded') === 'true';
+    toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
+    body.classList.toggle('hide', open);
+  });
+});
+
+// Esc inside the hours editor reverts to the last-saved schedule. Bound
+// once via delegation on the body so it survives editor re-mounts (the
+// editor swaps out its own children on cancel + on tab re-open).
+document.getElementById('hoursBody')?.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return;
+  if (!isHoursDirty()) return;
+  e.preventDefault();
+  cancelHours();
+});
+
+// ---- name row ----
+function isNameDirty() {
+  return ($('profileBizName').value || '').trim() !== nameSnapshot;
+}
+
+function updateNameActions() {
+  const actions = $('nameActions');
+  const saveBtn = $('saveName');
+  if (!actions || !saveBtn) return;
+  const dirty = isNameDirty();
+  actions.classList.toggle('hide', !dirty);
+  saveBtn.disabled = !dirty || !$('profileBizName').value.trim();
+}
+
+function cancelName() {
+  $('profileBizName').value = nameSnapshot;
+  $('nameMsg').textContent = '';
+  updateNameActions();
+  $('profileBizName').blur();
+}
+
+async function saveName() {
+  const nameInput = $('profileBizName');
+  const name = nameInput.value.trim();
+  const msg = $('nameMsg');
+  const btn = $('saveName');
+  msg.style.color = '';
+  msg.textContent = '';
+  if (!name) { msg.style.color = '#ff9b8a'; msg.textContent = 'הכניסו שם לעסק'; return; }
+  if (name === nameSnapshot) return;
+
+  btn.disabled = true;
+  const origLabel = btn.textContent;
+  btn.textContent = 'שומרים…';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) throw new Error('לא מחוברים');
+    const r = await fetch('/api/v6/account/update-business-name', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ businessId: business.id, name }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+    business.name = name;
+    nameSnapshot = name;
+    renderBusiness();
+    msg.style.color = 'var(--teal-soft)';
+    msg.textContent = 'נשמר ✓';
+  } catch (e) {
+    console.error('saveName:', e);
+    msg.style.color = '#ff9b8a';
+    msg.textContent = 'שגיאה בשמירה — נסו שוב';
+  } finally {
+    btn.textContent = origLabel;
+    updateNameActions();
   }
 }
 
-// Toggle the collapsible hours section. Wired once at module load so it
-// survives tab switches (renderProfileTab resets the state on each open
-// but the click handler doesn't need re-binding).
-document.getElementById('hoursToggle')?.addEventListener('click', () => {
-  const toggle = document.getElementById('hoursToggle');
-  const body   = document.getElementById('hoursBody');
-  if (!toggle || !body) return;
-  const open = toggle.getAttribute('aria-expanded') === 'true';
-  toggle.setAttribute('aria-expanded', open ? 'false' : 'true');
-  body.classList.toggle('hide', open);
-});
+$('saveName')?.addEventListener('click', saveName);
+$('cancelName')?.addEventListener('click', cancelName);
 
-function updateProfileSaveButton() {
-  const btn = $('saveProfile');
-  if (!btn || !profileSnapshot || !hoursEditor) return;
-  const nameNow = ($('profileBizName').value || '').trim();
-  const hoursNow = JSON.stringify(hoursEditor.getPayload().hours);
-  const dirty = nameNow !== profileSnapshot.name || hoursNow !== profileSnapshot.hours;
-  const valid = !!nameNow && !hoursEditor.isAllClosed();
-  btn.disabled = !(dirty && valid);
+// ---- hours section ----
+function isHoursDirty() {
+  if (!hoursEditor) return false;
+  return JSON.stringify(hoursEditor.getPayload().hours) !== hoursSnapshot;
 }
 
-$('saveProfile')?.addEventListener('click', async () => {
-  const name = $('profileBizName').value.trim();
-  const msg = $('profileMsg');
-  const btn = $('saveProfile');
+function updateSaveHoursButton() {
+  const btn = $('saveHours');
+  if (!btn || !hoursEditor) return;
+  const valid = !hoursEditor.isAllClosed();
+  btn.disabled = !(isHoursDirty() && valid);
+}
+
+// Revert by re-mounting the editor with the snapshot hours. mountHoursEditor
+// wipes and rebuilds #hoursHost's children, so any in-flight edits are
+// discarded cleanly.
+function cancelHours() {
+  const savedHours = hoursSnapshot ? JSON.parse(hoursSnapshot) : null;
+  hoursEditor = mountHoursEditor($('hoursHost'), {
+    prechecked: savedHours ? { hours: savedHours } : null,
+    onChange: () => updateSaveHoursButton(),
+  });
+  $('hoursMsg').textContent = '';
+  updateSaveHoursButton();
+}
+
+async function saveHours() {
+  const msg = $('hoursMsg');
+  const btn = $('saveHours');
   msg.style.color = '';
   msg.textContent = '';
-
-  if (!name) { msg.style.color = '#ff9b8a'; msg.textContent = 'הכניסו שם לעסק'; return; }
   if (!hoursEditor || hoursEditor.isAllClosed()) {
     msg.style.color = '#ff9b8a';
     msg.textContent = 'סמנו לפחות יום פתוח אחד';
@@ -483,11 +617,6 @@ $('saveProfile')?.addEventListener('click', async () => {
   const origLabel = btn.textContent;
   btn.textContent = 'שומרים…';
   try {
-    if (name !== business.name) {
-      const { error } = await sb.from('businesses').update({ name }).eq('id', business.id);
-      if (error) console.warn('name update blocked:', error.message);
-      else business.name = name;
-    }
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
     const r = await fetch('/api/v6/account/update-hours', {
@@ -500,27 +629,24 @@ $('saveProfile')?.addEventListener('click', async () => {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
-    // Reflect the change locally so the title renderer and
-    // hasPlaylistsForToday pick up the new hours immediately.
+    // Reflect locally so the title renderer + hasPlaylistsForToday pick
+    // up the new hours immediately.
     state.dashboard = { ...(state.dashboard || {}), hours, longestMinutes };
-    renderBusiness();
     renderPlaylistsTitle();
+    hoursSnapshot = JSON.stringify(hours);
     msg.style.color = 'var(--teal-soft)';
     msg.textContent = 'נשמר ✓';
-    // Refresh the dirty-tracking snapshot so the button goes back to
-    // disabled until the user makes another change.
-    profileSnapshot = { name, hours: JSON.stringify(hours) };
   } catch (e) {
-    console.error('saveProfile:', e);
+    console.error('saveHours:', e);
     msg.style.color = '#ff9b8a';
     msg.textContent = 'שגיאה בשמירה — נסו שוב';
   } finally {
     btn.textContent = origLabel;
-    // Restore the correct enabled/disabled state via the snapshot compare,
-    // rather than blanket-enabling.
-    updateProfileSaveButton();
+    updateSaveHoursButton();
   }
-});
+}
+
+$('saveHours')?.addEventListener('click', saveHours);
 
 // ---------- playlists ----------
 // Target length for daily playlists = today's open hours + 1h buffer. The
@@ -612,20 +738,48 @@ function renderPlaylists() {
   // the events section via activePlaylistForEvent → "▶ פתח" on the event
   // row. Filtering them out here avoids the duplicate listing.
   const playlists = (bmeta().playlists || []).filter((p) => playlistIsLive(p) && !p.eventId);
-  // A generate-daily build is in flight — render one placeholder row per
-  // active direction (falls back to a single generic placeholder while the
-  // direction-titles query is still resolving). Skipped once real playlists
-  // appear so a concurrent event insert doesn't leave orphan spinners.
-  if (!playlists.length && state.generating) {
-    const titles = state.generating.titles;
-    const rows = (titles && titles.length) ? titles : [null];
-    for (const title of rows) {
+  // Generate-daily streaming: server sent us a plan (ordered directions),
+  // and we're accumulating built/failed status per direction as ndjson
+  // lines arrive. Render each planned direction in order — real row if
+  // built, spinner-placeholder if pending, error-placeholder if failed.
+  // The plan's order IS the render order (server sorted by click count).
+  //
+  // Falls back to a single generic placeholder for the sub-second gap
+  // between "click generate" and "server sends the plan line".
+  if (state.generating) {
+    const plan   = state.generating.plan;   // [{direction_id, title}, ...] or null
+    const status = state.generating.status; // Map<direction_id, 'pending'|'built'|'failed'>
+    const built  = state.generating.builtRows; // Map<direction_id, clientRow>
+    if (!plan || !plan.length) {
       const row = document.createElement('div');
       row.className = 'slot slot-pending';
       row.innerHTML =
         `<div class="s-info">` +
-        `<div class="s-title">🎵 ${escHtml(title || 'פלייליסט')}</div>` +
+        `<div class="s-title">🎵 פלייליסט</div>` +
         `<div class="s-meta">בונים…<span class="pl-inline-spinner" aria-label="בונים"></span></div>` +
+        `</div>`;
+      wrap.append(row);
+      return;
+    }
+    for (const { direction_id, title } of plan) {
+      const s = status.get(direction_id);
+      if (s === 'built') {
+        const row = built.get(direction_id);
+        if (row) { wrap.append(buildPlaylistRow(row)); continue; }
+        // Fallthrough to pending if builtRows map is inconsistent (shouldn't happen).
+      }
+      const row = document.createElement('div');
+      row.className = 'slot slot-pending' + (s === 'failed' ? ' slot-failed' : '');
+      const metaText = s === 'failed'
+        ? 'לא הצליח — ננסה שוב בבנייה הבאה'
+        : 'בונים…';
+      const spinnerHtml = s === 'failed'
+        ? ''
+        : '<span class="pl-inline-spinner" aria-label="בונים"></span>';
+      row.innerHTML =
+        `<div class="s-info">` +
+        `<div class="s-title">🎵 ${escHtml(title || 'פלייליסט')}</div>` +
+        `<div class="s-meta">${metaText}${spinnerHtml}</div>` +
         `</div>`;
       wrap.append(row);
     }
@@ -652,74 +806,243 @@ function renderPlaylists() {
     wrap.append(msg);
     return;
   }
-  const target = dayTargetTracks();
-  for (const p of playlists) {
-    const row = document.createElement('div');
-    row.className = 'slot';
-    row.dataset.playlistId = p.id || '';
-    const showBar = playlistIsExpanding(p, target);
-    const barHtml = showBar
-      ? `<div class="pl-expand-bar" data-target="${target}" data-current="${p.trackCount || 0}"><div class="pl-expand-fill"></div></div>`
-      : '';
-    const spinnerHtml = showBar ? '<span class="pl-inline-spinner" aria-label="בונים"></span>' : '';
-    // p.ico / p.label originate from AI-generated direction data (Gemini /
-    // Claude via musical-directions.js). Escape both before dropping them
-    // into innerHTML — a prompt-injection that produces a `<script>` in a
-    // title would otherwise execute here at render time. p.trackCount is
-    // clamped to a number by `|| 0`, so it doesn't need escaping.
-    row.innerHTML =
-      `<div class="s-info">` +
-      `<div class="s-title">${escHtml(p.ico || '🎵')} ${escHtml(p.label || 'פלייליסט')}</div>` +
-      `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}</div>` +
-      barHtml +
-      `</div>`;
-    // Edit + trash icon buttons — one each per row, only when the row
-    // has a direction_id back-ref (missing on pre-migration rows). Sit
-    // between the info column and the "▶ פתח" button.
-    if (p.directionId) {
-      const editBtn = document.createElement('button');
-      editBtn.type = 'button';
-      editBtn.className = 'slot-icon slot-edit';
-      editBtn.title = 'עריכת הכיוון';
-      editBtn.setAttribute('aria-label', 'עריכת הכיוון');
-      editBtn.innerHTML =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>' +
-        '</svg>';
-      editBtn.addEventListener('click', () => editDirectionFromCard(p.directionId));
-      row.append(editBtn);
-
-      const trashBtn = document.createElement('button');
-      trashBtn.type = 'button';
-      trashBtn.className = 'slot-icon slot-trash';
-      trashBtn.title = 'מחיקת הכיוון';
-      trashBtn.setAttribute('aria-label', 'מחיקת הכיוון');
-      trashBtn.innerHTML =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-        '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2"/>' +
-        '<path d="M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14"/>' +
-        '<path d="M10 11v6"/><path d="M14 11v6"/></svg>';
-      trashBtn.addEventListener('click', () => openTrashDirectionModal(p.directionId));
-      row.append(trashBtn);
-      // Direction id also lives on the row itself so the delete flow can
-      // find the correct trash button by directionId after the modal has
-      // closed (the modal doesn't hold a reference to the row).
-      row.dataset.directionId = p.directionId;
-    }
-    if (p.url) {
-      const open = document.createElement('a');
-      open.className = 'btn';
-      open.style.textDecoration = 'none';
-      open.href = p.url;
-      open.target = '_blank';
-      open.rel = 'noopener';
-      open.textContent = '▶ פתח';
-      open.addEventListener('click', () => logPlaylistOpen(p.id, 'home-daily'));
-      row.append(open);
-    }
-    wrap.append(row);
-    if (showBar) updateExpandBar(row, p.trackCount || 0);
+  // Sort most-clicked first. On a fresh account (no opens anywhere) this
+  // degrades to the previous default (most-recently-created first) via
+  // the tiebreaker in sortPlaylistsByClicksDesc.
+  const sorted = sortPlaylistsByClicksDesc(playlists);
+  for (const p of sorted) {
+    wrap.append(buildPlaylistRow(p));
   }
+}
+
+// Extracted from renderPlaylists so the streaming build path can drop
+// finished rows into the DOM one at a time as they arrive, using the same
+// markup as the steady-state list.
+function buildPlaylistRow(p) {
+  const target = dayTargetTracks();
+  const row = document.createElement('div');
+  row.className = 'slot';
+  row.dataset.playlistId = p.id || '';
+  const showBar = playlistIsExpanding(p, target);
+  const barHtml = showBar
+    ? `<div class="pl-expand-bar" data-target="${target}" data-current="${p.trackCount || 0}"><div class="pl-expand-fill"></div></div>`
+    : '';
+  const spinnerHtml = showBar ? '<span class="pl-inline-spinner" aria-label="בונים"></span>' : '';
+  // p.ico / p.label originate from AI-generated direction data (Gemini /
+  // Claude via musical-directions.js). Escape both before dropping them
+  // into innerHTML — a prompt-injection that produces a `<script>` in a
+  // title would otherwise execute here at render time. p.trackCount is
+  // clamped to a number by `|| 0`, so it doesn't need escaping.
+  //
+  // Label wrapped in .s-label so the inline-rename handler can swap it
+  // for an input on click. .editable class (and the click handler) only
+  // attach when the row is backed by a direction_id AND no generate flow
+  // is in progress (mid-stream re-renders would clobber an in-progress
+  // rename — see enterRenameMode below).
+  const canRename = !!p.directionId && !state.generating;
+  const labelClass = canRename ? 's-label editable' : 's-label';
+  row.innerHTML =
+    `<div class="s-info">` +
+    `<div class="s-title">${escHtml(p.ico || '🎵')} <span class="${labelClass}">${escHtml(p.label || 'פלייליסט')}</span></div>` +
+    `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}</div>` +
+    barHtml +
+    `</div>`;
+  if (canRename) {
+    const labelEl = row.querySelector('.s-label');
+    labelEl.title = 'לחצו כדי לערוך את השם';
+    labelEl.addEventListener('click', () => enterRenameMode(labelEl, p));
+  }
+  // Edit + trash icon buttons — one each per row, only when the row
+  // has a direction_id back-ref (missing on pre-migration rows). Sit
+  // between the info column and the "▶ פתח" button.
+  if (p.directionId) {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'slot-icon slot-edit';
+    editBtn.title = 'עריכת הכיוון';
+    editBtn.setAttribute('aria-label', 'עריכת הכיוון');
+    editBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>' +
+      '</svg>';
+    editBtn.addEventListener('click', () => editDirectionFromCard(p.directionId));
+    row.append(editBtn);
+
+    const trashBtn = document.createElement('button');
+    trashBtn.type = 'button';
+    trashBtn.className = 'slot-icon slot-trash';
+    trashBtn.title = 'מחיקת הכיוון';
+    trashBtn.setAttribute('aria-label', 'מחיקת הכיוון');
+    trashBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2"/>' +
+      '<path d="M6 6l1 14a2 2 0 002 2h6a2 2 0 002-2l1-14"/>' +
+      '<path d="M10 11v6"/><path d="M14 11v6"/></svg>';
+    trashBtn.addEventListener('click', () => openTrashDirectionModal(p.directionId));
+    row.append(trashBtn);
+    // Direction id also lives on the row itself so the delete flow can
+    // find the correct trash button by directionId after the modal has
+    // closed (the modal doesn't hold a reference to the row).
+    row.dataset.directionId = p.directionId;
+  }
+  if (p.url) {
+    const open = document.createElement('a');
+    open.className = 'btn';
+    open.style.textDecoration = 'none';
+    open.href = p.url;
+    open.target = '_blank';
+    open.rel = 'noopener';
+    open.textContent = '▶ פתח';
+    open.addEventListener('click', () => logPlaylistOpen(p.id, 'home-daily'));
+    row.append(open);
+  }
+  if (showBar) updateExpandBar(row, p.trackCount || 0);
+  return row;
+}
+
+// ---- inline direction rename on Home tab playlist rows ----
+// Clicking a row's .s-label span calls enterRenameMode, which replaces the
+// span with an input + save/cancel buttons. Save fires the cosmetic-only
+// edit path on /api/v6/account/apply-direction-change (the server auto-
+// detects title-only edits and takes the rename-only branch — renames the
+// live Spotify playlist in place, updates business_playlists.label, no
+// track rebuild). Cancel restores the original text.
+//
+// Refresh comes via the `direction-change-applied` document event that the
+// same listener on the home tab already handles — same channel the chat's
+// apply flow uses, so both paths converge to a single reload.
+const RENAME_MAX_LEN = 120;                            // matches server's sanitizeUpdates cap
+const RENAME_ICON_SAVE   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg>';
+const RENAME_ICON_CANCEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+
+function enterRenameMode(labelEl, playlist) {
+  // Guard: only one row in edit mode at a time. If another rename is in
+  // flight, ignore additional clicks — simpler than juggling nested
+  // rollback state.
+  if (document.querySelector('.s-label-edit')) return;
+  const originalText = playlist.label || 'פלייליסט';
+  // Mark the parent .slot so narrow-viewport CSS can hide the row's
+  // trash + edit icons while the input is up (they'd otherwise crush the
+  // save/cancel buttons on small screens). Class is stripped in both the
+  // restore and commit paths below.
+  const slotEl = labelEl.closest('.slot');
+  slotEl?.classList.add('slot--renaming');
+
+  const wrap = document.createElement('span');
+  wrap.className = 's-label-edit';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = originalText;
+  input.maxLength = RENAME_MAX_LEN;
+  input.setAttribute('aria-label', 'שם הכיוון');
+  const saveBtn = document.createElement('button');
+  saveBtn.type = 'button';
+  saveBtn.className = 's-label-edit-btn s-label-edit-save';
+  saveBtn.title = 'שמירה (Enter)';
+  saveBtn.setAttribute('aria-label', 'שמירה');
+  saveBtn.innerHTML = RENAME_ICON_SAVE;
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 's-label-edit-btn s-label-edit-cancel';
+  cancelBtn.title = 'ביטול (Esc)';
+  cancelBtn.setAttribute('aria-label', 'ביטול');
+  cancelBtn.innerHTML = RENAME_ICON_CANCEL;
+  wrap.append(input, saveBtn, cancelBtn);
+
+  labelEl.replaceWith(wrap);
+  // Focus + select all on entry so a keyboard-first user can immediately
+  // start typing over the old name.
+  input.focus();
+  input.select();
+
+  // Rebuild a static .s-label span (out of edit mode) with the given text
+  // and re-arm the click handler. Used both when the owner cancels AND
+  // when the optimistic commit swaps back to display mode — same shape.
+  const renderStaticSpan = (text) => {
+    const span = document.createElement('span');
+    span.className = 's-label editable';
+    span.textContent = text || 'פלייליסט';
+    span.title = 'לחצו כדי לערוך את השם';
+    span.addEventListener('click', () => enterRenameMode(span, playlist));
+    return span;
+  };
+  const exitEditUi = () => slotEl?.classList.remove('slot--renaming');
+  const restore = () => {
+    wrap.replaceWith(renderStaticSpan(originalText));
+    exitEditUi();
+  };
+
+  const commit = () => {
+    const newName = input.value.trim().slice(0, RENAME_MAX_LEN);
+    if (!newName || newName === originalText) {
+      // Empty or no-op → silently revert (server would reject empty
+      // anyway via sanitizeUpdates).
+      restore();
+      return;
+    }
+
+    // ---- optimistic UI: swap immediately, save in background ----
+    // 1) DOM: replace the edit wrap with a static span carrying the new
+    //    name. From the owner's POV the rename is done.
+    wrap.replaceWith(renderStaticSpan(newName));
+    exitEditUi();
+    // 2) Local state mirror: mutating playlist.label also mutates the
+    //    entry in state.dashboard.playlists (same object reference), so
+    //    a spurious re-render from anywhere else keeps the new label.
+    playlist.label = newName;
+    // 3) Profile-tab direction cards: patch in place so if the owner
+    //    switches tabs during the ~200ms save it already reflects the
+    //    change. No-op when direction-chat's state.directions is empty
+    //    (tab never opened) — a first-open reload will pick it up.
+    patchDirectionOptimistic(playlist.directionId, { title_en: newName });
+
+    // ---- background persist ----
+    (async () => {
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        if (!session?.access_token) throw new Error('לא מחוברים');
+        const r = await fetch('/api/v6/account/apply-direction-change', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            businessId:         business.id,
+            kind:               'edit',
+            directionId:        playlist.directionId,
+            updates:            { title_en: newName },
+            expireLivePlaylist: false,   // ignored server-side on the cosmetic-only branch
+          }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+        // Silent success — the owner already sees the new name. Dispatch
+        // the standard event anyway so downstream views (audit log etc.)
+        // pick up the eventual-consistency reload.
+        document.dispatchEvent(new CustomEvent('direction-change-applied', {
+          detail: { businessId: business.id },
+        }));
+      } catch (err) {
+        console.warn('rename failed:', err);
+        // ---- revert optimistic changes ----
+        playlist.label = originalText;
+        patchDirectionOptimistic(playlist.directionId, { title_en: originalText });
+        // Repaint the whole list so the failed row swaps back to the old
+        // name — cheaper than tracking the specific DOM node the
+        // optimistic swap produced.
+        renderPlaylists();
+        toast(String(err.message || 'לא הצליח לשמור את השם').slice(0, 120));
+      }
+    })();
+  };
+
+  saveBtn.addEventListener('click', commit);
+  cancelBtn.addEventListener('click', restore);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')       { e.preventDefault(); commit(); }
+    else if (e.key === 'Escape') { e.preventDefault(); restore(); }
+  });
 }
 
 // Edit icon on a playlist row → jump to the Profile tab and prime the
@@ -1001,27 +1324,35 @@ function closeGenerateDailyModal() {
 
 async function runGenerateDaily() {
   if (state.generating) return;
-  // Close the modal immediately — the build takes ~15-60s and there's no
-  // reason to hold the owner on a modal spinner. Placeholder rows in the
-  // playlists list carry the in-progress signal instead.
+  // Close the modal immediately — the build runs in the background and
+  // the owner watches placeholders → real rows fill in as each playlist
+  // finishes.
   closeGenerateDailyModal();
-  state.generating = { titles: null };
+  // Kick off with an empty plan; the server's first ndjson line ('plan')
+  // will populate it in the correctly-ordered set of directions. Until
+  // then renderPlaylists shows a single generic placeholder.
+  state.generating = {
+    plan:       null,                     // [{direction_id, title}, ...] once server sends 'plan'
+    status:     new Map(),                // direction_id → 'pending' | 'built' | 'failed'
+    builtRows:  new Map(),                // direction_id → clientRow (from playlistRowToClient)
+  };
+  // Repaint the title too — on a closed day this flips it from
+  // "המקום סגור [המקום פתוח?]" to the normal day/date format immediately,
+  // matching the placeholder rows that just appeared below.
+  renderPlaylistsTitle();
   renderPlaylists();
 
-  // Fetch active direction titles in parallel with the build so the
-  // single generic placeholder upgrades to one titled row per direction
-  // as soon as the tiny SELECT resolves (~100-300ms).
-  sb.from('business_directions')
-    .select('title_en')
-    .eq('business_id', business.id)
-    .eq('active', true)
-    .order('rank', { ascending: true, nullsFirst: false })
-    .then(({ data, error }) => {
-      if (error) { console.warn('business_directions titles load:', error.message); return; }
-      if (!state.generating) return; // build already finished
-      state.generating.titles = (data || []).map((d) => d.title_en || 'פלייליסט');
-      renderPlaylists();
-    });
+  const cleanupOnExit = async () => {
+    // Refresh state from DB before clearing state.generating so we don't
+    // flicker through an empty-state render between "streaming done" and
+    // "loadDashboardData resolved". Built rows are already persisted per
+    // direction as they arrived, so the reload picks them up regardless
+    // of how the stream ended (done / connection drop / mid-flight error).
+    try { await loadDashboardData(business.id); } catch { /* soft */ }
+    state.generating = null;
+    renderPlaylistsTitle();
+    renderPlaylists();
+  };
 
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -1037,20 +1368,65 @@ async function runGenerateDaily() {
         bizName: business.name || '',
       }),
     });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
-    // Server INSERTed the new playlists into business_playlists — refresh
-    // the local mirror so the title flips back to normal ("playlists for
-    // today exist") and the new rows appear.
-    await loadDashboardData(business.id);
-    state.generating = null;
-    renderPlaylistsTitle();
-    renderPlaylists();
-    toast(`נבנו ${data.count || 0} פלייליסטים ✓`);
+    if (!r.ok) {
+      // Pre-streaming error — server returned JSON, not ndjson.
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data?.error || `שגיאה ${r.status}`);
+    }
+    if (!r.body) throw new Error('streaming not supported in this browser');
+
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let builtCount = 0;
+    let failedCount = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line) continue;
+        let msg;
+        try { msg = JSON.parse(line); }
+        catch { console.warn('[generate-daily] bad ndjson line:', line.slice(0, 160)); continue; }
+        if (!state.generating) continue; // safety: tab or state reset mid-stream
+
+        if (msg.type === 'plan' && Array.isArray(msg.directions)) {
+          state.generating.plan = msg.directions.map((d) => ({
+            direction_id: d.direction_id,
+            title:        d.title || 'פלייליסט',
+          }));
+          for (const d of state.generating.plan) {
+            state.generating.status.set(d.direction_id, 'pending');
+          }
+          renderPlaylists();
+        } else if (msg.type === 'built' && msg.direction_id && msg.row) {
+          state.generating.status.set(msg.direction_id, 'built');
+          state.generating.builtRows.set(msg.direction_id, playlistRowToClient(msg.row));
+          builtCount++;
+          renderPlaylists();
+        } else if (msg.type === 'failed' && msg.direction_id) {
+          state.generating.status.set(msg.direction_id, 'failed');
+          failedCount++;
+          renderPlaylists();
+        } else if (msg.type === 'done') {
+          // Server-authoritative counts (in case a line was dropped).
+          if (Number.isFinite(msg.built))  builtCount  = msg.built;
+          if (Number.isFinite(msg.failed)) failedCount = msg.failed;
+        }
+      }
+    }
+
+    await cleanupOnExit();
+    if (builtCount && !failedCount)       toast(`נבנו ${builtCount} פלייליסטים ✓`);
+    else if (builtCount && failedCount)   toast(`נבנו ${builtCount} מתוך ${builtCount + failedCount} פלייליסטים`);
+    else                                  toast('לא הצלחנו לבנות אף פלייליסט — נסו שוב');
   } catch (err) {
     console.error('generate-daily failed:', err);
-    state.generating = null;
-    renderPlaylists();
+    await cleanupOnExit();
     toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
   }
 }
@@ -1133,7 +1509,7 @@ function renderEvents() {
       '<path d="M10 11v6"/>' +
       '<path d="M14 11v6"/>' +
       '</svg>';
-    delBtn.addEventListener('click', () => deleteEvent(ev.id, delBtn));
+    delBtn.addEventListener('click', () => openTrashEventModal(ev.id, delBtn));
     row.append(delBtn);
 
     const live = activePlaylistForEvent(ev.id);
@@ -1202,8 +1578,37 @@ async function createEventPlaylist(ev, btn) {
   }
 }
 
-async function deleteEvent(id, btn) {
-  if (!confirm('למחוק את האירוע?')) return;
+// Trash icon on an event card → open the confirmation modal. Mirrors the
+// direction-trash pattern (see openTrashDirectionModal above): stage the
+// pending event id + the specific trash button so confirmTrashEventRemove
+// can spin it, then flip the modal open. Replaces the native `confirm()`
+// prompt this used to fire so the UX matches the rest of v6.
+let pendingTrashEventId  = null;
+let pendingTrashEventBtn = null;
+function openTrashEventModal(id, btn) {
+  if (!id) return;
+  pendingTrashEventId  = id;
+  pendingTrashEventBtn = btn || null;
+  const confirmBtn = $('trashEventRemove');
+  if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'כן, למחוק'; }
+  $('trashEventModal')?.classList.remove('hide');
+}
+
+function closeTrashEventModal() {
+  pendingTrashEventId  = null;
+  pendingTrashEventBtn = null;
+  $('trashEventModal')?.classList.add('hide');
+}
+
+async function confirmTrashEventRemove() {
+  const id  = pendingTrashEventId;
+  const btn = pendingTrashEventBtn;
+  if (!id) return;
+  // Close the modal immediately — same rationale as the direction trash
+  // flow (see confirmTrashDirectionRemove). The delete round-trip takes a
+  // couple of seconds; owner shouldn't be locked staring at a modal.
+  closeTrashEventModal();
+
   const origHtml = btn?.innerHTML;
   if (btn) {
     btn.disabled = true;
@@ -1236,6 +1641,12 @@ async function deleteEvent(id, btn) {
     toast(String(e.message || 'שגיאה במחיקה'));
   }
 }
+
+$('trashEventRemove')?.addEventListener('click', confirmTrashEventRemove);
+$('trashEventCancel')?.addEventListener('click', closeTrashEventModal);
+$('trashEventModal')?.addEventListener('click', (e) => {
+  if (e.target?.id === 'trashEventModal') closeTrashEventModal();
+});
 
 // ---------- events chat ----------
 // Replaces the old textarea + "שמור אירוע" button. The user chats with

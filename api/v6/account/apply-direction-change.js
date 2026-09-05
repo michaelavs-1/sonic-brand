@@ -182,11 +182,13 @@ async function findLivePlaylistForDirection(businessId, dir) {
 
 // Best-effort super-liked persistence. Silent-fail: nothing consumes these
 // rows yet, so a botched insert must not block the primary commit path.
+// deleted_at:null resurrects any previously soft-deleted row (see
+// toggle-super-like.js for the soft-delete pattern added 2026-09-05).
 async function persistSuperLike(businessId, spotifyId) {
   if (!spotifyId || typeof spotifyId !== 'string') return;
   try {
     await pgrUpsert('super_liked_tracks',
-      [{ business_id: businessId, spotify_id: spotifyId }],
+      [{ business_id: businessId, spotify_id: spotifyId, deleted_at: null }],
       { onConflict: 'business_id,spotify_id' });
   } catch (e) {
     console.warn('[apply-direction-change] super_liked_tracks upsert failed:', e.message);
@@ -511,21 +513,41 @@ export default async function handler(req, res) {
         { id: `eq.${directionId}`, business_id: `eq.${businessId}` },
         { active: false, updated_at: new Date().toISOString() });
 
-      // Optionally expire today's playlist right now. The client asked
-      // the owner inline; the answer arrives on `expireLivePlaylist`.
+      // Optionally expire today's playlist. The client asked the owner
+      // inline; the answer arrives on `expireLivePlaylist`.
+      //
+      // 2026-09-05: this branch used to call `expirePlaylistNow` inline
+      // (rename + empty + unfollow on Spotify — 3 sequential calls, 5-15s
+      // realistic). The card only hid once the whole chain completed, so
+      // the owner watched a spinner for that entire time. Now we do the
+      // fast DB-only piece here — expire BOTH the business_playlists row
+      // (dashboard filters on this) AND the created_playlists ledger row
+      // (cleanup cron filters on this) — and hand the Spotify side off to
+      // the next :30 cleanup cron tick. Card disappears in ~500ms instead
+      // of 5-15s. Trade-off: the playlist stays under its original name in
+      // Rubin's library for up to 30 minutes before the cron renames +
+      // empties + unfollows it. Owners never see Rubin's library, so
+      // this is invisible to them.
       let playlistAction = 'kept';
       if (expireLivePlaylist) {
         const live = await findLivePlaylistForDirection(businessId, dir);
         if (live?.spotify_id) {
+          const nowIso = new Date().toISOString();
           try {
-            await expirePlaylistNow({ origin, spotifyId: live.spotify_id, name: live.label });
-            await pgrPatch('business_playlists',
-              { spotify_id: `eq.${live.spotify_id}`, business_id: `eq.${businessId}` },
-              { expires_at: new Date().toISOString() });
+            // Parallel — no ordering dependency between the two tables.
+            await Promise.all([
+              pgrPatch('business_playlists',
+                { spotify_id: `eq.${live.spotify_id}`, business_id: `eq.${businessId}` },
+                { expires_at: nowIso }),
+              pgrPatch('created_playlists',
+                { spotify_id: `eq.${live.spotify_id}` },
+                { expires_at: nowIso }),
+            ]);
             playlistAction = 'expired';
           } catch (e) {
-            console.warn('[apply-direction-change:remove] live playlist expiry failed:', e.message);
-            // Keep playlist_action='kept' since we didn't actually expire.
+            console.warn('[apply-direction-change:remove] expiry PATCH failed:', e.message);
+            // Keep playlist_action='kept' — dashboard will keep showing
+            // the card until the next daily-gen tick or a manual retry.
           }
         }
       }

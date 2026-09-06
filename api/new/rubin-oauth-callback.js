@@ -1,11 +1,24 @@
 /* /api/new/rubin-oauth-callback.js
    One-time-use endpoint to seed the Rubin Spotify user's refresh_token.
+   Gated behind INTERNAL_ADMIN_API_KEY via OAuth's `state` parameter —
+   Spotify echoes state verbatim across the redirect, so the check happens
+   automatically on the callback.
+
    Flow:
      1. Roni registers this URI in the Rubin app's Spotify Developer Dashboard.
-     2. Roni visits the Spotify authorize URL (with Rubin app's client_id) in a browser
-        logged into the Rubin user.
-     3. Spotify redirects here with ?code=...
-     4. We exchange that code for access_token + refresh_token using Rubin app credentials.
+     2. Roni visits the Spotify authorize URL (with Rubin app's client_id AND
+        state=<INTERNAL_ADMIN_API_KEY>) in a browser logged into the Rubin user.
+        Example:
+          https://accounts.spotify.com/authorize
+            ?client_id=431c55feb024444c979f2aa51e04426d
+            &response_type=code
+            &redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fnew%2Frubin-oauth-callback
+            &scope=playlist-modify-private%20playlist-modify-public%20playlist-read-private
+            &state=<INTERNAL_ADMIN_API_KEY>
+            &show_dialog=true
+     3. Spotify redirects here with ?code=...&state=<key>
+     4. We verify state matches INTERNAL_ADMIN_API_KEY, then exchange the code
+        for access_token + refresh_token using Rubin app credentials.
      5. We render an HTML page showing both tokens for copy-paste.
 */
 
@@ -67,7 +80,21 @@ export default async function handler(req, res) {
   };
 
   try {
-    const { code, error } = req.query || {};
+    const { code, error, state } = req.query || {};
+
+    // Admin gate: require state=<INTERNAL_ADMIN_API_KEY>. Missing or wrong
+    // => 401 with a minimal message. Do this before touching the code or
+    // credentials so a probe against the prod URL can't even reach the
+    // token-exchange path.
+    const adminKey = process.env.INTERNAL_ADMIN_API_KEY;
+    if (!adminKey) {
+      return send(500, renderError('Server misconfig',
+        'INTERNAL_ADMIN_API_KEY is not set on this deployment. Set it before using this endpoint.'));
+    }
+    if (state !== adminKey) {
+      return send(401, renderError('Unauthorized',
+        'This endpoint is admin-only. Rebuild the Spotify authorize URL with &state=<INTERNAL_ADMIN_API_KEY> appended (see file header for the full URL template).'));
+    }
 
     if (error) {
       return send(400, renderError('Spotify returned an error', `error=${error}`));

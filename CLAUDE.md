@@ -274,12 +274,36 @@ renderAll:
       `direction-change-applied` event listener → loadDashboardData
       re-render. Handlers: `editDirectionFromCard`, `openTrashDirectionModal`,
       `confirmTrashDirectionRemove` in [v6/account/app.js].
+    - **Inline direction rename** (added 2026-09-03): clicking a playlist
+      row's `.s-label` (the title text inside `.s-title`) swaps it for an
+      input + save-check + cancel-X icon buttons — the owner renames the
+      direction without leaving the Home tab. Only enabled when the row
+      has a `direction_id` FK AND `!state.generating` (mid-stream re-renders
+      would clobber an in-progress rename). Save is fully optimistic: local
+      `playlist.label` mutates immediately, `patchDirectionOptimistic(id,
+      {title_en:newName})` from `direction-chat.js` mirrors the change onto
+      the Profile-tab direction cards for zero cross-tab lag, THEN a
+      background POST to `/api/v6/account/apply-direction-change` with
+      `kind:'edit'`, `updates:{title_en:newName}`, `expireLivePlaylist:false`
+      persists. Server takes the cosmetic-only fast path (rename the live
+      Spotify playlist in place + PATCH business_playlists.label + PATCH
+      created_playlists.name; audit row records `playlist_action='renamed'`)
+      — see the Direction-edit chat section for the fast-path details.
+      Failure path: revert both local state and Profile-tab mirror, repaint
+      the whole playlist list, error toast. Handler: `enterRenameMode` in
+      [v6/account/app.js](v6/account/app.js).
   - renderEvents: reads bmeta().events (mirror of business_events rows).
     Per-row layout is [🎪 name/description] [red trash SVG button (btn-danger)] [action button].
     The pencil edit icon was dropped in the 2026-08-20 chat rewrite —
     workflow is now delete + re-chat. Trash uses a Feather-style outline
-    SVG in a red `.btn.btn-danger.event-del` button (no emoji), spinner
-    only while deleting (no "מוחק…" label).
+    SVG in a red `.btn.btn-danger.event-del` button (no emoji).
+    - Trash → opens `#trashEventModal` (added 2026-09-05, replaces the
+      earlier native `confirm()` prompt) — mirrors the direction-trash
+      modal's shape (styled body + red danger + ghost cancel). Modal
+      closes immediately on confirm; the row's trash button spins in
+      place during the delete round-trip. Server archives the row into
+      `deleted_events` before DELETEing (see Archive tables in DATA MODEL)
+      so admin API can still surface a full per-business event history.
     - "צרו פלייליסט" button hits /api/v6/account/event-playlist
         ↓
 Background: expandPendingPlaylists (v6/account/app.js) — STRICT one-time
@@ -350,7 +374,7 @@ the 10-track sample playlists each grow to today's opening hours + 1h.
 
 ### Direction-edit chat (profile tab)
 
-Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעות פעילות. Lets the owner refine their `business_directions` after onboarding: add (up to the 8-active cap), remove (soft-disable — the row is preserved with `active=false`), or fine-tune an existing direction (exclude/add genres, adjust BPM, flip inst_pref, rename, reshape description_he).
+Gemini chatbot on `/v6/account`'s Profile tab. The Profile tab's section order is: `שם העסק` → `שעות פעילות` → `כיוונים מוזיקליים` (chat). Both שעות פעילות and כיוונים מוזיקליים render as collapsible dropdowns (see "Profile tab UI" section below). The chat's dropdown header shows the label "כיוונים מוזיקליים" (shortened from "עריכת כיוונים מוזיקליים" on 2026-09-05 when it became a collapsible). Lets the owner refine their `business_directions` after onboarding: add (up to the 8-active cap), remove (soft-disable — the row is preserved with `active=false`), or fine-tune an existing direction (exclude/add genres, adjust BPM, flip inst_pref, rename, reshape description_he).
 
 - **UI** (`v6/account/index.html` + `v6/account/direction-chat.js`):
   - Row of clickable direction cards (`.dir-card`, title + description_he) above the chat. Clicking a card sets `state.selectedDirectionId` AND appends a synthetic assistant bubble to the transcript ("מה תרצו לשנות בכיוון X?" using the direction's `title_en`) so the owner sees the scope shift immediately. The next chat turn is scoped to that direction unless the message names a different one. Click the same card again to deselect (no synthetic bubble on deselect). Synthetic bubbles are not persisted — Gemini gets the target via `selectedDirectionId` in the context block anyway.
@@ -398,7 +422,10 @@ Gemini chatbot on `/v6/account`'s Profile tab, between שם העסק and שעו�
 
 ### Profile tab UI (`v6/account/` Profile tab)
 
+**Section order (as of 2026-09-05):** `שם העסק` → `שעות פעילות` → `כיוונים מוזיקליים` (direction-edit chat). The business-name field is inline at the top; the two below it are collapsible dropdowns using the same aria-expanded/`.hide` pattern.
+
 - **שעות פעילות is a collapsible section.** Header row = h2 title + chevron; clicking the header toggles the subtitle + hours picker via `aria-expanded` on `#hoursToggle` and `.hide` on `#hoursBody`. Chevron points down when closed, rotates 180° to point up when open. State resets to closed on every tab open — `renderProfileTab` in [v6/account/app.js](v6/account/app.js) sets `aria-expanded="false"` and re-adds `.hide` to the body. `mountHoursEditor` still runs on tab open even while collapsed, so dirty-tracking + the save button behave identically to when the section was always visible. The single "שמור" button at the bottom of the tab still handles both business-name and hours edits — there's no separate save inside the collapsible.
+- **כיוונים מוזיקליים is also a collapsible section** (added 2026-09-05). Same header + chevron + aria-expanded pattern as שעות פעילות, toggling the direction-edit chat body (cards row + transcript + textarea + send button). State resets to closed on every tab open. Chat behavior itself is described in the "Direction-edit chat" section above — this collapsible is purely presentation. Both dropdowns default to closed so the tab opens on a compact card-shape summary and the owner picks what to touch.
 
 ### Special event playlists
 
@@ -1261,7 +1288,7 @@ Everything the account dashboard reads lives here:
 
 ### Track pool coverage
 
-**~114k successfully-analyzed tracks** in `track_analyses` as of 2026-08-26 (up from ~90.5k a month earlier — manual CLI batches through the RapidAPI worker filled in the new genres). This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To refresh the count: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`. **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the 105 canonical genres is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
+**~114k successfully-analyzed tracks** in `track_analyses` as of 2026-08-26; the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, and a handful of others through early September). This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses` in Supabase (or grep the batch log: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (116 entries as of 2026-09-02 per `v6/generation/genre-list.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
 
 ---
 
@@ -1274,15 +1301,15 @@ Everything the account dashboard reads lives here:
 
 ### `RUBIN_REFRESH_TOKEN` scope
 
-Currently seeded with `playlist-modify-private` + `playlist-modify-public` (verified via `scripts/test-rubin-spotify.mjs` — the refresh returns both scopes). **Cannot enumerate the account's playlists** — `GET /me/playlists` returns 403 "insufficient client scope" because neither `playlist-read-private` nor `playlist-read-collaborative` is present.
+Currently seeded with `playlist-modify-private` + `playlist-modify-public` + `playlist-read-private` (widened 2026-09-06 so `scripts/purge-pre-cron-playlists.mjs` can enumerate the account via `GET /me/playlists`). Verified via `scripts/test-rubin-spotify.mjs`.
 
-If you need enumeration (e.g., cleaning up pre-ledger cruft), re-seed with wider scope:
+To re-seed (if the token ever gets invalidated or you need to change scopes), the OAuth callback endpoint is gated behind `INTERNAL_ADMIN_API_KEY` via OAuth's `state` param — Spotify echoes state verbatim through the redirect, so appending `&state=<INTERNAL_ADMIN_API_KEY>` to the authorize URL is the seeding-flow convention. Missing/wrong state => 401 (gate lives in [api/new/rubin-oauth-callback.js](api/new/rubin-oauth-callback.js)). Full URL:
 
 ```
-https://accounts.spotify.com/authorize?client_id=431c55feb024444c979f2aa51e04426d&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fnew%2Frubin-oauth-callback&scope=playlist-modify-private%20playlist-modify-public%20playlist-read-private&show_dialog=true
+https://accounts.spotify.com/authorize?client_id=431c55feb024444c979f2aa51e04426d&response_type=code&redirect_uri=http%3A%2F%2F127.0.0.1%3A3000%2Fapi%2Fnew%2Frubin-oauth-callback&scope=playlist-modify-private%20playlist-modify-public%20playlist-read-private&state=<INTERNAL_ADMIN_API_KEY>&show_dialog=true
 ```
 
-Otherwise, `scripts/purge-rubin-playlists.mjs` uses the `created_playlists` ledger as the enumeration source instead — no scope needed.
+Prereqs to re-seeding: `vercel dev` running (so the localhost callback answers), redirect URI still registered in the Rubin Spotify app's dashboard, and the same `INTERNAL_ADMIN_API_KEY` present in `.env.local` as the one you paste into the URL. The endpoint's 401 message points at this section.
 
 **Known 403 quirk on `DELETE /playlists/{id}/followers`:** occasional 403 "Insufficient client scope" when the expire cron tries to unfollow a playlist Rubin's app created hours earlier — even though rename + empty on the same playlist in the same tick succeed. First observed 2026-09-01 on a `בלנד 5 · Boutique World Funk & Ethio-Jazz` daily-gen playlist. Rename + empty succeed silently, unfollow 403s, `expirePlaylistNow` catches it as best-effort and marks `deleted_at` anyway → the playlist stays in Rubin's library as `(expired) <name>` with 0 tracks (cruft). Suspected trigger: `create_playlist` sets `collaborative: true` (see [api/new/spotify.js](api/new/spotify.js)), which may have quirky scope semantics on the follower-DELETE endpoint. If this becomes systematic, either (a) drop `collaborative: true` in create_playlist, or (b) treat unfollow 403s as retriable so the row stays eligible on next tick.
 
@@ -1497,9 +1524,10 @@ node scripts/test-cron-daily-guards.mjs
 ```
 Each creates + tears down its own throwaway user + business. Safe to run against prod.
 
-### Re-seed Rubin refresh token with wider scope
-- See "Spotify Setup → RUBIN_REFRESH_TOKEN scope" above.
-- Update `RUBIN_REFRESH_TOKEN` in Vercel cloud env AND `.env.local`. Restart `vercel dev`.
+### Re-seed Rubin refresh token
+- See "Spotify Setup → RUBIN_REFRESH_TOKEN scope" above for the authorize URL (includes the `&state=<INTERNAL_ADMIN_API_KEY>` gate).
+- Update `RUBIN_REFRESH_TOKEN` in Vercel cloud env AND `.env.local`, in the same sitting. Restart `vercel dev` if running.
+- Verify: `node scripts/test-rubin-spotify.mjs` (refresh + create + unfollow round-trip).
 
 ### Bump cache version
 - Change `?v=…` in `v6/index.html` and `v6/account/index.html`.

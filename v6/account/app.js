@@ -61,11 +61,22 @@ let meta = {};
 // where the data comes from.
 const state = { dashboard: null };
 
-// Chat state for the special-events panel. Ephemeral — cleared on refresh
-// and on a successful finalize. `messages` holds the visible transcript
-// (both roles) and doubles as the multi-turn history sent to Gemini.
-// `proposed` is the last confirming-state summary Gemini offered; clicking
-// the inline "צור פלייליסט" button uses it as-is (no extra round trip).
+// Chat state for the special-events panel. `messages` is the visible
+// transcript; `proposed` is the last confirming-state summary Gemini
+// offered.
+//
+// As of 2026-08-30 every message is also persisted server-side via
+// /api/v6/account/event-chat (see business_event_chats table). The
+// client's visible transcript is still cleared on hard refresh and on
+// a successful finalize — SESSION_START_AT_ISO gates BOTH what the
+// client shows AND what the server includes in Gemini's context, so
+// the on-screen chat and the model's memory stay in sync.
+//
+// SESSION_START_AT_ISO is bumped on every finalize so the NEXT event
+// chat starts fresh without dragging the just-finalized session's
+// messages into Gemini's context. Hard refresh regenerates the
+// timestamp naturally.
+let SESSION_START_AT_ISO = new Date().toISOString();
 const chatState = {
   messages: [],        // [{ role: 'user' | 'assistant', text: string }]
   proposed: null,      // { name_he, description_he } | null
@@ -1705,48 +1716,31 @@ function appendConfirmActions(bubble) {
   scrollChatToBottom();
 }
 
-// Multi-turn Gemini call. Sends the full chat history + system prompt each
-// turn (Gemini is stateless — the transcript is our memory). Returns the
-// parsed JSON reply, or throws on transport / parse failure.
+// One turn against /api/v6/account/event-chat — the server-side wrapper
+// that persists both messages to business_event_chats and calls Gemini.
+// Returns the parsed reply shape { reply_he, state, proposed? }, or
+// throws on transport failure.
 async function callChatModel(userMessage) {
-  // Convert the visible transcript into Gemini's { role, text } shape.
-  // 'assistant' → 'model' (Gemini's naming). The current user message is
-  // sent as the `user` field, not appended to history.
-  const history = chatState.messages.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    text: m.text,
-  }));
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token) throw new Error('לא מחוברים');
 
-  const r = await fetch('/api/v6/gemini', {
+  const r = await fetch('/api/v6/account/event-chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization:  `Bearer ${session.access_token}`,
+    },
     body: JSON.stringify({
-      model: GEMINI_MODEL,
-      max_output_tokens: CHAT_MAX_TOKENS,
-      thinking_level: GEMINI_THINKING_LEVEL,
-      system: EVENT_CHAT_SYSTEM_PROMPT,
-      user: userMessage,
-      history,
-      label: 'event-chat',
-      business_id: business?.id || null,
+      businessId:     business?.id,
+      message:        userMessage,
+      sessionStartAt: SESSION_START_AT_ISO,
     }),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = data?.error?.message || data?.error || r.statusText;
-    throw new Error(`gemini ${r.status}: ${msg}`);
+  if (!r.ok || !data?.ok) {
+    throw new Error(data?.error || `event-chat ${r.status}`);
   }
-  const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
-  const text = Array.isArray(cand?.content?.parts)
-    ? cand.content.parts.find((p) => typeof p?.text === 'string')?.text
-    : null;
-  if (typeof text !== 'string') throw new Error('no text from model');
-
-  // System prompt forces JSON via responseMimeType; be defensive anyway.
-  const trimmed = String(text).trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  const body = fenced ? fenced[1] : trimmed;
-  return JSON.parse(body);
+  return data.assistantMessage?.parsed || {};
 }
 
 // Send-button handler. Guards against double-fire while a call is in flight.
@@ -1835,7 +1829,14 @@ async function finalizeAndSaveEvent(goBtn) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ businessId: business.id, event: { name, description } }),
+      body: JSON.stringify({
+        businessId: business.id,
+        event:      { name, description },
+        // Server backfills business_event_chats.event_id on every row
+        // from this chat session so the admin API can surface "here's
+        // the conversation that produced event X".
+        sessionStartAt: SESSION_START_AT_ISO,
+      }),
     });
     const upsertData = await upsertRes.json().catch(() => ({}));
     if (!upsertRes.ok || !upsertData.ok || !upsertData.event) {
@@ -1852,8 +1853,11 @@ async function finalizeAndSaveEvent(goBtn) {
 
     // Reset the chat for the next event. Restore the textarea to its
     // initial multi-row + placeholder state so the next event begins fresh.
+    // Bump SESSION_START_AT_ISO so the next chat starts with no context
+    // from the just-finalized session — mirrors what a hard refresh does.
     chatState.messages = [];
     chatState.proposed = null;
+    SESSION_START_AT_ISO = new Date().toISOString();
     $('chatMessages').innerHTML = '';
     const ci = $('chatInput');
     ci.rows = 3;

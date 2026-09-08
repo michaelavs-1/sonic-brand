@@ -77,12 +77,21 @@ const EXCLUDE_GENRES = EXCLUDE_ARG
 
 // PostgREST paginated select via Range header — works for tables much larger
 // than the 1000-row default page.
-async function fetchAllPaginated(table, query = {}) {
+//
+// IMPORTANT: `orderCol` is REQUIRED. Without ORDER BY, PostgREST's paginated
+// reads (`Range` header) are unstable — Postgres can return rows in slightly
+// different orders across pages, so some rows get double-served and others
+// missed. That silent drift is what caused the false-orphan bug (2026-09-07):
+// dry-run reported ~46k orphans that were actually already in track_analyses,
+// because the taSet built from paginated reads was incomplete.
+async function fetchAllPaginated(table, query = {}, orderCol) {
+    if (!orderCol) throw new Error(`fetchAllPaginated: orderCol is required (table=${table})`);
     const out = [];
     let from = 0;
     const PAGE = 1000;
     while (true) {
-        const url = `${SUPABASE_URL}/rest/v1/${table}?${new URLSearchParams(query)}`;
+        const merged = new URLSearchParams({ ...query, order: `${orderCol}.asc` });
+        const url = `${SUPABASE_URL}/rest/v1/${table}?${merged}`;
         const r = await fetch(url, {
             headers: {
                 apikey:        KEY,
@@ -110,14 +119,14 @@ async function main() {
 
     // 1. All (playlist_id, spotify_id, position) from playlist_tracks
     console.log('Fetching playlist_tracks...');
-    const ptRows = await fetchAllPaginated('playlist_tracks', { select: 'playlist_id,spotify_id,position' });
+    const ptRows = await fetchAllPaginated('playlist_tracks', { select: 'playlist_id,spotify_id,position' }, 'spotify_id');
     console.log(`  playlist_tracks rows: ${ptRows.length}`);
 
     // 2. All spotify_ids in track_analyses. In --include-errors mode we exclude
     //    status='error' rows from the "touched" set so those tracks reappear as
     //    orphans and get queued for a fresh RapidAPI attempt.
     console.log('Fetching track_analyses...');
-    const taRows = await fetchAllPaginated('track_analyses', { select: 'spotify_id,status' });
+    const taRows = await fetchAllPaginated('track_analyses', { select: 'spotify_id,status' }, 'spotify_id');
     const consideredTouched = INCLUDE_ERRORS
         ? taRows.filter((r) => r.status !== 'error')
         : taRows;
@@ -145,7 +154,7 @@ async function main() {
 
     // 4. Genre rollup (informational — helps the user see which genres benefit)
     console.log('\nFetching playlist_genres for genre rollup...');
-    const pgRows = await fetchAllPaginated('playlist_genres', { select: 'playlist_id,genre' });
+    const pgRows = await fetchAllPaginated('playlist_genres', { select: 'playlist_id,genre' }, 'playlist_id');
     const playlistGenres = new Map();
     for (const r of pgRows) {
         if (!playlistGenres.has(r.playlist_id)) playlistGenres.set(r.playlist_id, []);

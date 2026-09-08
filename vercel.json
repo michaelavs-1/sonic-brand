@@ -54,6 +54,9 @@
     "api/v6/account/event-playlist.js": {
       "maxDuration": 60
     },
+    "api/v6/account/event-chat.js": {
+      "maxDuration": 60
+    },
     "api/v6/account/expand-playlist.js": {
       "maxDuration": 60
     },

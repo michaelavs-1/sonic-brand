@@ -8,12 +8,15 @@ for (const line of envText.split(/\r?\n/)) {
 const SB  = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-async function paged(path) {
+async function paged(path, orderCol) {
+  if (!orderCol) throw new Error('paged: orderCol required — unordered pagination is unstable');
   const out = [];
   let from = 0;
   const PAGE = 1000;
+  const sep = path.includes('?') ? '&' : '?';
   while (true) {
-    const r = await fetch(`${SB}/rest/v1/${path}`, {
+    const url = `${SB}/rest/v1/${path}${sep}order=${orderCol}.asc`;
+    const r = await fetch(url, {
       headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, Range: `${from}-${from + PAGE - 1}` },
     });
     if (!r.ok && r.status !== 206) throw new Error(`${path} ${r.status}: ${await r.text()}`);
@@ -52,8 +55,8 @@ function isEditorial(id) {
 console.log('Fetching sheet Tab 2 + DB tables...');
 const [sheetText, pg, pt] = await Promise.all([
   fetch('https://docs.google.com/spreadsheets/d/1AkMEsptNZFavFDpjbWnbAomhND9Ub004MFD7cICeXr8/export?format=csv&gid=1199564828', { headers: { 'User-Agent': 'Mozilla/5.0' } }).then(r => r.text()),
-  paged('playlist_genres?select=playlist_id,genre'),
-  paged('playlist_tracks?select=playlist_id'),
+  paged('playlist_genres?select=playlist_id,genre', 'playlist_id'),
+  paged('playlist_tracks?select=playlist_id', 'playlist_id'),
 ]);
 
 const lines = sheetText.split('\n');

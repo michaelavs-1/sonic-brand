@@ -16,6 +16,32 @@
 */
 
 import { pgrInsert, pgrPatch, pgrSelect } from '../../v5/supabase-client.js';
+
+// Backfill business_event_chats.event_id for every row from the caller's
+// current chat session — the session_start_at ISO timestamp the client
+// mints on module load / after each finalize. Runs after a successful
+// INSERT into business_events; a failure is logged but never surfaced
+// (persistence of the event itself is more important than the audit
+// link, and the chat rows without event_id are still queryable by time
+// range if we ever need to reconstruct).
+async function backfillEventChatEventId({ businessId, eventId, sessionStartAt }) {
+  if (!businessId || !eventId
+      || typeof sessionStartAt !== 'string'
+      || !sessionStartAt.length
+      || Number.isNaN(Date.parse(sessionStartAt))) return;
+  try {
+    await pgrPatch('business_event_chats',
+      {
+        business_id: `eq.${businessId}`,
+        created_at:  `gte.${sessionStartAt}`,
+        event_id:    'is.null',
+      },
+      { event_id: eventId },
+    );
+  } catch (e) {
+    console.warn('[upsert-event] event_chats backfill failed:', e.message);
+  }
+}
 import { requireBusinessOwner }           from './_require-business-owner.js';
 import { setCors }                        from '../origin-guard.js';
 
@@ -45,7 +71,7 @@ export default async function handler(req, res) {
     const user = await verifyUser(req);
     if (!user) return res.status(401).json({ error: 'unauthorized' });
 
-    const { businessId, event } = req.body || {};
+    const { businessId, event, sessionStartAt } = req.body || {};
     if (!businessId || !event || typeof event !== 'object') {
       return res.status(400).json({ error: 'businessId and event required' });
     }
@@ -80,6 +106,13 @@ export default async function handler(req, res) {
     }, { returnRows: true });
     const row = Array.isArray(inserted) ? inserted[0] : inserted;
     if (!row?.id) return res.status(500).json({ error: 'insert returned no row' });
+
+    // Stamp business_event_chats rows from this chat session with the
+    // freshly-created event's id. Async but awaited (Vercel serverless
+    // kills fire-and-forget promises after res.end — see the Gemini
+    // spend-log gotcha).
+    await backfillEventChatEventId({ businessId, eventId: row.id, sessionStartAt });
+
     return res.status(200).json({ ok: true, event: row });
   } catch (err) {
     console.error('[upsert-event] failed:', err.message);

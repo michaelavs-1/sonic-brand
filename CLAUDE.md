@@ -435,15 +435,29 @@ Gemini chatbot on `/v6/account`'s Profile tab. The Profile tab's section order i
   "צור פלייליסט" button (see `chatState` and `appendConfirmActions` in
   `v6/account/app.js`). System prompt lives in
   `v6/generation/event-chat-prompt.js`; Gemini 3.6-flash, thinking=low,
-  responseMimeType=JSON, multi-turn via the `history` arg on
-  `/api/v6/gemini`. Off-topic messages get a polite redirect. Chat is
-  ephemeral — cleared on refresh and on a successful finalize.
+  responseMimeType=JSON. Off-topic messages get a polite redirect.
+- **Chat is now persisted** (2026-08-30 migration). Client hits
+  `POST /api/v6/account/event-chat` (a wrapper mirroring direction-chat's
+  design) which loads context, calls the shared Gemini proxy with
+  `label:'event-chat'`, and INSERTs both the user turn and the assistant
+  turn into `business_event_chats`. Client-side, the visible transcript
+  still clears on hard refresh and on a successful finalize — a
+  `SESSION_START_AT_ISO` client-generated timestamp (bumped after every
+  finalize) filters BOTH the on-screen transcript AND the tail messages
+  the server includes in Gemini's context, so display + model memory stay
+  in sync. Persistence is orthogonal — every turn is durably logged for
+  admin visibility regardless of what the client shows. Rate-limited
+  20/min per IP.
 - **Editing existing events was dropped** with the chat rewrite (no
   pencil button on cards). Delete + re-chat is the workflow. Restore
   by adding an "edit this event" chat flow if needed.
 - **Finalize is a two-step client chain** in `finalizeAndGenerate`:
   1. `POST /api/v6/account/upsert-event` inserts the `business_events`
      row using Gemini's `proposed.name_he` + `proposed.description_he`.
+     Also backfills `business_event_chats.event_id` on every chat row
+     from this session (WHERE `created_at >= sessionStartAt` AND
+     `event_id IS NULL`) so the admin API can surface "here's the
+     conversation that produced this event".
   2. `POST /api/v6/account/event-playlist` runs unchanged from the
      previous UI — Claude Haiku 4.5 extracts genres+BPM from
      description, queries `v5_direction_tracks` (no popularity screen),
@@ -545,6 +559,11 @@ sonic-brand/
 │   │   ├── transcribe.js                   ← Whisper (OpenAI)
 │   │   └── account/
 │   │       ├── _daily-builder.js           ← Shared build+persist module: buildDailyBatch, activeDirections
+│   │       ├── _require-business-owner.js  ← requireBusinessOwner(businessId, userId) — SELECT businesses row and
+│   │       │                                  verify owner_id matches the JWT-authenticated caller. Used by
+│   │       │                                  expand-playlist, event-playlist, generate-daily to close an
+│   │       │                                  authorization hole where any valid JWT could otherwise write to
+│   │       │                                  any business's data via service-role writes.
 │   │       ├── _expire-playlist.js         ← Shared expirePlaylistNow() — rename + empty + unfollow + mark deleted.
 │   │       │                                  Used by both the hourly cron and direction-chat's apply endpoint.
 │   │       ├── signup.js                   ← Supabase admin user + business + business_directions + super_liked_tracks; backfills gemini_call_log with new business_id via onboarding_session_id
@@ -554,7 +573,8 @@ sonic-brand/
 │   │       ├── update-hours.js             ← Profile-page hours edit; logs before/after into business_settings_changes
 │   │       ├── update-business-name.js     ← Profile-page business-name edit (added 2026-09-05, replaces client-direct
 │   │       │                                  sb.from('businesses').update); logs before/after into business_settings_changes
-│   │       ├── upsert-event.js             ← business_events insert/update from the event chat finalize
+│   │       ├── upsert-event.js             ← business_events insert/update from the event chat finalize; backfills business_event_chats.event_id
+│   │       ├── event-chat.js               ← One Gemini turn for the special-events chat; persists both messages to business_event_chats
 │   │       ├── delete-event.js             ← Card-level delete; archives the row into `deleted_events` before deleting
 │   │       ├── direction-chat.js           ← One Gemini turn for the direction-edit chat; persists both messages
 │   │       ├── preview-direction.js        ← Round-robin anchor track for a merged (edit) or inline (add) spec
@@ -623,6 +643,9 @@ sonic-brand/
 ├── scripts/
 │   ├── benchmark-directions.mjs            ← OpenAI vs Anthropic timing/quality benchmark
 │   ├── purge-rubin-playlists.mjs           ← Unfollow all Rubin playlists (source: created_playlists ledger)
+│   ├── purge-pre-cron-playlists.mjs        ← Unfollow Rubin playlists NOT dated today (source: GET /me/playlists).
+│   │                                          Requires playlist-read-private scope on the refresh token.
+│   │                                          Default dry-run; 2s inter-call pacing; per-line timestamped logs.
 │   ├── purge-users.mjs, purge-users-except.mjs ← Tear down test users end-to-end
 │   ├── migrate-directions-to-table.mjs     ← Backfill business_directions from historical business_playlists.expansion
 │   ├── migrate-user-metadata-to-tables.mjs ← Backfill per-business tables from legacy user_metadata blobs
@@ -641,6 +664,10 @@ sonic-brand/
 │   ├── post-deploy-health.mjs              ← Post-deploy sanity: cleanup ledger + daily-gen output + Redis state
 │   ├── cleanup-orphaned-playlists.mjs      ← One-off (2026-08-27): direct-Spotify cleanup for the Aug-22 141-row backlog
 │   ├── build-today-oneoff.mjs              ← One-off (2026-08-27): manually build today's daily playlists during the kill-switch window
+│   ├── feedback-*.js / feedback-*.sql      ← V1/V2-era legacy. `feedback-system.js` / `-mirror.js` / `-dynamic.js`
+│   │                                          are `index.html`-patching installers for a pre-v4 UI's feedback
+│   │                                          system (thumb-down banlist → dynamic learned_insights). Not called
+│   │                                          by anything in v4/v5/v6. Kept in-tree for now; candidate for `git rm`.
 │   ├── mirror-vercel-deployment.mjs        ← Pull deployment source via Vercel API
 │   └── mirror-live-site.mjs                ← Pull deployed static assets via HTTP
 ├── benchmark-results/                      ← JSON outputs from benchmark script
@@ -668,7 +695,7 @@ wire it in `vercel.json`.
 
 ### The state machine — `v6/app.js goToStep(n)`
 
-- One `state` object holds `bizName`, `bizDesc`, `confirmedPlace`, `atmosphereRows`, `selectedAtmos`, `hours`, `longestMinutes`, `directions`, `page2Promise`, `popularityWindow`, `picked`, `results`.
+- One `state` object holds `bizName`, `bizDesc`, `onboardingSessionId` (tab-lifetime UUID used to attribute pre-signup Gemini spend), `confirmedPlace`, `atmosphereRows`, `selectedAtmos`, `musicalEmphases` (step 3), `round2Emphases` (R2-only, cleared when `directions` is invalidated), `superLikedTracks` (Set), `superLikedGenres` (Map), `hours`, `longestMinutes`, `directions`, `page2Promise`, `picked`, `results`. **`popularityWindow` was removed 2026-09-02** when per-direction `popularity_preference` replaced the atmosphere-derived window.
 - Progress bar steps at top of screen ("תיאור העסק / בחירת אווירה / בחירת כיוונים / פלייליסטים לדוגמה") are **clickable** for any step the user has reached — clicking navigates back with pre-filled state. Downstream state is invalidated when going back so re-submitting refreshes it.
 - Steps use AbortController: clicking back aborts the in-flight step's promise chain and re-enters at the target step.
 
@@ -943,6 +970,7 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 - `/api/new/spotify`, `/api/v4/spotify` — 60/min
 - `/api/v6/account/signup` — 20/hour (per IP; abuse-mitigation)
 - `/api/v6/account/direction-chat` — 20/min (profile-tab chat turn)
+- `/api/v6/account/event-chat` — 20/min (events-tab chat turn)
 - `/api/v6/account/preview-direction` — shares the `anchor-tracks` bucket (60/min)
 - `/api/v6/account/apply-direction-change` — 10/min (commits add/edit/remove)
 - `/api/v6/account/toggle-super-like` — 60/min (super-like button toggle in the preview modal)
@@ -1273,6 +1301,7 @@ Everything the account dashboard reads lives here:
 - `business_direction_chats` — { id, business_id, role ('user'|'assistant'), content (raw JSON for assistant / plain text for user), proposal (jsonb — parsed structured payload attached to an assistant turn: `{kind, direction_id?, updates?, spec?}`), selected_direction_id (nullable FK, which card the owner had selected when they sent this), created_at }. Rolling per-business message log for the profile-tab direction-edit chat. Client renders the transcript on tab open; server loads the tail (last 40) as Gemini chat history each turn.
 - `business_direction_changes` — { id, business_id, direction_id (nullable — null when the pre-insert direction hasn't landed yet), kind ('add'|'edit'|'remove'), before (jsonb direction snapshot), after (jsonb direction snapshot), message_id_first, message_id_last (nullable FKs into business_direction_chats — the message range that produced this change), playlist_action ('rebuilt'|'expired'|'kept'|'renamed'|null), applied_at }. Written by `/api/v6/account/apply-direction-change` on every commit; surfaced by the internal admin API as the audit feed per business. `'renamed'` was added 2026-09-02 for the cosmetic-only edit fast path (title / description-only chat edits) — see the migration `2026-09-02-direction-changes-renamed-action.sql`.
 - `business_settings_changes` — { id bigserial, business_id, field (text — `'name'` or `'hours'`), before (jsonb), after (jsonb), changed_at }. Audit log for business-level settings that upsert in-place (i.e. don't produce a versioned history on their own). Written by `api/v6/account/update-business-name.js` and `api/v6/account/update-hours.js` on every non-no-op save. `field` is free text (no CHECK-enum) so future settings can join without another migration; for `'name'` the before/after are JSON-quoted strings, for `'hours'` they're `{hours, longest_minutes}` objects. Added 2026-09-05 (migration `2026-09-05-owner-change-history.sql`).
+- `business_event_chats` — { id, business_id, role ('user'|'assistant'), content (raw JSON for assistant / plain text for user), proposal (jsonb — `{name_he, description_he}` on confirming assistant turns; null otherwise), event_id (nullable FK → business_events; backfilled by `upsert-event.js` when the chat produces a saved event), created_at }. Rolling per-business message log for the special-events chat on `/v6/account`. Written by `POST /api/v6/account/event-chat`. Client's on-screen transcript still resets to empty on hard refresh / after finalize — a client `SESSION_START_AT_ISO` gates both what the browser shows AND what the server includes in Gemini's context. Persistence is orthogonal (every turn logged for admin visibility regardless of what the client displays). Added 2026-08-30 (migration `2026-08-30-event-chat.sql`).
 
 **Ledgers + operational state:**
 - `created_playlists` — the expiry ledger. Columns: `spotify_id` (PK), `name`, `expires_at`, `deleted_at`, `error`, `owner_id` (nullable FK → auth.users), `business_id` (nullable FK → businesses). Both FKs use ON DELETE SET NULL so the cron can still unfollow expired playlists after their owner/business is deleted. Rows written by onboarding (via /api/v5/record-playlist) start with NULL owner/business — signup.js back-fills them. Renamed from `v5_created_playlists` on 2026-08-02; migration in `v5/precompute/migrations/`.
@@ -1288,7 +1317,7 @@ Everything the account dashboard reads lives here:
 
 ### Track pool coverage
 
-**~114k successfully-analyzed tracks** in `track_analyses` as of 2026-08-26; the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, and a handful of others through early September). This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses` in Supabase (or grep the batch log: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (116 entries as of 2026-09-02 per `v6/generation/genre-list.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
+**~121k successfully-analyzed tracks** in `track_analyses` as of 2026-09-08; the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, Israeli genres, Japanese Folk, and a handful of others through early September). This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses` in Supabase (or grep the batch log: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (116 entries as of 2026-09-02 per `v6/generation/genre-list.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
 
 ---
 

@@ -3,12 +3,19 @@
 // fire one model call against real business inputs, and see the returned
 // directions in a readable text block with a copy button.
 //
-// Which model runs (Anthropic vs Gemini) is controlled by v6/generation/ai-provider.js.
-// One switch there governs both this dashboard and the v6 production flow.
+// As of 2026-09-20 the dashboard reads the v7 prompt (diagnostic taste
+// probes, homogeneous clusters — see v7/generation/musical-directions.js).
+// It used to read v5's byte-identical mirror of v6's blend-style prompt.
+// v5's file still exists for the legacy v5/app.js standalone UI, but Ami
+// is no longer tuning against it.
+//
+// Which model runs (Anthropic vs Gemini) is controlled by v7/generation/ai-provider.js
+// (v7 has its own provider switch, separate from v6's). Flipping PROVIDER in
+// that file changes both this dashboard AND future v7 production traffic.
 //
 // Flow:
-//   1. Import EDITABLE_PROMPT_SECTION + FIXED_PROMPT_SECTION from the
-//      musical-directions module (single source of truth).
+//   1. Import EDITABLE_PROMPT_SECTION + assembleSystemPrompt from the v7
+//      musical-directions module (single source of truth for v7 prompt tuning).
 //   2. Pre-fill the textarea with EDITABLE_PROMPT_SECTION.
 //   3. On generate: assemble system = editedEditable + '\n\n' + FIXED,
 //      user message = business inputs, call the shared ai-provider.
@@ -18,9 +25,9 @@
 import {
   EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt,
-} from '/v5/generation/musical-directions.js?v=02092026a';
+} from '/v7/generation/musical-directions.js?v=20092026a';
 import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
-import { callModel, parseJSONFromText, PROVIDER } from '/v6/generation/ai-provider.js?v=04082026a';
+import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=20092026a';
 
 // Match v6 production. Gemini 3.6-flash's hard output-token cap is 65536;
 // values above that are silently clamped by Google. Under thinkingLevel

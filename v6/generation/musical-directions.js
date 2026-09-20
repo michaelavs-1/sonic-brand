@@ -35,6 +35,12 @@
 // on `/v6/*` in vercel.json (browsers revalidate on every load), which
 // makes the query-string bump redundant here anyway.
 import { callModel, parseJSONFromText } from './ai-provider.js';
+// Genre universe moved to shared/ on 2026-09-20 so v7 can import the same
+// source of truth without a manual sync. Re-exported below for backward
+// compat — every existing importer of GENRE_UNIVERSE_SECTION from this file
+// (direction-edit-chat-prompt, refined-directions) keeps working unchanged.
+import { GENRE_UNIVERSE_SECTION } from '../../shared/genre-universe.js';
+export { GENRE_UNIVERSE_SECTION };
 
 // Raised from 16000 → 65536 (Gemini 3.6-flash's hard output-token cap;
 // values above that are silently clamped by Google). Removes our own
@@ -77,12 +83,6 @@ const MAX_TOKENS = 65536;
 // error contract — without duplicating them and inviting drift.
 
 const ROUND1_INTRO = `You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into up to 8 distinct "musical directions" presented to the business owner. The owner will see one representative song from the direction, pick the ones they like, and each picked direction becomes the seed for a real playlist.`;
-
-export const GENRE_UNIVERSE_SECTION = `## Genre Universe
-
-The ONLY genres you may use are the ones in this list. Do not invent, rename, translate, or combine genres. If a musical style is not in the list, it does not exist for the purposes of this task.
-
-Alternative pop, Alternative R&B, 80s Pop, 90's pop party, Acid Jazz, African Highlife, Afro Funk, Afro House, AfroBeats, Algerian Rai, Amapiano, Anatolian Psychedelic Rock, Arab Classic, Arabic Funk, Argentine Tango, Baroque, Bedroom Pop, Blues, Bolero, Bossa Nova, Britpop, Cantopop, Cha Cha Cha, Chamber music, Chinese City Pop, Country, Dabke, Dancehall, Deep House, Desi LoFi, Disco, DownTempo, Easy Listening, Electro Pop, Electro Swing, Ethio-Jazz, Fado, Female Pop, Flamenco, Folk, French DownTempo, French Funk, French Hip Hop, French Jazz, French RnB, French Ye Ye, Funk, German Hip Hop, Greek Funk, Grunge, Gypsy jazz, Hawaii ukulele music, Heavy Rock+Metal, Hip Hop, Icelandic Hip Hop, Indie Dance, Indie Folk, Indie Rock, IndieTronica, Italian Funk, Italo Disco, Japanese City Pop, Japanese Folk, Japanese RnB, Jazz (Standards), Jazz House, JazzHop, K-Pop, Korean RnB, Laiko, Latin Boogaloo, Latin Funk, Late Night jazz, LoFi Beats, LoFi Bossa, Lovers Rock, Medieval Music, Modern Pop, Musica Tropical, Neo Exotica, Neo Soul, Nu Disco, Nu Metal, Organic House, Peruvian Chicha, Peruvian Cumbia, Piano Impressionism, Post Punk, Progressive & Psy Trance, Punk, Rebetiko, Reggae, Reggaeton, Rnb, Rock, Salsa, Samba, Samba-Choro, Smooth Jazz, Soulful House, Swing Jazz, Tech House, Thai Molam, Tishoumaren, Trap, Turk Arabesk, UKG, Uplifting & Vocal Trance, Dubstep, Grime & Drill, בלדות ישראליות, פופ מזרחית, מזרחית ישנה, רוק ישראלי, שירי ארץ ישראל, שירי יום הזיכרון והשואה`;
 
 const ROUND1_INPUTS_SECTION = `## Inputs
 

@@ -1,46 +1,75 @@
-// v5 musical-directions generator. Split into TWO Claude calls so the second
-// half can generate while the user is interacting with the first half.
+// v7 musical-directions generator — diagnostic taste probes.
 //
-//   Call 1 (blocking): 4 top-fit directions → returned immediately
-//   Call 2 (background): 4 more adventurous directions → returned as a Promise
+// Key design shift from v6:
+//   - v6 directions were curated blends (multi-cultural fusion encouraged).
+//     Each picked direction became the seed for a real playlist post-signup.
+//   - v7 directions are diagnostic PROBES — tightly clustered groups of
+//     near-identical genres that test a single taste vector. Owner sees one
+//     representative track per direction on the swipe deck; liking a track
+//     flags the whole cluster as one taste signal. Downstream (post-onboarding)
+//     the picked directions dissolve into a flat liked-genres list, and
+//     playlists are built off that list — NOT off individual directions.
+//     Overlapping genres across two liked directions are therefore not a
+//     duplicate: they become a stronger genre-level taste signal.
 //
-// Downstream (preview.js) renders page 1 as soon as Call 1 lands, then awaits
-// the page-2 Promise when the user clicks continue. Call 2 typically finishes
-// while the user is listening to page-1 tracks, so the second page appears
-// instantly.
+// Structural mirror of v6:
+//   - Two-call 4+4 split (page 1 blocks, page 2 fires in the background)
+//   - Same output shape (rank, title_en, genres, description_he, bpm_range,
+//     instrumentalness_preference, popularity_preference) so v7/preview.js
+//     can fork v6/preview.js with minimal changes
+//   - Same provider switch via ai-provider.js
+//   - Same Places injection anchors (### Processing Rules: / ## Energy &
+//     Pairing Constraints) — v7 keeps both headings in place
 //
-// Network: POST /api/v5/anthropic (twice)
+// Rules kept from v6 (acoustic-compatibility, not diversity — still valid):
+//   - Beat & Percussion Pairing (from v6 ENERGY_COHESION_RULE §1, bullet 2)
+//   - Jazz Isolation Rule (v6 §2, verbatim)
+//   - Pop Isolation Rule (v6 §5, verbatim)
+//   - House & Techno Containment Rule (v6 §6, verbatim)
+//   - Musical Emphases handling (verbatim)
+//   - Instrumentalness preference classification (verbatim)
+//   - Popularity preference classification (verbatim)
+//   - Japanese Folk Restriction (verbatim)
+//   - Atmospheres vs Text tiebreaker (verbatim)
+//   - Business Name rule (verbatim)
+//   - Google Places context injection (verbatim)
+//   - Output Language / English Title conceptually / Hebrew Description
+//     vocabulary constraints
+//   - When NOT to return directions (error contract, verbatim)
 //
-// Success return:
-//   { directions:   [4 objects, ranks 1-4],
-//     page2Promise: Promise<{ directions: [4 objects, ranks 5-8] }
-//                          | { error, reasoning_en }> }
+// Rules DROPPED from v6:
+//   - Multi-Cultural & Cross-Regional Fusion (§3) — contradicts homogeneity
+//   - Equal Genre Weight & Density (§4) — v7 clusters are smaller and tighter
+//   - Direction Diversity & Non-Overlap (single ≤1 shared genre) — v7 allows
+//     overlap because downstream aggregates to a genre list
+//   - "Regional Blends" bullet from §1 — subsumed by same-cultural-register
+//     rule under HOMOGENEITY_SECTION
 //
-// Error return (Call 1 failure only — Call 2 failures are surfaced via the
-// page2Promise result):
-//   { error: 'not_a_music_venue' | 'insufficient_description' | 'off_topic' |
-//            'matcher_error',
-//     reasoning_en: '...' }
-
-// Genre universe moved to shared/ on 2026-09-20 so v5/v6/v7 share one source
-// of truth. Re-exported below for backward compat — Ami's dashboard imports
-// GENRE_UNIVERSE_SECTION from here and keeps working unchanged.
+// Rules NEW for v7:
+//   - Cluster Homogeneity (same tempo / energy / instrumentation / cultural
+//     register / mood — tight enough that liking one implies liking the rest)
+//   - Direction Distinctness (8 different archetypes; overlap allowed)
+//   - Title format simplified — "Clear Stylistic Identity" per Ami's brief
+//   - Hebrew description reframed for a single-vibe cluster (not a "blend")
+//
+// The genre list is imported from shared/genre-universe.js — same source of
+// truth as v5 and v6. NO `?v=` cache-bust on relative imports (Node's ESM
+// loader treats query strings as part of the filename).
+import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION } from '../../shared/genre-universe.js';
 export { GENRE_UNIVERSE_SECTION };
 
-const MODEL = 'claude-sonnet-4-6';
-const MAX_TOKENS = 4000;
-// If you change the DB's genre spelling, update this list too or anchor
-// lookups will silently drop that direction.
+// Same output ceiling as v6 — Gemini 3.6-flash hard limit. Thinking-heavy
+// runs can overflow smaller caps and truncate the JSON.
+const MAX_TOKENS = 65536;
+
 // ---------- Prompt sub-constants ----------
 //
-// Split into sub-constants so v6/generation/refined-directions.js (Round 2)
-// can reuse the shared parts without duplication. The composed
-// EDITABLE_PROMPT_SECTION is byte-identical to the pre-refactor single
-// template literal — Ami's prompt dashboard (which imports this file)
-// sees exactly the same string in its textarea.
+// Composed at load time into EDITABLE_PROMPT_SECTION and FIXED_PROMPT_SECTION,
+// same shape as v6 so v7's Ami dashboard (when we set it up) sees a familiar
+// textarea layout.
 
-const ROUND1_INTRO = `You design strategic sonic identities for a public-facing-business playlist tool. Your job is to translate a description of a business into up to 8 distinct "musical directions" presented to the business owner. The owner will see one representative song from the direction, pick the ones they like, and each picked direction becomes the seed for a real playlist.`;
+const ROUND1_INTRO = `You design diagnostic taste probes for a public-facing-business playlist tool. Given a description of a business, produce up to 8 tightly-clustered "musical directions" from a fixed genre universe. Each direction is a small group of near-identical genres — same tempo band, same energy tier, same instrumentation family, same cultural register, same mood. The owner sees one representative song from each direction on a swipe deck; liking or disliking that sample flags the whole cluster as one taste vector. Downstream the picked directions dissolve into a flat liked-genres list — overlapping genres across two liked directions become a stronger signal, not a bug.`;
 
 const ROUND1_INPUTS_SECTION = `## Inputs
 
@@ -74,15 +103,37 @@ export const PROCESSING_RULES_SECTION = `### Processing Rules:
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.`;
 
-// ENERGY_PAIRING_SECTION is composed at load time from six named sub-rules
-// (below). Byte-identical mirror of v6. See v6/generation/musical-directions.js
-// for why the split exists (chat prompt imports individual rules and skips §3).
+// ---------- v7's core new sections ----------
 
-export const ENERGY_COHESION_RULE = `### 1. Absolute Energy & Dynamic Cohesion (Zero Tolerance for Mismatches)
+export const HOMOGENEITY_SECTION = `## Cluster Homogeneity (Diagnostic Probe Design)
 
-- **Unbroken Dynamic & Rhythm Compatibility:** Every direction MUST maintain a completely cohesive dynamic feel, rhythmic foundation, and energy level (1 to 10).
-- **Strict Beat/Percussion Pairing Rules:** NEVER pair genres with strong rhythmic grooves, prominent drum patterns, or sexy/upbeat vibes (e.g., \`RnB\`, \`French RnB\`, \`Funk\`, \`Neo Soul\`) with ambient, drumless, or slow acoustic genres (e.g., \`Late Night jazz\`, \`Piano Impressionism\`, \`Chamber music\`). Switching between a drum-driven beat and a beatless slow jazz track within the same direction is strictly forbidden.
-- **Strict Energy Filtering within Regional Blends:** When combining cultural/regional music, remove high-energy outliers that break the room's vibe (e.g., if creating a mid-tempo Mediterranean/Latin direction, pair Flamenco, Arab Classic, and Turk Arabesk, but strictly EXCLUDE high-energy festival genres like Samba, Salsa, or Dabke).`;
+Every direction is a diagnostic probe: a small cluster of genres so near-identical in sound that liking one implies liking the others. This is different from a curated "cohesive playlist" — clusters are tight, not blended for variety within.
+
+Rules for building a cluster:
+- **Same tempo band.** All genres in the cluster share the same BPM range.
+- **Same energy tier.** No mixing high-energy dance with mid-tempo groove, or mid-tempo groove with slow acoustic.
+- **Same instrumentation family.** Guitar-forward pairs with guitar-forward, synth-forward with synth-forward, acoustic with acoustic.
+- **Same cultural register.** Regional/scene-specific genres cluster with their siblings, not their distant cousins (e.g. \`Japanese RnB\` clusters with \`Korean RnB\` or \`French RnB\`, not with \`Chamber music\`).
+- **Same mood.** Melancholic with melancholic, upbeat with upbeat, sultry with sultry.
+
+Test: if two genres in a cluster would appeal to meaningfully different listener profiles, split them into two directions.`;
+
+export const DISTINCTNESS_SECTION = `## Direction Distinctness
+
+The 8 clusters must represent distinctly different musical archetypes. Any two clusters should differ on at least two of: tempo band, energy tier, cultural register, mood. If two of your clusters test the same taste vector you've wasted a probe slot — replace one of them.
+
+**Overlapping genres across clusters are allowed.** If a genre legitimately sits at the intersection of two archetypes (e.g. \`Bossa Nova\` in both a "late-night jazz" cluster and a "sultry acoustic" cluster), it may appear in both. When the owner likes two clusters that share a genre, the overlap becomes a stronger genre-level taste signal downstream — a feature, not a duplicate.`;
+
+// ---------- Retained acoustic-compatibility rules ----------
+//
+// These are byte-identical to v6's equivalents. Kept in v7 as an independent
+// copy so v7 has no runtime dependency on v6/generation/musical-directions.js.
+// If Ami later tweaks one of these rules and both v6 and v7 should get it,
+// promote the sub-constant to shared/ the same way GENRE_UNIVERSE_SECTION was.
+
+export const BEAT_PERCUSSION_RULE = `### 1. Beat & Percussion Pairing
+
+NEVER pair genres with strong rhythmic grooves, prominent drum patterns, or sexy/upbeat vibes (e.g., \`RnB\`, \`French RnB\`, \`Funk\`, \`Neo Soul\`) with ambient, drumless, or slow acoustic genres (e.g., \`Late Night jazz\`, \`Piano Impressionism\`, \`Chamber music\`). Switching between a drum-driven beat and a beatless slow jazz track inside a single cluster is strictly forbidden.`;
 
 export const JAZZ_ISOLATION_RULE = `### 2. Jazz Isolation Rule
 
@@ -92,102 +143,79 @@ export const JAZZ_ISOLATION_RULE = `### 2. Jazz Isolation Rule
   - \`Bossa Nova\`
   - \`Fado\``;
 
-export const MULTI_CULTURAL_RULE = `### 3. Multi-Cultural & Cross-Regional Genre Fusion
-
-- **Avoid Monocultural Silos:** Do NOT restrict directions to a single geographic or stylistic domain (e.g., avoid creating a "purely Latin" or "purely Arabic" direction if the energy tier allows for cross-cultural integration).
-- **Maximize Complementary Global Genres:** Proactively weave together genres from different regions and cultural scenes that share the exact same energy and dynamic feel.
-  - *Example 1 (Cross-Cultural Lounge/Dining):* Blend Latin, Middle Eastern, Turkish, and European flavours (Flamenco, Arab Classic, Turk Arabesk, Rebetiko, Fado) under one cohesive mid-tempo vibe.
-  - *Example 2 (Cross-Cultural Energetic Dining):* Blend Latin, Middle Eastern, Asian, and European flavours (Cha Cha Cha, Peruvian Cumbia, Anatolian Psychedelic Rock, Tishoumaren, Thai Molam, Samba-Choro) under one cohesive, not danceable yet groove-filled vibe.
-  - *Example 3 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, Neo Soul, Acid Jazz, French RnB, Japanese RnB, and Korean RnB.
-  - *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk, Latin Funk).
-  - *Example 5 (Global Disco and City Pop):* Genres from around the world that share a similar groove background, such as a disco groove, pair naturally. In this case, Disco (not Nu Disco or Italo Disco) along with Japanese City Pop and Chinese City Pop.`;
-
-export const EQUAL_GENRE_WEIGHT_RULE = `### 4. Equal Genre Weight & Density (No Anchor Genre)
-
-- **Holistic Direction Composition:** There is NO anchor genre. Every direction is defined as the unified sum of all its constituent genres.
-- **Target Genre Count:** Actively aim for 4 to 6 genres per direction to create rich, varied sonic identities.
-- **Justified Minimal Exceptions (1–3 Genres):** A direction may contain fewer than 4 genres (1–3 genres) ONLY if it serves an isolated, hyper-specific contextual need (e.g., pure שירי ארץ ישראל or dedicated electronic sub-genres) where adding external genres would destroy dynamic or cultural coherence.
-- **Stand-Alone / Near-Stand-Alone Genres:** Certain musical styles function effectively as a complete, standalone direction or paired with at most ONE closely related genre. If any of the following genres fit the business context well based on the client's input, you may present a direction consisting **solely of that genre** or **that genre plus one closely related style**:
-  - \`Nu Metal\`
-  - \`Indie Rock\`
-  - \`Punk\`
-  - \`Blues\`
-  - \`Folk\`
-  - \`Jazz House\``;
-
-export const POP_ISOLATION_RULE = `### 5. Strict Pop Isolation Rule
+export const POP_ISOLATION_RULE = `### 3. Strict Pop Isolation Rule
 
 - **Pop Isolation:** ALL Pop genres (including \`Bedroom Pop\`, \`Modern Pop\`, \`Female Pop\`, \`80s Pop\`, \`90's pop party\`, \`Electro Pop\`, \`Alternative Pop\`, \`K-Pop\`, \`פופ מזרחית\`, \`Cantopop\`) must NEVER be mixed with non-pop, niche, esoteric, acoustic, or electronic dance genres.
 - **Pop-Only Pairs:** Pop sub-genres can ONLY be paired with other Pop sub-genres of matching energy tiers.
 - **City Pop Exception:** City Pop sub-genres (\`Japanese City Pop\` and \`Chinese City Pop\`) are explicitly **EXEMPT** from the Pop Isolation rule and may be mixed with appropriate non-pop genres (such as Funk, Disco, or DownTempo) based on energy cohesion.`;
 
-export const HOUSE_TECHNO_RULE = `### 6. House & Techno Containment Rule
+export const HOUSE_TECHNO_RULE = `### 4. House & Techno Containment Rule
 
 - **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
 - **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.`;
 
-// Composed. Byte-identical to the pre-2026-09-02 single template literal.
+// Composed section — heading is unchanged from v6 so the Places injection
+// anchor `## Energy & Pairing Constraints` in injectPlaces() still finds it.
 export const ENERGY_PAIRING_SECTION = [
   '## Energy & Pairing Constraints',
-  ENERGY_COHESION_RULE,
+  BEAT_PERCUSSION_RULE,
   JAZZ_ISOLATION_RULE,
-  MULTI_CULTURAL_RULE,
-  EQUAL_GENRE_WEIGHT_RULE,
   POP_ISOLATION_RULE,
   HOUSE_TECHNO_RULE,
 ].join('\n\n');
 
-export const NON_OVERLAP_SECTION = `## Direction Diversity & Non-Overlap Rules
-
-**Maximum Genre Pair Overlap Limit (Strict Uniqueness)**
-
-- **Single Genre Reuse Allowed:** A single genre MAY appear across multiple directions if it suits different vibe concepts.
-- **Max Overlap Constraint (Strictly ≤ 1 Shared Genre):** No two directions may ever share more than one single genre. If Direction A contains both Neo Soul and DownTempo, no other direction across the entire output may contain both Neo Soul and DownTempo together, under any circumstances.`;
-
 const ROUND1_TASK_WORKFLOW = `## Task Workflow
 
 1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand.
-2. **Build Musical Directions:** Create up to 8 distinct directions from surviving genres, adhering strictly to energy & dynamic cohesion, Jazz Isolation Rule, cross-regional integration rules, Pop Isolation, House & Techno enclosure, Japanese Folk restriction, and the Non-Overlap Constraint. Each direction must include:
-   - **Genres list:** 4 to 6 genres from the pool (or 1–3 for justified isolated niche genres / standalone allowed genres) forming an equal, cohesive mix.
+2. **Build 8 Diagnostic Clusters:** Create up to 8 tightly-clustered directions from the surviving genres. Each direction must satisfy every rule above:
+   - Cluster Homogeneity (single unified vibe per cluster)
+   - Direction Distinctness (8 different archetypes; overlapping genres between clusters are allowed)
+   - Beat & Percussion Pairing
+   - Jazz Isolation Rule
+   - Pop Isolation Rule
+   - House & Techno Containment Rule
+   - Japanese Folk Restriction (from Processing Rules)
+   Each direction must include:
+   - **Genres list:** 3 to 6 genres from the pool that form a tight, near-identical cluster. Certain genres function well standalone or paired with one closely-related style (\`Nu Metal\`, \`Indie Rock\`, \`Punk\`, \`Blues\`, \`Folk\`, \`Jazz House\`) — these may form a 1–2 genre cluster if that best fits the venue's needs.
    - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit \`bpm_range\` as \`{"min": 0, "max": <ceiling>}\`.
 3. **Rank Directions:** Rank directions by fit to the business (best fit first).`;
 
 export const OUTPUT_LANGUAGE_SECTION = `## Output Language & Formatting
 
-- **Titles (\`title_en\`):** Written in English (4–7 words), constructed strictly around: **[Style/Genre Elements] + [Dynamic Tier] + [Operational Use/Context]**.
+- **Titles (\`title_en\`):** Written in English — see the "Rules for English Titles" section below.
 - **Descriptions (\`description_he\`):** Written in natural, standard everyday Hebrew.
 - **Genre Names:** Keep genre names strictly as listed in the Genre Universe.`;
 
 export const TITLE_RULES_SECTION = `## Rules for English Titles (\`title_en\`)
 
-Each title is 4–7 words in English and must clearly combine three structured elements derived from the business description and user settings:
-1. **Style / Genre Core** (e.g., *Modern Pop*, *Acoustic Grooves*, *Upbeat Disco*, *Ambient DownTempo*)
-2. **Dynamic / Energy Level** (e.g., *Light*, *Gentle*, *High-Energy*, *Mellow*, *Vibrant*, *Deep*)
-3. **Operational Use / Practical Context** (e.g., *for Morning Hours*, *for Lunch Service*, *for Peak Hours*, *for Late Night Bar*, *for Evening Vibes*)
+Each title is a clear stylistic identity for the cluster, 3–6 words in English. It should immediately convey the kind of music inside the cluster — no operational metadata (no "for peak hours", no time-of-day, no venue-context tags), just the music itself.
 
-**Examples of valid Title constructions:**
-- "Light Pop Grooves for Morning Hours"
-- "Gentle Acoustic Rhythms for Lunch Service"
-- "High-Energy Global Beats for Evening Peak"
-- "Mellow DownTempo Vibes for Late Night Drinks"
-- "Vibrant Pop Energy for Busy Hours"`;
+Examples of valid titles:
+- "Urban Neo-Soul & Modern R&B"
+- "Late-Night Jazz & Bossa"
+- "Sultry Global Funk"
+- "Deep House Groove"
+- "Mellow Acoustic Ballads"
+- "80s Pop Nostalgia"
+- "Middle Eastern Café Blend"
+- "Nu Metal & Post-Punk Edge"`;
 
 export const HEBREW_DESCRIPTION_SECTION = `## Rules for Hebrew Descriptions (description_he)
 
-The description must capture the full collective blend of all genres in the playlist and the holistic vibe they build together, rather than describing just one dominant genre or region. It must clearly explain to the business owner the combined sound experience, its direct effect on the business, and how best to utilize it.
+The description must capture the unified vibe of the cluster and how it plays in the venue. Since the cluster is tightly homogeneous, describe the single sonic identity it represents — not a "blend of genres". Explain to the business owner what the sound feels like, its direct effect on the business, and how best to use it.
 
 ### Dynamic Structure & Content:
 
-Write 1–2 concise, impactful sentences (10–25 words total) in plain, natural everyday Hebrew. You must cover two key elements:
+Write 1–2 concise, impactful sentences (10–25 words total) in plain, natural everyday Hebrew. Cover two elements:
 
-1. **Holistic Blend & Atmosphere Effect:** Describe the combined sound generated by the whole genre mixture and how that overall atmosphere influences customer experience or venue dynamics.
+1. **Unified Sonic Identity & Atmosphere Effect:** Describe the single sound the cluster generates and how that atmosphere influences customer experience or venue dynamics.
 2. **Operational Best Use (How/When to play it):** Provide a concrete recommendation for when or how the owner should use this direction in their workflow.
 
 Examples of tone and utility:
 
-- "שילוב גרובי רך ואורבני שמחבר סאונד נשמה קלילי ומקצבים אקוסטיים – מושלם לכוס יין בשעות השקיעה ומשרה אווירה נינוחה."
-- "תערובת קצבית ונגישה של פופ ומקצבים אלקטרוניים קלים שומרת על אנרגיה שמחה וזורמת, ותגרום ללקוחות להישאר בחנות בכיף."
-- "מיקס עמוק וסקסי של מקצבים אלקטרוניים עדינים, בדיוק לרגעים שבהם הבר מתמלא והתנועה במקום מתחילה לעלות."
+- "סאונד נשמה קלילי עם מקצבים אקוסטיים — מושלם לכוס יין בשעות השקיעה ומשרה אווירה נינוחה."
+- "פופ קצבי ונגיש ששומר על אנרגיה שמחה וזורמת, יגרום ללקוחות להישאר בחנות בכיף."
+- "מקצבים אלקטרוניים עדינים עם נגיעה סקסית, בדיוק לרגעים שבהם הבר מתמלא והתנועה במקום מתחילה לעלות."
 
 ### Mandatory Hebrew Vocabulary Constraints:
 
@@ -198,14 +226,16 @@ Examples of tone and utility:
   - NO specific city names, beverage brands, or generic clichés ("כמו לשבת ב...").
 - **Language Integrity:** Standard, dictionary Hebrew spoken as a peer to another business owner.`;
 
-// Composed Round-1 editable prompt — byte-identical to the pre-refactor version.
+// Composed editable prompt — Ami's dashboard would import this if we hook up
+// a v7 prompt-tuning dashboard later.
 export const EDITABLE_PROMPT_SECTION = [
   ROUND1_INTRO,
   GENRE_UNIVERSE_SECTION,
   ROUND1_INPUTS_SECTION,
   PROCESSING_RULES_SECTION,
+  HOMOGENEITY_SECTION,
+  DISTINCTNESS_SECTION,
   ENERGY_PAIRING_SECTION,
-  NON_OVERLAP_SECTION,
   ROUND1_TASK_WORKFLOW,
   OUTPUT_LANGUAGE_SECTION,
   TITLE_RULES_SECTION,
@@ -221,7 +251,7 @@ Normal case:
   "directions": [
     {
       "rank": 1,
-      "title_en": "English title, 4-7 words (see Rules for English Titles)",
+      "title_en": "English title, 3-6 words (see Rules for English Titles)",
       "genres": ["...", "...", "..."],
       "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
       "bpm_range": {"min": 0, "max": 115},
@@ -232,7 +262,7 @@ Normal case:
   ]
 }
 
-The \`instrumentalness_preference\` field is one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Instrumentalness preference" sub-rule under Processing Rules for when to use each. Default is \`"none"\` — that's what you output when the emphases text doesn't mention instrumentals at all.
+The \`instrumentalness_preference\` field is one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Instrumentalness preference" sub-rule under Processing Rules for when to use each. Default is \`"none"\`.
 
 The \`popularity_preference\` field is also one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Popularity preference" sub-rule under Processing Rules. Default is \`"none"\`. Unlike \`instrumentalness_preference\`, this field DOES influence your genre picks — see the sub-rule for the hit-friendly vs esoteric genre lists.
 
@@ -274,29 +304,19 @@ BAD inputs (return an error — do NOT force directions):
 - "מקום" → insufficient_description (no signal)
 - "מה השעה?" → off_topic (question about the tool / unrelated)`;
 
-// Composed Round-1 fixed prompt — byte-identical to the pre-refactor version.
 export const FIXED_PROMPT_SECTION = [
   ROUND1_OUTPUT_FORMAT,
   WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION,
 ].join('\n\n');
 
-// Google Places docs (input format + processing rule) are kept completely
-// out of EDITABLE_PROMPT_SECTION — Ami sees no mention of Places in the
-// prompt-tuning dashboard. Injected back at their original textual
-// positions by assembleSystemPrompt at call time, so the assembled
-// SYSTEM_PROMPT sent to the model is byte-identical to the pre-refactor
-// version and model behavior is unchanged.
+// ---------- Places injection ----------
 //
-// Injection is anchored on two section headings Ami is expected to leave
-// in place:
-//   - `### Processing Rules:` — the Places input block is inserted just
-//      before this heading, landing at the end of `## Inputs`.
-//   - `## Energy & Pairing Constraints` — the Places processing rule is
-//      inserted just before this heading, landing at the end of
-//      `### Processing Rules:`.
-// If either anchor is missing (Ami deleted or renamed the heading), we
-// log a warning and skip that injection — the prompt still ships without
-// Places context rather than crashing.
+// Same anchors and injected content as v6. Two anchors:
+//   - `### Processing Rules:` — Places input block inserted just before it,
+//      landing at the end of `## Inputs`.
+//   - `## Energy & Pairing Constraints` — Places processing rule inserted
+//      just before it, landing at the end of `### Processing Rules:`.
+
 const PLACES_INPUT_BLOCK = `- Optionally: Google Places context — factual metadata about the venue, pulled from Google Maps if the business was matched. Format:
 
 \`\`\`
@@ -312,21 +332,21 @@ Google Places context:
 
 const PLACES_PROCESSING_RULE = `- **Google Places Context:** External factual grounding — use it to sharpen or corroborate direction choices, never as a replacement for the description. Examples: \`price_level: PRICE_LEVEL_VERY_EXPENSIVE\` + editorial mentioning "intimate" → lean elegant; \`servesBreakfast: true\` + \`servesDinner: false\` → day-part-biased toward daytime energy; \`liveMusic: true\` → venue expects live-music culture. Don't invent constraints Google didn't state. Absence of the block means Google didn't find the venue; rely on the description alone.`;
 
-function injectPlaces(editable) {
+export function injectPlaces(editable) {
   let out = editable;
   const inputsAnchor = '\n\n### Processing Rules:';
   const inputsIdx = out.indexOf(inputsAnchor);
   if (inputsIdx >= 0) {
     out = out.slice(0, inputsIdx) + '\n' + PLACES_INPUT_BLOCK + out.slice(inputsIdx);
   } else {
-    console.warn('[musical-directions] `### Processing Rules:` anchor missing — Places input block NOT injected');
+    console.warn('[v7 musical-directions] `### Processing Rules:` anchor missing — Places input block NOT injected');
   }
   const rulesAnchor = '\n\n## Energy & Pairing Constraints';
   const rulesIdx = out.indexOf(rulesAnchor);
   if (rulesIdx >= 0) {
     out = out.slice(0, rulesIdx) + '\n' + PLACES_PROCESSING_RULE + out.slice(rulesIdx);
   } else {
-    console.warn('[musical-directions] `## Energy & Pairing Constraints` anchor missing — Places processing rule NOT injected');
+    console.warn('[v7 musical-directions] `## Energy & Pairing Constraints` anchor missing — Places processing rule NOT injected');
   }
   return out;
 }
@@ -337,6 +357,8 @@ export function assembleSystemPrompt(editable) {
 
 const SYSTEM_PROMPT = assembleSystemPrompt(EDITABLE_PROMPT_SECTION);
 
+// ---------- User-message builder ----------
+
 function summarizeDirection(d, idx) {
   const genres = Array.isArray(d.genres) && d.genres.length
     ? d.genres
@@ -344,93 +366,63 @@ function summarizeDirection(d, idx) {
   return `${idx + 1}. "${d.title_en}" — ${genres.join(', ')}`;
 }
 
-function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, subset, priorDirections }) {
+function formatPlaceContext(place) {
+  if (!place || typeof place !== 'object') return null;
+  const types = Array.isArray(place.types) && place.types.length ? place.types.join(', ') : 'none';
+  const editorial = place.editorial_summary ? String(place.editorial_summary) : 'none';
+  const priceLevel = place.price_level ? String(place.price_level) : 'unknown';
+  const vibe = place.vibe && typeof place.vibe === 'object' ? place.vibe : {};
+  const vibeLine = Object.entries(vibe)
+    .filter(([, v]) => v !== null && v !== undefined)
+    .map(([k, v]) => `${k}=${v}`)
+    .join(', ') || 'none';
+  return [
+    'Google Places context:',
+    `  primary_type: ${place.primary_type || 'unknown'}`,
+    `  types: ${types}`,
+    `  editorial_summary: ${editorial}`,
+    `  price_level: ${priceLevel}`,
+    `  vibe: ${vibeLine}`,
+  ].join('\n');
+}
+
+function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections }) {
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
   const atmLine = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
   let base = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
-  // Emphases block is omitted entirely when the field is empty — see the
-  // v6 equivalent for the rationale (keep the prompt cache prefix stable).
   if (typeof musicalEmphases === 'string' && musicalEmphases.trim().length) {
     base += `\nMusical emphases: ${musicalEmphases.trim()}`;
   }
+  const placeBlock = formatPlaceContext(place);
+  if (placeBlock) base += `\n${placeBlock}`;
 
-  // The system prompt asks for 8 directions. For the split flow, each call
-  // returns 4. Instructing via user message keeps the system prompt
-  // byte-identical across calls so the prompt cache stays warm.
   if (subset === 'top') {
-    return base + `\n\nTASK VARIANT: Return only the top 4 directions — the strongest, safest fits for this business. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
+    return base + `\n\nTASK VARIANT: Return only the top 4 diagnostic clusters — the strongest, safest probes for this business. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
   }
   if (subset === 'next') {
     const priorSummary = Array.isArray(priorDirections) && priorDirections.length
-      ? `\n\nALREADY CHOSEN — do not duplicate these 4 directions:\n${priorDirections.map(summarizeDirection).join('\n')}`
+      ? `\n\nALREADY CHOSEN — do not test the same taste vectors:\n${priorDirections.map(summarizeDirection).join('\n')}`
       : '';
-    return base + priorSummary + `\n\nTASK VARIANT: Return 4 additional directions that meaningfully broaden the range beyond the 4 above. Use different genre combinations and different sonic territories. They should complement, not overlap. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
+    return base + priorSummary + `\n\nTASK VARIANT: Return 4 additional diagnostic clusters that meaningfully broaden the probe set beyond the 4 above. Cover different tempo bands, energy tiers, or cultural registers. Overlapping genres between the two batches are allowed (per Direction Distinctness), but each new cluster must test a distinctly different taste vector from the first 4. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
   }
   return base;
 }
 
-// Haiku 4.5 usually returns clean JSON when the prompt asks for JSON, but may
-// occasionally wrap it in ```json … ``` fences or add trailing whitespace.
-function parseJSONFromText(text) {
-  const trimmed = String(text || '').trim();
-  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
-  return JSON.parse(fenced ? fenced[1] : trimmed);
-}
+// ---------- Model call ----------
 
-async function callAnthropic({ bizName, bizDesc, atmospheres, musicalEmphases, subset, priorDirections, label }) {
-  const t0 = Date.now();
-  const r = await fetch('/api/v5/anthropic', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: MAX_TOKENS,
-      // cache_control on the system prompt caches it for reuse across users.
-      // Sonnet 4.6's minimum cacheable prefix is 2048 tokens — our prompt is
-      // ~2400, so caching activates. Verify via `cache_read_input_tokens`.
-      system: [
-        {
-          type: 'text',
-          text: SYSTEM_PROMPT,
-          cache_control: { type: 'ephemeral' },
-        },
-      ],
-      messages: [
-        {
-          role: 'user',
-          content: buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, subset, priorDirections }),
-        },
-      ],
-    }),
+async function callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections, label, onboardingSessionId }) {
+  const { text } = await callModel({
+    system: SYSTEM_PROMPT,
+    userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections }),
+    maxTokens: MAX_TOKENS,
+    cache: true,
+    label,
+    onboardingSessionId,
   });
-  if (!r.ok) {
-    const errBody = await r.json().catch(() => ({}));
-    throw new Error(`anthropic ${r.status}: ${errBody.error?.message || errBody.error || r.statusText}`);
-  }
-  const data = await r.json();
-  const elapsed = Date.now() - t0;
-
-  // Cache visibility during dev — strip once cache behavior is confirmed.
-  if (data?.usage) {
-    console.log(`v5 anthropic ${label || 'call'} (${elapsed}ms):`, {
-      input: data.usage.input_tokens,
-      cache_write: data.usage.cache_creation_input_tokens,
-      cache_read: data.usage.cache_read_input_tokens,
-      output: data.usage.output_tokens,
-    });
-  }
-
-  if (data?.stop_reason === 'refusal') {
-    throw new Error('anthropic: model refused the request');
-  }
-
-  const text = Array.isArray(data?.content)
-    ? data.content.find((b) => b?.type === 'text')?.text
-    : null;
-  if (typeof text !== 'string') throw new Error('anthropic: no text block in response');
-
   return parseJSONFromText(text);
 }
+
+// ---------- Validation & normalization ----------
 
 function validateBpmRange(bpm) {
   return bpm && typeof bpm === 'object'
@@ -443,27 +435,12 @@ function validateDirection(d) {
   if (typeof d.title_en !== 'string' || !d.title_en.length) return false;
   if (typeof d.description_he !== 'string' || !d.description_he.length) return false;
   if (!validateBpmRange(d.bpm_range)) return false;
-  // Accept the new equal-weight `genres` array OR the legacy anchor+secondaries
-  // shape (the model may still regress to it on some calls).
   const hasNew = Array.isArray(d.genres) && d.genres.length
     && d.genres.every((g) => typeof g === 'string' && g.length);
   const hasLegacy = typeof d.anchor_genre === 'string' && d.anchor_genre.length;
   return hasNew || hasLegacy;
 }
 
-// Normalizes a raw model response into an array of validated + sorted
-// directions, and renumbers ranks starting at `rankStart` so the two split
-// calls produce non-colliding ranks (page 1 = 1..4, page 2 = 5..8).
-//
-// If the model regressed to the legacy anchor+secondary shape, we fold it
-// into a flat `genres` list so downstream code has a single source of truth.
-// We do NOT populate `anchor_genre` from `genres` — no genre gets privileged
-// treatment; the preview seed and the swap cycler both pick randomly from
-// `genres`.
-// Coerce Gemini's `instrumentalness_preference` / `popularity_preference`
-// into one of the three values downstream RPCs understand. Missing /
-// garbage / wrong-case all collapse to 'none' — the safe default that
-// leaves queries unfiltered and unbiased.
 const INST_PREFS = new Set(['none', 'soft', 'hard']);
 const POP_PREFS  = new Set(['none', 'soft', 'hard']);
 function normalizeInstPref(raw) {
@@ -477,34 +454,45 @@ function normalizePopPref(raw) {
   return POP_PREFS.has(v) ? v : 'none';
 }
 
+// House-heavy clusters get demoted to the tail of their page — house directions
+// tend to be niche fits, so owners see the safer probes first. Same rule as v6.
+function containsHouseGenre(d) {
+  return Array.isArray(d.genres) && d.genres.some((g) => typeof g === 'string' && /house/i.test(g));
+}
+
 function normalizeDirections(parsed, rankStart) {
   if (!Array.isArray(parsed?.directions)) return [];
   const valid = parsed.directions.filter(validateDirection);
-  valid.sort((a, b) => (Number(a.rank) || 999) - (Number(b.rank) || 999));
-  valid.forEach((d, idx) => {
-    d.rank = rankStart + idx;
+  valid.forEach((d) => {
     if (!Array.isArray(d.genres) || !d.genres.length) {
       d.genres = [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])]
         .filter((g) => typeof g === 'string' && g.length);
     }
     d.instrumentalness_preference = normalizeInstPref(d.instrumentalness_preference);
     d.popularity_preference       = normalizePopPref(d.popularity_preference);
-    // Strip legacy fields — downstream now reads `genres` only.
     delete d.anchor_genre;
     delete d.secondary_genres;
   });
+  valid.sort((a, b) => (Number(a.rank) || 999) - (Number(b.rank) || 999));
+  valid.sort((a, b) => (containsHouseGenre(a) ? 1 : 0) - (containsHouseGenre(b) ? 1 : 0));
+  valid.forEach((d, idx) => { d.rank = rankStart + idx; });
   return valid;
 }
 
-export async function generateMusicalDirections({ bizName, bizDesc, atmospheres, musicalEmphases }) {
+// ---------- Public entry point ----------
+//
+// Same shape as v6 so v7/preview.js can be a light fork of v6/preview.js.
+// Label 'v7-onboarding' segments spend in gemini_call_log so admin API
+// rollups can separate v6 vs v7 traffic.
+
+export async function generateMusicalDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, onboardingSessionId }) {
   if (!bizDesc || typeof bizDesc !== 'string' || bizDesc.trim().length < 3) {
     return { error: 'insufficient_description', reasoning_en: 'empty or too-short description' };
   }
 
-  // Call 1 — page 1 (top 4 fits). Blocks the user.
   let parsed1;
   try {
-    parsed1 = await callAnthropic({ bizName, bizDesc, atmospheres, musicalEmphases, subset: 'top', label: 'page1' });
+    parsed1 = await callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset: 'top', label: 'v7-onboarding', onboardingSessionId });
   } catch (e) {
     return { error: 'matcher_error', reasoning_en: e.message };
   }
@@ -519,17 +507,14 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres,
     return { error: 'matcher_error', reasoning_en: 'no valid directions from page 1' };
   }
 
-  // Call 2 — page 2. Fires now, resolves in the background while the user is
-  // on page 1. preview.js awaits this when the user clicks continue.
-  // We feed page 1's picks into the user message so the model can explicitly
-  // avoid duplicates and choose complementary sonic territory.
   const page2Promise = (async () => {
     try {
-      const parsed2 = await callAnthropic({
-        bizName, bizDesc, atmospheres, musicalEmphases,
+      const parsed2 = await callDirections({
+        bizName, bizDesc, atmospheres, musicalEmphases, place,
         subset: 'next',
         priorDirections: page1,
-        label: 'page2',
+        label: 'v7-onboarding',
+        onboardingSessionId,
       });
       if (parsed2?.error) {
         return {

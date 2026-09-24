@@ -4,7 +4,8 @@
 
    Asked after a timeline save or a playlist-type switch in the Profile tab
    (Roni, 2026-09-24). Applies only when today already has live daily
-   playlists and the venue is before opening or open with ≥ 30 min left.
+   playlists and the venue hasn't closed yet (before opening, or open — right
+   up to closing time).
    Capped at REPLACE_CAP per business day; every replacement that built at
    least one playlist writes a business_settings_changes row
    (field 'daily_playlists_replaced'), which is what the cap counts.
@@ -12,7 +13,7 @@
    Not an HTTP endpoint. Bare imports only. */
 
 import { pgrSelect } from '../../v5/supabase-client.js';
-import { businessWindowAt, MIN_REMAINING_MIN } from '../../../v7/generation/energy-timeline.js';
+import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
 
 export const REPLACE_CAP = 2;
 export const REPLACE_FIELD = 'daily_playlists_replaced';
@@ -52,9 +53,6 @@ export async function replaceStatus({ businessId, hours, now = new Date() }) {
   const base = { left, cap: REPLACE_CAP };
   if (w.phase !== 'before-open' && w.phase !== 'open') {
     return { ...base, eligible: false, reason: w.phase === 'closed' ? 'closed-today' : 'past-close' };
-  }
-  if (w.closeMin - Math.max(w.nowMin, w.openMin) < MIN_REMAINING_MIN) {
-    return { ...base, eligible: false, reason: 'past-close' };
   }
   const live = await liveDailyRows(businessId, businessDaySinceIso(w), now);
   if (!live.length) return { ...base, eligible: false, reason: 'no-live-playlists' };

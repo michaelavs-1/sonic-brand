@@ -25,7 +25,7 @@ if (new URLSearchParams(location.search).has('reset')) {
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeTargetForToday, ilPartsFromDate } from '../generation/playlist-length.js?v=24092026a';
 import {
-  reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf,
+  reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf, levelOf, fmtHM,
 } from '../generation/energy-timeline.js?v=24092026a';
 import { TimelineEditor, energyColor } from './energy-timeline-editor.js?v=24092026a';
 import { mountHoursEditor } from '../hours-selector.js?v=23092026a';
@@ -332,6 +332,7 @@ async function enterDashboardInner() {
   await loadDashboardData(business.id);
   renderAll();
   show('dashView');
+  logTasteForTesting();   // TEMPORARY — Ami's testing (see DEBUG_TASTE_LOG)
 
   // v7 first-login gate: block the dashboard behind #v7ModeGate until the
   // owner picks a daily-delivery mode. Resolves immediately if already chosen.
@@ -354,6 +355,96 @@ async function enterDashboardInner() {
   // the count live. Fire-and-forget so the dashboard is interactive
   // immediately.
   expandPendingPlaylists().catch((e) => console.warn('expandPendingPlaylists:', e));
+}
+
+// ---------- TEMPORARY: taste log for Ami's testing (2026-09-24) ----------
+// On every dashboard load (login / refresh), print this account's musical
+// taste to the browser console (DevTools → Console): the taste profile's
+// genres by energy level, the Option-1 directions (each genre with its
+// level) or the Option-2 timeline (each dot with its level), and today's
+// playlists (Option 2: the level/genre runs through the day). Read-only,
+// owner-scoped reads. Set DEBUG_TASTE_LOG = false (or delete this block and
+// its call in enterDashboardInner) once testing is done.
+const DEBUG_TASTE_LOG = true;
+
+async function logTasteForTesting() {
+  if (!DEBUG_TASTE_LOG || !business) return;
+  try {
+    const [tpRes, setRes, dirRes] = await Promise.all([
+      sb.from('business_taste_profiles')
+        .select('energy_levels_total,approved_genres,conditional_genres,excluded_genres,instrumentalness_preference,popularity_preference,reasoning_en')
+        .eq('business_id', business.id).maybeSingle(),
+      sb.from('business_v7_settings').select('delivery_mode,timeline').eq('business_id', business.id).maybeSingle(),
+      sb.from('business_v7_directions').select('energy_tier,rank,title_en,genres')
+        .eq('business_id', business.id).eq('active', true).order('energy_tier').order('rank'),
+    ]);
+    const tp = tpRes.data;
+    const mode = setRes.data?.delivery_mode || null;
+    const N = normLevels(tp?.energy_levels_total);
+    const levelOfGenre = new Map((tp?.approved_genres || []).map((g) => [g.genre, g.energy_level]));
+    const withLevel = (g) => `${g} (${levelOfGenre.has(g) ? `L${levelOfGenre.get(g)}` : 'not approved'})`;
+
+    console.group(`%c[Rubin testing] ${business.name || business.id} — musical taste`, 'font-weight:bold;color:#f0a73f');
+    if (!tp) {
+      console.log('No taste profile saved for this business.');
+    } else {
+      console.log(`Energy levels: ${tp.energy_levels_total} (L1 = calmest … L${tp.energy_levels_total} = most energetic) · instrumental pref: ${tp.instrumentalness_preference} · popularity pref: ${tp.popularity_preference}`);
+      console.log('Approved genres (what playlists are built from), most energetic first:');
+      console.table([...(tp.approved_genres || [])]
+        .sort((a, b) => b.energy_level - a.energy_level || a.genre.localeCompare(b.genre))
+        .map((g) => ({ level: `L${g.energy_level}`, genre: g.genre })));
+      const byLevel = {};
+      for (const g of tp.approved_genres || []) (byLevel[`L${g.energy_level}`] ||= []).push(g.genre);
+      for (let L = N; L >= 1; L--) console.log(`  L${L}: ${(byLevel[`L${L}`] || []).join(', ') || '— (no genres at this level)'}`);
+      if ((tp.conditional_genres || []).length) {
+        console.groupCollapsed(`Conditional genres (${tp.conditional_genres.length}) — stored, NOT used for playlists`);
+        console.table(tp.conditional_genres.map((g) => ({ level: `L${g.energy_level}`, genre: g.genre, note: g.note_en })));
+        console.groupEnd();
+      }
+      console.log(`Excluded genres (${(tp.excluded_genres || []).length}): ${(tp.excluded_genres || []).join(', ')}`);
+      if (tp.reasoning_en) console.log(`Model reasoning: ${tp.reasoning_en}`);
+    }
+
+    console.log(`Daily playlist type: ${mode === 'option1' ? 'Option 1 — 4 playlists (2 high + 2 low energy)' : mode === 'option2' ? 'Option 2 — 2 mixes following the energy timeline' : 'not chosen yet'}`);
+    const dirs = dirRes.data || [];
+    if (dirs.length) {
+      console.log('Option 1 directions (each day 2 are drawn at random per tier):');
+      console.table(dirs.map((d) => ({ tier: d.energy_tier, rank: d.rank, title: d.title_en, genres: (d.genres || []).map(withLevel).join(', ') })));
+    }
+    const tl = setRes.data?.timeline;
+    if (tl && bmeta().hours) {
+      const rec = reconcileTimeline(tl, bmeta().hours);
+      console.log('Option 2 energy timeline (dot → level on this profile\'s scale):');
+      for (const g of rec.groups) {
+        console.log(`  ${groupDaysLabel(g.days)} ${g.open}–${g.close}: ` + g.points.map((p) => `${fmtHM(p.m)} → ${p.e} (L${levelOf(p.e, N)})`).join(' · '));
+      }
+    }
+
+    const today = (bmeta().playlists || []).filter((p) => p && !p.eventId && playlistIsLive(p));
+    if (today.length) {
+      console.log(`Live daily playlists (${today.length}):`);
+      for (const p of today) {
+        const t = p.expansion?.v7_timeline;
+        if (!t || !Array.isArray(t.starts)) {
+          console.log(`  ${p.label} — ${p.trackCount} tracks — genres: ${(p.genres || []).map(withLevel).join(', ')}`);
+          continue;
+        }
+        // Option 2: collapse consecutive tracks with the same level + genre into runs.
+        const runs = [];
+        t.starts.forEach((start, i) => {
+          const last = runs[runs.length - 1];
+          if (last && last.level === t.levels[i] && last.genre === t.run_genres[i]) last.tracks++;
+          else runs.push({ from: fmtHM(start), level: t.levels[i], genre: t.run_genres[i], tracks: 1 });
+        });
+        console.groupCollapsed(`  ${p.label} — ${p.trackCount} tracks, ${fmtHM(t.window[0])}–${fmtHM(t.window[1])}, ${runs.length} genre runs`);
+        console.table(runs.map((r) => ({ from: r.from, level: `L${r.level}`, genre: r.genre, tracks: r.tracks })));
+        console.groupEnd();
+      }
+    }
+    console.groupEnd();
+  } catch (e) {
+    console.warn('[Rubin testing] taste log failed:', e?.message || e);
+  }
 }
 
 // v7 first-login delivery-mode gate. Reads business_v7_settings.delivery_mode
@@ -962,17 +1053,26 @@ function renderDeliverySection() {
     try {
       const data = await setDeliveryMode('option1');
       state.deliveryMode = 'option1';
+      // 2 → 1: ask about today's playlists RIGHT AWAY — the same question as
+      // the 1 → 2 switch — not after the directions build below (a Gemini
+      // call of ~a minute), which also must not swallow the question if it
+      // fails.
+      let replaceNow = false;
+      if (prev === 'option2' && data.replace?.eligible) replaceNow = await askReplaceToday(data.replace);
       // Choosing Option 1 regenerates the energy-tiered directions (the
-      // persist endpoint replace-existing DELETEs the old set first).
-      setMsg('מכינים את הכיוונים המוזיקליים…');
+      // persist endpoint replace-existing DELETEs the old set first). Option 1
+      // can't build without them, so a replacement waits for this.
+      setMsg(replaceNow
+        ? 'מכינים את הכיוונים המוזיקליים… מיד נבנה את הפלייליסטים החדשים של היום'
+        : 'מכינים את הכיוונים המוזיקליים…');
       const ok = await buildEnergyDirections();
       state.energyBuildFailed = !ok;
       if (!ok) {
-        setMsg('הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות הראשונה', 'err');
+        setMsg(replaceNow
+          ? 'הכיוונים המוזיקליים לא הוכנו, ולכן הפלייליסטים של היום לא הוחלפו — לחצו שוב על האפשרות הראשונה'
+          : 'הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות הראשונה', 'err');
         return;
       }
-      let replaceNow = false;
-      if (prev === 'option2' && data.replace?.eligible) replaceNow = await askReplaceToday(data.replace);
       setMsg(savedNote(prev === 'option2' ? data.replace : null, replaceNow), 'ok');
       if (replaceNow) runReplaceToday();
     } catch (e) {
@@ -1873,6 +1973,16 @@ function closeGenerateDailyModal() {
   if (btn) { btn.disabled = false; btn.textContent = 'צור פלייליסטים יומיים'; }
 }
 
+// Today's playlist names are fixed per type — same order the server plans them
+// (api/v7/account/_daily-builder.js planOption1: high tier first; Option 2:
+// _option2-builder.js OPTION2_TITLES). null → unknown type, generic placeholder.
+function expectedDailySlots(mode) {
+  const titles = mode === 'option1' ? ['אנרגיה גבוהה #1', 'אנרגיה גבוהה #2', 'אנרגיה רגועה #1', 'אנרגיה רגועה #2']
+    : mode === 'option2' ? ['Daily Mix #1', 'Daily Mix #2']
+    : null;
+  return titles ? titles.map((title, i) => ({ direction_id: `slot-${i}`, title })) : null;
+}
+
 // replaceToday (Profile tab "החליפו עכשיו"): the server builds a new set that
 // starts now and hides each old playlist as its replacement lands. While it
 // streams, the list shows only the new set's rows; any old playlist whose
@@ -1884,11 +1994,15 @@ async function runGenerateDaily({ replaceToday = false } = {}) {
   // finishes.
   closeGenerateDailyModal();
   // Kick off with an empty plan; the server's first ndjson line ('plan')
-  // will populate it in the correctly-ordered set of directions. Until
-  // then renderPlaylists shows a single generic placeholder.
+  // will populate it in the correctly-ordered set of directions. The names
+  // are fixed per daily-playlist type, so the right placeholders go up
+  // IMMEDIATELY (the server's plan line only lands after its auth checks,
+  // DB reads and planning — seconds on a cold start); the server's plan then
+  // replaces this one (same slot-N keys, so nothing flickers when they match).
+  const expected = expectedDailySlots(state.deliveryMode);
   state.generating = {
-    plan:       null,                     // [{direction_id, title}, ...] once server sends 'plan'
-    status:     new Map(),                // direction_id → 'pending' | 'built' | 'failed'
+    plan:       expected,                 // [{direction_id, title}, ...]; the server's 'plan' line replaces it
+    status:     new Map((expected || []).map((d) => [d.direction_id, 'pending'])),  // → 'pending' | 'built' | 'failed'
     builtRows:  new Map(),                // direction_id → clientRow (from playlistRowToClient)
   };
   // Repaint the title too — on a closed day this flips it from
@@ -1956,7 +2070,7 @@ async function runGenerateDaily({ replaceToday = false } = {}) {
             title:        d.title || 'פלייליסט',
           }));
           for (const d of state.generating.plan) {
-            state.generating.status.set(d.direction_id, 'pending');
+            if (!state.generating.status.has(d.direction_id)) state.generating.status.set(d.direction_id, 'pending');
           }
           renderPlaylists();
         } else if (msg.type === 'built' && msg.direction_id && msg.row) {

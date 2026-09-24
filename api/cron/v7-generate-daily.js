@@ -57,7 +57,7 @@ import {
   dailyPlaylistExpiryIso,
   ilPartsFromDate,
 } from '../../v7/generation/playlist-length.js';
-import { businessWindowAt, AFTER_CLOSE_MIN, MIN_REMAINING_MIN } from '../../v7/generation/energy-timeline.js';
+import { businessWindowAt } from '../../v7/generation/energy-timeline.js';
 import { sendAlert } from '../_alert.js';
 
 // ---- Redis (alert dedup) — copied verbatim from the v6 cron ----
@@ -216,12 +216,11 @@ async function processBusiness({ business, now, ilNow, origin }) {
   }
 
   // Option 2 fills [max(now, opening), closing + 30 min] — the v6-style
-  // past-close above allows builds until close + 2h, which for Option 2 would
-  // mean a pointless sliver (or nothing). Overnight-aware window.
+  // past-close above allows builds until close + 2h; for Option 2 a build
+  // after closing makes no sense. Overnight-aware window.
   if (mode === 'option2') {
     const w = businessWindowAt(hours, now);
-    const open = w.phase === 'before-open' || w.phase === 'open';
-    if (!open || w.closeMin + AFTER_CLOSE_MIN - Math.max(w.nowMin, w.openMin) < MIN_REMAINING_MIN) {
+    if (w.phase !== 'before-open' && w.phase !== 'open') {
       return { id: business.id, skipped: 'past-close' };
     }
   }

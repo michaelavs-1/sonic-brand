@@ -28,7 +28,7 @@
    ("slot-N"). Persisted rows carry direction_id:null (FK → v6 table).
 
    Replace today (`replaceToday: true`, Roni 2026-09-24):
-     - Only while today has live daily playlists and closing is ≥ 30 min away
+     - Only while today has live daily playlists and the venue hasn't closed yet
        (409 code 'past-close' / 'nothing-to-replace'); at most REPLACE_CAP per
        business day (429 code 'replace-cap').
      - The new set is built first. Each old playlist leaves the dashboard as

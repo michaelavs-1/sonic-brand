@@ -39,7 +39,7 @@ import { spotifyCall, addAllTracks, recordTrackHistory, playlistName } from '../
 import { attachTrackGenres, insertPlaylistRows, buildOption2Batch as buildNaiveOption2Batch } from './_daily-builder.js';
 import {
   reconcileTimeline, groupForDay, mainGroup, businessWindowAt, energyAtFn, windowOf, defaultPoints,
-  normLevels, AFTER_CLOSE_MIN, MIN_REMAINING_MIN,
+  normLevels, AFTER_CLOSE_MIN,
 } from '../../../v7/generation/energy-timeline.js';
 import { estimateDemand, assembleMixes, mulberry32, seedFrom, shuffle, DEFAULT_TRACK_SEC } from '../../../v7/generation/timeline-assembler.js';
 import { CLOSED_DAY_MINUTES, nextIl4amIso } from '../../../v7/generation/playlist-length.js';
@@ -76,16 +76,16 @@ async function readInputs(businessId) {
 export function planWindow({ hours, timeline, now = new Date(), onDemand = false }) {
   const tl = reconcileTimeline(timeline, hours);
   const w = businessWindowAt(hours, now);
+  // Any time before closing builds the rest of today (a build a minute before
+  // closing still gets its 30-minute tail); after closing → closed-day logic.
   if (w.phase === 'before-open' || w.phase === 'open') {
     const startMin = Math.max(w.nowMin, w.openMin);
     const endMin = w.closeMin + AFTER_CLOSE_MIN;
-    if (endMin - startMin >= MIN_REMAINING_MIN) {
-      const group = groupForDay(tl, w.dayIdx) || { ...w.group, days: [w.dayIdx], points: defaultPoints(w.group) };
-      return {
-        kind: 'day', startMin, endMin, expiryIso: w.expiryIso, dayIdx: w.dayIdx, isoDate: w.isoDate,
-        group, energyAt: energyAtFn(group.points),
-      };
-    }
+    const group = groupForDay(tl, w.dayIdx) || { ...w.group, days: [w.dayIdx], points: defaultPoints(w.group) };
+    return {
+      kind: 'day', startMin, endMin, expiryIso: w.expiryIso, dayIdx: w.dayIdx, isoDate: w.isoDate,
+      group, energyAt: energyAtFn(group.points),
+    };
   }
   if (!onDemand) return { reason: w.phase === 'closed' ? 'closed-today' : 'past-close' };
 

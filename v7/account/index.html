@@ -3092,17 +3092,32 @@
         <div id="eventsWrap"></div>
       </div>
 
+      <!-- Special-events chat — collapsible, same pattern as the Profile tab's
+           "כיוונים מוזיקליים" (.hours-toggle / .hours-body, wired once at load
+           by the generic toggle handler in app.js). Starts closed. The saved
+           events list above ("פלייליסטים אחרים") stays visible — it holds the
+           "▶ פתח" buttons owners use during an event. -->
       <div class="box">
-        <h2><span class="h-ico">⚡</span>צריכים משהו אחר היום?</h2>
-        <p class="muted sub" id="eventsIntro">יש לעסק שלכם אירועים מיוחדים שבהם תצטרכו מוזיקה אחרת לגמרי? ספרו לצ׳אט
-          איזה פלייליסט אתם צריכים והוא יעזור לכם לגבש אותו.</p>
-        <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
-        <textarea class="input" id="chatInput" rows="3" maxlength="500"
-          placeholder="לדוגמה: ערב סטנדאפ בכל יום שלישי — קלילה, לא רועשת מדי..."></textarea>
-        <button class="btn" id="chatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 2L22 12H17V22H7V12H2Z" />
-          </svg></button>
-        <p class="muted" id="eventsMsg" style="text-align:center;margin-top:8px"></p>
+        <div class="hours-section" style="margin:0">
+          <button type="button" class="hours-toggle" id="eventsToggle" aria-expanded="false" aria-controls="eventsBody">
+            <h2 style="margin:0"><span class="h-ico">⚡</span>צריכים משהו אחר היום?</h2>
+            <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <div class="hours-body hide" id="eventsBody">
+            <p class="muted sub" id="eventsIntro" style="margin:6px 0 12px">יש לעסק שלכם אירועים מיוחדים שבהם תצטרכו מוזיקה אחרת לגמרי? ספרו לצ׳אט
+              איזה פלייליסט אתם צריכים והוא יעזור לכם לגבש אותו.</p>
+            <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
+            <textarea class="input" id="chatInput" rows="3" maxlength="500"
+              placeholder="לדוגמה: ערב סטנדאפ בכל יום שלישי — קלילה, לא רועשת מדי..."></textarea>
+            <button class="btn" id="chatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2L22 12H17V22H7V12H2Z" />
+              </svg></button>
+            <p class="muted" id="eventsMsg" style="text-align:center;margin-top:8px"></p>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -3358,7 +3373,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=24092026d"></script>
+  <script type="module" src="/v7/account/app.js?v=24092026f"></script>
 </body>
 
 </html>

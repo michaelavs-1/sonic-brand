@@ -28,7 +28,6 @@ export const SNAP_MIN = 30;           // dots sit on the clock's :00 / :30 (plus
 export const MIN_POINTS = 2;
 export const MAX_POINTS = 12;
 export const AFTER_CLOSE_MIN = 30;    // Option-2 playlists run to closing + 30 min
-export const MIN_REMAINING_MIN = 30;  // less than this left before closing → no build / no "replace now"
 export const DEFAULT_LEVELS = 4;      // grid rows when the taste profile has no usable energy_levels_total
 
 const DEFAULT_OPEN = '10:00';         // same defaults as playlist-length.js dayMinutesFromHours

@@ -88,7 +88,13 @@
       "maxDuration": 30
     },
     "api/v7/account/set-delivery-mode.js": {
-      "maxDuration": 10
+      "maxDuration": 15
+    },
+    "api/v7/account/update-timeline.js": {
+      "maxDuration": 15
+    },
+    "api/v7/account/update-hours.js": {
+      "maxDuration": 15
     },
     "api/v7/account/save-energy-directions.js": {
       "maxDuration": 10
@@ -418,6 +424,10 @@
     {
       "source": "/v7/account",
       "destination": "/v7/account/index.html"
+    },
+    {
+      "source": "/v7/test-timeline",
+      "destination": "/v7/test-timeline/index.html"
     }
   ]
 }

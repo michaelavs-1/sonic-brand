@@ -728,36 +728,194 @@
     }
 
     /* Option-2 energy-timeline placeholder (Profile tab). */
-    .v7-timeline-ph {
-      margin-top: 14px;
-      padding: 14px;
-      border: 1px dashed var(--border-2);
+    /* Option-2 energy timeline — Profile-tab "edit" button (with a mini
+       preview of today's curve) + the editor modal (#timelineModal). The
+       editor itself (v7/account/energy-timeline-editor.js) injects its own
+       .etl-* styles. Same curve palette as the editor's "+" button. */
+    .tl-edit-btn {
+      margin-top: 12px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 10px 14px;
       border-radius: 12px;
-      background: var(--card-2)
+      border: 1.5px solid transparent;
+      background:
+        linear-gradient(var(--card-2), var(--card-2)) padding-box,
+        linear-gradient(90deg, rgb(74, 155, 187), rgb(154, 143, 214), rgb(240, 167, 63)) border-box;
+      color: #c3bdf0;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer
     }
 
-    .v7-timeline-ph.hide {
+    .tl-edit-btn:disabled {
+      opacity: .5;
+      cursor: default
+    }
+
+    .tl-edit-btn svg {
+      flex: 0 0 auto;
+      display: block
+    }
+
+    .tl-modal {
+      max-width: 440px
+    }
+
+    .tl-step {
+      display: flex;
+      flex-direction: column;
+      gap: 12px
+    }
+
+    .tl-step.hide {
       display: none
     }
 
-    .v7-timeline-head {
+    .tl-step h3 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 800
+    }
+
+    .tl-desc {
+      margin: 0;
       font-size: 13px;
-      font-weight: 700;
-      margin-bottom: 10px
-    }
-
-    .v7-timeline-bar {
-      height: 10px;
-      border-radius: 6px;
-      background: linear-gradient(90deg, var(--card), var(--accent));
-      opacity: .75
-    }
-
-    .v7-timeline-note {
-      margin: 10px 0 0;
-      font-size: 12px;
       color: var(--muted);
       line-height: 1.5
+    }
+
+    /* Hours-group tabs: an underline tab bar. Each tab = days (bold) over
+       hours (small). The active tab lifts with a faint fill and an accent
+       underline that sits on the bar's baseline. Scrolls sideways instead of
+       wrapping if a week ever has many schedules. */
+    .tl-tabs {
+      display: flex;
+      gap: 2px;
+      border-bottom: 1px solid var(--border-2);
+      overflow-x: auto;
+      scrollbar-width: none
+    }
+
+    .tl-tabs::-webkit-scrollbar {
+      display: none
+    }
+
+    .tl-tab {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1px;
+      padding: 7px 14px 6px;
+      margin-bottom: -1px;
+      border: none;
+      border-bottom: 2px solid transparent;
+      border-radius: 10px 10px 0 0;
+      background: transparent;
+      color: var(--muted);
+      font-family: inherit;
+      cursor: pointer;
+      transition: color .15s, background-color .15s, border-color .15s
+    }
+
+    .tl-tab:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, .03)
+    }
+
+    .tl-tab.on {
+      color: var(--text);
+      background: rgba(255, 255, 255, .06);
+      border-bottom-color: var(--accent)
+    }
+
+    .tl-tab-days {
+      font-size: 13.5px;
+      font-weight: 700;
+      line-height: 1.2
+    }
+
+    .tl-tab-hours {
+      font-size: 11.5px;
+      line-height: 1.2;
+      opacity: .8
+    }
+
+    .tl-tab.on .tl-tab-hours {
+      color: var(--accent);
+      opacity: 1
+    }
+
+    #tlEditor.etl {
+      --etl-fill: #11222d;
+      --etl-fill-hover: #17303f
+    }
+
+    .tl-empty {
+      margin: 0;
+      padding: 18px 8px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--muted)
+    }
+
+    .tl-err {
+      margin: 0;
+      font-size: 12.5px;
+      color: #ff6b6b;
+      text-align: center
+    }
+
+    .tl-question {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.55;
+      text-align: center
+    }
+
+    .tl-cap {
+      margin: 0;
+      font-size: 12.5px;
+      color: var(--teal-soft);
+      text-align: center
+    }
+
+    .tl-cap.max {
+      color: #ffb4a6;
+      font-weight: 600
+    }
+
+    .tl-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap
+    }
+
+    .tl-actions .btn {
+      width: auto;
+      margin: 0;
+      padding: 10px 22px;
+      font-size: 14px;
+      border-radius: 11px
+    }
+
+    .tl-actions .btn:disabled {
+      opacity: .4;
+      cursor: default;
+      box-shadow: none
+    }
+
+    .tl-actions .btn-ghost {
+      padding: 10px 18px;
+      font-size: 13.5px;
+      border-radius: 11px;
+      border: 1px solid var(--border-2)
     }
 
     /* ---------- profile form ---------- */
@@ -3001,7 +3159,8 @@
       <!-- Delivery-mode re-choose (v7 only). Same collapsible pattern as the
            hours / directions sections (reuses .hours-toggle / .hours-body).
            The two cards mirror the first-login #v7ModeGate; the active one
-           gets .selected. Option 2 also reveals a placeholder energy timeline.
+           gets .selected. Option 2 also shows "עריכת ציר האנרגיה" (opens
+           #timelineModal; the button carries a mini preview of today's curve).
            Populated + wired by renderDeliverySection() in app.js. -->
       <div class="hours-section">
         <button type="button" class="hours-toggle" id="deliveryToggle" aria-expanded="false" aria-controls="deliveryBody">
@@ -3020,16 +3179,13 @@
             </button>
             <button class="v7-mode-card" id="deliveryOpt2" type="button" data-mode="option2">
               <div class="v7-mode-title">2 פלייליסטים ביום</div>
-              <p class="v7-mode-desc">אנרגיה שמשתנה לאורך היום — מתחיל רגוע ומתגבר בהדרגה.</p>
+              <p class="v7-mode-desc">אנרגיה שמשתנה לאורך היום — אתם קובעים מתי רגוע ומתי אנרגטי.</p>
             </button>
           </div>
-          <!-- Option-2 interactive timeline — placeholder. The real editor is
-               deferred (Phase B); for now Option 2 uses a default rising arc. -->
-          <div class="v7-timeline-ph hide" id="deliveryTimeline">
-            <div class="v7-timeline-head">ציר האנרגיה היומי</div>
-            <div class="v7-timeline-bar"><span></span></div>
-            <p class="v7-timeline-note">עורך הציר האינטראקטיבי יגיע בקרוב. בינתיים האנרגיה עולה בהדרגה מהפתיחה עד הערב.</p>
-          </div>
+          <button type="button" class="tl-edit-btn hide" id="deliveryTimelineEdit">
+            <svg id="deliveryTimelineSpark" width="72" height="26" viewBox="0 0 72 26" aria-hidden="true"></svg>
+            עריכת ציר האנרגיה
+          </button>
           <p class="muted" id="deliveryMsg" style="text-align:center;margin-top:10px;font-size:12.5px"></p>
         </div>
       </div>
@@ -3159,7 +3315,7 @@
         </button>
         <button class="v7-mode-card" id="v7ModeOption2" type="button">
           <div class="v7-mode-title">2 פלייליסטים ביום</div>
-          <p class="v7-mode-desc">אנרגיה שמשתנה לאורך היום — מתחיל רגוע ומתגבר בהדרגה.</p>
+          <p class="v7-mode-desc">אנרגיה שמשתנה לאורך היום — אתם קובעים מתי רגוע ומתי אנרגטי.</p>
         </button>
       </div>
       <div class="v7-mode-err hide" id="v7ModeErr">משהו השתבש. נסו שוב.</div>
@@ -3169,7 +3325,40 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=24092026b"></script>
+  <!-- Option-2 energy timeline modal (v7). One modal for every place the
+       owner edits the timeline: the first-login gate (choosing Option 2), the
+       Profile tab's "עריכת ציר האנרגיה", and the Profile tab's Option 1 → 2
+       switch (mandatory there — the type only switches on save). No backdrop
+       close. Step 2 asks whether to replace today's playlists now.
+       Driven by openTimelineModal / askReplaceToday in app.js. .dp-overlay
+       (z-index 130) stacks above the gate's .gd-overlay (120). -->
+  <div class="dp-overlay hide" id="timelineModal" role="dialog" aria-modal="true" aria-labelledby="tlTitle">
+    <div class="dp-modal tl-modal">
+      <div class="tl-step" id="tlStepEdit">
+        <h3 id="tlTitle">ציר האנרגיה היומי</h3>
+        <p class="tl-desc">גררו את הנקודות כדי לקבוע מתי המוזיקה אנרגטית ומתי רגועה לאורך היום: למעלה = אנרגטי, למטה = רגוע.</p>
+        <div class="tl-tabs hide" id="tlTabs" role="tablist"></div>
+        <div id="tlEditor"></div>
+        <p class="tl-empty hide" id="tlEmpty">עדיין לא הוגדרו שעות פתיחה. הגדירו אותן בלשונית הפרופיל ונסו שוב.</p>
+        <p class="tl-err hide" id="tlErr"></p>
+        <div class="tl-actions">
+          <button class="btn" id="tlSave" type="button">שמירה</button>
+          <button class="btn-ghost" id="tlCancel" type="button">ביטול</button>
+        </div>
+      </div>
+      <div class="tl-step hide" id="tlStepReplace">
+        <h3 id="tlReplaceTitle">נשמר ✓</h3>
+        <p class="tl-question">להחליף את הפלייליסטים של היום עכשיו, או להשאיר את הקיימים עד סגירה?</p>
+        <p class="tl-cap" id="tlReplaceCap"></p>
+        <div class="tl-actions">
+          <button class="btn" id="tlReplaceNow" type="button">החליפו עכשיו</button>
+          <button class="btn-ghost" id="tlReplaceKeep" type="button">השאירו עד סגירה</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/v7/account/app.js?v=24092026d"></script>
 </body>
 
 </html>

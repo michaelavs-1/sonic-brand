@@ -143,7 +143,8 @@ function ilOffsetMinutes(utcInstant) {
 // Convert a wall-clock instant IN IL (year/month/day/hour/minute as the venue
 // owner would read them on the clock) to a UTC Date. DST-safe: uses the
 // offset that applies at that specific composed instant, not at "now".
-function ilWallClockToUtc({ year, month, day, hour, minute }) {
+// Exported for v7/generation/energy-timeline.js (business-day windows).
+export function ilWallClockToUtc({ year, month, day, hour, minute }) {
   // First pass: pretend the wall-clock is UTC so we have a candidate instant.
   const guess = Date.UTC(year, month - 1, day, hour, minute, 0);
   // Ask IL what offset applies at that instant. Subtracting the offset from

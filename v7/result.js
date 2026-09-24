@@ -164,7 +164,11 @@ async function postV7Signup(payload) {
     body: JSON.stringify(payload || {}),
   });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok || !data.ok) throw new Error(data?.error || r.statusText || 'signup failed');
+  if (!r.ok || !data.ok) {
+    const err = new Error(data?.error || r.statusText || 'signup failed');
+    err.status = r.status;   // 429 = Supabase's ~60s per-user email interval
+    throw err;
+  }
   return data;
 }
 
@@ -264,14 +268,47 @@ export function runTasteProfileBar({ tasteProfilePromise, signupPayload, genreTa
 // "Check your email" — mirror of v6's showCheckEmailState. The magic link is
 // the only way into the account; resend re-posts the same signup payload
 // (idempotent server-side).
+//
+// Resend waits out a 60-second countdown — Supabase sends at most one login
+// email per user per ~60s, so an earlier click could only fail. The countdown
+// starts when this screen appears (the email just went out) and restarts
+// after every resend, including a 429 from the server.
+const RESEND_COOLDOWN_S = 60;
 function showCheckEmail({ email, resend }) {
   const card = getCard();
   const msg = el('p', { class: 'hint', style: 'margin-top:10px' }, '');
+  const READY_LABEL = 'לא הגיע? שלחו שוב';
+  const resendBtn = el('button', { class: 'btn-ghost', type: 'button', style: 'display:block;margin-inline:auto' }, READY_LABEL);
 
-  const resendBtn = el('button', { class: 'btn-ghost', type: 'button', style: 'display:block;margin-inline:auto' }, 'לא הגיע? שלחו שוב');
+  let timer = null;
+  const setWaiting = (waiting) => {
+    resendBtn.disabled = waiting;
+    resendBtn.style.opacity = waiting ? '.6' : '';
+    resendBtn.style.cursor = waiting ? 'default' : '';
+  };
+  const startCooldown = () => {
+    clearInterval(timer);
+    const until = Date.now() + RESEND_COOLDOWN_S * 1000;
+    const tick = () => {
+      // The card may have been replaced — stop quietly.
+      if (!resendBtn.isConnected) { clearInterval(timer); return; }
+      const left = Math.ceil((until - Date.now()) / 1000);
+      if (left <= 0) {
+        clearInterval(timer);
+        setWaiting(false);
+        resendBtn.textContent = READY_LABEL;
+        return;
+      }
+      setWaiting(true);
+      resendBtn.textContent = `לא הגיע? אפשר לשלוח שוב בעוד ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    };
+    tick();
+    timer = setInterval(tick, 250);
+  };
+
   resendBtn.addEventListener('click', async () => {
-    resendBtn.disabled = true;
-    const orig = resendBtn.textContent;
+    if (resendBtn.disabled) return;
+    setWaiting(true);
     resendBtn.textContent = 'שולחים…';
     msg.style.color = '';
     msg.textContent = '';
@@ -279,13 +316,15 @@ function showCheckEmail({ email, resend }) {
       await resend();
       msg.style.color = 'var(--teal-soft)';
       msg.textContent = 'שלחנו שוב ✓';
+      startCooldown();
     } catch (err) {
       msg.style.color = '#ff9b8a';
       msg.textContent = String(err?.message || 'שליחה נכשלה — נסו עוד רגע');
-    } finally {
-      setTimeout(() => { resendBtn.disabled = false; resendBtn.textContent = orig; }, 3000);
+      if (err?.status === 429) startCooldown();
+      else { setWaiting(false); resendBtn.textContent = READY_LABEL; }
     }
   });
+  startCooldown();
 
   card.replaceChildren(
     el('h1', {}, 'בדקו את המייל ✉️'),

@@ -14,10 +14,12 @@
        (SILENT skip — abandoned/incomplete onboarding, not a broken owner).
      - Branch on delivery_mode:
          option1 → buildOption1Batch  (2 high + 2 low energy directions → 4/day)
-         option2 → buildOption2Batch  (2 full-length energy-shifting mixes/day)
-       Both live in api/v7/account/_daily-builder.js and internally reuse the
-       v6 buildDailyBatch primitive (Spotify create/add + ledger + history +
-       business_playlists INSERT, with direction_id:null for the FK).
+         option2 → buildOption2TimelineBatch (2 mixes/day whose energy follows
+                   the owner's timeline, placed by track duration —
+                   api/v7/account/_option2-builder.js; starts at max(now,
+                   opening), runs to closing + 30 min)
+       Both reuse the v6 builder primitives (Spotify create/add + ledger +
+       history + business_playlists INSERT, with direction_id:null for the FK).
 
    Skip reasons a v7 business can hit (per hour):
      - no-mode              (business_v7_settings.delivery_mode null — owner
@@ -49,11 +51,13 @@
 
 import { timingSafeEqual } from 'node:crypto';
 import { pgrSelect, pgrDelete } from '../v5/supabase-client.js';
-import { buildOption1Batch, buildOption2Batch } from '../v7/account/_daily-builder.js';
+import { buildOption1Batch } from '../v7/account/_daily-builder.js';
+import { buildOption2TimelineBatch } from '../v7/account/_option2-builder.js';
 import {
   dailyPlaylistExpiryIso,
   ilPartsFromDate,
 } from '../../v7/generation/playlist-length.js';
+import { businessWindowAt, AFTER_CLOSE_MIN, MIN_REMAINING_MIN } from '../../v7/generation/energy-timeline.js';
 import { sendAlert } from '../_alert.js';
 
 // ---- Redis (alert dedup) — copied verbatim from the v6 cron ----
@@ -162,7 +166,8 @@ async function fetchBusinessHours(businessId) {
 }
 
 // Any daily playlist for today (IL) — live OR expired. Dedup key is build
-// DATE, not live-status. Identical to the v6 cron's guard.
+// DATE, not live-status. Same idea as the v6 cron's guard, but compares the
+// IL date of created_at (a UTC slice mismatches between 00:00 and 02:00/03:00 IL).
 async function anyBuiltToday(businessId, ilIsoDate) {
   let rows = [];
   try {
@@ -175,7 +180,7 @@ async function anyBuiltToday(businessId, ilIsoDate) {
     return false;
   }
   return (rows || []).some((p) => p?.created_at
-    && String(p.created_at).slice(0, 10) === ilIsoDate);
+    && ilPartsFromDate(new Date(p.created_at)).isoDate === ilIsoDate);
 }
 
 async function processBusiness({ business, now, ilNow, origin }) {
@@ -210,6 +215,17 @@ async function processBusiness({ business, now, ilNow, origin }) {
     return { id: business.id, skipped: 'past-close' };
   }
 
+  // Option 2 fills [max(now, opening), closing + 30 min] — the v6-style
+  // past-close above allows builds until close + 2h, which for Option 2 would
+  // mean a pointless sliver (or nothing). Overnight-aware window.
+  if (mode === 'option2') {
+    const w = businessWindowAt(hours, now);
+    const open = w.phase === 'before-open' || w.phase === 'open';
+    if (!open || w.closeMin + AFTER_CLOSE_MIN - Math.max(w.nowMin, w.openMin) < MIN_REMAINING_MIN) {
+      return { id: business.id, skipped: 'past-close' };
+    }
+  }
+
   if (await anyBuiltToday(business.id, ilNow.isoDate)) {
     return { id: business.id, skipped: 'already-built-today' };
   }
@@ -224,7 +240,7 @@ async function processBusiness({ business, now, ilNow, origin }) {
     // The batch fns compute their own per-playlist target + expiry from `hours`
     // + `now` (via the same v7 playlist-length helpers used for the past-close
     // check above), so this cron only hands over the raw hours.
-    const batchFn = mode === 'option1' ? buildOption1Batch : buildOption2Batch;
+    const batchFn = mode === 'option1' ? buildOption1Batch : buildOption2TimelineBatch;
     const { built, failures } = await batchFn({
       ownerId:    business.owner_id,
       businessId: business.id,

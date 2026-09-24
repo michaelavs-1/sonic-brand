@@ -23,9 +23,10 @@
          there's nothing to build)
 
      planOption2({ businessId, hours, now, onDemand })
-       Option 2 — NAIVE full-length. No directions; the flat approved genre pool
-       from business_taste_profiles → 2 full-opening-day playlists. Energy
-       ordering + interactive timeline are deferred.
+       Option 2 — NAIVE full-length FALLBACK. The real Option-2 builder (energy
+       timeline, duration-based) is ./_option2-builder.js; it falls back to this
+       only when the v7_timeline_pool RPC isn't deployed yet. Flat approved
+       genre pool → 2 full-opening-day playlists, energy ignored.
        → { directions, target, expiryIso, reason }
 
      buildOption1Batch / buildOption2Batch({ ownerId, businessId, bizName, hours, origin, now })
@@ -69,6 +70,7 @@ import {
   ilPartsFromDate,
   nextIl4amIso,
 } from '../../../v7/generation/playlist-length.js';
+import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
 
 const PREF_SET = new Set(['none', 'soft', 'hard']);
 const normPref = (v) => (PREF_SET.has(v) ? v : 'none');
@@ -221,7 +223,10 @@ function pickTwo(pool) {
 
 // -------- Option 1: 2 high + 2 low energy directions (4 playlists/day) --------
 
-export async function planOption1({ businessId, hours, now = new Date(), onDemand = false }) {
+// fromNow (the Profile tab's "replace today's playlists now"): size each
+// playlist to half of the REMAINING opening time + 1.5h instead of half the
+// whole day — the owner presses play on the new set right away.
+export async function planOption1({ businessId, hours, now = new Date(), onDemand = false, fromNow = false }) {
   // 1. Active v7 directions, ordered by rank so the "first 2" selection below
   //    is deterministic.
   let dirRows = [];
@@ -261,8 +266,12 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   //    computeTargetTracks, which adds its own 60 min). Converted to a track
   //    count at AVG_TRACK_MINUTES, floored at MIN_TARGET_TRACKS.
   const { dayMins, expiryIso } = todayWindow({ hours, now, onDemand });
-  const halfDayMins = (Number.isFinite(dayMins) && dayMins > 0 ? dayMins : 0) / 2;
-  const target = Math.max(MIN_TARGET_TRACKS, Math.ceil((halfDayMins + 90) / AVG_TRACK_MINUTES));
+  let spanMins = Number.isFinite(dayMins) && dayMins > 0 ? dayMins : 0;
+  if (fromNow) {
+    const w = businessWindowAt(hours, now);
+    if (w.phase === 'open') spanMins = Math.max(0, w.closeMin - w.nowMin);
+  }
+  const target = Math.max(MIN_TARGET_TRACKS, Math.ceil((spanMins / 2 + 90) / AVG_TRACK_MINUTES));
 
   return { directions, target, expiryIso, reason: null };
 }

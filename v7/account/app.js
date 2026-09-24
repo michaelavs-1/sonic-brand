@@ -23,7 +23,11 @@ if (new URLSearchParams(location.search).has('reset')) {
 }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeTargetForToday } from '../generation/playlist-length.js?v=23092026a';
+import { computeTargetForToday, ilPartsFromDate } from '../generation/playlist-length.js?v=24092026a';
+import {
+  reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf,
+} from '../generation/energy-timeline.js?v=24092026a';
+import { TimelineEditor, energyColor } from './energy-timeline-editor.js?v=24092026a';
 import { mountHoursEditor } from '../hours-selector.js?v=23092026a';
 import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=23092026a';
 import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=23092026a';
@@ -111,7 +115,10 @@ function playlistRowToClient(r) {
     directionId: r.direction_id || null,
     expandedAt: r.expanded_at ? Date.parse(r.expanded_at) : null,
     expiresAt: r.expires_at ? Date.parse(r.expires_at) : null,
-    createdAt: r.created_at ? String(r.created_at).slice(0, 10) : null,
+    // IL calendar date (a UTC slice is off by a day between 00:00 and
+    // 02:00/03:00 IL) + the exact instant for business-day checks.
+    createdAt: r.created_at ? ilPartsFromDate(new Date(r.created_at)).isoDate : null,
+    createdAtMs: r.created_at ? Date.parse(r.created_at) : null,
   };
 }
 
@@ -361,10 +368,11 @@ async function checkV7ModeGate() {
   let mode = null;
   try {
     const { data } = await sb.from('business_v7_settings')
-      .select('delivery_mode')
+      .select('delivery_mode,timeline')
       .eq('business_id', business.id)
       .maybeSingle();
     mode = data?.delivery_mode || null;
+    state.timeline = data?.timeline || null;
   } catch (e) {
     console.warn('v7 mode gate read failed:', e?.message || e);
     return false;
@@ -435,14 +443,241 @@ async function checkV7ModeGate() {
         busy = false;
       }
     };
+    // Option 2 → the energy-timeline modal first (stacked above the gate).
+    // Saving it IS choosing Option 2 (mode + timeline in one POST); "חזרה"
+    // returns to the gate to choose again.
+    const pickOption2 = async () => {
+      if (busy) return;
+      busy = true;
+      err?.classList.add('hide');
+      const r = await openTimelineModal({
+        context: 'gate',
+        onSave: async (timeline) => {
+          const data = await setDeliveryMode('option2', timeline);
+          state.deliveryMode = 'option2';
+          state.timeline = data.timeline || timeline;
+          return {};
+        },
+      });
+      busy = false;
+      if (!r.saved) return;
+      gate.classList.add('hide');
+      resolve();
+    };
     opt1.addEventListener('click', () => pick('option1'));
-    opt2.addEventListener('click', () => pick('option2'));
+    opt2.addEventListener('click', pickOption2);
     gate.classList.remove('hide');
   });
   return true;
 }
 
-// POST the chosen delivery mode. `timeline` is Option-2 only (placeholder now).
+// ---------- Option-2 energy timeline (modal) ----------
+// One modal (#timelineModal) for every place the owner edits the timeline:
+// the first-login gate (choosing Option 2), the Profile tab's "עריכת ציר
+// האנרגיה", and the Profile tab's Option 1 → 2 switch (mandatory there — the
+// type only switches on save). The editor is the sandbox-approved one
+// (energy-timeline-editor.js); one timeline per opening-hours group, shown as
+// tabs when the week has more than one schedule. Step 2 of the same modal
+// asks whether to replace today's playlists now (Profile tab only).
+let timelineEditor = null;
+
+// Grid rows = the taste profile's energy levels (never shown to the owner).
+async function loadEnergyLevels() {
+  if (state.energyLevels) return state.energyLevels;
+  try {
+    const { data } = await sb.from('business_taste_profiles')
+      .select('energy_levels_total')
+      .eq('business_id', business.id)
+      .maybeSingle();
+    state.energyLevels = normLevels(data?.energy_levels_total);
+  } catch {
+    state.energyLevels = normLevels(null);
+  }
+  return state.energyLevels;
+}
+
+async function postTimeline(timeline) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token) throw new Error('לא מחוברים');
+  const r = await fetch('/api/v7/account/update-timeline', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ business_id: business.id, timeline }),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+  return data;
+}
+
+function showTimelineStep(step) {
+  $('tlStepEdit')?.classList.toggle('hide', step !== 'edit');
+  $('tlStepReplace')?.classList.toggle('hide', step !== 'replace');
+}
+
+function closeTimelineModal() {
+  $('timelineModal')?.classList.add('hide');
+}
+
+// Step 2: "replace today's playlists now, or keep them until closing?" with
+// the daily cap (2) made visible. `replace` = the server's replaceStatus
+// ({ eligible, left, cap }). Resolves true = replace now.
+function askReplaceStep(replace) {
+  return new Promise((resolve) => {
+    showTimelineStep('replace');
+    const cap = $('tlReplaceCap');
+    const nowBtn = $('tlReplaceNow');
+    const keepBtn = $('tlReplaceKeep');
+    const left = Number(replace?.left ?? 0);
+    const max = Number(replace?.cap || 2);
+    const atMax = left <= 0;
+    cap.classList.toggle('max', atMax);
+    cap.textContent = atMax
+      ? `הגעתם למקסימום של ${max} החלפות ביום — השינוי ייכנס לתוקף מחר.`
+      : left === 1 ? 'נותרה החלפה אחת להיום.' : `אפשר להחליף את הפלייליסטים עד ${max} פעמים ביום.`;
+    nowBtn.disabled = atMax;
+    keepBtn.textContent = atMax ? 'הבנתי' : 'השאירו עד סגירה';
+    nowBtn.onclick = () => resolve(true);
+    keepBtn.onclick = () => resolve(false);
+  });
+}
+
+// Replace question on its own (type switch 2 → 1, which has no timeline step).
+async function askReplaceToday(replace) {
+  $('timelineModal').classList.remove('hide');
+  const now = await askReplaceStep(replace);
+  closeTimelineModal();
+  return now;
+}
+
+// Mini preview of today's curve for the Profile tab's edit button.
+function renderTimelineSpark() {
+  const svg = $('deliveryTimelineSpark');
+  if (!svg) return;
+  const hours = bmeta().hours;
+  const tl = reconcileTimeline(state.timeline, hours);
+  const g = groupForDay(tl, todayDayIdx()) || tl.groups[0];
+  if (!g) { svg.innerHTML = ''; return; }
+  const { openMin, total } = windowOf(g);
+  const f = energyAtFn(g.points);
+  const W = 72, H = 26, P = 3;
+  let d = '';
+  for (let k = 0; k <= 36; k++) {
+    const x = P + (k / 36) * (W - 2 * P);          // opening on the left
+    const y = H - P - f(openMin + (k / 36) * total) * (H - 2 * P);
+    d += `${k ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
+  }
+  svg.innerHTML =
+    `<defs><linearGradient id="tlSparkGrad" x1="0" x2="0" y1="${P}" y2="${H - P}" gradientUnits="userSpaceOnUse">` +
+    `<stop offset="0%" stop-color="${energyColor(1)}"/><stop offset="50%" stop-color="${energyColor(.5)}"/>` +
+    `<stop offset="100%" stop-color="${energyColor(0)}"/></linearGradient></defs>` +
+    `<path d="${d}L${W - P},${H - P}L${P},${H - P}Z" fill="url(#tlSparkGrad)" fill-opacity=".22"/>` +
+    `<path d="${d}" fill="none" stroke="url(#tlSparkGrad)" stroke-width="2" stroke-linecap="round"/>`;
+}
+
+// Open the editor. `onSave(timeline)` persists it (throws → error shown in
+// the modal, which stays open) and returns the server response; when that
+// carries replace.eligible (Profile tab), step 2 asks about today's
+// playlists. Resolves once the modal closes:
+//   { saved:false }                       cancelled / "חזרה"
+//   { saved:true, replaceNow, result }    saved (replaceNow → caller rebuilds today)
+function openTimelineModal({ context, onSave }) {
+  return new Promise(async (resolve) => {
+    const modal = $('timelineModal');
+    const saveBtn = $('tlSave');
+    const cancelBtn = $('tlCancel');
+    const errEl = $('tlErr');
+    const tabs = $('tlTabs');
+    const empty = $('tlEmpty');
+    const hours = bmeta().hours;
+    const groups = reconcileTimeline(state.timeline, hours).groups.map((g) => ({ ...g, points: g.points.map((p) => ({ ...p })) }));
+    const N = await loadEnergyLevels();
+    let active = Math.max(0, groups.findIndex((g) => g.days.includes(todayDayIdx())));
+
+    const loadActive = () => {
+      const g = groups[active];
+      const opts = { group: g, N, points: g.points, openRight: false };
+      if (!timelineEditor) timelineEditor = new TimelineEditor($('tlEditor'), opts);
+      else timelineEditor.load(opts, { silent: true });
+    };
+    const paintTabs = () => {
+      tabs.classList.toggle('hide', groups.length < 2);
+      tabs.innerHTML = groups.map((g, i) =>
+        `<button type="button" role="tab" aria-selected="${i === active}" class="tl-tab${i === active ? ' on' : ''}" data-i="${i}">` +
+        `<span class="tl-tab-days">${escHtml(groupDaysLabel(g.days))}</span>` +
+        `<span class="tl-tab-hours"><bdi dir="ltr">${escHtml(g.open)}–${escHtml(g.close)}</bdi></span></button>`).join('');
+    };
+    tabs.onclick = (e) => {
+      const b = e.target.closest('.tl-tab');
+      if (!b || !timelineEditor) return;
+      groups[active].points = timelineEditor.getPoints();
+      active = Number(b.dataset.i);
+      loadActive();
+      paintTabs();
+    };
+
+    showTimelineStep('edit');
+    errEl.classList.add('hide');
+    empty.classList.toggle('hide', groups.length > 0);
+    $('tlEditor').classList.toggle('hide', !groups.length);
+    saveBtn.disabled = !groups.length;
+    saveBtn.textContent = 'שמירה';
+    cancelBtn.textContent = context === 'gate' ? 'חזרה' : 'ביטול';
+    paintTabs();
+    modal.classList.remove('hide');
+    if (groups.length) {
+      loadActive();
+      requestAnimationFrame(() => timelineEditor?.relayout());   // measure now that it's visible
+    }
+
+    cancelBtn.onclick = () => {
+      closeTimelineModal();
+      resolve({ saved: false });
+    };
+    saveBtn.onclick = async () => {
+      groups[active].points = timelineEditor.getPoints();
+      const timeline = { version: 2, groups };
+      saveBtn.disabled = true;
+      cancelBtn.disabled = true;
+      saveBtn.textContent = 'שומרים…';
+      errEl.classList.add('hide');
+      let result;
+      try {
+        result = await onSave(timeline);
+      } catch (e) {
+        console.error('timeline save:', e);
+        errEl.textContent = e?.message || 'שגיאה בשמירה — נסו שוב';
+        errEl.classList.remove('hide');
+        saveBtn.disabled = false;
+        cancelBtn.disabled = false;
+        saveBtn.textContent = 'שמירה';
+        return;
+      }
+      cancelBtn.disabled = false;
+      renderTimelineSpark();
+      let replaceNow = false;
+      if (context !== 'gate' && result?.replace?.eligible) replaceNow = await askReplaceStep(result.replace);
+      closeTimelineModal();
+      resolve({ saved: true, replaceNow, result });
+    };
+  });
+}
+
+// "החליפו עכשיו": show the Home tab and rebuild today's set from now.
+function runReplaceToday() {
+  switchTab('Home');
+  runGenerateDaily({ replaceToday: true });
+}
+
+// Status line after a save that didn't (or couldn't) replace today's set.
+function savedNote(replace, replaceNow) {
+  if (replaceNow) return 'נשמר ✓ — בונים פלייליסטים חדשים בדף הבית';
+  if (replace?.eligible) return '✓ השינוי ייכנס לתוקף מחר';
+  if (replace?.reason === 'past-close' || replace?.reason === 'closed-today') return 'נשמר ✓ — השינוי ייכנס לתוקף מחר';
+  return 'נשמר ✓';
+}
+
+// POST the chosen delivery mode (+ Option 2's timeline). Returns the server
+// response: { ok, delivery_mode, timeline, replace }.
 async function setDeliveryMode(mode, timeline) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session?.access_token) throw new Error('לא מחוברים');
@@ -672,68 +907,127 @@ function renderProfileTab() {
   });
 }
 
-// v7 delivery-mode re-choose (Profile tab). Reflects state.deliveryMode on
-// the two cards, reveals the Option-2 timeline placeholder, and wires each
-// card to POST the new choice via setDeliveryMode(). onclick is reassigned
-// on every render (idempotent — no listener stacking across tab re-opens).
+// v7 daily-playlist type (Profile tab). Reflects state.deliveryMode on the two
+// cards and shows "עריכת ציר האנרגיה" on Option 2. onclick is reassigned on
+// every render (idempotent — no listener stacking across tab re-opens).
+//   Option 1 → 2: the timeline modal is MANDATORY — the type only switches
+//                 when the owner saves a timeline; cancel keeps Option 1.
+//   Option 2 → 1: regenerates the energy-tiered directions (as before).
+//   Either switch, and every timeline save, then asks whether to replace
+//   today's playlists now (only when today has a live set — see
+//   api/v7/account/_replace-status.js — and at most 2 times a day).
 function renderDeliverySection() {
   const opt1 = $('deliveryOpt1');
   const opt2 = $('deliveryOpt2');
-  const timeline = $('deliveryTimeline');
+  const editBtn = $('deliveryTimelineEdit');
   const msg = $('deliveryMsg');
   if (!opt1 || !opt2) return;
 
   const paint = (mode) => {
     opt1.classList.toggle('selected', mode === 'option1');
     opt2.classList.toggle('selected', mode === 'option2');
-    timeline?.classList.toggle('hide', mode !== 'option2');
+    editBtn?.classList.toggle('hide', mode !== 'option2');
+    if (mode === 'option2') renderTimelineSpark();
+  };
+  const setMsg = (text, kind) => {
+    if (!msg) return;
+    msg.style.color = kind === 'err' ? '#ff9b8a' : kind === 'ok' ? 'var(--teal-soft)' : '';
+    msg.textContent = text;
+  };
+  const lock = (on) => {
+    opt1.disabled = on;
+    opt2.disabled = on;
+    if (editBtn) editBtn.disabled = on;
   };
   paint(state.deliveryMode);
-  if (msg) msg.textContent = '';
-  if (msg && state.deliveryMode === 'option1' && state.energyBuildFailed) {
-    msg.style.color = '#ff9b8a';
-    msg.textContent = 'הכיוונים המוזיקליים עדיין לא הוכנו — לחצו על האפשרות הראשונה כדי לנסות שוב';
+  setMsg('');
+  if (state.deliveryMode === 'option1' && state.energyBuildFailed) {
+    setMsg('הכיוונים המוזיקליים עדיין לא הוכנו — לחצו על האפשרות הראשונה כדי לנסות שוב', 'err');
   }
 
-  const choose = async (mode) => {
-    // Re-clicking the current mode is a no-op — except Option 1 after a
-    // failed energy-directions build, where the click IS the retry.
-    if (mode === state.deliveryMode && !(mode === 'option1' && state.energyBuildFailed)) return;
+  const afterModal = (r) => {
+    if (!r.saved) return;
+    setMsg(savedNote(r.result?.replace, r.replaceNow), 'ok');
+    if (r.replaceNow) runReplaceToday();
+  };
+
+  const chooseOption1 = async () => {
+    // Re-clicking is a no-op — except after a failed energy-directions build,
+    // where the click IS the retry.
+    if (state.deliveryMode === 'option1' && !state.energyBuildFailed) return;
     const prev = state.deliveryMode;
-    opt1.disabled = true;
-    opt2.disabled = true;
-    if (msg) { msg.style.color = ''; msg.textContent = 'שומרים…'; }
-    paint(mode); // optimistic — the ✓ moves at once
+    lock(true);
+    setMsg('שומרים…');
+    paint('option1'); // optimistic — the ✓ moves at once
     try {
-      await setDeliveryMode(mode);
-      state.deliveryMode = mode;
-      // Re-choosing Option 1 regenerates the energy-tiered directions (the
+      const data = await setDeliveryMode('option1');
+      state.deliveryMode = 'option1';
+      // Choosing Option 1 regenerates the energy-tiered directions (the
       // persist endpoint replace-existing DELETEs the old set first).
-      if (mode === 'option1') {
-        if (msg) { msg.style.color = ''; msg.textContent = 'מכינים את הכיוונים המוזיקליים…'; }
-        const ok = await buildEnergyDirections();
-        state.energyBuildFailed = !ok;
-        if (!ok) {
-          // Mode saved, directions not — say so instead of "saved ✓".
-          if (msg) { msg.style.color = '#ff9b8a'; msg.textContent = 'הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות הראשונה'; }
-          return;
-        }
-      } else {
-        state.energyBuildFailed = false;
+      setMsg('מכינים את הכיוונים המוזיקליים…');
+      const ok = await buildEnergyDirections();
+      state.energyBuildFailed = !ok;
+      if (!ok) {
+        setMsg('הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות הראשונה', 'err');
+        return;
       }
-      if (msg) { msg.style.color = 'var(--teal-soft)'; msg.textContent = 'נשמר ✓'; }
+      let replaceNow = false;
+      if (prev === 'option2' && data.replace?.eligible) replaceNow = await askReplaceToday(data.replace);
+      setMsg(savedNote(prev === 'option2' ? data.replace : null, replaceNow), 'ok');
+      if (replaceNow) runReplaceToday();
     } catch (e) {
-      console.error('renderDeliverySection choose:', e);
+      console.error('renderDeliverySection option1:', e);
       state.deliveryMode = prev;
       paint(prev);
-      if (msg) { msg.style.color = '#ff9b8a'; msg.textContent = 'שגיאה בשמירה — נסו שוב'; }
+      setMsg('שגיאה בשמירה — נסו שוב', 'err');
     } finally {
-      opt1.disabled = false;
-      opt2.disabled = false;
+      lock(false);
     }
   };
-  opt1.onclick = () => choose('option1');
-  opt2.onclick = () => choose('option2');
+
+  const chooseOption2 = async () => {
+    if (state.deliveryMode === 'option2') return;
+    lock(true);
+    setMsg('');
+    try {
+      const r = await openTimelineModal({
+        context: 'switch',
+        onSave: async (timeline) => {
+          const data = await setDeliveryMode('option2', timeline);
+          state.deliveryMode = 'option2';
+          state.timeline = data.timeline || timeline;
+          state.energyBuildFailed = false;
+          return data;
+        },
+      });
+      if (r.saved) paint('option2');   // cancelled → still Option 1
+      afterModal(r);
+    } finally {
+      lock(false);
+    }
+  };
+
+  const editTimeline = async () => {
+    lock(true);
+    setMsg('');
+    try {
+      const r = await openTimelineModal({
+        context: 'edit',
+        onSave: async (timeline) => {
+          const data = await postTimeline(timeline);
+          state.timeline = data.timeline || timeline;
+          return data;
+        },
+      });
+      afterModal(r);
+    } finally {
+      lock(false);
+    }
+  };
+
+  opt1.onclick = chooseOption1;
+  opt2.onclick = chooseOption2;
+  if (editBtn) editBtn.onclick = editTimeline;
 }
 
 // Toggle any `.hours-toggle` (naming is historical — same styling +
@@ -868,7 +1162,10 @@ async function saveHours() {
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
-    const r = await fetch('/api/v6/account/update-hours', {
+    // v7's own endpoint: same save + audit as v6's, and it brings the
+    // Option-2 energy timeline in line with the new hours (dots keep their
+    // clock times) in the same request.
+    const r = await fetch('/api/v7/account/update-hours', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -881,6 +1178,8 @@ async function saveHours() {
     // Reflect locally so the title renderer + hasPlaylistsForToday pick
     // up the new hours immediately.
     state.dashboard = { ...(state.dashboard || {}), hours, longestMinutes };
+    if (data.timeline) state.timeline = data.timeline;
+    if (state.deliveryMode === 'option2') renderTimelineSpark();
     renderPlaylistsTitle();
     hoursSnapshot = JSON.stringify(hours);
     msg.style.color = 'var(--teal-soft)';
@@ -910,14 +1209,14 @@ function dayTargetTracks() {
 // --- title / closed-day helpers ---
 const HE_DAY_LETTERS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 
-function todayDayIdx() { return new Date().getDay(); }
+// "Today" = the venue's BUSINESS day in Israel time, not the browser's
+// calendar day: an overnight venue (Mon 18:00–02:00) at 01:00 Tuesday is
+// still on Monday. businessWindowAt handles both (IL timezone + overnight).
+function todayDayIdx() { return businessWindowAt(bmeta().hours).dayIdx; }
 
 function todayDdMmYy() {
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yy = String(d.getFullYear()).slice(-2);
-  return `${dd}/${mm}/${yy}`;
+  const [y, m, d] = businessWindowAt(bmeta().hours).isoDate.split('-');
+  return `${d}/${m}/${y.slice(-2)}`;
 }
 
 // Today's closed status from the persisted hours object. `null` means we
@@ -930,17 +1229,18 @@ function todayIsClosed() {
   return !!t.closed;
 }
 
-// "Daily playlists exist for today" — checked via createdAt (YYYY-MM-DD).
-// Used to tell apart the onboarding day (daily playlists just created →
-// normal title) from a later closed-day visit (no daily playlists → show
-// the closed prompt). Only LIVE playlists (not past their expiresAt) count,
-// and event playlists are excluded — they surface in the events section,
-// so their presence must not flip the daily-playlists title to "open day".
-function isoDateToday() { return new Date().toISOString().slice(0, 10); }
+// "Daily playlists exist for today" — built during the current business day
+// (from 3h before its IL midnight: the cron builds up to 2h before opening,
+// same window as the server's _replace-status.js). Used to tell apart the
+// onboarding day (daily playlists just created → normal title) from a later
+// closed-day visit (no daily playlists → show the closed prompt). Only LIVE
+// playlists (not past their expiresAt) count, and event playlists are
+// excluded — they surface in the events section, so their presence must not
+// flip the daily-playlists title to "open day".
 function hasPlaylistsForToday() {
-  const today = isoDateToday();
+  const since = Date.parse(businessWindowAt(bmeta().hours).dayStartIso) - 3 * 3600 * 1000;
   return (bmeta().playlists || []).some((p) =>
-    p && !p.eventId && p.createdAt === today && playlistIsLive(p),
+    p && !p.eventId && (p.createdAtMs || 0) >= since && playlistIsLive(p),
   );
 }
 
@@ -1573,7 +1873,11 @@ function closeGenerateDailyModal() {
   if (btn) { btn.disabled = false; btn.textContent = 'צור פלייליסטים יומיים'; }
 }
 
-async function runGenerateDaily() {
+// replaceToday (Profile tab "החליפו עכשיו"): the server builds a new set that
+// starts now and hides each old playlist as its replacement lands. While it
+// streams, the list shows only the new set's rows; any old playlist whose
+// replacement failed comes back on the final reload.
+async function runGenerateDaily({ replaceToday = false } = {}) {
   if (state.generating) return;
   // Close the modal immediately — the build runs in the background and
   // the owner watches placeholders → real rows fill in as each playlist
@@ -1617,6 +1921,7 @@ async function runGenerateDaily() {
       body: JSON.stringify({
         businessId: business.id,
         bizName: business.name || '',
+        replaceToday: !!replaceToday,
       }),
     });
     if (!r.ok) {
@@ -1682,7 +1987,7 @@ async function runGenerateDaily() {
   }
 }
 
-$('genDailyConfirm')?.addEventListener('click', runGenerateDaily);
+$('genDailyConfirm')?.addEventListener('click', () => runGenerateDaily());
 $('genDailyCancel')?.addEventListener('click', closeGenerateDailyModal);
 $('genDailyModal')?.addEventListener('click', (e) => {
   // Click on backdrop (the modal wrapper itself) closes.

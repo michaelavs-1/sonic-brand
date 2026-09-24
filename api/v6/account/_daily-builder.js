@@ -218,7 +218,8 @@ async function spotifyAttempt(origin, action, body) {
 // chunks by SPOTIFY_ADD_CHUNK=50, so each spotifyCall carries ≤50 URIs and
 // api/new/spotify's internal 100-URI chunking is a no-op — retrying the whole
 // call re-adds the same 50, no dupes vs. partial success).
-async function spotifyCall(origin, action, body) {
+// Exported for v7's Option-2 builder (api/v7/account/_option2-builder.js).
+export async function spotifyCall(origin, action, body) {
   const MAX_ATTEMPTS = 3;
   let last;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -232,7 +233,7 @@ async function spotifyCall(origin, action, body) {
   throw last?.error || new Error(`spotify ${action} failed`);
 }
 
-async function addAllTracks(origin, playlistId, spotifyIds) {
+export async function addAllTracks(origin, playlistId, spotifyIds) {
   for (let i = 0; i < spotifyIds.length; i += SPOTIFY_ADD_CHUNK) {
     const uris = spotifyIds.slice(i, i + SPOTIFY_ADD_CHUNK).map((id) => `spotify:track:${id}`);
     await spotifyCall(origin, 'add_tracks', { playlist_id: playlistId, uris });

@@ -273,8 +273,21 @@ async function processBusiness({ business, now, ilNow, origin }) {
   }
 }
 
+// HARD OFF (2026-09-24, Roni): the v6 daily builder is retired — v6 accounts
+// were deleted and v7's cron (/api/cron/v7-generate-daily) is the only daily
+// builder. Removing the schedule from vercel.json isn't enough on its own (a
+// stale deploy or a manual trigger would still run it, and it has no
+// businesses.version filter — it would walk v7 businesses too). To revive:
+// flip this to false AND add a `version=eq.v6` filter to the business query.
+const V6_DAILY_CRON_DISABLED = true;
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
+
+  if (V6_DAILY_CRON_DISABLED) {
+    console.log('[cron daily-gen v6] disabled — no-op (v7-generate-daily is the only daily builder)');
+    return res.status(200).json({ ok: true, disabled: true });
+  }
 
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret) {

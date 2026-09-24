@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ציר אנרגיה — בדיקה</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Sandbox for the Option-2 energy-timeline editor (v7). Runs the SAME
+       editor + model the account uses (v7/account/energy-timeline-editor.js,
+       v7/generation/energy-timeline.js), so this page can't drift from
+       production. The dev panel (sample hours, N, time direction, playlist
+       translation, stored JSON) is for us only. Changing the sample hours runs
+       the real hours-change reconciliation (dots keep their clock times).
+       Nothing is saved. Not linked from the app; reach it at /v7/test-timeline
+       (served — ES-module imports don't load from file://). -->
+  <style>
+    :root {
+      --bg: #0a1117;
+      --bg-2: #0f1c26;
+      --card: #142835;
+      --border: rgba(255, 255, 255, .08);
+      --border-2: rgba(255, 255, 255, .16);
+      --text: #f5f7f8;
+      --muted: #96a7b0;
+      --accent: #f0a73f;
+      --teal-soft: #57a3bd;
+      --danger: #e07a6a;
+      --r-lg: 24px;
+    }
+
+    * { box-sizing: border-box }
+
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text) }
+
+    body {
+      font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 20px 12px 60px;
+      background:
+        radial-gradient(900px 500px at 85% -10%, rgba(44, 99, 122, .35), transparent 60%),
+        radial-gradient(700px 420px at 5% 110%, rgba(240, 167, 63, .10), transparent 55%),
+        var(--bg);
+    }
+
+    button { font-family: inherit }
+
+    .wrap { width: 100%; max-width: 460px; display: flex; flex-direction: column; gap: 14px }
+
+    .card {
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 16px 16px 14px;
+    }
+
+    .sandbox-note { font-size: 12.5px; color: var(--muted); text-align: center; margin: 0 }
+
+    /* ---------- owner-facing card chrome (the editor styles itself) ---------- */
+    .head { display: flex; align-items: center; gap: 10px }
+    h2 { font-size: 18px; font-weight: 700; margin: 0; flex: 1 }
+    .reset {
+      font-size: 12.5px;
+      padding: 5px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--border-2);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .desc { color: var(--muted); font-size: 14px; line-height: 1.5; margin: 8px 0 14px }
+
+    /* ---------- dev panel ---------- */
+    .dev-card { border-style: dashed; border-color: rgba(87, 163, 189, .35) }
+    .dev-title { font-size: 14px; font-weight: 700; color: var(--teal-soft); margin: 0 0 2px }
+    .dev-sub { font-size: 12px; color: var(--muted); margin: 0 }
+    .ctl { margin-top: 14px }
+    .ctl-lab { font-size: 13px; color: var(--muted); margin-bottom: 6px }
+    .seg { display: flex; gap: 6px; flex-wrap: wrap }
+    .seg button {
+      font-size: 13px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--border-2);
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .seg button.on { background: var(--teal-soft); border-color: var(--teal-soft); color: #06131a; font-weight: 700 }
+    .xlate { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--border-2) }
+    .xlate-head { font-size: 13.5px; font-weight: 700 }
+    .xlate-sub { font-size: 12px; color: var(--muted); margin: 2px 0 8px; line-height: 1.45 }
+    .strip { display: flex; gap: 1px; height: 22px; border-radius: 7px; overflow: hidden }
+    .strip i { display: block; min-width: 0 }
+    .strip-ends { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px; font-size: 12px; color: var(--muted) }
+    .lg { display: inline-flex; align-items: center; gap: 5px }
+    .lg.zero { opacity: .4 }
+    .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block }
+    details.dev { margin-top: 12px; font-size: 12.5px }
+    details.dev summary { cursor: pointer; color: var(--teal-soft) }
+    details.dev code { font-size: 11.5px }
+    details.dev p { color: var(--muted); margin: 6px 0; line-height: 1.45 }
+    details.dev pre {
+      direction: ltr; text-align: left;
+      background: #0b151c; border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px; margin: 6px 0 0;
+      overflow: auto; max-height: 260px;
+      font-size: 11.5px; line-height: 1.45;
+    }
+  </style>
+</head>
+
+<body>
+  <main class="wrap">
+    <p class="sandbox-note">עמוד בדיקה — שום דבר לא נשמר</p>
+
+    <!-- What the owner sees -->
+    <section class="card" id="editorCard">
+      <div class="head">
+        <h2>ציר האנרגיה היומי</h2>
+        <button class="reset" type="button">איפוס</button>
+      </div>
+      <p class="desc">גררו את הנקודות כדי לקבוע מתי המוזיקה אנרגטית ומתי רגועה לאורך היום: למעלה = אנרגטי, למטה = רגוע.</p>
+      <div id="timeline"></div>
+    </section>
+
+    <!-- For us only -->
+    <section class="card dev-card">
+      <p class="dev-title">למפתחים — לא יופיע למשתמש</p>
+      <p class="dev-sub">בקרות בדיקה, איך הציר יתורגם לפלייליסט, ומה יישמר.</p>
+      <div class="ctl">
+        <div class="ctl-lab">שעות פתיחה לדוגמה (הנקודות שומרות על השעה שלהן, כמו בשינוי שעות אמיתי)</div>
+        <div class="seg" id="ctlHours"></div>
+      </div>
+      <div class="ctl">
+        <div class="ctl-lab">רמות אנרגיה בפרופיל הטעם (N) — קובע את מספר השורות ברקע הציר</div>
+        <div class="seg" id="ctlLevels"></div>
+      </div>
+      <div class="ctl">
+        <div class="ctl-lab">כיוון ציר הזמן</div>
+        <div class="seg" id="ctlDir"></div>
+      </div>
+      <div class="xlate">
+        <div class="xlate-head">איך זה יתורגם לפלייליסט</div>
+        <div class="xlate-sub">כל משבצת = רבע שעה. רמה = השורה ברקע הציר שהקו עובר בה (1 = התחתונה, N = העליונה). הבונה ימלא כל
+          קטע בשירים מז׳אנרים ברמה הזו, לפי משך כל שיר.</div>
+        <div class="strip"></div>
+        <div class="strip-ends"><span class="e-open"></span><span class="e-close"></span></div>
+        <div class="legend"></div>
+      </div>
+      <details class="dev">
+        <summary>מה יישמר ב-<code>business_v7_settings.timeline</code></summary>
+        <p>קבוצה אחת לכל שעות פתיחה זהות. <code>m</code> = דקות מחצות של יום הפתיחה (אחרי חצות: מעל 1440),
+          אנרגיה <code>e</code> בין 0 ל-1, מתורגמת לרמה 1–N רק בזמן בניית הפלייליסט.</p>
+        <pre></pre>
+      </details>
+    </section>
+  </main>
+
+  <script type="module">
+    import { TimelineEditor, energyColor } from '/v7/account/energy-timeline-editor.js?v=24092026a';
+    import { windowOf, levelOf, fmtHM, reconcileTimeline, TIMELINE_VERSION } from '/v7/generation/energy-timeline.js?v=24092026a';
+
+    const HOURS = [
+      { open: '09:00', close: '17:00' },
+      { open: '08:00', close: '23:00' },
+      { open: '18:00', close: '02:00' },   // overnight wrap
+    ];
+    const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+    const G = { open: '09:00', close: '17:00', N: 4, openRight: false };
+    const AVG_TRACK_MIN = 4.16;    // measured catalog mean (track_analyses, 2026-09-24)
+    const SLOT_MIN = 15;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const fmtDur = (m) => { m = Math.round(m); if (m < 60) return `${m} דק׳`; return `${Math.floor(m / 60)}:${pad(m % 60)} ש׳`; };
+    const levelColor = (lv) => energyColor(G.N <= 1 ? 1 : (lv - 1) / (G.N - 1));
+    const weekOf = (open, close) => Object.fromEntries(ALL_DAYS.map((d) => [d, { closed: false, open, close }]));
+    const timelineJSON = () => ({ version: TIMELINE_VERSION, groups: [{ days: ALL_DAYS, open: G.open, close: G.close, points: editor.getPoints() }] });
+
+    const strip = document.querySelector('.strip');
+    const ends = document.querySelector('.strip-ends');
+    const legend = document.querySelector('.legend');
+    const pre = document.querySelector('details.dev pre');
+
+    function prettyJSON(o) {
+      return JSON.stringify(o, null, 2).replace(/\{\s+"m"[^{}]*?\}/g, (s) => s.replace(/\s+/g, ' '));
+    }
+
+    let editor = null;
+    function refreshDev() {
+      if (!editor) return;
+      const { openMin, total } = windowOf(G);
+      const n = Math.ceil(total / SLOT_MIN), minsByLevel = new Array(G.N + 1).fill(0);
+      let cells = '';
+      for (let i = 0; i < n; i++) {
+        const m0 = i * SLOT_MIN, m1 = Math.min(total, (i + 1) * SLOT_MIN);
+        const lv = levelOf(editor.energyAt(openMin + (m0 + m1) / 2), G.N);
+        minsByLevel[lv] += m1 - m0;
+        cells += `<i style="flex:${m1 - m0};background:${levelColor(lv)}" title="${fmtHM(openMin + m0)} · רמה ${lv}"></i>`;
+      }
+      strip.innerHTML = cells;
+      strip.style.direction = ends.style.direction = G.openRight ? 'rtl' : 'ltr';
+      ends.querySelector('.e-open').textContent = `פתיחה ${G.open}`;
+      ends.querySelector('.e-close').textContent = `סגירה ${G.close}`;
+      let lg = '';
+      for (let lv = 1; lv <= G.N; lv++) {
+        const m = minsByLevel[lv];
+        const tag = lv === 1 ? ' (רגוע)' : lv === G.N ? ' (אנרגטי)' : '';
+        lg += `<span class="lg ${m ? '' : 'zero'}"><i class="sw" style="background:${levelColor(lv)}"></i>רמה ${lv}${tag} · ${m ? `${fmtDur(m)} · ~${Math.round(m / AVG_TRACK_MIN)} שירים` : 'לא בשימוש'}</span>`;
+      }
+      legend.innerHTML = lg;
+      pre.textContent = prettyJSON(timelineJSON());
+    }
+
+    editor = new TimelineEditor(document.getElementById('timeline'), {
+      group: { open: G.open, close: G.close }, N: G.N, openRight: G.openRight, onChange: refreshDev,
+    });
+    document.querySelector('#editorCard .reset').addEventListener('click', () => editor.reset());
+    refreshDev();
+
+    function seg(el, items, isOn, onPick) {
+      const paint = () => {
+        el.innerHTML = items.map((it, i) => `<button type="button" data-i="${i}" class="${isOn(it) ? 'on' : ''}">${it.label}</button>`).join('');
+      };
+      el.addEventListener('click', (e) => {
+        const b = e.target.closest('button');
+        if (!b) return;
+        onPick(items[Number(b.dataset.i)]);
+        paint();
+        refreshDev();
+      });
+      paint();
+    }
+
+    seg(document.getElementById('ctlHours'),
+      HOURS.map((h) => ({ ...h, label: `<span dir="ltr">${h.open}–${h.close}</span>` })),
+      (h) => h.open === G.open && h.close === G.close,
+      (h) => {
+        // Same rule as a real opening-hours edit: dots keep their clock time.
+        const moved = reconcileTimeline(timelineJSON(), weekOf(h.open, h.close));
+        G.open = h.open; G.close = h.close;
+        editor.load({ group: { open: h.open, close: h.close }, points: moved.groups[0].points });
+      });
+    seg(document.getElementById('ctlLevels'),
+      [2, 3, 4, 5, 6].map((n) => ({ n, label: String(n) })),
+      (it) => it.n === G.N,
+      (it) => { G.N = it.n; editor.load({ N: it.n }); });
+    seg(document.getElementById('ctlDir'),
+      [{ right: false, label: 'פתיחה משמאל' }, { right: true, label: 'פתיחה מימין' }],
+      (it) => it.right === G.openRight,
+      (it) => { G.openRight = it.right; editor.load({ openRight: it.right }); });
+  </script>
+</body>
+
+</html>

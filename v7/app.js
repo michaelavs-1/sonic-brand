@@ -1,21 +1,31 @@
-// v6 onboarding orchestrator.
+// v7 onboarding orchestrator.
 //
-// Michael's v4 shell (splash → login | onboarding → business input with voice
-// dictation → Google Places confirmation → atmosphere → preview → build →
-// signup) driven by v5's pipeline (Claude musical directions → per-direction
-// preview swipe → one Spotify playlist per picked direction).
+// Splash → login | onboarding → business input with voice dictation → Google
+// Places confirmation → atmosphere → emphases → hours + directions → preview
+// swipe → registration → payment → taste-profile bar → "check your email".
 //
-// The four flow steps are driven by a state machine so users can click any
+// v7 diverges from v6 after the swipe deck: directions are diagnostic taste
+// PROBES, not playlist seeds. There is no per-direction playlist build at
+// onboarding. Instead the swipe deck records likes / dislikes / super-likes,
+// then the flow captures an email (registration), a placeholder payment, and a
+// bar that awaits generateTasteProfile() — the call where the swiped
+// directions dissolve into a flat, full-catalog liked/disliked genre profile.
+// Only then does signup run: it creates the account, saves the profile and
+// emails a magic link. Email verification is REQUIRED (like v6) — the owner
+// enters /v7/account only by clicking that link.
+//
+// The onboarding steps are driven by a state machine so users can click any
 // reached step in the progress bar to jump back and edit. State (bizName,
-// bizDesc, place, atmospheres, directions, picks) is preserved across
-// navigation; downstream state is invalidated when an earlier step is
+// bizDesc, place, atmospheres, directions, picks, dislikes) is preserved
+// across navigation; downstream state is invalidated when an earlier step is
 // re-entered.
 
-import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v6/atmosphere.js?v=21082026a';
-import { runEmphasesStep } from '/v6/emphases.js?v=20082026c';
-import { runHoursSelection } from '/v6/hours-selector.js?v=03082026a';
-import { generateMusicalDirections } from '/v6/generation/musical-directions.js?v=02092026a';
-import { generateRefinedMusicalDirections } from '/v6/generation/refined-directions.js?v=02092026a';
+import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=23092026a';
+import { runEmphasesStep } from '/v7/emphases.js?v=23092026a';
+import { runHoursSelection } from '/v7/hours-selector.js?v=23092026a';
+import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=23092026a';
+import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=24092026a';
+import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=24092026a';
 // derivePopularityWindow was removed 2026-09-02 — atmospheres no longer
 // derive a popularity window. Atmosphere strings still enter the prompt
 // as context (see buildUserMessage in musical-directions.js), but
@@ -32,21 +42,22 @@ import {
   showR2FailureScreen,
   showRestartOnboardingScreen,
   preparePreview,
-} from '/v6/preview.js?v=24092026a';
-import { buildDirectionPlaylists } from '/v6/generation/playlist-builder.js?v=21082026a';
+} from '/v7/preview.js?v=24092026b';
+// v7 has NO per-direction playlist build at onboarding — directions are
+// diagnostic probes, not playlist seeds. After the swipe deck the flow goes
+// registration → payment → taste-profile (the point where directions dissolve
+// into a flat genre profile). These three screens live in v7/result.js.
 import {
-  initPlaylistResultsShell,
-  updateOnePlaylistResult,
-  finalizePlaylistResultsHeading,
-  showRubinCTA,
-  showSignupCard,
-} from '/v6/result.js?v=25082026a';
+  runRegistrationStep,
+  runPaymentStep,
+  runTasteProfileBar,
+} from '/v7/result.js?v=24092026c';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
 if (new URLSearchParams(location.search).has('reset')) {
   Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
-  console.log('v6: session reset — starting fresh');
+  console.log('v7: session reset — starting fresh');
 }
 
 const $ = (id) => document.getElementById(id);
@@ -100,6 +111,35 @@ const state = {
   page2Promise: null,
   picked: null,
   results: null,
+  // ---- v7-only signal accumulation ----
+  // In v6, dislikes were discarded (swipe-left just advanced). In v7 dislikes
+  // are a real taste signal: the full disliked direction object is pushed here
+  // so generateTasteProfile() can use it as a negative constraint. Mirror of
+  // `picked` (the liked directions). Undo in the swipe deck pops this too.
+  dislikedDirections: [],
+  // Per-genre audit tally. Map<genre, { like, dislike }>. On every like/dislike
+  // swipe, each genre in that direction increments its bucket. This is the
+  // "audit tally" (scope decision 4) — persisted with the taste profile for
+  // analytics only. NOT used to build the profile (the model does the real
+  // extrapolation from the intact direction objects); it's a sanity check /
+  // audit trail of the raw swipe signal.
+  genreTally: new Map(),
+  // Email captured on the registration screen (A4). Held in client state only
+  // until signup (after payment + the taste-profile bar) — no account is
+  // created before then, per the "no non-paying clients" requirement. Signup
+  // emails the verification magic link to this address; nothing logs this tab in.
+  email: '',
+  // Background generateTasteProfile() promise. Kicked off right after the swipe
+  // deck resolves (A3) so it runs concurrently with registration + payment and
+  // the 35s bar (A7) usually resolves it instantly. Holds the resolved profile
+  // once awaited.
+  tasteProfilePromise: null,
+  tasteProfile: null,
+  // R2 refined directions if Round 2 fired, else null. Lives on state (not a
+  // step-5 local) because the taste-profile RETRY closure in step 6 needs it;
+  // as a `let` inside the step-5 block it was out of scope there and every
+  // retry threw a ReferenceError → endless retry screen.
+  round2Directions: null,
 };
 
 // Highest step index the user has reached — determines which steps in the
@@ -129,6 +169,14 @@ function markReached(step) {
   if (step > highestStep) highestStep = step;
   // Re-run setStep to update .clickable on newly-reached steps.
   setStep(currentStep);
+}
+
+// Hide the onboarding progress bar. Used for the v7 checkout screens
+// (registration → payment → taste-profile bar), which are the sign-up funnel,
+// not numbered onboarding steps.
+function hideFlowProgress() {
+  const fp = $('flowProgress');
+  if (fp) fp.hidden = true;
 }
 
 function invalidateFrom(step) {
@@ -168,6 +216,13 @@ function invalidateFrom(step) {
   // needs invalidation. Hours themselves persist so re-entering pre-fills.
   if (step <= 5) {
     state.picked = null;
+    // The swipe deck rebuilds these from scratch on every entry, so reset
+    // the v7 signal accumulators and the (now-stale) taste profile whenever
+    // the user re-enters step 5 or earlier.
+    state.dislikedDirections = [];
+    state.genreTally = new Map();
+    state.tasteProfilePromise = null;
+    state.tasteProfile = null;
   }
   if (step <= 6) {
     state.results = null;
@@ -183,6 +238,41 @@ function emptyPreparedPreview() {
     page1Ready: Promise.resolve({ previews: [], trackMeta: {} }),
     page2Ready: Promise.resolve({ previews: [], trackMeta: {} }),
   };
+}
+
+// Derive a single carry-through preference value (instrumentalness /
+// popularity) from a set of directions. v7's directions each carry an
+// inst_pref / pop_pref enum ('none'|'soft'|'hard'); the taste profile takes
+// ONE value per axis. R1 stamps these uniformly across all directions, so any
+// non-'none' value is the owner's real preference — we return the first one we
+// find, preferring the liked directions (they reflect what actually resonated)
+// and falling back to the full R1 set. Defaults to 'none'.
+function carryPref(directionSets, field) {
+  for (const set of directionSets) {
+    if (!Array.isArray(set)) continue;
+    for (const d of set) {
+      const v = d?.[field];
+      if (v && v !== 'none') return v;
+    }
+  }
+  return 'none';
+}
+
+// Every Round-1 direction the owner actually reacted to, for the R2 and
+// taste-profile prompts. state.directions only ever holds R1 PAGE 1 (ranks
+// 1-4) — page 2 (ranks 5-8) lives inside preview.js — yet likes/dislikes can
+// include page-2 directions. Passing only page 1 left the model reading
+// "LIKED: 6" with no rank-6 direction described. So: page 1 plus any other
+// direction found in the given like/dislike lists, excluding Round-2
+// directions (ranks 9-12, see refined-directions.js), deduped by rank.
+function round1DirectionsSeen(...lists) {
+  const r2 = new Set(state.round2Directions || []);
+  const byRank = new Map();
+  for (const d of [state.directions || [], ...lists].flat()) {
+    if (!d || r2.has(d) || byRank.has(d.rank)) continue;
+    byRank.set(d.rank, d);
+  }
+  return [...byRank.values()].sort((a, b) => a.rank - b.rank);
 }
 
 // Wrap a promise so it rejects with AbortError if `signal` fires. The underlying
@@ -366,8 +456,6 @@ async function getAtmosphereRows() {
     });
   return atmosphereRowsPromise;
 }
-
-function prewarmSupabase() { fetch('/api/v5/prewarm').catch(() => { }); }
 
 // ---------- narrator: "AI thinking" hint while Claude runs ----------
 function startNarrator() {
@@ -792,7 +880,16 @@ async function goToStep(start) {
           // Shared references — the swipe deck mutates these directly.
           superLikedTracks: state.superLikedTracks,
           superLikedGenres: state.superLikedGenres,
+          // v7: dislikes carry meaning. The deck pushes each swiped-left
+          // direction here, and increments the per-genre audit tally on
+          // every like/dislike. Both are shared mutable references.
+          dislikedDirections: state.dislikedDirections,
+          genreTally: state.genreTally,
         }), signal);
+
+        // R2 refined directions, captured if Round 2 fires — fed to the
+        // background taste-profile call (and its retry) below.
+        state.round2Directions = null;
 
         // Round 2 refinement: fires when Round 1 yielded < 3 liked
         // directions (0, 1, or 2). Feeds the R2 Gemini call all R1 inputs
@@ -819,29 +916,22 @@ async function goToStep(start) {
           );
           state.round2Emphases = round2Emphases;
 
-          const r1Directions = state.directions;
-          const dislikedDirs = r1Directions.filter((d) => !picked.includes(d));
+          // Page 1 + any page-2 direction the owner swiped (see round1DirectionsSeen).
+          const r1Directions = round1DirectionsSeen(picked, state.dislikedDirections);
+          // v7: use the ACTUALLY-swiped-left directions recorded by the deck,
+          // not "everything the owner didn't like" (v6's derivation). A
+          // direction the owner never reached — because they hit 3 likes and
+          // the deck ended early, or page 2 never rendered — is not a dislike.
+          const dislikedDirs = [...state.dislikedDirections];
           // Deduped list of every genre the owner super-liked a track
           // from — includes super-likes from disliked directions too
           // (the direction as a whole didn't resonate, but that specific
           // genre did). Passed to R2 as its extra-weighted positive signal.
           const superLikedGenresList = [...new Set(state.superLikedGenres.values())];
 
-          // Prewarm the Postgres plan cache before the Round-2 anchor-tracks
-          // fetch fires. R2's anchor-tracks call lands minutes after R1's
-          // (Gemini R1 → user swipes → emphases step → Gemini R2 = ~1-3
-          // minutes), long enough that the v5_anchor_tracks plan cache can
-          // decay on Supabase's shared PgBouncer and hit a 15s statement
-          // timeout (error 57014). Firing prewarm here (fire-and-forget,
-          // parallel with the Gemini call which takes ~30s) gives the plan
-          // cache a warm start before the anchor-tracks calls actually run.
-          fetch('/api/v5/prewarm').catch(() => { });
-
           // Retry loop: any hard R2 failure (Gemini error OR anchor-tracks
-          // pool empty on all 4 refined directions — the latter usually
-          // means 57014 timeout even after client + server retries) shows
-          // a screen offering "נסה שוב" (refires the whole R2 pipeline,
-          // including another prewarm) or a secondary action (continue
+          // pool empty on all 4 refined directions) shows a screen offering
+          // "נסה שוב" (refires the whole R2 pipeline) or a secondary action (continue
           // with R1 picks / restart onboarding). Loop exits when either
           // the R2 preview successfully renders OR the owner picks the
           // secondary action.
@@ -878,7 +968,15 @@ async function goToStep(start) {
                   refinedDirections: refinedResult.directions,
                   superLikedTracks: state.superLikedTracks,
                   superLikedGenres: state.superLikedGenres,
+                  // Same v7 signal accumulation as R1: R2 swipe-lefts are real
+                  // dislikes, and every R2 like/dislike feeds the audit tally.
+                  dislikedDirections: state.dislikedDirections,
+                  genreTally: state.genreTally,
                 }), signal);
+                // The R2 direction set becomes `round2Directions` for the
+                // taste-profile call, so the model sees the same probes the
+                // owner actually swiped in Round 2.
+                state.round2Directions = refinedResult.directions;
                 // preview rendered (may be [] if the owner swiped left on
                 // every R2 card — that's a valid outcome, not a failure)
                 previewSucceeded = true;
@@ -900,7 +998,6 @@ async function goToStep(start) {
               hasR1Picks: picked.length > 0,
             }), signal);
             if (choice === 'retry') {
-              fetch('/api/v5/prewarm').catch(() => { }); // fresh prewarm before retry
               refinedPicked = null; // loop
               continue;
             }
@@ -931,21 +1028,82 @@ async function goToStep(start) {
 
         state.picked = mergedPicked;
         state.results = null;   // any new picks → fresh build
+
+        // Kick off the taste-profile call in the BACKGROUND (A3 prefetch).
+        // This is THE call where the swiped directions dissolve into a flat,
+        // full-catalog liked/disliked genre profile. It runs concurrently
+        // with the registration + payment screens (step 6), so the 35s bar
+        // (step 7) usually finds it already resolved. Stored on
+        // state.tasteProfilePromise; awaited in the taste-profile bar.
+        // We deliberately do NOT abort this with the step signal — it should
+        // keep running even if the owner navigates back and forth between
+        // registration and payment. It's re-kicked-off (below) only if the
+        // owner re-swipes (invalidateFrom clears it).
+        state.tasteProfilePromise = generateTasteProfile({
+          bizName: state.bizName,
+          bizDesc: state.bizDesc,
+          atmospheres: state.selectedAtmos,
+          musicalEmphases: state.musicalEmphases,
+          round2Emphases: state.round2Emphases,
+          round1Directions: round1DirectionsSeen(mergedPicked, state.dislikedDirections),
+          round2Directions: state.round2Directions,   // null unless Round 2 fired
+          likedDirections: mergedPicked,
+          dislikedDirections: state.dislikedDirections,
+          // Deduped list of the specific genres the owner super-liked tracks
+          // from (across R1 + R2). Sharper positive signal than "the whole
+          // direction was liked".
+          superLikedGenres: [...new Set(state.superLikedGenres.values())],
+          // Single carry-through prefs. Prefer the liked directions; fall back
+          // to the full R1 set (R1 stamps these uniformly, so both agree in
+          // the common case).
+          instrumentalnessPreference: carryPref([mergedPicked, state.directions], 'instrumentalness_preference'),
+          popularityPreference: carryPref([mergedPicked, state.directions], 'popularity_preference'),
+          onboardingSessionId: state.onboardingSessionId,
+        }).catch((e) => {
+          // Surface as a structured error the taste-profile bar can retry.
+          console.warn('generateTasteProfile failed:', e);
+          return { error: 'matcher_error', reasoning_en: e?.message || String(e) };
+        });
+
         markReached(6);
       }
 
+      // ---- v7 checkout: registration → payment → taste-profile bar ----
+      // No example-playlist build here (v6's step 6). The progress bar is
+      // hidden across these screens — they're not onboarding steps, they're
+      // the sign-up funnel. Each helper renders into .screen-card and resolves
+      // when the owner advances.
       else if (s === 6) {
-        initPlaylistResultsShell(state.picked);
-        const results = await abortable(buildDirectionPlaylists({
-          selectedDirections: state.picked,
-          bizName: state.bizName,
-          onProgress: (index, r) => updateOnePlaylistResult(index, r),
-        }), signal);
-        finalizePlaylistResultsHeading(results);
-        state.results = results;
-        showRubinCTA(() => {
-          if (signal.aborted) return;
-          showSignupCard(results, {
+        hideFlowProgress();
+
+        // A4 — registration: capture the email ONLY. No account is created
+        // here (the "no non-paying clients" requirement); signup fires after
+        // payment. The email is held in client state.
+        const email = await abortable(
+          runRegistrationStep({ initialValue: state.email }),
+          signal,
+        );
+        state.email = email;
+
+        // A5 — payment (placeholder, all fields optional). Just advances — no
+        // account is created until the taste profile is ready (A7).
+        await abortable(runPaymentStep({ email: state.email }), signal);
+
+        // A7 — progress bar → signup → "check your email". Behind the bar,
+        // await the background taste-profile call (usually already resolved),
+        // then POST signup with the profile + audit tally: the server creates
+        // the account + businesses row, saves the profile and emails the magic
+        // link (email verification is REQUIRED — nothing logs this tab in).
+        // Ends on the "בדקו את המייל" screen. On a taste-profile error it shows
+        // a retry screen that re-fires generateTasteProfile.
+        await runTasteProfileBar({
+          tasteProfilePromise: state.tasteProfilePromise,
+          // Everything signup needs to persist the business + onboarding
+          // context. NOTE: no picked directions — v7 writes no
+          // business_directions. The taste profile (added by the bar) is the
+          // source of truth for what this user likes.
+          signupPayload: {
+            email: state.email,
             name: state.bizName,
             description: state.bizDesc,
             musicalEmphases: state.musicalEmphases,
@@ -953,12 +1111,30 @@ async function goToStep(start) {
             place: state.confirmedPlace,
             hours: state.hours,
             longestMinutes: state.longestMinutes,
-            // Flatten the Set into an array of spotify_ids for the JSON POST.
             superLikedTracks: [...state.superLikedTracks],
-            // Threaded to signup so the server can backfill business_id
-            // onto the gemini_call_log rows this session produced.
             onboardingSessionId: state.onboardingSessionId,
-          });
+          },
+          // Flattened audit tally: [{ genre, like, dislike }]. Persisted with
+          // the profile for analytics only (scope decision 4).
+          genreTally: [...state.genreTally.entries()].map(
+            ([genre, t]) => ({ genre, like: t.like || 0, dislike: t.dislike || 0 }),
+          ),
+          // Retry path: rebuild the same call from current state.
+          retry: () => generateTasteProfile({
+            bizName: state.bizName,
+            bizDesc: state.bizDesc,
+            atmospheres: state.selectedAtmos,
+            musicalEmphases: state.musicalEmphases,
+            round2Emphases: state.round2Emphases,
+            round1Directions: round1DirectionsSeen(state.picked, state.dislikedDirections),
+            round2Directions: state.round2Directions,
+            likedDirections: state.picked,
+            dislikedDirections: state.dislikedDirections,
+            superLikedGenres: [...new Set(state.superLikedGenres.values())],
+            instrumentalnessPreference: carryPref([state.picked, state.directions], 'instrumentalness_preference'),
+            popularityPreference: carryPref([state.picked, state.directions], 'popularity_preference'),
+            onboardingSessionId: state.onboardingSessionId,
+          }),
         });
         return;
       }
@@ -967,7 +1143,7 @@ async function goToStep(start) {
     }
   } catch (err) {
     if (err?.name === 'AbortError') return;
-    console.error('v6 error:', err);
+    console.error('v7 error:', err);
     showError(err?.message || 'תקלה לא צפויה.');
   }
 }
@@ -982,9 +1158,9 @@ function wireStepClicks() {
   });
 }
 
-// ---------- welcome intro: splash → "have a Rubin account?" → /v6/account | onboarding ----------
+// ---------- welcome intro: splash → "have a Rubin account?" → /v7/account | onboarding ----------
 // If a Supabase session already exists in localStorage, skip the intro card
-// entirely and go straight to /v6/account. Expired-but-refreshable sessions
+// entirely and go straight to /v7/account. Expired-but-refreshable sessions
 // (refresh_token present) also count — supabase-js will auto-refresh on
 // dashboard boot. Only fully absent sessions get the "have an account?" card.
 function hasSupabaseSession() {
@@ -1014,7 +1190,7 @@ function runIntro() {
   if (!splash || !intro || !main) return;
 
   // URL params that alter the landing behavior:
-  //   ?intro=1  — post-logout from /v6/account: skip splash + entrance
+  //   ?intro=1  — post-logout from /v7/account: skip splash + entrance
   //               animation, show the intro card immediately. Also
   //               bypasses the session check (Supabase's token clearing
   //               on signOut can race with our navigation).
@@ -1026,7 +1202,7 @@ function runIntro() {
   const skipIntro = params.has('start');
 
   if (!skipSplash && hasSupabaseSession()) {
-    window.location.replace('/v6/account');
+    window.location.replace('/v7/account');
     return;
   }
 
@@ -1061,12 +1237,11 @@ function runIntro() {
 
   $('rbNo')?.addEventListener('click', finish);
   $('rbYes')?.addEventListener('click', () => {
-    window.location.href = '/v6/account';
+    window.location.href = '/v7/account';
   });
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   wireStepClicks();
   runIntro();
-  prewarmSupabase();
 });

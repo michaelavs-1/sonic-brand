@@ -43,7 +43,7 @@
       "maxDuration": 60
     },
     "api/v6/gemini.js": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "api/v6/place-lookup.js": {
       "maxDuration": 15
@@ -81,7 +81,25 @@
     "api/v6/account/update-business-name.js": {
       "maxDuration": 10
     },
+    "api/v7/account/signup.js": {
+      "maxDuration": 30
+    },
+    "api/v7/account/save-taste-profile.js": {
+      "maxDuration": 30
+    },
+    "api/v7/account/set-delivery-mode.js": {
+      "maxDuration": 10
+    },
+    "api/v7/account/save-energy-directions.js": {
+      "maxDuration": 10
+    },
+    "api/v7/account/generate-daily.js": {
+      "maxDuration": 300
+    },
     "api/cron/generate-daily.js": {
+      "maxDuration": 300
+    },
+    "api/cron/v7-generate-daily.js": {
       "maxDuration": 300
     },
     "api/internal/users.js": {
@@ -96,7 +114,7 @@
   },
   "crons": [
     { "path": "/api/cron/expire-playlists",      "schedule": "30 * * * *" },
-    { "path": "/api/cron/generate-daily",        "schedule": "0 * * * *"  }
+    { "path": "/api/cron/v7-generate-daily",     "schedule": "0 * * * *"  }
   ],
   "headers": [
     {
@@ -312,6 +330,40 @@
           "value": "0"
         }
       ]
+    },
+    {
+      "source": "/v7",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/v7/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-cache, no-store, must-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
     }
   ],
   "rewrites": [
@@ -358,6 +410,14 @@
     {
       "source": "/v6/account",
       "destination": "/v6/account/index.html"
+    },
+    {
+      "source": "/v7",
+      "destination": "/v7/index.html"
+    },
+    {
+      "source": "/v7/account",
+      "destination": "/v7/account/index.html"
     }
   ]
 }

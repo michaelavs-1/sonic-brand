@@ -81,7 +81,8 @@
       "Bash(awk '/=== batch start ===/{start=NR} END{print \"start line:\", start}' d:/Projects/algorithm/sonic-brand/v4/precompute/state/batch.log)",
       "Bash(node /c/Users/ronim/AppData/Local/Temp/verify_all_genres.mjs)",
       "Bash(node _test_refactor.mjs)",
-      "Bash(node \"C:/Users/ronim/AppData/Local/Temp/nightly-health-check.mjs\")"
+      "Bash(node \"C:/Users/ronim/AppData/Local/Temp/nightly-health-check.mjs\")",
+      "WebFetch(domain:developers.hyp.co.il)"
     ]
   },
   "hooks": {

@@ -1,6 +1,7 @@
-# Musical Directions Prompts — History
+# Musical Directions Prompts — History (v6)
 
 Audit log for the musical-directions system prompts used in v6 onboarding.
+For v7 prompt history (R1, R2, taste-profile), see `prompt-history-v7.md`.
 
 **Round 1** — initial 8-direction generator. Prompt lives in
 `v6/generation/musical-directions.js` (mirrored in `v5/generation/musical-directions.js`).
@@ -31,7 +32,23 @@ history matters for debugging old rows.
 
 ---
 
-## 2026-09-02 (latest) — Direction-edit chat: owner-verbatim titles + cosmetic-only edit fast path signalling
+## 2026-09-23 (latest) — GENRE_UNIVERSE_SECTION extracted to shared module
+
+**Applies to:** both (source-of-truth relocation; prompt content byte-identical)
+
+The v7 prompt authoring depended on a single source of truth for the genre list. `GENRE_UNIVERSE_SECTION` moved from being inlined in `v6/generation/musical-directions.js` (and its `v5/generation/musical-directions.js` byte-identical mirror) to `shared/genre-universe.js`. v6's file now does `import { GENRE_UNIVERSE_SECTION } from '../../shared/genre-universe.js'; export { GENRE_UNIVERSE_SECTION };` — the re-export keeps every existing importer (`refined-directions.js`, `direction-edit-chat-prompt.js`, Ami's dashboard until 2026-09-23's dashboard-swap) working unchanged.
+
+Byte-identical output verified against git HEAD via `scripts/_verify-genre-refactor.mjs` — `EDITABLE_PROMPT_SECTION.length` stays at 17,966; `FIXED_PROMPT_SECTION.length` at 3,802; genre count 116.
+
+`v6/generation/genre-list.js` reduced to `export { GENRES, GENRE_SET } from '../../shared/genre-universe.js'`. Consumers (event-playlist Haiku prompt at `api/v6/account/event-playlist.js`) see an array-order shift from thematic → alphabetical, but the file itself noted order was cosmetic.
+
+CLAUDE.md's "THREE CODE LOCATIONS enumerate the genre universe today" invariant collapses to one shared file. See `prompt-history-v7.md` for the v7 context that drove the extraction and full detail.
+
+No prompt content changed. Only import wiring.
+
+---
+
+## 2026-09-02 — Direction-edit chat: owner-verbatim titles + cosmetic-only edit fast path signalling
 
 **Applies to:** `direction-edit chat`
 

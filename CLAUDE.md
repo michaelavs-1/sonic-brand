@@ -10,7 +10,8 @@ The codebase contains multiple parallel "versions" that coexist. **v6 is the cur
 | Version | State | Where |
 |---|---|---|
 | **v6** | **Current active.** Michael's v4 UI shell + our v5 pipeline (Claude musical directions). This is what the user is iterating on. | `v6/`, `api/v6/` |
-| v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anthropic`, `anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend still runs standalone. | `v5/`, `api/v5/` |
+| v7 | **Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6 (still live at root). Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 116-genre bucketed taste profile at signup. Signup fires AFTER a (placeholder) payment step, and the owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
+| v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anthropic`, `anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend still runs standalone. `v5/ami-prompt-dashboard/` lives here but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
 | v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
 | v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). | `v3/`, `v2/` |
 
@@ -110,8 +111,8 @@ STEP 5: Preview swipe deck (v6/preview.js runDirectionPreviewFlow)
   - Card layout inside .sw2-artwrap: album art + Spotify badge (top-left) +
     orange play button (bottom-right, larger 36px icon). No visible
     super-like button — that's the swipe-UP gesture now. Below the art
-    (OUTSIDE .sw2-artwrap): title, artist, orange "נסו שיר אחר מהכיוון
-    הזה" pill (with a shuffle icon), reason line, and the scrubbable
+    (OUTSIDE .sw2-artwrap): title, artist, orange "לא בטוחים? שמעו שיר
+    נוסף מהכיוון הזה" pill (with a shuffle icon; same text in v7), reason line, and the scrubbable
     playback progress bar.
   - Spotify iframe hidden inside .sw2-artwrap with opacity:.01 (fully
     offscreen kills media). Custom sw2-play button drives it via the
@@ -480,6 +481,132 @@ Gemini chatbot on `/v6/account`'s Profile tab. The Profile tab's section order i
 
 ---
 
+## V7 ARCHITECTURE (runtime built + live-verified 2026-09-23)
+
+v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoints, signup, taste-profile bucketing, two daily-playlist delivery modes, and its own daily cron). It was built and live-end-to-end-verified on 2026-09-23 against `vercel dev` → prod Supabase. **v6 stays live at root and is untouched**; v7 is reached at `/v7`. The version split is enforced by `businesses.version` ('v6' default, 'v7' stamped at v7 signup): v6's daily cron is now shut off and v7's targets only `version='v7'` businesses (see § VERCEL DEPLOYMENT and the v7 cron mechanism). Ami still tunes the R1 prompt via the Ami dashboard (imports v7's prompt + ai-provider since 2026-09-23). A short list of intentionally-deferred decisions remains — see § OPEN QUESTIONS FOR V7 PIPELINE BUILD.
+
+### Design shift from v6
+
+- **v6 directions were curated blends.** Each picked direction became the seed for a real playlist post-signup. Multi-Cultural Fusion and Cross-Regional blends were actively encouraged within a direction. Rules like Jazz Isolation and House Containment framed pairings as "can blend with X" — an appropriate framing for the diverse-playlist world.
+- **v7 directions are diagnostic PROBES.** Each is a small cluster of near-identical genres (same energy tier / instrumentation family / cultural register / mood — 4 axes; no tempo axis after 2026-09-23). Liking or disliking one representative track flags the whole cluster as one taste vector. Downstream, the picked directions DISSOLVE into a flat liked-genres list — playlists are built off that list, NOT per-direction. Overlapping genres across two liked directions become a stronger genre-level signal, not a duplicate.
+- **Rules rewritten for the shift.** `BEAT_PERCUSSION_RULE` was rewritten as a "Groove-Family Disambiguation" that explicitly splits RnB / Funk / Neo Soul / Hip Hop / Trap-Drill into five disjoint tight-cluster families (v6's version listed those first four in a single example set, which the model read as a single-cluster license — barbershop-bug root cause). `JAZZ_ISOLATION_RULE` was simplified to remove the explicit "Ethio-Jazz and Acid Jazz can blend with Afro/Funk/R&B styles" clause. `MULTI_CULTURAL_RULE` (v6 §3) and `EQUAL_GENRE_WEIGHT_RULE` (v6 §4) were dropped entirely. New sections `HOMOGENEITY_SECTION` and `DISTINCTNESS_SECTION` codify the tight-cluster / 8-distinct-archetypes design.
+
+### The three v7 prompt stages
+
+Onboarding pipeline (BUILT — orchestrated by `v7/app.js`):
+
+```
+description + business name + atmospheres + musical emphases + Google Places
+       ↓
+Stage 1: v7/generation/musical-directions.js
+         → 8 diagnostic probes (4+4 split, page 2 fires while owner interacts with page 1)
+         label='v7-onboarding'
+       ↓
+[owner swipes swipe-deck]
+       ↓
+Stage 2 (only if fewer than 3 R1 picks):
+         v7/generation/refined-directions.js
+         + optional Round 2 refinement emphases textarea (per v6 pattern)
+         → 4 refined probes mapping the neighbourhood of the liked probes
+           (re-confirm a liked vector with fresh genres + adjacent archetypes
+           that move 1–2 of its 4 axes); ranks 9–12
+         label='v7-onboarding-refined'
+       ↓
+[owner swipes refined deck]
+       ↓
+Stage 3: v7/generation/taste-profile.js
+         → full 116-genre bucketing + per-user energy scale + carry-through prefs
+         label='v7-taste-profile'
+       ↓
+[registration → placeholder payment → taste-profile bar
+  → signup (api/v7/account/signup.js: account + taste profile saved + magic link emailed)
+  → "בדקו את המייל ✉️"]
+       ↓
+[owner clicks the emailed magic link (= email verification) → /v7/account → first-login delivery-mode gate]
+       ↓
+Daily v7 playlist builder (BUILT — Option 1 / Option 2, see § v7 daily runtime below)
+```
+
+### The taste-profile stage (new for v7)
+
+Runs once after R1+R2 resolve, before any playlist is built. Extrapolates from the sparse swipe-deck signal (up to 12 probes across R1+R2 + per-direction like/dislike + per-track super-likes) to a full-catalog taste profile.
+
+Output shape (after `normalizeTasteProfile` — the model itself does NOT emit `excluded_genres`, see below):
+
+```json
+{
+  "energy_levels_total": 4,
+  "approved_genres": [
+    {"genre": "Hip Hop", "energy_level": 4},
+    {"genre": "Neo Soul", "energy_level": 2}
+  ],
+  "conditional_genres": [
+    {"genre": "Trap", "energy_level": 4, "note_en": "..."}
+  ],
+  "excluded_genres": ["Chamber music", "Medieval Music"],   // computed in code
+  "instrumentalness_preference": "none",
+  "popularity_preference": "none",
+  "reasoning_en": "..."
+}
+```
+
+Bucketing rules (in the prompt):
+- **approved** — appears in liked direction OR super-liked genre OR all-4-axes tight-cluster neighbour of one OR explicitly requested in emphases.
+- **conditional** — 2–3 axis neighbour of a liked genre; OR mixed signals; OR untouched but plausibly adjacent. **DATA ONLY in v7's initial cut** — first playlist builder ignores this bucket. Kept because the signal is real and the model is already reasoning over the full catalog.
+- **excluded** — appears only in disliked directions with no positive counterweight; OR explicitly banned in emphases; OR Japanese Folk restriction triggers. The model expresses this by LEAVING THE GENRE OUT of both lists (since 2026-09-24 — saves ~500 output tokens per onboarding vs. having it re-list ~70 genres).
+
+Energy calibration:
+- `energy_levels_total` is DYNAMIC per user (2..6). Narrow spread of taste → N=2. Very wide spread (chamber music AND dubstep both in the profile) → N=6. Prefer the smallest N that meaningfully distinguishes operational contexts.
+- Each approved/conditional genre gets an `energy_level` 1..N. **RELATIVE to the user's own range**, not absolute. Hip Hop is level N for a mostly-chill user; level 3 for a rave user who also picked Dubstep. Same-energy genres get the same level.
+- Excluded genres get no level.
+
+Hard schema invariant: every one of the 116 canonical genres must land in EXACTLY ONE bucket. `normalizeTasteProfile` in `v7/generation/taste-profile.js` guarantees this by construction — `excluded_genres` = every canonical genre not in approved or conditional (any `excluded_genres` the model sends anyway is ignored); approved wins over conditional on duplicates; case drift is canonicalised via a lowercase→canonical map; invented genres (e.g. "Slow Funk") are dropped; energy levels clamped to `[1..N]`.
+
+**No Places injection at this stage.** Google Places is venue context; the taste profile is a property of the USER, not the venue. Places was already baked into R1/R2 when the model built the probes the user swiped on. Reusing Places here would mix venue-appropriateness signal into a user-taste extrapolation.
+
+### Prompt stack
+
+All three v7 prompts route through **`v7/generation/ai-provider.js`** — same shape as v6's (`PROVIDER='gemini' | 'anthropic'`, model `gemini-3.6-flash`, thinking `high`) but INDEPENDENT. Flipping v6's PROVIDER doesn't touch v7. Ami's dashboard (which imports from v7's ai-provider since 2026-09-23) follows v7's switch.
+
+`gemini_call_log.label` values in use:
+- v6: `onboarding` (R1), `onboarding-refined` (R2), plus post-signup labels for event chat / direction-edit chat / preview-direction.
+- v7: `v7-onboarding` (R1), `v7-onboarding-refined` (R2), `v7-taste-profile`, `v7-energy-directions` (Option-1 energy-tier generation at the delivery-mode gate).
+
+Admin API `/api/internal/gemini-spend`'s `by_label[]` breaks these out separately, so v7 spend is trackable from day one of runtime.
+
+### v7 does NOT emit `bpm_range`
+
+Removed 2026-09-23. v7's homogeneity axes (energy / instrumentation / register / mood) don't include tempo. The `validateBpmRange` function was deleted from both v7 files; `validateDirection` no longer checks BPM. Downstream:
+- **Swipe deck → its own RPC, no tempo at all.** v7's preview (R1, R2 and the swap button) calls `/api/v7/anchor-tracks` → **`v7_anchor_tracks(p_specs)`** (migration `v5/precompute/migrations/2026-09-24-v7-anchor-tracks.sql`, **RUN 2026-09-24**). Specs are `{rank, genre, inst_pref, pop_pref}`. Per spec it samples 8 random playlists tagged with the genre, takes their tracks, applies the inst/pop filters and biases, and picks one at random; a second tier re-samples 200 playlists only for specs the first tier couldn't satisfy. Work is bounded by the sample, so it's fast regardless of genre, and it runs on the normal **anon** key like v6's endpoint. v6's `v5_anchor_tracks` + `/api/v5/anchor-tracks` are untouched and still v6-only.
+- **Daily builders still pass `0–300`.** `api/v7/account/_daily-builder.js` reuses v6's `v6_direction_tracks_recent`, which REQUIRES `bpm_lo`/`bpm_hi` (NULLs would make `tempo BETWEEN NULL AND NULL` drop every row), so v7 directions carry `bpm_range:{min:0,max:300}` as a no-op tempo filter. That runs server-side on the service key, so it isn't subject to the anon 3s limit.
+
+**Why the swipe deck needed its own function (measured 2026-09-23).** `v5_anchor_tracks` picks its one track with `ORDER BY random() LIMIT 1` over *every* track matching genre + tempo + popularity. `track_analyses` has a tempo index, so its cost tracks the tempo window, not the genre: a `0–300` spec cost ~2× a v6-style narrow window even for small genres. A 4-card v7 call (~4.6s wall-clock) blew the anon role's 3s `statement_timeout` on 6/6 calls → 57014 → empty deck → forced into R2, which failed the same way. A service-key workaround briefly shipped on 2026-09-23 and was replaced by `v7_anchor_tracks` on 2026-09-24.
+
+### v7 persists a taste profile, NOT `business_directions`
+
+v7 does NOT write `business_directions` (v6's per-direction table). Instead, signup persists the flat taste profile to **`business_taste_profiles`**, the chosen delivery mode to **`business_v7_settings`**, and (Option 1 only) energy-tiered directions to **`business_v7_directions`** — three new tables (see DATA MODEL). Consequences: v6's daily-gen cron, direction-edit chat, and admin API all read `business_directions` and see nothing for v7 businesses — which is correct (v6's cron is shut off; v7 has its own cron; the account-tab direction-chat ships dormant for v7). The admin API's v7 view is a future item.
+
+### v7 daily runtime (Option 1 / Option 2) — BUILT
+
+After signup, `/v7/account` shows a first-login **delivery-mode gate**, labelled "סוג פלייליסטים יומיים" in the UI (`set-delivery-mode.js` writes `business_v7_settings.delivery_mode` + `updated_at`). **As soon as the owner picks a type in the gate, the dashboard builds TODAY's set** (`checkV7ModeGate` returns true → `runGenerateDaily` → `api/v7/account/generate-daily.js`; expires 2h after today's close, or next 04:00 IL on a closed day / after closing). From tomorrow the v7 cron builds. Two duplicate guards: the cron skips a business as `mode-just-set` (silent) for 15 min after `updated_at`, so it can't race the in-flight first build; and the endpoint returns 409 if a live daily set already exists for today (IL date). If the first build fails entirely, the next cron tick builds.
+- **Option 1 — 4 playlists/day.** On selecting option1, energy-tiered directions are generated (`v7/generation/energy-directions.js`, `label='v7-energy-directions'`) and stored in `business_v7_directions` (2+ high-energy, 2+ low-energy tiers). Each day the builder fills 4 fixed names — 2 per tier — with a **random** pick of 2 directions from that tier's active pool (`pickTwo` in `api/v7/account/_daily-builder.js`; 2 distinct directions when the pool has ≥ 2, the same direction twice when it has 1 — the second playlist still gets different tracks via same-day history). So every name gets a random direction of the right energy each day; with exactly 2 directions per tier only the #1/#2 assignment varies, and variety comes from the tracks (random draw + 7-day dedup). **Owner-facing names are fixed** (since 2026-09-24): "אנרגיה גבוהה #1/#2" and "אנרגיה רגועה #1/#2", derived at build time from `energy_tier` + position within the tier (`tierPlaylistName` in `api/v7/account/_daily-builder.js`) — used for the dashboard label (`business_playlists.label`) and the Spotify playlist title/description. Gemini's `business_v7_directions.title_en` (e.g. "Smooth Jazz Lounge") is kept as an internal descriptor only and never shown to owners. Tiers are RELATIVE to the owner's own energy scale (high = upper half of their `energy_levels_total`), so a calm-jazz owner's "אנרגיה גבוהה" can be smooth jazz. **Length** (since 2026-09-24): each of the 4 playlists is sized to half of today's opening minutes + 90 min, at the assumed 3.5 min/track (`buildOption1Batch`; e.g. 09:00–21:00 → (360+90)/3.5 = 129 tracks). Count-based, so real playing time runs ~19% long — measured catalog average is 4.16 min/track (3k-row sample of `track_analyses.raw_analysis->>'duration'`, 2026-09-24). Becomes exact once builders fill by duration.
+- **Option 2 — 2 full-length energy-shifting mixes/day.** No directions; builds 2 full-opening-duration playlists directly from the approved-genre pool, named **"Daily Mix #1"** and **"Daily Mix #2"** (`planOption2`). Energy ordering / interactive timeline are deferred (naive v1).
+
+Both modes are planned by **`api/v7/account/_daily-builder.js`** — `planOption1` / `planOption2` decide what to build today (directions, per-playlist target, expiry) — and built either by `buildOption1Batch` / `buildOption2Batch` (the cron: plan + `buildBatch`, a v7 copy of v6's `buildDailyBatch` that also writes the per-track genre record — v6's function is untouched) or by the owner-triggered **`api/v7/account/generate-daily.js`** (the dashboard's "צור פלייליסטים" / "המקום פתוח?" links: same plan with `onDemand:true`, then v6 `buildOneDailyPlaylist` per playlist, streaming v6's ndjson contract with `slot-N` keys). `onDemand` sizes a closed/unknown day as `CLOSED_DAY_MINUTES` and never hands out an already-passed expiry (falls back to next 04:00 IL); the cron path is unchanged. Everything reuses v6's `_daily-builder.js` primitives (`buildDailyBatch`, `fetchTracksWithHistory`, ledger + history + insert). v7 directions carry `bpm_range:{min:0,max:300}` and **`id:null`** — `business_playlists.direction_id` is an FK to v6's `business_directions`, so passing a `business_v7_directions` id would violate it. The daily cron is **`api/cron/v7-generate-daily.js`** (see § VERCEL DEPLOYMENT). Spotify resilience + alerts are inherited unchanged: v7's build path flows through the version-agnostic `api/new/spotify.js` proxy.
+
+### v7 onboarding + signup runtime — BUILT
+
+- **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (R1 + R2 swipe decks) / `result.js` (registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → R1 swipe → (R2 if <3 picks) → registration → **placeholder** payment → taste-profile bar → `/v7/account`.
+- **Account** (`v7/account/`): `index.html` + `app.js` (delivery-mode gate, energy-directions build) + `direction-chat.js` (dormant for v7 — reads empty `business_directions`).
+- **No inline playlist rename in v7 (kept this way for now; may change).** v6's Home-tab inline rename (click a playlist title → edit) and the per-playlist edit / trash icons are NOT available in v7. This wasn't a deliberate product decision — it fell out of the build: the code was copied from v6 and is still in `v7/account/app.js` (`enterRenameMode`, `editDirectionFromCard`, `openTrashDirectionModal`), but every one of those controls only renders when the row has a `direction_id` (`canRename = !!p.directionId …`, `if (p.directionId)`), and v7 rows always insert `direction_id: null` (FK to v6's `business_directions`). Roni has chosen to keep it off for now. Reviving it would need a v7 path that edits `business_v7_directions` instead of calling v6's `apply-direction-change` — and a decision on how a rename interacts with the fixed "אנרגיה גבוהה/רגועה #N" names.
+- **Payment is a placeholder** — all fields optional; no real integration yet; submitting just advances.
+- **Email verification is REQUIRED (like v6; decided 2026-09-24).** Nothing in the v7 funnel logs the owner in. After payment, the bar awaits the taste profile, THEN `api/v7/account/signup.js` runs ("no non-paying clients" — no account before payment): it creates/updates the user + a `businesses` row (`version='v7'`, `paid_at=now()`), **saves the taste profile** (`business_taste_profiles`, via the shared `_taste-profile.js` row builder) BEFORE emailing, backfills `gemini_call_log` once (all onboarding calls incl. the taste profile have resolved by then), and finally emails the one-time magic link (`/auth/v1/otp`, fatal if it fails). The client shows "בדקו את המייל ✉️" with a "לא הגיע? שלחו שוב" resend that re-posts the same (idempotent) payload. Clicking the link verifies the email and lands on `/v7/account`. Returning owners are looked up via the admin user list's `?filter=` — NOT admin `generate_link`, which counts as a login-link send and tripped Supabase's ~60s per-user email interval (the reason v7's email never arrived before 2026-09-24; v6's signup still uses `generate_link` for returning users). A too-soon resend gets a friendly 429. Test scripts skip the email with `skipEmail:true` + a valid `x-sonic-internal` header (their addresses are `@example.invalid`) and mint their own session via admin `generate_link` + `verify`. Caveat for the real payment integration: an owner who pays and then closes the tab before the bar finishes gets no account — the payment callback will need to create it.
+- **Direction ranks are globally unique across rounds:** R1 = 1–8 (page 1 = 1–4, page 2 = 5–8), R2 = **9–12** (`R2_RANK_START` in `v7/generation/refined-directions.js`). The R2 and taste-profile prompts reference LIKED/DISLIKED by rank, so `v7/app.js round1DirectionsSeen()` passes page 1 **plus** every page-2 direction that was liked/disliked (`state.directions` alone is page 1 only). `state.round2Directions` holds the R2 set so the taste-profile retry can rebuild the same call.
+- **Endpoints**: `api/v7/anchor-tracks.js` (swipe-deck anchors → `v7_anchor_tracks` RPC, anon key — see the bpm_range note above) + `api/v7/account/`: `signup.js`, `save-taste-profile.js`, `set-delivery-mode.js`, `save-energy-directions.js`, `generate-daily.js`, `_daily-builder.js`.
+- **Live verification scripts** (self-cleaning, throwaway user/business, safe against prod): `scripts/_v7-walkthrough.mjs` (Phase A onboarding→signup→account) and `scripts/_v7-phaseb-walkthrough.mjs` (Phase B daily builders + v7 cron + expiry). `/v7/?reset=1` (and the account app) clears the Supabase session for re-testing, same as v6.
+
+---
+
 ## FILE STRUCTURE (V6-focused)
 
 ```
@@ -500,7 +627,9 @@ sonic-brand/
 │   │                                          continue / restart), showRestartOnboardingScreen.
 │   ├── result.js                           ← Progressive results shell + "אני רוצה את רובין" CTA + signup card
 │   ├── generation/
-│   │   ├── ai-provider.js                  ← PROVIDER='gemini'|'anthropic' switch. Shared by v6 + Ami dashboard.
+│   │   ├── ai-provider.js                  ← v6's PROVIDER='gemini'|'anthropic' switch. Independent from v7's copy
+│   │   │                                      at `v7/generation/ai-provider.js` (identical values today; Ami's
+│   │   │                                      dashboard imports from v7's since 2026-09-23).
 │   │   ├── musical-directions.js           ← R1 direction generator (uses ai-provider). Both EDITABLE and
 │   │   │                                      FIXED prompt sections are composed from named sub-constants
 │   │   │                                      (GENRE_UNIVERSE_SECTION, PROCESSING_RULES_SECTION,
@@ -510,7 +639,8 @@ sonic-brand/
 │   │   │                                      which are EXPORTED for reuse by refined-directions.js. Composed
 │   │   │                                      EDITABLE + FIXED are byte-identical to the pre-refactor
 │   │   │                                      single-template-literal version. `injectPlaces()` also exported.
-│   │   │                                      Mirrored in v5/ so Ami's prompt dashboard sees the same string.
+│   │   │                                      Mirrored in v5/ (kept for legacy v5/app.js consumer;
+│   │   │                                      Ami's dashboard reads v7's instead since 2026-09-23).
 │   │   ├── refined-directions.js           ← R2 direction generator. Client-side module. Composes its own
 │   │   │                                      system prompt from R2-specific sub-constants (REFINED_INTRO,
 │   │   │                                      REFINED_INPUTS_SECTION, LEARNING_LOGIC_SECTION,
@@ -520,10 +650,13 @@ sonic-brand/
 │   │   │                                      Fires via callModel with label='onboarding-refined'. No v5 mirror.
 │   │   ├── event-chat-prompt.js            ← System prompt for the special-events chat on /v6/account
 │   │   ├── direction-edit-chat-prompt.js   ← System prompt for the profile-tab direction-edit chat
-│   │   ├── genre-list.js                   ← Canonical genre list, currently 116 entries (2026-09-02) — count
-│   │   │                                      moves as Ami digests new genres. Shared with event-playlist server.
-│   │   │                                      One of FOUR genre-list locations — see PROMPT EDITING PROTOCOL.
-│   │   ├── popularity-window.js            ← Derives [lo,hi] from selected atmospheres
+│   │   ├── genre-list.js                   ← Thin re-export of GENRES + GENRE_SET from `shared/genre-universe.js`
+│   │   │                                      (as of 2026-09-23). Kept for backward compat — event-playlist
+│   │   │                                      Haiku prompt (api/v6/account/event-playlist.js) still imports
+│   │   │                                      GENRES from this path.
+│   │   ├── popularity-window.js            ← Derives [lo,hi] from selected atmospheres. UNUSED since 2026-09-02
+│   │   │                                      (per-direction popularity_preference replaced it); only v5's own
+│   │   │                                      copy is still imported (v5/app.js + Ami's prompt dashboard).
 │   │   ├── playlist-length.js              ← dailyPlaylistExpiryIso, computeTargetForToday, directionKey, ilPartsFromDate
 │   │   └── playlist-builder.js             ← buildDirectionPlaylists (10 tracks each, concurrency-capped)
 │   └── account/
@@ -532,9 +665,53 @@ sonic-brand/
 │       │                                     expand streaming, mounts direction-chat on Profile tab
 │       └── direction-chat.js               ← Direction-edit chat UI + single-card preview modal
 │                                             (lazy-loaded when Profile tab first opens)
+├── v7/                                     ← BUILT + LIVE-VERIFIED. Parallel runtime (v6 untouched at root).
+│   ├── index.html                          ← Onboarding shell + v7 CSS
+│   ├── app.js                              ← Onboarding orchestrator: desc→places→atmospheres→emphases→hours
+│   │                                          →R1 swipe→(R2 if <3)→registration→payment→taste-profile bar→account.
+│   ├── atmosphere.js / atmosphere-bubbles.js / emphases.js / hours-selector.js  ← ports of the v6 steps
+│   ├── preview.js                          ← R1 + R2 swipe decks. Anchors via /api/v7/anchor-tracks → v7_anchor_tracks
+│   │                                          (no BPM) — NOT v6's /api/v5/anchor-tracks.
+│   ├── result.js                           ← registration + placeholder payment + taste-profile bar → signup →
+│   │                                          "בדקו את המייל ✉️" (resend re-posts signup)
+│   ├── account/
+│   │   ├── index.html
+│   │   ├── app.js                          ← delivery-mode gate (option1/option2); Option-1 energy-directions build
+│   │   └── direction-chat.js               ← DORMANT for v7 (reads empty business_directions; kept for parity)
+│   └── generation/
+│       ├── musical-directions.js           ← R1 diagnostic taste probes (8, 4+4 split). label='v7-onboarding'.
+│       ├── refined-directions.js           ← R2 refinement (4 probes, fires when R1 picks < 3).
+│       │                                      label='v7-onboarding-refined'. Imports R1 sub-constants.
+│       ├── taste-profile.js                ← Full 116-genre bucketing + dynamic 2-6 energy levels.
+│       │                                      Runs once after R1/R2 resolve, before signup. Output:
+│       │                                      approved/conditional/excluded + energy_levels_total +
+│       │                                      per-genre energy_level + inst_pref/pop_pref carry-through.
+│       │                                      label='v7-taste-profile'. NO Places injection (venue
+│       │                                      context is a property of the venue, not the user's taste).
+│       ├── energy-directions.js            ← Option-1 energy-tiered directions from approved_genres.
+│       │                                      label='v7-energy-directions'. ≥2 high + ≥2 low tiers.
+│       ├── playlist-length.js              ← port of the v6 helper (server-reachable: bare imports). v7 has no
+│       │                                      popularity-window.js (unused copy deleted 2026-09-24).
+│       ├── event-chat-prompt.js            ← port (account-tab event chat; parity with v6)
+│       └── ai-provider.js                  ← Independent copy of v6's provider switch. Currently identical
+│                                              (Gemini 3.6-flash, thinking=high) but flipping v6's PROVIDER
+│                                              does NOT touch v7. Both prompts + Ami's dashboard route here.
+│                                              SERVER-REACHABLE — bare imports only, no ?v= query.
+├── shared/                                 ← Cross-version source of truth.
+│   └── genre-universe.js                   ← THE canonical genre list. Exports GENRES (array, 116 entries),
+│                                              GENRE_SET, and GENRE_UNIVERSE_SECTION (formatted prompt block).
+│                                              Every consumer (v5/v6/v7 musical-directions.js,
+│                                              v6/generation/genre-list.js) re-exports or imports from here.
+│                                              The old "THREE code locations" invariant collapsed to this
+│                                              file on 2026-09-23.
 ├── v5/                                     ← Reference; standalone flow still runnable
-│   ├── ami-prompt-dashboard/               ← Ami's prompt-tuning dashboard (uses shared ai-provider.js)
-│   └── generation/musical-directions.js    ← MIRROR of v6's; EDITABLE_PROMPT_SECTION must stay byte-identical
+│   ├── ami-prompt-dashboard/               ← Ami's prompt-tuning dashboard. Since 2026-09-23 imports
+│   │                                          EDITABLE_PROMPT_SECTION + assembleSystemPrompt from
+│   │                                          `/v7/generation/musical-directions.js` (was v5). Also imports
+│   │                                          callModel/PROVIDER from `/v7/generation/ai-provider.js` (was v6).
+│   └── generation/musical-directions.js    ← Still consumed by legacy v5/app.js standalone UI. No longer
+│                                              read by Ami's dashboard. Header comments + `MODEL='claude…'`
+│                                              constant are dead code from the pre-ai-provider era.
 ├── v4/
 │   ├── ami/                                ← Ami's dashboard (scan sheet → Supabase)
 │   ├── precompute/                         ← Batch worker for track analysis (fills track_analyses)
@@ -582,6 +759,27 @@ sonic-brand/
 │   │       ├── toggle-super-like.js        ← Upsert or SOFT-DELETE (`deleted_at=now()`) one super_liked_tracks row —
 │   │       │                                  soft-delete added 2026-09-05 so un-super-liking preserves engagement history
 │   │       └── log-playlist-open.js        ← Append one business_playlist_opens row per dashboard "▶ פתח" click
+│   ├── v7/
+│   │   ├── anchor-tracks.js                ← v7 swipe-deck anchors → v7_anchor_tracks RPC (cheap playlist-sampling
+│   │   │                                      pick, no BPM; anon key). Same origin guard + `anchor-tracks` rate bucket
+│   │   │                                      as v5's. Needs migration 2026-09-24-v7-anchor-tracks.sql.
+│   │   └── account/
+│   │       ├── signup.js                   ← v7 onboarding→account bridge, after payment + the taste-profile bar.
+│   │       │                                  Creates user + businesses row (version='v7', paid_at), SAVES the taste
+│   │       │                                  profile, backfills gemini_call_log, then emails the magic link.
+│   │       │                                  Never returns a session — email verification required.
+│   │       ├── _taste-profile.js           ← Shared taste-profile → business_taste_profiles row builder.
+│   │       ├── save-taste-profile.js       ← Owner-JWT profile write. NOT used by onboarding since 2026-09-24
+│   │       │                                  (signup saves the profile); kept for later profile updates.
+│   │       ├── set-delivery-mode.js        ← Writes business_v7_settings.delivery_mode (option1|option2).
+│   │       ├── save-energy-directions.js   ← Persists Option-1 energy tiers into business_v7_directions.
+│   │       ├── generate-daily.js           ← Today's build: auto-fired after the first-login gate + dashboard
+│   │       │                                  "צור פלייליסטים" / "המקום פתוח?". 409 if a live set exists today.
+│   │       │                                  planOption1/2 (onDemand) → v6 buildOneDailyPlaylist per playlist,
+│   │       │                                  streaming ndjson (v6's contract, slot-N keys). 300s maxDuration.
+│   │       └── _daily-builder.js           ← planOption1 / planOption2 (what to build today) + buildOption1Batch /
+│   │                                          buildOption2Batch (cron). Reuses v6 _daily-builder primitives;
+│   │                                          v7 directions carry id:null + bpm_range{0,300}.
 │   ├── v5/
 │   │   ├── anthropic.js                    ← Anthropic Messages API proxy (uses ANTHROPIC_KEY)
 │   │   ├── anchor-tracks.js                ← Per-direction random preview track (BPM+popularity filter + inst_pref)
@@ -618,9 +816,17 @@ sonic-brand/
 │   │   (openai.js, databox.js gitignored — see legacy note below)
 │   ├── cron/
 │   │   ├── expire-playlists.js             ← Hourly `:30`. Exponential backoff on failure (1h→24h);
-│   │   │                                      cluster + chronic alert emails via api/_alert.js.
-│   │   └── generate-daily.js               ← Hourly `:00`. Skip guards + concurrency-1 pacing with 3s
-│   │                                          inter-playlist / 5s inter-business sleeps.
+│   │   │                                      cluster + chronic alert emails via api/_alert.js. Version-agnostic
+│   │   │                                      — sweeps both v6 and v7 expired playlists.
+│   │   ├── v7-generate-daily.js            ← Hourly `:00` (the LIVE daily builder since the 2026-09-23 cutover).
+│   │   │                                      Filters businesses to version='v7', gates on a business_taste_profiles
+│   │   │                                      row + business_v7_settings.delivery_mode, branches option1→buildOption1Batch
+│   │   │                                      / option2→buildOption2Batch. Same CRON_SECRET auth + resolveSpotifyBase()
+│   │   │                                      + skip guards + pacing as the v6 cron, plus `mode-just-set` (skip
+│   │   │                                      15 min after a delivery-mode change — the dashboard builds day 1).
+│   │   └── generate-daily.js               ← v6 daily builder. FILE KEPT (revivable; no version filter yet) but
+│   │                                          NO LONGER SCHEDULED — removed from vercel.json crons on 2026-09-23
+│   │                                          so v6 businesses stop getting new daily playlists.
 │   ├── internal/
 │   │   ├── _guard.js                       ← Shared bearer-token guard for the /api/internal/* admin surface
 │   │   ├── users.js                        ← GET list of businesses + owner emails (Michael's dashboard)
@@ -641,6 +847,16 @@ sonic-brand/
 │                                             /api/internal/* responses against `vercel dev`.
 │                                             Michael's real dashboard lives in his own repo.
 ├── scripts/
+│   ├── _v7-walkthrough.mjs                  ← v7 Phase A live E2E: onboarding→signup→account. Self-cleaning
+│   │                                          throwaway user/business; ~3 Gemini calls + prod writes. Safe vs prod.
+│   ├── _v7-phaseb-walkthrough.mjs           ← v7 Phase B live E2E: R1→taste-profile→energy-directions→provision
+│   │                                          option1/option2→trigger v7 cron→verify business_playlists+ledger→expiry.
+│   ├── _v7-backfill-track-genres.mjs        ← Fill business_playlists.track_genres for v7 playlists built before
+│   │                                          2026-09-24. Same attachTrackGenres as live builds. Dry run; --apply writes.
+│   ├── backup-db.mjs                         ← Dependency-free JSON snapshot of v6 prod data via PostgREST (no
+│   │                                          Docker/pg_dump, no DB password). Writes backups/db-<ts>/{json,restore.sql,
+│   │                                          manifest.json,auth-users.json}. Skips the heavy track-analysis catalog.
+│   │                                          backup-db.ps1 is the PowerShell wrapper. backups/ is gitignored (PII).
 │   ├── benchmark-directions.mjs            ← OpenAI vs Anthropic timing/quality benchmark
 │   ├── purge-rubin-playlists.mjs           ← Unfollow all Rubin playlists (source: created_playlists ledger)
 │   ├── purge-pre-cron-playlists.mjs        ← Unfollow Rubin playlists NOT dated today (source: GET /me/playlists).
@@ -661,6 +877,8 @@ sonic-brand/
 │   ├── test-cluster-failure-alert.mjs      ← Forces 3 expire failures to exercise the cluster alert email end-to-end
 │   ├── check-duplicate-users.mjs           ← Reports exact-email dupes (should be 0) + Gmail alias collisions
 │   ├── check-prompt-genres.mjs             ← Diffs the EDITABLE_PROMPT_SECTION genre list against the canonical genre-list.js
+│   ├── _verify-genre-refactor.mjs          ← 2026-09-23 sanity check: compares in-tree GENRE_UNIVERSE_SECTION against
+│   │                                          git HEAD's inlined v5/v6 versions. Kept for future genre-list edits.
 │   ├── post-deploy-health.mjs              ← Post-deploy sanity: cleanup ledger + daily-gen output + Redis state
 │   ├── cleanup-orphaned-playlists.mjs      ← One-off (2026-08-27): direct-Spotify cleanup for the Aug-22 141-row backlog
 │   ├── build-today-oneoff.mjs              ← One-off (2026-08-27): manually build today's daily playlists during the kill-switch window
@@ -671,7 +889,8 @@ sonic-brand/
 │   ├── mirror-vercel-deployment.mjs        ← Pull deployment source via Vercel API
 │   └── mirror-live-site.mjs                ← Pull deployed static assets via HTTP
 ├── benchmark-results/                      ← JSON outputs from benchmark script
-├── prompt-history.md                       ← Audit log for EDITABLE_PROMPT_SECTION changes — update on every prompt edit
+├── prompt-history.md                       ← Audit log for v6 EDITABLE_PROMPT_SECTION changes
+├── prompt-history-v7.md                    ← Audit log for v7 prompts (R1, R2, taste-profile)
 ├── tests/                                  ← Legacy test scripts (mostly v3/v4 era)
 ├── .env.local                              ← Gitignored. Has ANTHROPIC_KEY, GEMINI_API_KEY, RUBIN_*, SUPABASE_*,
 │                                              UPSTASH_REDIS_REST_KV_REST_API_URL/TOKEN, INTERNAL_API_KEY,
@@ -742,12 +961,14 @@ Each swipe card has a playback progress bar between the description line and the
 
 ### Musical directions — `v6/generation/musical-directions.js`
 
-- **Model selection lives in one place**: `v6/generation/ai-provider.js`
+- **Model selection lives in one place per version**: `v6/generation/ai-provider.js`
   exports `PROVIDER` (`'gemini' | 'anthropic'`), `MODEL_GEMINI`, and
-  `MODEL_ANTHROPIC`. Both v6 onboarding and Ami's prompt dashboard call
-  through the shared `callModel()` there. Currently `PROVIDER='gemini'`,
-  model `gemini-3.6-flash`, thinking=`high`. Anthropic path is retained
-  and byte-for-byte tested (see the prompt-history audit rule), just not
+  `MODEL_ANTHROPIC`. v6 onboarding calls through this file's `callModel()`.
+  (Since 2026-09-23 Ami's prompt dashboard imports from `v7/generation/ai-provider.js`
+  instead — v7's copy is a decoupled sibling with the same values today.)
+  Currently `PROVIDER='gemini'`, model `gemini-3.6-flash`, thinking=`high`.
+  Anthropic path is retained and byte-for-byte tested (see the prompt-history
+  audit rule), just not
   the default. Flip in one file to A/B either way.
 - ~2400-token system prompt split into `EDITABLE_PROMPT_SECTION` (creative
   content Ami owns — genre universe, energy rules, pairing rules,
@@ -761,10 +982,11 @@ Each swipe card has a playback progress bar between the description line and the
   Language, English-Title rules, Hebrew Description rules, and the full
   When-Not-To-Return error contract — without copy-paste drift. The
   composed EDITABLE + FIXED strings are byte-identical to the pre-
-  refactor single-template-literal version (verified by test script),
-  so Ami's dashboard imports `EDITABLE_PROMPT_SECTION` and sees the
-  same textarea contents as before. `injectPlaces()` is also exported
-  so R2 reuses the same Google-Places-block injection logic.
+  refactor single-template-literal version (verified by test script).
+  (Ami's dashboard imported `EDITABLE_PROMPT_SECTION` from here pre-
+  2026-09-23; since then it imports from v7 instead.) `injectPlaces()`
+  is also exported so R2 reuses the same Google-Places-block injection
+  logic.
 - Any edit to a shared sub-constant automatically flows to both R1 and
   R2 prompts. Edits to Round-1-only pieces (`ROUND1_INTRO`,
   `ROUND1_INPUTS_SECTION`, `ROUND1_TASK_WORKFLOW`, `ROUND1_OUTPUT_FORMAT`)
@@ -819,7 +1041,7 @@ Fires only when the R1 preview swipe deck yielded fewer than 3 liked directions 
 
 ### Genre list — `v6/generation/genre-list.js`
 
-Shared canonical menu, currently 116 entries (as of 2026-09-02) — count moves as Ami digests new genres. `api/v6/account/event-playlist.js` (Claude Haiku prompt) imports from here; `musical-directions.js` maintains its own copy via `GENRE_UNIVERSE_SECTION`. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`. Late-Aug / early-Sep churn: `Latin Funk` and `Greek Funk` added (Greek Funk seeded from the 2 world-funk playlists that got reassigned during the world-funk purge); `World Funk` and `Brit Funk` fully removed from the DB (playlists + exclusive tracks purged); `Thai Molam Funk` renamed to `Thai Molam` to match Ami's sheet update; `Alternative R&B`, `Hawaii ukulele music`, `Musica Tropical` added on 2026-09-02 after their sheet seeds digested cleanly. **This file is one of THREE genre-list locations that need manual sync — see the "Genre Universe invariant" rule under PROMPT EDITING PROTOCOL for the full list and the drift-check obligation.** (The direction-edit chat prompt imports from `musical-directions.js` at runtime, so it's no longer a manual-sync target.)
+Shared canonical menu, currently 116 entries. As of 2026-09-23 the list lives in **`shared/genre-universe.js`** — one source of truth. Every consumer (v5 / v6 / v7 musical-directions.js, v6/generation/genre-list.js, transitively the event-playlist Haiku prompt and the direction-edit chat prompt) imports or re-exports from there. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`. Late-Aug / early-Sep churn: `Latin Funk` and `Greek Funk` added (Greek Funk seeded from the 2 world-funk playlists that got reassigned during the world-funk purge); `World Funk` and `Brit Funk` fully removed from the DB (playlists + exclusive tracks purged); `Thai Molam Funk` renamed to `Thai Molam` to match Ami's sheet update; `Alternative R&B`, `Hawaii ukulele music`, `Musica Tropical` added on 2026-09-02 after their sheet seeds digested cleanly. See § PROMPT EDITING PROTOCOL for the current invariant.
 
 ### Playlist auto-expiry
 
@@ -1289,10 +1511,10 @@ Everything the account dashboard reads lives here:
 - `track_analyses` — spotify_id + typed audio-feature columns (tempo, popularity, energy, `instrumentalness`, valence, etc.) + raw_analysis jsonb.
 
 **Per-business production data (owned by v6 signup + dashboard):**
-- `businesses` — { id, owner_id, name, monthly_credits, credits_remaining, business_description, musical_emphases, onboarding_expanded }. Written by signup. `business_description` + `musical_emphases` are the free-text prompt inputs the owner typed during onboarding (bizDesc + step-3 emphases); added 2026-08-23 for the internal admin API. PATCH path in signup.js skips blank values so repeat-onboarding with an empty field doesn't clobber a previously-recorded prompt.
+- `businesses` — { id, owner_id, name, monthly_credits, credits_remaining, business_description, musical_emphases, onboarding_expanded, **version** (`'v6'` default | `'v7'`, added 2026-09-23), **paid_at** (timestamptz, added 2026-09-23) }. Written by signup. `business_description` + `musical_emphases` are the free-text prompt inputs the owner typed during onboarding (bizDesc + step-3 emphases); added 2026-08-23 for the internal admin API. PATCH path in signup.js skips blank values so repeat-onboarding with an empty field doesn't clobber a previously-recorded prompt. **`version`** gates which daily cron targets the business (v6 cron shut off; v7 cron filters `version='v7'`); **`paid_at`** is set on the v7 signup path only (placeholder payment-completion marker) and never cleared.
 - `business_directions` — permanent per-business direction storage. Columns: { id, business_id, rank, title_en, description_he, genres (jsonb), bpm_range (jsonb), popularity_window (jsonb), **instrumentalness_preference** (`'none'|'soft'|'hard'`, added 2026-08-21), **popularity_preference** (`'none'|'soft'|'hard'`, added 2026-09-02), active (bool, soft-disable), created_at, updated_at }. Added 2026-08-20 migration — replaced the fragile "reconstruct directions from recent playlist_playlists.expansion" approach that cascaded to zero when the cron partially failed. Now the source of truth for daily-gen; `activeDirections(bizId)` in `_daily-builder.js` reads from here.
   - **8-active cap enforced by DB trigger** (`business_directions_cap`, added 2026-08-29). BEFORE INSERT OR UPDATE, per-business advisory-lock + count-active, raises `check_violation` if the write would push active count > 8. Closes the TOCTOU race in apply-direction-change's app-level check and rejects crafted signup payloads. Signup.js still trims client-side to the first 8 so a legitimate 8-pick onboarding never hits the trigger; apply-direction-change still returns its own friendly `cap_reached` code before the trigger fires so end-users see a nice message rather than a raw exception. Trigger is the last-line defense. See `v5/precompute/migrations/2026-08-29-directions-cap-trigger.sql`.
-- `business_playlists` — one row per built Spotify playlist (onboarding sample, expanded daily, cron-generated daily, or event). Columns include { spotify_id, business_id, url, label, ico, track_count, genres, bpm_range, expansion (jsonb, legacy), event_id (nullable back-ref), direction_id (nullable FK → business_directions), track_ids (jsonb, ordered), expanded_at, expires_at, created_at }. Nothing deletes rows — `expires_at` gates dashboard visibility only.
+- `business_playlists` — one row per built Spotify playlist (onboarding sample, expanded daily, cron-generated daily, or event). Columns include { spotify_id, business_id, url, label, ico, track_count, genres, bpm_range, expansion (jsonb, legacy), event_id (nullable back-ref), direction_id (nullable FK → business_directions), track_ids (jsonb, ordered), **track_genres** (jsonb, v7 only — see below), expanded_at, expires_at, created_at }. Nothing deletes rows — `expires_at` gates dashboard visibility only. **This table is the permanent record of every playlist a business was ever served, with its tracks** (v6 and v7 alike): after expiry the Spotify playlist itself is emptied, so `track_ids` here is the only surviving record of its contents. Deleting the business (e.g. `scripts/purge-users.mjs`) takes these rows with it — run `scripts/backup-db.mjs` first if the history matters.
 - `business_hours` — one row per business: { business_id, hours (jsonb — 0..6 day map with `{open,close,closed}`), longest_minutes, updated_at }. Upsert on business_id.
 - `business_place` — one row per business (Google Places snapshot): { business_id, place_id, name, address, primary_type, types, editorial_summary, price_level, website_uri, vibe (jsonb), updated_at }. Upsert on business_id.
 - `business_events` — { id, business_id, name, description, created_at }. Owner's chat-generated one-off event descriptions.
@@ -1302,6 +1524,13 @@ Everything the account dashboard reads lives here:
 - `business_direction_changes` — { id, business_id, direction_id (nullable — null when the pre-insert direction hasn't landed yet), kind ('add'|'edit'|'remove'), before (jsonb direction snapshot), after (jsonb direction snapshot), message_id_first, message_id_last (nullable FKs into business_direction_chats — the message range that produced this change), playlist_action ('rebuilt'|'expired'|'kept'|'renamed'|null), applied_at }. Written by `/api/v6/account/apply-direction-change` on every commit; surfaced by the internal admin API as the audit feed per business. `'renamed'` was added 2026-09-02 for the cosmetic-only edit fast path (title / description-only chat edits) — see the migration `2026-09-02-direction-changes-renamed-action.sql`.
 - `business_settings_changes` — { id bigserial, business_id, field (text — `'name'` or `'hours'`), before (jsonb), after (jsonb), changed_at }. Audit log for business-level settings that upsert in-place (i.e. don't produce a versioned history on their own). Written by `api/v6/account/update-business-name.js` and `api/v6/account/update-hours.js` on every non-no-op save. `field` is free text (no CHECK-enum) so future settings can join without another migration; for `'name'` the before/after are JSON-quoted strings, for `'hours'` they're `{hours, longest_minutes}` objects. Added 2026-09-05 (migration `2026-09-05-owner-change-history.sql`).
 - `business_event_chats` — { id, business_id, role ('user'|'assistant'), content (raw JSON for assistant / plain text for user), proposal (jsonb — `{name_he, description_he}` on confirming assistant turns; null otherwise), event_id (nullable FK → business_events; backfilled by `upsert-event.js` when the chat produces a saved event), created_at }. Rolling per-business message log for the special-events chat on `/v6/account`. Written by `POST /api/v6/account/event-chat`. Client's on-screen transcript still resets to empty on hard refresh / after finalize — a client `SESSION_START_AT_ISO` gates both what the browser shows AND what the server includes in Gemini's context. Persistence is orthogonal (every turn logged for admin visibility regardless of what the client displays). Added 2026-08-30 (migration `2026-08-30-event-chat.sql`).
+
+**v7 production data (owned by v7 signup + account; migration `2026-09-23-v7-tables.sql`, RUN):**
+- `business_taste_profiles` — one row per v7 business (PK `business_id`). The flat, full-catalog taste profile produced by `v7/generation/taste-profile.js` and persisted by `signup.js` at onboarding (before the verification email goes out). Columns: { business_id (uuid PK), energy_levels_total (int 2..6), approved_genres (jsonb — [{genre, energy_level}]), conditional_genres (jsonb — [{genre, energy_level, note_en}]; **DATA ONLY, builders ignore it**), excluded_genres (jsonb — [string]), instrumentalness_preference (text), popularity_preference (text), reasoning_en (text), audit_tally (jsonb, analytics) }. Owner-scoped RLS SELECT; service-role writes. Replaces `business_directions` as v7's taste source of truth.
+- `business_v7_settings` — one row per v7 business (PK `business_id`). { business_id (uuid PK), delivery_mode (text CHECK IN ('option1','option2'); NULL until the gate is picked), timeline (jsonb — Option-2 placeholder), updated_at }. Written by `set-delivery-mode.js`.
+- `business_v7_directions` — Option-1 energy-tiered directions (populated at mode selection via `save-energy-directions.js`). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_tier (text CHECK IN ('high','low')), rank (int), title_en (text), genres (jsonb — [string], canonical), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active. Only Option 1 uses this; Option 2 builds straight from `business_taste_profiles.approved_genres`.
+- **v7 `business_playlists` rows insert `direction_id: null`** — that column is an FK to v6's `business_directions`; a `business_v7_directions` id would violate it (the two are different tables). See the v7 daily runtime mechanism in § V7 ARCHITECTURE.
+- **`business_playlists.track_genres`** (jsonb, added 2026-09-24, migration `2026-09-24-v7-track-genres.sql`) — v7's per-track genre record, next to `track_ids`: `{ "<spotify_id>": ["Bossa Nova"], ... }` = which of the playlist's OWN genres each track belongs to in the catalog (canonical names; two entries when a track is tagged with two of them; `[]` if the catalog no longer ties it to any). NULL for v6 rows. Written at build time by `attachTrackGenres` in `api/v7/account/_daily-builder.js` (cron and on-demand builds) via the server-only **`v7_track_genres(p_spotify_ids, p_genres)`** RPC (`playlist_tracks` → `playlist_genres`). Best-effort: a failed lookup never blocks the build, and `insertPlaylistRows` retries without the column if it's missing, so the playlist record itself is never lost. Rows built before the column existed: `scripts/_v7-backfill-track-genres.mjs` (dry run; `--apply` writes).
 
 **Ledgers + operational state:**
 - `created_playlists` — the expiry ledger. Columns: `spotify_id` (PK), `name`, `expires_at`, `deleted_at`, `error`, `owner_id` (nullable FK → auth.users), `business_id` (nullable FK → businesses). Both FKs use ON DELETE SET NULL so the cron can still unfollow expired playlists after their owner/business is deleted. Rows written by onboarding (via /api/v5/record-playlist) start with NULL owner/business — signup.js back-fills them. Renamed from `v5_created_playlists` on 2026-08-02; migration in `v5/precompute/migrations/`.
@@ -1356,6 +1585,8 @@ Supabase's default `statement_timeout` on the `authenticator` role is **3s**. Co
 
 **Fix applied:** ran `ALTER ROLE authenticator SET statement_timeout = '15s'; NOTIFY pgrst, 'reload config';` in Supabase SQL Editor.
 
+**⚠️ That raise does NOT cover anon-key calls (measured 2026-09-23).** PostgREST applies the *impersonated* role's settings per request, and Supabase's `anon` role carries its own **3s** `statement_timeout`, which overrides `authenticator`'s 15s. Every endpoint that calls an RPC through `pgrRpc` without `{ useService: true }` — `/api/v5/anchor-tracks`, `/api/v5/direction-tracks`, `/api/v5/prewarm` — is still capped at **3s**. Evidence: anon-key `v5_anchor_tracks` calls 57014 at ~3.3s wall-clock, while identical calls on the service key succeed at ~4.6s. v6's 4-spec R1 anchor call lands ~2.2–2.5s warm — **working, but within ~0.5s of the ceiling** (one v6-shaped test call 57014'd too), which is the real explanation for v6's intermittent 57014s. Server-side paths that pass `useService: true` (daily builders, expand-playlist) get the longer timeout. Options if v6's margin ever becomes a problem, best first: point v6 at a cheap sampling RPC like v7's `v7_anchor_tracks` (would need its own tempo-aware variant, since v6 directions do carry BPM); move the endpoint to the service key; or raise `anon`'s timeout (trade-off: the anon key is public, so this widens what anyone can run directly against PostgREST).
+
 ### Retry-on-57014 in `api/v5/supabase-client.js`
 
 Belt-and-suspenders. `pgrRequest` catches errors whose message contains `"57014"` and retries once after 300ms. Since the 15s timeout raise, this rarely fires — but is kept as a safety net for edge cases (connection pool churn, etc.).
@@ -1366,13 +1597,14 @@ Belt-and-suspenders. `pgrRequest` catches errors whose message contains `"57014"
 
 ---
 
-## MODEL CHOICES (V6)
+## MODEL CHOICES
 
 ### Current choices
 
 | Feature | Model | Where selected | Rationale |
 |---|---|---|---|
-| Musical directions (main flow) | `gemini-3.6-flash`, thinking=high | `v6/generation/ai-provider.js` `PROVIDER='gemini'` | Faster + cheaper than Sonnet at comparable quality once thinking=high is set; better JSON compliance with `responseMimeType`. Flip `PROVIDER` back to `'anthropic'` in that one file to revert. |
+| v6 Musical directions (main flow) | `gemini-3.6-flash`, thinking=high | `v6/generation/ai-provider.js` `PROVIDER='gemini'` | Faster + cheaper than Sonnet at comparable quality once thinking=high is set; better JSON compliance with `responseMimeType`. Flip `PROVIDER` back to `'anthropic'` in that one file to revert. |
+| v7 Musical directions (R1 + R2 + taste-profile + energy-directions) | `gemini-3.6-flash`, thinking=high | `v7/generation/ai-provider.js` `PROVIDER='gemini'` | INDEPENDENT of v6's switch. Same values today but decoupled — flipping v6's PROVIDER does not affect v7 or Ami's dashboard (which imports v7's ai-provider since 2026-09-23). Labels for `gemini_call_log`: `v7-onboarding`, `v7-onboarding-refined`, `v7-taste-profile`, `v7-energy-directions`. |
 | Event chat (special-events dashboard) | `gemini-3.6-flash`, thinking=low | `v6/account/app.js` (chat state machine) | Multi-turn JSON, low latency for a chat feel. Prompt in `v6/generation/event-chat-prompt.js`. |
 | Direction-edit chat (profile-tab) | `gemini-3.6-flash`, thinking=low, max_tokens=3000 | hardcoded in `api/v6/account/direction-chat.js` | Same rationale as event chat — multi-turn JSON, low latency. Prompt in `v6/generation/direction-edit-chat-prompt.js`. Kept distinct from the ai-provider switch used for musical directions. |
 | Event playlist genre+BPM extraction | `claude-haiku-4-5-20251001` | hardcoded in `api/v6/account/event-playlist.js` | Fast one-shot classify; kept on Anthropic because the task is narrow + the Haiku path is well-tested. |
@@ -1410,13 +1642,23 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
 - `ami-cron-tick.js` — **cron schedule REMOVED from `vercel.json` on 2026-08-13**. Endpoint file kept so the batch worker can be revived, but no longer runs hourly. Was the driver for the RapidAPI-based track analysis pipeline; when we stopped needing it, keeping the hourly tick just consumed function invocations and served no purpose. Re-add `{"path": "/api/v4/ami-cron-tick", "schedule": "* * * * *"}` to `vercel.json crons` to bring it back.
 - `ami-sync-usage.js`, `ami-reorder.js` — housekeeping
 
-Ami also has a separate **prompt-tuning dashboard** at `/v5/ami-prompt-dashboard/`
-that imports `EDITABLE_PROMPT_SECTION` from `v5/generation/musical-directions.js`
-and lets him edit + preview the prompt output before it goes to prod. That
-dashboard uses the same `ai-provider.js` switch as v6, so whatever provider
-production is on, Ami's testing is on the same one. He also has a "דגשים
-מוזיקליים" textarea there that mirrors the onboarding field, so he can
-test emphases + instrumentalness classification behavior end-to-end.
+Ami also has a separate **prompt-tuning dashboard** at `/v5/ami-prompt-dashboard/`.
+Since 2026-09-23 it imports `EDITABLE_PROMPT_SECTION` + `assembleSystemPrompt`
+from **`/v7/generation/musical-directions.js`** (was v5) and `callModel` +
+`PROVIDER` from **`/v7/generation/ai-provider.js`** (was v6). It lets Ami edit
++ preview the v7 R1 prompt output before it goes to prod. Ami is tuning
+against v7's R1 prompt, NOT v6's — Roni explicitly said no v6/v7 toggle at
+the dashboard level. The dashboard uses whatever provider v7's `ai-provider.js`
+points at (currently Gemini 3.6-flash, thinking=high — same values as v6's
+copy, but decoupled: flipping v6's PROVIDER doesn't affect the dashboard).
+He also has a "דגשים מוזיקליים" textarea there that mirrors the onboarding
+field, so he can test emphases + instrumentalness + popularity classification
+behavior end-to-end.
+
+Known small gap: the dashboard's `formatDirection` renders title/genres/
+description but NOT `instrumentalness_preference` / `popularity_preference`,
+so Ami can't eyeball those classifier outputs when previewing v7. Two-line
+addition when we next touch the dashboard.
 
 The dashboard's prompt assembly runs through a **lenient wrapper**
 `normalizeForProdAssembly` in `v5/ami-prompt-dashboard/app.js` (added 2026-08-30)
@@ -1441,7 +1683,7 @@ expiry.
 Read-only endpoints under `api/internal/*` for Michael's forthcoming admin dashboard (his own repo, host TBD — not in this repo). Auth: single shared bearer token in `INTERNAL_ADMIN_API_KEY` env var, presented as `Authorization: Bearer <key>` or `x-internal-admin-key: <key>`. CORS is `*` because the bearer token IS the security boundary (no cookies, so cross-origin attacks can't attach it). Fail-CLOSED on missing env — misconfig 500s loudly, same philosophy as `requireSiteOrInternal`.
 
 - `GET /api/internal/users` → `{ count, businesses: [ { business_id, name, owner_id, owner_email, created_at, has_prompt } ] }`. `has_prompt` is true iff `business_description` or `musical_emphases` is non-null (rows signed up after the 2026-08-23 migration).
-- `GET /api/internal/business?id=<uuid>` → full detail: `{ business, onboarding: { business_description, musical_emphases, atmospheres }, place, hours, directions[], playlists[], direction_changes[], chat_transcript[], gemini_spend: { total_usd, call_count, by_label[] }, gemini_calls[], cleanup_backlog[], playlist_opens[], playlist_opens_summary: { total, by_playlist[], by_source[] } }`. `playlists[].track_ids` is the ordered Spotify-ID array as of build time (null for pre-2026-08-20 rows). `direction_changes[]` and `chat_transcript[]` are the profile-tab direction-edit chat's audit + full message log (empty for owners who haven't used the chat yet). `gemini_spend` + `gemini_calls[]` are this business's Gemini API cost rollup + every logged call (both onboarding calls backfilled at signup and post-signup chat calls) — both zero/empty for businesses that signed up before 2026-08-25 when call logging started. `cleanup_backlog[]` (added 2026-08-29) is any `created_playlists` row for this business that is past-expired, not yet deleted, AND has failed at least once (attempts >= 1) — worst-offender first; empty for healthy businesses. `playlist_opens[]` + `playlist_opens_summary` (added 2026-08-30) are the dashboard "▶ פתח" click log for this business (raw log capped at 1000, plus rolled-up counts by playlist and by source).
+- `GET /api/internal/business?id=<uuid>` → full detail: `{ business, onboarding: { business_description, musical_emphases, atmospheres }, place, hours, directions[], playlists[], direction_changes[], chat_transcript[], gemini_spend: { total_usd, call_count, by_label[] }, gemini_calls[], cleanup_backlog[], playlist_opens[], playlist_opens_summary: { total, by_playlist[], by_source[] } }`. `playlists[].track_ids` is the ordered Spotify-ID array as of build time (null for pre-2026-08-20 rows); `playlists[].track_genres` (added 2026-09-24) is v7's `{spotify_id: [genre, ...]}` per-track genre record (null for v6 rows) — documented for Michael in `docs/admin-api-for-michael.md`. `direction_changes[]` and `chat_transcript[]` are the profile-tab direction-edit chat's audit + full message log (empty for owners who haven't used the chat yet). `gemini_spend` + `gemini_calls[]` are this business's Gemini API cost rollup + every logged call (both onboarding calls backfilled at signup and post-signup chat calls) — both zero/empty for businesses that signed up before 2026-08-25 when call logging started. `cleanup_backlog[]` (added 2026-08-29) is any `created_playlists` row for this business that is past-expired, not yet deleted, AND has failed at least once (attempts >= 1) — worst-offender first; empty for healthy businesses. `playlist_opens[]` + `playlist_opens_summary` (added 2026-08-30) are the dashboard "▶ פתח" click log for this business (raw log capped at 1000, plus rolled-up counts by playlist and by source).
 - `GET /api/internal/gemini-spend` → site-wide Gemini API cost totals: `{ totals: { all_time_usd, all_time_calls, attributed_usd, attributed_calls, abandoned_usd, abandoned_calls }, by_day[], by_label[], recent[] }`. `abandoned_*` = rows with `onboarding_session_id` set but no `business_id` (user started onboarding, Gemini spent money, they never signed up). Aggregations done in server memory over up to 10k rows — move to a Postgres RPC if the log ever grows past that.
 
 Notes on the data shape:
@@ -1470,7 +1712,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 | `UPSTASH_REDIS_REST_KV_REST_API_URL` / `_TOKEN` | `api/v6/ratelimit.js`, `api/new/spotify.js` (pause switch + daily write counter) | Auto-injected by Vercel's Upstash integration with the `UPSTASH_REDIS_REST` custom prefix. If unset, rate limiting is DISABLED (fail-open) and one warning line prints at cold start. Same fail-open behaviour for the pause switch — logs a warning then proceeds without global backpressure. |
 | `SUPABASE_AUTH` | `api/_alert.js` sendAlert; Supabase Dashboard → Auth → SMTP for magic-link emails | Resend API key (prefixed `re_`). Named `SUPABASE_AUTH` because it was originally added for Supabase's SMTP config — same key powers our operational alert emails now. Fail-open if unset. Set in Vercel + `.env.local`. |
 | `GOOGLE_PLACES_API_KEY` | `api/v6/place-lookup.js` | Optional — endpoint silently skips if unset. Currently sensitive in Vercel + set to empty on some environments. |
-| `CRON_SECRET` | `api/cron/expire-playlists.js`, `api/cron/generate-daily.js` auth check | Vercel Cron sets `Authorization: Bearer <secret>` header |
+| `CRON_SECRET` | `api/cron/expire-playlists.js`, `api/cron/v7-generate-daily.js` (+ the unscheduled `generate-daily.js`) auth check | Vercel Cron sets `Authorization: Bearer <secret>` header. Also gates the v7 walkthrough scripts' manual cron trigger. |
 | `V6_ACCOUNT_REDIRECT_URL` | `api/v6/account/signup.js accountRedirectUrl` | Optional pin. When unset, magic-link redirect derives from request host (validated against `isAllowedHost`). |
 | `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json`. The *automated cron* is off (ami-cron-tick killed 2026-08-13) but the CLI batch worker `node v4/precompute/batch.mjs` is still run manually to digest new genres as Ami adds them. Key rotated 2026-08-25 after a paid-tier upgrade — the old key kept returning provider-side errors on the higher tier; new key resolved it. Regen a key at RapidAPI dashboard → your app → security. |
 | `RAPIDAPI_BILLING_CYCLE_DAY` | Precompute batch | Day of month billing resets |
@@ -1491,10 +1733,11 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 **Prod deploys are MANUAL:** `vercel --prod`. Pushing to `main` does NOT auto-deploy.
 
 `vercel.json` configures:
-- Function `maxDuration` per endpoint (30s default; 60s for anthropic + gemini + transcribe + event-playlist + expand-playlist + generate-daily; 300s for the cron entrypoints)
-- **Cron schedule (two hourly crons, deliberately staggered)**:
-  - `/api/cron/generate-daily` at `0 * * * *` — per-business daily playlist builder (see the Daily-gen cron mechanism above for the full skip-reason list)
-  - `/api/cron/expire-playlists` at `30 * * * *` — sweeps expired ledger rows (rename + empty + unfollow on Rubin). Moved off `:00` on 2026-08-29 as part of the resilience layer so it can't overlap top-of-hour daily-gen writes.
+- Function `maxDuration` per endpoint (30s default; 60s for anthropic + transcribe + event-playlist + expand-playlist; 300s for the cron entrypoints, both generate-daily endpoints, and **`/api/v6/gemini`** — raised from 60s on 2026-09-24 because v7's taste-profile call generates ~8.6k–13k tokens (mostly thinking) at ~150 tok/s ≈ 57–88s, over the old limit. The proxy is shared by v6 and v7; the higher ceiling doesn't change normal calls)
+- **Cron schedule (two hourly crons, deliberately staggered)** — cut over to v7 on 2026-09-23:
+  - `/api/cron/v7-generate-daily` at `0 * * * *` — the LIVE per-business daily playlist builder. Targets `version='v7'` businesses only; branches option1/option2 (see the v7 daily runtime mechanism in § V7 ARCHITECTURE).
+  - `/api/cron/expire-playlists` at `30 * * * *` — sweeps expired ledger rows (rename + empty + unfollow on Rubin). Version-agnostic — sweeps both v6 and v7. Moved off `:00` on 2026-08-29 as part of the resilience layer so it can't overlap top-of-hour daily-gen writes.
+  - **`/api/cron/generate-daily` (v6) was REMOVED from `crons` on 2026-09-23** — the user did not want to keep making that many Spotify calls once v7's builder came online. The file stays in-tree (revivable) but nothing schedules it, so v6 businesses get no new daily playlists (existing ones expire normally). Note: the v6 cron has NO `version` filter — v7 businesses would be skipped by its `not-onboarding-done` guard only because v7 never sets `onboarding_expanded`. Add a `version=eq.v6` filter before reviving it.
   - `/api/v4/ami-cron-tick` was **removed** from the cron schedule on 2026-08-13. Endpoint file still exists so it can be revived, but nothing schedules it now.
 - Cache headers: `no-cache` for `/` + `/index.html` + all `/vX/*` paths
 - Security headers (global): `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(), microphone=(self), camera=()` — added during the 2026-08-22 security audit
@@ -1512,29 +1755,43 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 ## PROMPT EDITING PROTOCOL
 
-Two musical-directions prompts exist and both are tracked in `prompt-history.md`:
+Five musical-directions prompts exist across two versions, tracked in two audit-log files:
 
-- **Round 1** — `EDITABLE_PROMPT_SECTION` + `FIXED_PROMPT_SECTION` in `v6/generation/musical-directions.js`, both composed from named sub-constants. Mirrored byte-for-byte in `v5/generation/musical-directions.js` — Ami's dashboard reads the v5 copy.
-- **Round 2** — R2-specific sub-constants inside `v6/generation/refined-directions.js`, composed on top of shared sub-constants imported from R1's file. No v5 mirror (R2 is v6-only).
+**v6 (production)** — tracked in `prompt-history.md`:
+- **v6 Round 1** — `EDITABLE_PROMPT_SECTION` + `FIXED_PROMPT_SECTION` in `v6/generation/musical-directions.js`, both composed from named sub-constants. Mirrored byte-for-byte in `v5/generation/musical-directions.js` (kept for legacy `v5/app.js` — no longer read by Ami's dashboard).
+- **v6 Round 2** — R2-specific sub-constants inside `v6/generation/refined-directions.js`, composed on top of shared sub-constants imported from R1's file. No v5 mirror (R2 is v6-only).
 
-**Any edit to either prompt** — including edits to shared sub-constants (which affect both R1 and R2 automatically) — appends a NEW entry at the top of `prompt-history.md`. Each entry MUST include:
-- An **Applies to:** line: `Round 1` / `Round 2` / `both`
+**v7 (runtime built)** — tracked in `prompt-history-v7.md`:
+- **v7 Round 1** — `v7/generation/musical-directions.js`. Diagnostic taste probes (see § V7 ARCHITECTURE). What Ami's dashboard tunes against.
+- **v7 Round 2** — `v7/generation/refined-directions.js`. Imports shared sub-constants from v7 R1.
+- **v7 Taste profile** — `v7/generation/taste-profile.js`. Full 116-genre bucketing + per-user energy scale.
+- **v7 Energy directions** — `v7/generation/energy-directions.js`. Option-1 energy-tiered directions from `approved_genres`. `Applies to: energy directions`.
+
+**Any edit to any prompt** appends a NEW entry at the top of the correct history file (v6 edits → `prompt-history.md`; v7 edits → `prompt-history-v7.md`). Each entry MUST include:
+- An **Applies to:** line. For v6: `Round 1` / `Round 2` / `both`. For v7: `Round 1` / `Round 2` / `taste profile` / `R1+R2` / `all v7`.
 - Today's date + one-sentence summary of what changed and why
-- The FULL text of the changed sub-constants (for a substantive content change) OR a clear diff description (for a structural/refactor change with byte-identical output). Never delete old entries — the file is the audit log.
+- The FULL text of the changed sub-constants (for substantive content changes) OR a clear diff description (for structural/refactor changes with byte-identical output). Never delete old entries — the files are the audit log.
 
-If the edit touches a shared sub-constant, mark `Applies to: both` and note both prompts are affected. If it touches only Round-1-specific pieces (`ROUND1_*`), mark `Applies to: Round 1`. Same for R2. Verify v5 mirror is still byte-identical to v6 for `EDITABLE_PROMPT_SECTION` and `FIXED_PROMPT_SECTION` after every edit (composition should keep them in sync as long as you edit them in the same way).
+If the edit touches a shared sub-constant in v6, mark `Applies to: both` and note both v6 prompts are affected. Same for v7. Verify v5 mirror is still byte-identical to v6 for `EDITABLE_PROMPT_SECTION` and `FIXED_PROMPT_SECTION` after every v6 edit.
 
-### Genre Universe invariant (MUST-FLAG rule)
+Cross-version edits (e.g. the 2026-09-23 `shared/genre-universe.js` extraction, which touched v6 + v5 + genre-list.js + enabled v7 to import from the same source) go in BOTH history files — primary record in whichever version drove the change, cross-reference entry in the other.
 
-The genre universe is enumerated in **THREE code locations** today (down from four on 2026-09-02 when the direction-edit chat prompt started importing R1's `GENRE_UNIVERSE_SECTION` instead of embedding a verbatim copy). The Round-1 prompt is the SOURCE OF TRUTH; the other two are downstream copies that must stay in sync verbatim (case-insensitive, but spelling must match):
+### Genre Universe invariant (as of 2026-09-23)
 
-1. `v6/generation/musical-directions.js` → `GENRE_UNIVERSE_SECTION` (**source of truth** — R1 + R2 prompts, and now transitively the direction-edit chat prompt via import)
-2. `v5/generation/musical-directions.js` → `GENRE_UNIVERSE_SECTION` (byte-identical mirror; Ami's dashboard reads it)
-3. `v6/generation/genre-list.js` → `GENRES` array (event-playlist Haiku prompt)
+The genre universe is enumerated in **ONE code location**: `shared/genre-universe.js`. Every consumer imports or re-exports from there:
 
-**Assistant behavior rule:** at the start of any session that touches prompts, genres, or the batch worker, verify all three lists contain the same set of genre strings. If ANY difference exists — a genre in one place and not another, an extra genre, a rename, a typo, a casing divergence between the source-of-truth and a downstream copy — **flag it to the user immediately and unprompted, before doing any other work on that request.** Do not silently pick one side or defer the flag; the drift is a real bug (silent DB-lookup drops for the affected genre) even when it looks cosmetic. The check is cheap; a scratch script can grep and compare all three in seconds.
+- `v6/generation/musical-directions.js` — re-exports `GENRE_UNIVERSE_SECTION` (import from shared).
+- `v5/generation/musical-directions.js` — same import.
+- `v6/generation/genre-list.js` — re-exports `GENRES` + `GENRE_SET` from shared.
+- `v7/generation/musical-directions.js` — imports `GENRE_UNIVERSE_SECTION` from shared.
+- `v7/generation/refined-directions.js` — imports transitively via v7 R1.
+- `v7/generation/taste-profile.js` — imports `GENRE_UNIVERSE_SECTION` + `GENRES` + `GENRE_SET` from shared (for the case-insensitive canonicaliser in `normalizeTasteProfile`).
+- `v6/generation/direction-edit-chat-prompt.js` — imports `GENRE_UNIVERSE_SECTION` from `v6/generation/musical-directions.js` at runtime (which re-exports from shared).
+- `api/v6/account/event-playlist.js` — imports `GENRES` + `GENRE_SET` from `v6/generation/genre-list.js` (which re-exports from shared).
 
-If the user is adding, removing, or renaming a genre, the change MUST land in all three code locations in the same commit. If one place is out of scope for the current work, tell the user so they can decide whether to fix the drift now or explicitly defer it. The direction-edit chat prompt no longer needs manual sync — its `## Genre Universe` block is the imported R1 constant at runtime.
+There is no cross-file drift to check anymore. Historical (pre-2026-09-23) context: the list used to be inlined in THREE places (v5 + v6 musical-directions.js + v6 genre-list.js), which triggered a MUST-FLAG assistant behavior rule about verifying sync at session start. That rule is retired.
+
+**Rule that still applies:** DB strings in `playlist_genres.genre` must match `shared/genre-universe.js` verbatim (case-insensitive; RPCs lowercase-match). If Ami adds a genre in Data Box or the batch worker, the new string must be added to `shared/genre-universe.js` in the same change — that's still a single-file edit, but if it's skipped, downstream lookups silently return zero tracks for the new genre. Sanity check: `scripts/_verify-genre-refactor.mjs` compares in-tree against git HEAD's inline form for regression detection.
 
 ---
 
@@ -1585,7 +1842,7 @@ Supabase Dashboard → SQL Editor:
 DELETE FROM public.businesses WHERE owner_id = (SELECT id FROM auth.users WHERE email = 'test@you.com');
 DELETE FROM auth.users WHERE email = 'test@you.com';
 ```
-Also visit `/v6/?reset=1` to wipe localStorage session.
+Also visit `/v6/?reset=1` to wipe the localStorage session (v7 onboarding + account apps honor `?reset=1` too — clears all `sb-*` keys).
 
 ### Benchmark OpenAI vs Anthropic
 ```powershell
@@ -1621,6 +1878,69 @@ node v4/precompute/batch.mjs --max-rapidapi-calls=1000000 --max-error-retries=0 
 7. **Vercel dev + moved files race**: if you move a file, update `vercel.json` in the same edit — otherwise `vercel dev` picks up the mismatch and crashes with "pattern doesn't match any Serverless Functions". Recovery: fix vercel.json and restart.
 8. **Vercel dev's `VERCEL_URL=localhost:3000` quirk**: server-to-server URLs built as `https://${VERCEL_URL}` resolve to `https://localhost:3000` in dev — every fetch fails with a bare "fetch failed". Both cron files use a `resolveSpotifyBase()` helper that scheme-normalises via a `/^(localhost|127\.)/` regex → http, everything else → https. If you add another server-to-server caller that builds a base URL from `VERCEL_URL` / `VERCEL_PROJECT_PRODUCTION_URL`, copy the same helper — do NOT hard-code `https://`.
 9. **Vercel serverless kills fire-and-forget promises after `res.end()`**: this bit us on 2026-08-29 when cron cluster alerts never arrived despite the code running. Any Resend / logging / analytics send that started with `.catch(() => {})` and wasn't awaited was cut mid-flight when the function returned. If you're adding async work in a handler, either await it before responding OR collect the promises and `await Promise.allSettled(alertPromises)` at the end. See "Alerts via Resend" mechanism for the pattern.
+
+---
+
+## OPEN QUESTIONS FOR V7 PIPELINE BUILD
+
+Originally a punch list from the 2026-09-23 v7 prompt-authoring session. Most of it was **resolved by the runtime build later that day** — those are marked RESOLVED below (kept, not deleted, so the reasoning is on record). The genuinely-still-open items follow.
+
+### RESOLVED — Downstream persistence
+
+v7 does NOT reuse `business_directions`. Signup persists the flat taste profile to the new **`business_taste_profiles`** table (plus `business_v7_settings` and, for Option 1, `business_v7_directions`) — effectively option (b) from the original write-up, but WITHOUT refactoring v6's readers: v6's daily cron is shut off, and v6's direction-chat / admin API simply see no v7 rows (acceptable for now). See § V7 ARCHITECTURE + DATA MODEL. Remaining sub-item: the internal admin API has no v7 view yet.
+
+### RESOLVED — Playlist builder for v7
+
+Built as two delivery modes (see the v7 daily runtime mechanism in § V7 ARCHITECTURE): **Option 1** = 4 playlists/day (2 high + 2 low energy-tier directions from `business_v7_directions`); **Option 2** = 2 full-length energy-shifting mixes/day from the approved-genre pool. Both via `api/v7/account/_daily-builder.js` reusing v6 primitives; driven by `api/cron/v7-generate-daily.js`. Still-open refinements: Option-2 energy ordering + interactive duration timeline are naive-v1 (deferred); whether the account-tab direction-chat becomes a "taste-profile edit chat" is undecided (ships dormant); the `conditional` bucket is stored but not consumed (below).
+
+### RESOLVED (interim) — BPM parameter on `v5_*_tracks` RPCs
+
+The swipe deck no longer touches these RPCs — it uses the tempo-free `v7_anchor_tracks` (next item). The v7 daily builders still pass a wide-open `0–300` window to `v6_direction_tracks_recent` as a no-op tempo filter (service key, server-side). A real "no-filter" mode on that RPC remains an optional cleanup.
+
+### RESOLVED for v7 — anchor query cost
+
+`v5_anchor_tracks` is slow because it random-sorts every tempo-matching track to return one (its cost follows the tempo window via `track_analyses`' tempo index, not the genre). v7 now uses **`v7_anchor_tracks`** (migration `2026-09-24-v7-anchor-tracks.sql`): per spec it samples 8 random playlists of the genre and picks from their tracks, with bounded work and no tempo. Verified 2026-09-24 against prod on the anon key: 4-card pages in ~0.3–0.5s warm / ~0.5–1.5s on never-touched genres, 0/14 failures (only the function's very first execution ever 57014'd — one-off warmup, and the endpoint + client retries absorb that). Hard-instrumental parity with the exhaustive old function: where v7 returns no card (e.g. Country, Trap), `v5_anchor_tracks` also finds nothing in the whole genre — a data limit, not a sampling miss. **v6 intentionally stays on `v5_anchor_tracks`** (kept alive by choice); its 4-card call sits at ~2.2–2.5s against the anon 3s ceiling (see § SUPABASE PERFORMANCE NOTES). If v6 ever needs relief, a tempo-aware sampling variant is the natural next step.
+
+### RESOLVED — `vercel.json` `/v7/(.*)` no-cache rule
+
+The `/v7` + `/v7/(.*)` no-cache header blocks now exist in `vercel.json` (added when v7 grew its UI), matching the `/v5` + `/v6` pattern.
+
+### OPEN — v7 browser-flow gaps found in the 2026-09-23 audit
+
+Confirmed by reading both sides; not yet fixed (each needs a decision):
+- **v6 and v7 share one browser session.** Same origin → same `sb-*-auth-token` localStorage key. A v6-logged-in owner opening `/v7` is redirected to `/v7/account` (head script in `v7/index.html`) and sees their v6 business behind the v7 delivery-mode gate; `v7/account/app.js` never checks `businesses.version`, so picking a mode writes `business_v7_settings` for a `version='v6'` business the v7 cron never builds. Reverse also holds. Test with `?reset=1`. Likely fix: route by `business.version` in both account apps.
+- **Misleading copy:** the v7 registration heading "הפלייליסטים שלכם מוכנים!" (`v7/result.js`) claims playlists are ready; v7 hasn't built any at that point.
+
+Fixed in the same audit: taste-profile retry ReferenceError loop, R1 page-2 / R2 rank collisions in the R2 + taste-profile prompt inputs, and silent Option-1 energy-directions failures (see `prompt-history-v7.md` and `v7/account/app.js energyBuildFailed`). Fixed 2026-09-24: the v7 dashboard's "צור פלייליסטים" / "המקום פתוח?" links called v6's `/api/v6/account/generate-daily` (reads v6 `business_directions` → always 400 for v7); they now call the new `api/v7/account/generate-daily.js`. The taste-profile call (~57–88s, estimated from `gemini_call_log` token counts at ~150 tok/s) exceeded `/api/v6/gemini`'s 60s `maxDuration` — raised to 300s (`vercel dev` doesn't enforce the limit, so local runs never showed it). Verified 2026-09-24: `/v7/account` is on Supabase Auth's Redirect URLs allowlist.
+
+### `conditional_genres` bucket — DATA ONLY for v7 launch
+
+The taste-profile prompt emits `conditional_genres` with full `energy_level` + `note_en` fields, but the initial v7 playlist builder should IGNORE this bucket. Rationale: activate later as we learn what "maybe" territory should feed into. Any v7 persistence design should still store `conditional_genres` (it's cheap data and captures real signal).
+
+### Ami's deferred R1 improvements
+
+In the 2026-09-23 R1 patch, Ami proposed a broader rewrite. Five specific items were adopted (Jazz simpler, Distinctness preserved, Beat-Percussion groove-family disambiguation, BPM removed, popularity fixed-def kept). His other proposed changes were **NOT adopted** in that pass — not rejected, just deferred for separate evaluation. Full text of Ami's proposal is in `prompt-history-v7.md` under the 2026-09-23 five-edits entry. The deferred items:
+
+- **Inflexible Genre Energy Assumption** — treat every genre as a non-flexible unit representing its whole energy spectrum; don't place natively-loud genres in a quiet direction on the assumption of downstream track-picking.
+- **Cluster Homogeneity OVER User Emphases** — with the "American music" split example (must not blob Country + Hip Hop + Rock under "user said they like American music").
+- **Prioritizing User Preferences in Direction Ordering** — composition is objective; ordering is subjective. Preferred → slot 1 or 2.
+- **Afro Label Disambiguation Rule** — `Afro Funk` / `Afro House` / `AfroBeats` are three different taste vectors that share only the "Afro" prefix.
+- **Organic House & DownTempo Isolation** — don't pair Organic House / DownTempo with driving House.
+- **Hebrew description reframing** as explicit probe language (`בודק פתיחות ל…` / `בודק חיבור ל…`).
+
+Ami separately said he'd apply his own fix for the barbershop bug (Funk + Neo Soul + Acid Jazz cluster) after that session; his output may supersede or complement the current `BEAT_PERCUSSION_RULE` groove-family disambiguation. Check with Ami before treating the current v7 R1 as settled.
+
+### v5 dead-code cleanup
+
+`v5/generation/musical-directions.js` has a stale header comment describing "TWO Claude calls" and a `MODEL = 'claude-sonnet-4-6'` constant + `MAX_TOKENS = 4000` that nothing references. v5's dashboard now imports from v7; v5's `app.js` imports `generateMusicalDirections` but production is on Gemini via the (now-swapped) dashboard-side ai-provider. Roni acknowledged; deferred to keep scope tight. Safe to `git rm` or clean up in a small pass.
+
+### Dashboard's `formatDirection` — no `instrumentalness_preference` / `popularity_preference` render
+
+Ami's prompt-tuning dashboard renders title/genres/bpm/description but skips the two preference fields on the preview output. Since v7 emits both and Ami is tuning against v7, Ami currently can't eyeball the classifier's output for those fields. Two-line addition to `v5/ami-prompt-dashboard/app.js`'s `formatDirection`. Not a blocker.
+
+### Cache-bust identifier drift (cosmetic)
+
+Some cache-bust `?v=` identifiers in the dashboard use `20092026a` (September 20). Actual date of the edit was 2026-09-23. Identifier scheme is `DDMMYYYY{letter}` per this doc's Cache Busting rules; the values are just uniqueness tokens now. If we bump for another cache invalidation, use the current date.
 
 ---
 

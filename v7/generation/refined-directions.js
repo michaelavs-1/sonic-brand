@@ -1,28 +1,32 @@
 // v7 refined-directions generator — Round 2 refinement.
 //
-// PLACEHOLDER: this file is authored now so the v7 R2 prompt is designed and
-// reviewed alongside the R1 prompt, but the pipeline that calls it (equivalent
-// of v6/preview.js runRefinedDirectionPreviewFlow + the R2 emphases step) has
-// not been built yet. When we build v7's onboarding UI, wire this in like v6
-// does: fire only when R1's swipe deck yielded fewer than 3 liked directions,
-// feed the owner's decisions in, replace/append to the swipe deck with the
-// 4 refined probes.
+// Fires from v7/app.js only when R1's swipe deck yielded fewer than 3 liked
+// directions. Inputs: every R1 input + the R1 probes the owner saw + their
+// liked / disliked / super-liked-genre decisions + optional R2 refinement
+// emphases. Output: 4 new diagnostic probes for a second swipe deck.
 //
-// Design shift from v6 R2 → v7 R2 mirrors the R1 shift:
-//   - v6 refined directions were curated blends. Bridge genres were chosen for
-//     multi-axis cross-cultural adjacency; each new direction could be a
-//     diverse mix aimed at seeding a future playlist.
-//   - v7 refined directions are tighter diagnostic probes — each of the 4
-//     new clusters is a small group of near-identical genres (same tempo /
-//     energy / instrumentation / cultural register / mood), just like R1.
-//     They're probes tuned to the sharper taste signal R1 exposed, not blended
-//     playlists.
-//   - No non-overlap rule against R1 directions or between R2 outputs. Overlap
-//     is fine — downstream the picked directions dissolve into a flat liked-
-//     genres list, so a repeated genre becomes a stronger signal.
+// Relationship to R1 — the same pattern v6 R2 follows with v6 R1:
+//   - Every shared R1 rule section is IMPORTED verbatim (Genre Universe,
+//     Processing Rules, Cluster Homogeneity, Energy & Pairing Constraints,
+//     Output Language, Title rules, Hebrew Description rules, When-Not-To-
+//     Return), so edits Ami makes to R1 flow into R2 automatically.
+//   - R1's round-specific sections (intro, inputs, distinctness, task
+//     workflow, output format) are re-authored for Round 2 but keep R1's
+//     concrete parameters (3–6 genres, the standalone-genre list, 3–6-word
+//     titles, same output fields, same rule list).
+//   - A Round-2-only Learning section applies R1's design philosophy to the
+//     owner's decisions. v6 R2 (blend world) looked for "bridge genres" sharing
+//     ANY axis with the likes. v7 R2 (probe world) maps the NEIGHBOURHOOD of
+//     each liked probe: re-confirm it with fresh tight-cluster neighbours, and
+//     test adjacent archetypes that move one or two of its four axes — while
+//     every individual probe stays internally homogeneous.
+//   - R1's Direction Distinctness (differ on ≥ 2 axes) is replaced by a Round-2
+//     version (differ on ≥ 1 axis when refining around likes; ≥ 2 when there
+//     are zero likes and Round 2 is exploring). Importing R1's rule as-is made
+//     4 probes impossible to build around 1–2 liked probes.
 //
 // Success return:
-//   { directions: [4 objects, ranks 1-4] }
+//   { directions: [4 objects, ranks 9-12] }   (see R2_RANK_START below)
 //
 // Error return:
 //   { error: 'not_a_music_venue' | 'insufficient_description' |
@@ -34,7 +38,6 @@ import {
   GENRE_UNIVERSE_SECTION,
   PROCESSING_RULES_SECTION,
   HOMOGENEITY_SECTION,
-  DISTINCTNESS_SECTION,
   ENERGY_PAIRING_SECTION,
   OUTPUT_LANGUAGE_SECTION,
   TITLE_RULES_SECTION,
@@ -47,7 +50,7 @@ const MAX_TOKENS = 65536;
 
 // ---------- Round 2 prompt sections ----------
 
-const REFINED_INTRO = `You are refining a previously generated set of diagnostic taste probes for a public-facing business playlist tool. In Round 1 the owner was shown up to 8 tightly-clustered "musical directions" and liked fewer than 3. Your task now is to analyze their picks — including which specific tracks they super-liked — and produce 4 brand-new diagnostic probes that are sharper matches to their taste. Each new probe is still a tight cluster of near-identical genres (same tempo / energy / instrumentation / cultural register / mood), not a blended playlist.`;
+const REFINED_INTRO = `You are refining a previously generated set of diagnostic taste probes for a public-facing-business playlist tool. In Round 1 the owner was shown up to 8 tightly-clustered "musical directions" — each a small group of near-identical genres (same energy tier, same instrumentation family, same cultural register, same mood) — heard one representative song from each, and liked fewer than 3. Your task now is to analyze their decisions — including which specific genres they super-liked a track from — and produce 4 brand-new diagnostic probes that pin down the parts of their taste Round 1 didn't. Each new probe is still a tight cluster, not a blended playlist. Downstream, every liked probe from either round dissolves into a flat liked-genres list — overlapping genres across two liked probes become a stronger signal, not a bug.`;
 
 const REFINED_INPUTS_SECTION = `## Inputs
 
@@ -59,9 +62,9 @@ You will receive all Round 1 inputs plus the full Round 1 model output and the o
 - Optionally: **Musical emphases (from Round 1 onboarding)** — the initial free-text preferences the owner supplied before seeing any tracks.
 - Optionally: **Round 2 refinement emphases** — free-text feedback the owner typed AFTER seeing Round 1's preview tracks and choosing fewer than 3. Their freshest, most context-aware guidance. When present, this is the SINGLE STRONGEST signal you have — see Learning step 6. May be empty.
 - Optionally: Google Places context — factual metadata about the venue, same shape as Round 1.
-- **Round 1 directions** — the full set the model produced, each with rank, title, genres, bpm_range, description, and instrumentalness_preference.
-- **Liked directions** — the 0, 1, or 2 directions the owner selected (may be empty).
-- **Disliked directions** — the directions the owner rejected.
+- **Round 1 directions** — the Round 1 probes the owner saw, each with rank (1–8), title, genres, description, and instrumentalness_preference. The Liked / Disliked lists below refer to these ranks.
+- **Liked directions** — the 0, 1, or 2 probes the owner liked (may be empty).
+- **Disliked directions** — the probes the owner swiped away.
 - **Super-liked genres** — a deduped list of specific GENRES (not whole directions) that the owner super-liked at least one track from. Each entry is a single genre string from the Genre Universe. Super-liking is a sharper signal than merely liking a direction: the owner reacted specifically to a track drawn from that genre, so that genre carries extra positive weight beyond what its containing direction alone would suggest. May be empty.`;
 
 const LEARNING_LOGIC_SECTION = `## Learning & Processing Logic (Round 2)
@@ -70,18 +73,21 @@ Perform this analysis BEFORE generating new clusters.
 
 ### 1. Extract Positive Seeds (Embrace)
 - Collect all genres that appeared across the Liked directions. These form your Positive Genre Pool.
-- Identify shared traits across the Liked directions: tempo band, energy tier, instrumentation family, cultural register, mood.
-- **Super-liked genres carry extra weight.** Each is an individual genre (not a whole direction) that the owner super-liked a specific track from — a sharper positive signal than the composition of merely-liked directions. Prioritize including super-liked genres, or their tight-cluster neighbours identified in step 3, in your Working Pool.
+- Name the archetype of each liked probe — its energy tier, instrumentation family, cultural register, and mood. These liked archetypes are your **Positive Vectors**.
+- **Super-liked genres carry extra weight.** Each is an individual genre (not a whole direction) that the owner super-liked a specific track from — a sharper positive signal than the composition of merely-liked directions. A super-liked genre is a Positive Vector in its own right, even when it came from a probe the owner otherwise disliked. Prioritize super-liked genres, or their neighbours from step 3, in your Working Pool.
 
 ### 2. Extract Negative Constraints (Strict Ban)
 - Analyze the Disliked directions.
-- Identify genres that appeared ONLY in disliked directions and NEVER in any liked direction.
+- Identify genres that appeared ONLY in disliked directions and NEVER in any liked direction or the super-liked list.
 - Ban those genres (and their direct sub-genre equivalents) completely from your Round 2 output.
+- Each disliked probe is also a rejected **archetype** (its energy tier + instrumentation family + cultural register + mood). Do not rebuild that archetype in Round 2 (see Direction Distinctness & Overlap — Round 2).
 
-### 3. Identify Tight-Cluster Neighbours
-- Cross-reference the Positive Genre Pool with the Genre Universe.
-- Find un-sampled genres that would sit inside the SAME cluster as a positive-seed genre — i.e. genres that share ALL of tempo band, energy tier, instrumentation family, cultural register, and mood with a liked or super-liked genre. This is different from R1-era "bridge genres": you are NOT looking for cross-register adjacencies; you are looking for genres tight enough to belong in the same diagnostic probe cluster.
-- Combine the Positive Genre Pool with these Tight-Cluster Neighbours to form your Round 2 Working Pool.
+### 3. Map the Neighbourhood of the Positive Vectors
+Round 1 told you roughly where the owner's taste lives; Round 2 probes find its edges. Cross-reference the Positive Genre Pool with the Genre Universe and collect two kinds of candidates:
+- **Tight-cluster neighbours** — un-sampled genres that share ALL four axes (energy tier, instrumentation family, cultural register, mood) with a liked or super-liked genre, i.e. genres that could sit inside the same cluster as the seed. A probe built from them re-confirms a Positive Vector with fresh genres.
+- **Adjacent-archetype genres** — genres whose archetype keeps most of a Positive Vector but moves ONE or TWO of its four axes (e.g. same cultural register and mood a step up or down in energy; same energy and mood with a different instrumentation family; a sibling cultural register with the same sound). This is the probe-world version of a "bridge": a probe built from them tests whether the owner's taste extends in that direction. Moving one axis is a safe refinement; moving two is a bolder exploration.
+- Combine the Positive Genre Pool with these candidates to form your Round 2 Working Pool.
+- Adjacency lives BETWEEN a probe and a Positive Vector — never inside a probe. Every probe you build from the pool must still pass Cluster Homogeneity on its own.
 
 ### 4. Honor Musical Emphases even in Round 2
 - The Musical Emphases text from Round 1 still applies with its FULL priority — including any include-genre / exclude-genre / general-leaning rule, AND the Instrumentalness preference classification, AND the Popularity preference classification. If Round 1's likes contradict the Musical Emphases (rare), the Musical Emphases still win.
@@ -90,8 +96,9 @@ Perform this analysis BEFORE generating new clusters.
 
 ### 5. Special case: zero Liked directions
 If the Liked list is empty:
-- Treat Description + Atmospheres + Musical Emphases + Round 2 refinement emphases as your positive signal.
-- Use Disliked strictly as a negative filter.
+- Treat Description + Atmospheres + Musical Emphases + Round 2 refinement emphases (and any super-liked genres) as your positive signal.
+- Use Disliked strictly as a negative filter — both its genres (step 2) and its archetypes.
+- You are now exploring, not refining: build 4 archetypes that Round 1 did NOT test, consistent with the positive signal and away from every disliked archetype.
 - If those positive inputs give too little signal AND the Disliked directions are internally contradictory (e.g., the owner disliked both a purely acoustic AND a purely electronic direction, offering no coherent negative filter), return \`{"error": "insufficient_signal", ...}\` rather than fabricating clusters from thin air.
 
 ### 6. Round 2 refinement emphases (highest priority when present)
@@ -101,31 +108,30 @@ When the owner supplied Round 2 refinement emphases, treat it as the STRONGEST s
 - General leanings ("more upbeat", "less electronic", "make them more surprising"): must shape every one of the 4 clusters, not just some.
 - If empty or missing, fall back to steps 1–5 above.`;
 
-const REFINED_OVERLAP_POLICY = `## Overlap policy (Round 2)
+const REFINED_DISTINCTNESS_SECTION = `## Direction Distinctness & Overlap (Round 2)
 
-Overlapping genres between Round 2 clusters, or between Round 2 clusters and Round 1 clusters (both liked and disliked ones), are ALLOWED. There is no "max one shared genre" rule in v7.
+Round 1 required its 8 clusters to differ on at least two of the four axes. Round 2 deliberately works closer to the owner's positive signal, so the rule is adjusted:
 
-- **Vs. Round-1 Liked directions:** Round 2 clusters MAY share multiple genres with the owner's liked directions and MAY be recognizably derived from them — similar is encouraged. Only IDENTICAL clusters (same title + same exact genre list as an R1 direction) are forbidden.
-- **Vs. Round-1 Disliked directions:** Round 2 clusters may share individual genres with disliked ones, but must NOT reproduce the overall CLUSTER SHAPE of a disliked direction (same tempo band + same energy tier + same cultural register — that's what the owner rejected). Genre-level overlap alone is fine; cluster-level match is not.
-- **Between Round 2 clusters:** free to overlap. If a genre legitimately sits inside two of your new probe archetypes, ship it in both — that overlap becomes a stronger genre-level taste signal downstream.
-
-Direction Distinctness still applies (see the R1 rules imported above): your 4 new clusters must test 4 distinctly different taste vectors, not four variations of the same one.`;
+- **Between your 4 Round 2 probes:** each must test a different taste vector — any two probes must differ on at least ONE of energy tier, instrumentation family, cultural register, mood. When the Liked list is empty (you are exploring, not refining), use Round 1's stricter rule: differ on at least TWO axes.
+- **Probe mix when there are likes:** spend at most ONE probe per Positive Vector on a tight-cluster re-confirmation; use the rest on adjacent archetypes (Learning step 3). Four re-confirmations of the same liked probe waste the round.
+- **Vs. Round 1 liked probes:** a Round 2 probe may share genres with a liked probe and be recognizably derived from it, but must not repeat it — at least half of its genres must be genres the owner wasn't already probed on in Round 1.
+- **Vs. Round 1 disliked probes:** never rebuild a disliked probe's archetype (same energy tier + instrumentation family + cultural register + mood — that is exactly what the owner rejected). Sharing an individual genre with a disliked probe is fine only when that genre survived the ban in Learning step 2.
+- **Overlapping genres between your Round 2 probes are allowed**, same as Round 1: if a genre legitimately sits inside two of your new archetypes, ship it in both — the overlap becomes a stronger genre-level taste signal downstream.`;
 
 const REFINED_TASK_WORKFLOW = `## Task Workflow (Round 2)
 
 1. Run the Learning & Processing Logic above to produce your Round 2 Working Pool.
 2. Generate exactly 4 new diagnostic clusters from the Working Pool. Every cluster must satisfy every rule from the shared sections imported above:
-   - Cluster Homogeneity (single unified vibe per cluster — tempo / energy / instrumentation / cultural register / mood)
-   - Direction Distinctness (4 different taste vectors; overlapping genres are allowed per the Overlap Policy)
+   - Cluster Homogeneity (single unified vibe per cluster — energy / instrumentation / cultural register / mood)
+   - Direction Distinctness & Overlap (Round 2) — 4 different taste vectors; overlapping genres allowed
    - Beat & Percussion Pairing
    - Jazz Isolation Rule
    - Pop Isolation Rule
    - House & Techno Containment Rule
    - Japanese Folk Restriction (from Processing Rules)
-3. **Super-liked genre bias:** Ensure super-liked genres (or their tight-cluster neighbours identified in Learning step 3) appear in at least one of your 4 output clusters. If multiple super-liked genres are supplied, prefer to spread them across separate output clusters when the homogeneity rules allow — do NOT force every super-liked genre into a single cluster.
+3. **Super-liked genre bias:** Ensure super-liked genres (or their neighbours from Learning step 3) appear in at least one of your 4 output clusters. If multiple super-liked genres are supplied, prefer to spread them across separate output clusters when the homogeneity rules allow — do NOT force every super-liked genre into a single cluster.
 4. Each cluster must include:
    - **Genres list:** 3 to 6 genres from the Working Pool that form a tight, near-identical cluster. Certain genres may form a 1–2 genre standalone cluster (\`Nu Metal\`, \`Indie Rock\`, \`Punk\`, \`Blues\`, \`Folk\`, \`Jazz House\`) if that best fits the owner's taste.
-   - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit \`bpm_range\` as \`{"min": 0, "max": <ceiling>}\`.
    - **instrumentalness_preference:** Same value across all 4 clusters, derived from the Musical Emphases text using the same rules as Round 1 (\`"none"\` | \`"soft"\` | \`"hard"\`).
    - **popularity_preference:** Same value across all 4 clusters by default, derived from the Musical Emphases text using the same rules as Round 1 (\`"none"\` | \`"soft"\` | \`"hard"\`). If the emphases text explicitly asks for per-cluster variance (time-of-day / context-based), vary it to match. When set to \`"hard"\` or \`"soft"\`, it also influences your GENRE picks — skew away from esoteric genres, lean toward hit-friendly catalogs (see the Round-1 sub-rule for the full lists).
 5. Rank clusters best-fit first based on strength of the taste signal.`;
@@ -142,7 +148,6 @@ Normal case:
       "title_en": "English title, 3-6 words (see Rules for English Titles)",
       "genres": ["...", "...", "..."],
       "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
-      "bpm_range": {"min": 0, "max": 115},
       "instrumentalness_preference": "none",
       "popularity_preference": "none"
     }
@@ -175,10 +180,9 @@ function assembleRefinedSystemPrompt() {
     REFINED_INPUTS_SECTION,
     PROCESSING_RULES_SECTION,
     HOMOGENEITY_SECTION,
-    DISTINCTNESS_SECTION,
     ENERGY_PAIRING_SECTION,
-    REFINED_OVERLAP_POLICY,
     LEARNING_LOGIC_SECTION,
+    REFINED_DISTINCTNESS_SECTION,
     REFINED_TASK_WORKFLOW,
     OUTPUT_LANGUAGE_SECTION,
     TITLE_RULES_SECTION,
@@ -227,15 +231,12 @@ function formatPlaceContext(place) {
 // point back at them unambiguously.
 function formatDirection(d) {
   const genres = directionGenres(d);
-  const bpm = d.bpm_range || {};
-  const bpmStr = (typeof bpm.min === 'number' && typeof bpm.max === 'number')
-    ? `${bpm.min}-${bpm.max}` : '?-?';
   const inst = d.instrumentalness_preference || 'none';
   const desc = d.description_he || '';
   return [
     `${d.rank}. "${d.title_en || '(no title)'}"`,
     `   genres: ${genres.join(', ') || '(none)'}`,
-    `   bpm_range: ${bpmStr}  |  inst_pref: ${inst}`,
+    `   inst_pref: ${inst}`,
     `   description_he: "${desc}"`,
   ].join('\n');
 }
@@ -281,17 +282,10 @@ function buildRefinedUserMessage({
 
 // ---------- validation & normalization (mirror of musical-directions.js) ----------
 
-function validateBpmRange(bpm) {
-  return bpm && typeof bpm === 'object'
-    && Number.isFinite(bpm.min) && Number.isFinite(bpm.max)
-    && bpm.min <= bpm.max;
-}
-
 function validateDirection(d) {
   if (!d) return false;
   if (typeof d.title_en !== 'string' || !d.title_en.length) return false;
   if (typeof d.description_he !== 'string' || !d.description_he.length) return false;
-  if (!validateBpmRange(d.bpm_range)) return false;
   const hasNew = Array.isArray(d.genres) && d.genres.length
     && d.genres.every((g) => typeof g === 'string' && g.length);
   const hasLegacy = typeof d.anchor_genre === 'string' && d.anchor_genre.length;
@@ -348,10 +342,13 @@ async function callRefined({ userMessage, label, onboardingSessionId }) {
   return parseJSONFromText(text);
 }
 
-// Ranks in the returned directions start at 1 — Round 2 is a separate picking
-// round, not a continuation of Round 1's rank sequence. The (future) v7
-// caller will merge Round 2 picks into state.picked, and signup will renumber
-// ranks 1..N at persistence time.
+// Ranks in the returned directions are 9-12 (R2_RANK_START), continuing after
+// Round 1's 1-8. v7 merges R2 picks into state.picked and the taste-profile
+// prompt lists LIKED / DISLIKED ranks "combined R1+R2" — with R2 numbered
+// 1-4 those ranks collided with R1's page 1 and the model couldn't tell which
+// direction a rank meant. The model still emits 1-4; normalizeDirections
+// renumbers. Preview keys anchors by rank, so any unique rank works there.
+const R2_RANK_START = 9;
 export async function generateRefinedMusicalDirections({
   bizName, bizDesc, atmospheres, musicalEmphases, round2Emphases, place,
   round1Directions, likedDirections, dislikedDirections, superLikedGenres,
@@ -385,7 +382,7 @@ export async function generateRefinedMusicalDirections({
       reasoning_en: typeof parsed.reasoning_en === 'string' ? parsed.reasoning_en : '',
     };
   }
-  const directions = normalizeDirections(parsed, 1);
+  const directions = normalizeDirections(parsed, R2_RANK_START);
   if (!directions.length) {
     return { error: 'matcher_error', reasoning_en: 'no valid directions returned' };
   }

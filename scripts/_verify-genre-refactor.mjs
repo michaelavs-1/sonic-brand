@@ -1,4 +1,4 @@
-// Sanity check for the 2026-09-20 shared/genre-universe.js extraction.
+// Sanity check for the 2026-09-23 shared/genre-universe.js extraction.
 // Compares the current in-tree GENRE_UNIVERSE_SECTION against git HEAD's
 // version (which had the string inlined) to catch any accidental drift.
 //

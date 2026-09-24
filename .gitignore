@@ -16,6 +16,10 @@ michael-v4-snapshot/
 # used against `vercel dev` and should not ship to production.
 internal-dashboard/
 
+# Local database backups (scripts/backup-db.ps1). Contain user emails / PII —
+# NEVER commit. Restore material only; lives on your machine.
+backups/
+
 # Legacy v1/v2/v3 API proxies — kept locally for reference but not deployed.
 # Removed 2026-08-22 during the security-hardening pass. Nothing in
 # v4/v5/v6/cron references them; last active callers were the v2/v3

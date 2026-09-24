@@ -1,7 +1,8 @@
 // v6 preview screen — Michael's swipe deck UI over v5's per-direction anchor
 // track selection.
 //
-// One anchor track per direction (from /api/v5/anchor-tracks, same as v5).
+// One anchor track per direction (from /api/v7/anchor-tracks → the
+// v7_anchor_tracks RPC; see that file's header).
 // Rendered one at a time as a Tinder-style card: big album art + track title +
 // artist, hidden Spotify iframe drives audio, custom play button, drag/swipe
 // or thumbs-up/down to decide. Swipe right = "build a playlist for this
@@ -161,44 +162,32 @@ function pickPreviewGenre(d) {
   return list.length ? list[Math.floor(Math.random() * list.length)] : null;
 }
 
-// fetchAnchorTracks — one representative track per (rank, genre, BPM) spec.
-// Endpoint name is legacy ("anchor-tracks") but the concept of a designated
-// anchor genre is gone: each spec passes the specific genre to draw from.
-// Callers construct specs — random pick for the initial preview, explicit
-// per-genre for the swap-track cycler.
+// fetchAnchorTracks — one random track per (rank, genre) spec, via v7's own
+// /api/v7/anchor-tracks → v7_anchor_tracks RPC (samples a few playlists of
+// the genre; no tempo parameter — v7 has no BPM). Callers construct specs —
+// random genre for the initial preview, explicit per-genre for the swap-track
+// cycler.
 //
-// Retry-once wrapper: the underlying Postgres RPC (v5_anchor_tracks) does
-// a heavy multi-table JOIN with random ordering and its plan can take
-// several seconds to compile on a cold PgBouncer session — long enough
-// to trip Supabase's statement_timeout (57014). supabase-client.js's
-// server-side retry-at-300ms often lands on ANOTHER cold session before
-// the plan can propagate through the pool, so it doesn't help this case.
-// A 2s wait client-side gives whichever session gets the retry time to
-// finish its own plan compile. If the retry still fails, the throw
-// propagates to preparePreview's outer catch and page 2 falls back to
-// empty (existing degradation).
+// Retry-once wrapper: a single 2s-delayed retry for transient failures
+// (network blip, pooled-connection hiccup). If the retry also fails, the
+// throw propagates to preparePreview's outer catch and that page falls back
+// to empty (existing degradation).
 async function fetchAnchorTracks(specs) {
   const payload = specs.map((s) => ({
     rank: s.rank,
     genre: s.genre,
-    bpm_lo: Math.floor(s.bpm_range.min),
-    bpm_hi: Math.ceil(s.bpm_range.max),
     // Per-spec 'none' | 'soft' | 'hard' from the direction's
     // Gemini-assigned instrumentalness_preference — the SQL RPC applies
     // the matching WHERE filter (hard) or ORDER BY bias (soft).
     inst_pref: s.inst_pref || 'none',
-    // Per-spec popularity_preference (added 2026-09-02). 'hard' OVERRIDES
-    // to [60,100]; 'soft' keeps the base pool [0,100] and biases hits via
-    // ORDER BY. No more atmosphere-derived popularity window (removed
-    // 2026-09-02) — this is the sole popularity control.
+    // Per-spec popularity_preference. 'hard' requires popularity 60-100;
+    // 'soft' biases hits first via ORDER BY. The sole popularity control.
     pop_pref:  s.pop_pref  || 'none',
   }));
   const attempt = async () => {
-    const r = await fetch('/api/v5/anchor-tracks', {
+    const r = await fetch('/api/v7/anchor-tracks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      // No `popularity` field — API defaults to [0,100]. Popularity is now
-      // controlled per-direction via each spec's pop_pref only.
       body: JSON.stringify({ specs: payload }),
     });
     if (!r.ok) {
@@ -227,7 +216,6 @@ async function fetchInitialPreviewTracks(directions) {
   const specs = directions.map((d) => ({
     rank: d.rank,
     genre: pickPreviewGenre(d),
-    bpm_range: d.bpm_range,
     inst_pref: d.instrumentalness_preference || 'none',
     pop_pref:  d.popularity_preference       || 'none',
   })).filter((s) => s.genre);
@@ -302,6 +290,31 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
   // the earlier "super-liked directions" concept.
   const expectedTotal = Number.isFinite(opts.expectedTotal) ? opts.expectedTotal : 8;
   const superLikedGenres = opts.superLikedGenres || null;
+
+  // `opts.dislikedDirections` — optional Array<direction> the caller owns.
+  // v7 treats dislikes as a real taste signal: every swipe-left pushes the
+  // full direction object here (mirror of the liked path), and undo pops it
+  // back off. Fed to generateTasteProfile() as a negative constraint. Null in
+  // v6-style callers that discard dislikes.
+  const dislikedDirections = opts.dislikedDirections || null;
+
+  // `opts.genreTally` — optional Map<genre, {like, dislike}> the caller owns.
+  // Every like/dislike bumps each of the direction's genres in this tally.
+  // Persisted with the taste profile for audit/analytics only (scope decision
+  // 4); NOT used to build the profile. Null when the caller doesn't audit.
+  const genreTally = opts.genreTally || null;
+
+  // Bump the per-genre audit tally for a direction. `bucket` is 'like' |
+  // 'dislike'; `sign` is +1 on a decision, -1 on undo. Clamped at 0 so an
+  // undo can never drive a count negative.
+  const bumpTally = (dir, bucket, sign) => {
+    if (!genreTally || !dir || !Array.isArray(dir.genres)) return;
+    for (const g of dir.genres) {
+      if (!genreTally.has(g)) genreTally.set(g, { like: 0, dislike: 0 });
+      const t = genreTally.get(g);
+      t[bucket] = Math.max(0, (t[bucket] || 0) + sign);
+    }
+  };
 
   const api = await getSpotifyIframeApi();
 
@@ -657,18 +670,12 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       // genres. The AI treats all genres as equal weight; the initial preview
       // track was drawn from a random one. Swap walks the same list starting
       // from a random position and relies on card-scoped seenIds to avoid
-      // repeats. Strategy:
-      //   1. TIGHT PASS: starting at cycleIdx, walk the full genre cycle once
-      //      with the original BPM + popularity window. Per genre we retry
-      //      twice — random draws from a small pool can return an already-
-      //      seen track by chance. First not-yet-seen track wins.
-      //   2. WIDE PASS: if no genre in the cycle yielded a new track, walk
-      //      the whole cycle again with BPM+popularity constraints dropped.
-      //      Keeps the user swapping even after they've exhausted the tight
-      //      window — better UX than flashing "no more songs" while
-      //      out-of-profile alternatives still exist.
-      //   3. Only if the wide pass also produces nothing new do we show the
-      //      "no more songs" message.
+      // repeats. Strategy: starting at cycleIdx, walk the full genre cycle
+      // once. Per genre we retry twice — random draws from a small pool can
+      // return an already-seen track by chance. First not-yet-seen track
+      // wins; only if the whole cycle yields nothing new do we show the
+      // "no more songs" message. (v6 follows this with a second, BPM-widened
+      // pass; v7 has no BPM window to widen, so one pass is the whole search.)
       // Card-scoped `seenIds` tracks every track ever displayed on this card
       // (including the initial one) so cycling around a tiny pool never
       // shows a duplicate — a stricter guarantee than the older "not equal
@@ -690,10 +697,8 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
           try {
             byRank = await fetchAnchorTracks([spec]);
           } catch (e) {
-            // Server-side failure (usually Postgres 57014 statement timeout on
-            // a cold query plan). Don't block the swap — skip this genre so
-            // walkCycle tries the next one. A subsequent swap on the same
-            // genre often succeeds because the plan is now warm in cache.
+            // Server-side failure. Don't block the swap — skip this genre so
+            // walkCycle tries the next one.
             console.warn(`swap: fetchAnchorTracks failed for genre "${spec.genre}" (attempt ${attempt + 1}):`, e?.message || e);
             return null;
           }
@@ -704,13 +709,12 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       };
       // Returns { trackId, genre } so the caller can update currentGenre
       // alongside the visible track.
-      const walkCycle = async (bpmRange) => {
+      const walkCycle = async () => {
         for (let step = 0; step < cycleGenres.length; step++) {
           const idx = (cycleIdx + step) % cycleGenres.length;
           const spec = {
             rank: d.rank,
             genre: cycleGenres[idx],
-            bpm_range: bpmRange,
             inst_pref: d.instrumentalness_preference || 'none',
             pop_pref:  d.popularity_preference       || 'none',
           };
@@ -728,12 +732,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         // songs keep loading.
         swap.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים…';
         try {
-          let hit = await walkCycle(d.bpm_range);
-          if (!hit) {
-            // Widen BPM only — popularity is now controlled per-spec via
-            // pop_pref and doesn't need a fallback here.
-            hit = await walkCycle({ min: 0, max: 300 });
-          }
+          const hit = await walkCycle();
           if (!hit) {
             swap.textContent = 'אין עוד שירים בכיוון הזה';
             return;
@@ -785,18 +784,32 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         if (busy) return;
         busy = true;
         destroyController();
-        if (like) likedDirections.push(d);
+        if (like) {
+          likedDirections.push(d);
+        } else if (dislikedDirections) {
+          // v7: swipe-left is a real negative signal — record the full
+          // direction object (mirror of the like path) so the taste-profile
+          // call can use it as a negative constraint.
+          dislikedDirections.push(d);
+        }
+        // Audit tally: bump every genre in this direction toward like/dislike.
+        bumpTally(d, like ? 'like' : 'dislike', +1);
         index += 1;
         progFill.style.width = ((index / previews.length) * 100) + '%';
         showSwipeToast(like ? 'אהבת' : 'לא בשבילך', like ? 'yes' : 'no');
         flyOff(like ? 'right' : 'left');
-        // Undo rolls this exact swipe back: pop the direction from likes
-        // (if applicable), rewind the index, re-render the previous card.
+        // Undo rolls this exact swipe back: pop the direction from the
+        // like/dislike list, reverse the tally bump, rewind the index, and
+        // re-render the previous card.
         showUndoToast(() => {
           if (like) {
             const idx = likedDirections.lastIndexOf(d);
             if (idx !== -1) likedDirections.splice(idx, 1);
+          } else if (dislikedDirections) {
+            const idx = dislikedDirections.lastIndexOf(d);
+            if (idx !== -1) dislikedDirections.splice(idx, 1);
           }
+          bumpTally(d, like ? 'like' : 'dislike', -1);
           index -= 1;
           progFill.style.width = ((index / previews.length) * 100) + '%';
           showCard();
@@ -832,6 +845,9 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         // happened to share the same genre from other cards.
         if (superLikedGenres && genreAtSuperLike) superLikedGenres.set(trackId, genreAtSuperLike);
         likedDirections.push(d);
+        // A super-like is a strong LIKE for the direction — bump the audit
+        // tally the same as a plain like.
+        bumpTally(d, 'like', +1);
         index += 1;
         progFill.style.width = ((index / previews.length) * 100) + '%';
         showSwipeToast('סופר לייק', 'super');
@@ -841,6 +857,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
           if (superLikedGenres) superLikedGenres.delete(trackId);
           const idx = likedDirections.lastIndexOf(d);
           if (idx !== -1) likedDirections.splice(idx, 1);
+          bumpTally(d, 'like', -1);
           index -= 1;
           progFill.style.width = ((index / previews.length) * 100) + '%';
           showCard();
@@ -969,7 +986,7 @@ export async function preparePreview({ directions, page2Promise }) {
 
   // Page 1: anchors → previews → metadata, chained together.
   const page1Ready = (async () => {
-    console.log('[v6 preview] page 1 model directions:', directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d), bpm: d.bpm_range })));
+    console.log('[v6 preview] page 1 model directions:', directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d) })));
     const { byRank, genreByRank } = await sequencedAnchors(directions);
     const previews = directionsToPreviews(directions, byRank, genreByRank);
     logPageOutcome('page 1', directions, previews, byRank);
@@ -998,7 +1015,7 @@ export async function preparePreview({ directions, page2Promise }) {
   //        → "page 2 model returned fewer than 4 valid directions"
   //   4. anchor-tracks returns no rows for any direction (all empty pools)
   //        → logged by logPageOutcome, previews.length === 0
-  //   5. anchor-tracks throws (Postgres 57014 double-hit, etc.)
+  //   5. anchor-tracks throws (server / network error after the retry)
   //        → "page 2 pipeline failed"
   const page2Ready = page2Promise
     ? (async () => {
@@ -1024,7 +1041,7 @@ export async function preparePreview({ directions, page2Promise }) {
       if (page2Result.directions.length < 4) {
         console.warn(`[v6 preview] page 2 model returned fewer than 4 valid directions (got ${page2Result.directions.length}) — some may have been dropped by normalizeDirections for missing required fields`);
       }
-      console.log('[v6 preview] page 2 model directions:', page2Result.directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d), bpm: d.bpm_range })));
+      console.log('[v6 preview] page 2 model directions:', page2Result.directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d) })));
       try {
         const { byRank, genreByRank } = await sequencedAnchors(page2Result.directions);
         const previews = directionsToPreviews(page2Result.directions, byRank, genreByRank);
@@ -1052,7 +1069,7 @@ export async function preparePreview({ directions, page2Promise }) {
 // background. Otherwise we do the prep synchronously here as a fallback.
 // When the prepared payload is already resolved, `await` returns in the same
 // microtask so the swipe deck appears without a visible loading flash.
-export async function runDirectionPreviewFlow({ directions, page2Promise, preparedPromise, superLikedTracks, superLikedGenres }) {
+export async function runDirectionPreviewFlow({ directions, page2Promise, preparedPromise, superLikedTracks, superLikedGenres, dislikedDirections, genreTally }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('preview: .screen-card not found');
 
@@ -1081,10 +1098,10 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, prepar
     // Page 1 empty — fall back to page 2 as a last chance.
     const page2 = await prepared.page2Ready;
     if (!page2.previews.length) return [];
-    return renderSwipeDeck(container, page2.previews, page2.trackMeta, null, superLikedTracks, { superLikedGenres });
+    return renderSwipeDeck(container, page2.previews, page2.trackMeta, null, superLikedTracks, { superLikedGenres, dislikedDirections, genreTally });
   }
 
-  return renderSwipeDeck(container, page1.previews, page1.trackMeta, prepared.page2Ready, superLikedTracks, { superLikedGenres });
+  return renderSwipeDeck(container, page1.previews, page1.trackMeta, prepared.page2Ready, superLikedTracks, { superLikedGenres, dislikedDirections, genreTally });
 }
 
 // ---------- Round 2: refinement preview ----------
@@ -1099,7 +1116,7 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, prepar
 //   generateRefinedMusicalDirections. This flow does NOT trigger the R2
 //   Gemini call itself; the caller in app.js does that so the loading UI
 //   can render while the call is in flight.
-export async function runRefinedDirectionPreviewFlow({ refinedDirections, superLikedTracks, superLikedGenres }) {
+export async function runRefinedDirectionPreviewFlow({ refinedDirections, superLikedTracks, superLikedGenres, dislikedDirections, genreTally }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('refined preview: .screen-card not found');
 
@@ -1119,8 +1136,8 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, superL
   // couldn't produce any renderable card at all — a hard failure, not a
   // user choice. Throw so the caller can distinguish this from an empty
   // renderSwipeDeck return (user swiped left on all 4 cards) and offer a
-  // retry. Most common trigger: Supabase v5_anchor_tracks RPC statement
-  // timeout (57014) even after the client-side + server-side retries.
+  // retry. Triggers: every R2 genre's pool came back empty, or the
+  // anchor-tracks call failed even after its retry.
   if (!page1.previews.length) {
     throw new Error('refined preview: no cards to render — anchor-tracks pool empty for all R2 directions');
   }
@@ -1131,7 +1148,7 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, superL
     page1.trackMeta,
     null,
     superLikedTracks,
-    { expectedTotal: refinedDirections.length, superLikedGenres },
+    { expectedTotal: refinedDirections.length, superLikedGenres, dislikedDirections, genreTally },
   );
 }
 
@@ -1139,8 +1156,8 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, superL
 //
 // Shown when the Round-2 pipeline can't produce a swipe deck — either the
 // R2 Gemini call errored, or the anchor-tracks pool came back empty for
-// every R2 direction (typical trigger: Supabase RPC statement timeout on
-// a cold plan cache). Offers two options: retry the R2 pipeline (a
+// every R2 direction (empty genre pools, or the anchor call failing after
+// its retry). Offers two options: retry the R2 pipeline (a
 // fresh Gemini call + preview fetch) or move on with whatever the owner
 // already picked in Round 1. If they picked nothing in R1 either, the
 // "move on" button is replaced with a restart-onboarding button.
@@ -1312,7 +1329,7 @@ export function showRestartOnboardingScreen(onRestart) {
   btn.textContent = 'התחילו מחדש';
   btn.addEventListener('click', () => {
     if (typeof onRestart === 'function') onRestart();
-    else window.location.href = '/v6/?reset=1';
+    else window.location.href = '/v7/?reset=1';
   });
   card.replaceChildren(h, p, btn);
 }

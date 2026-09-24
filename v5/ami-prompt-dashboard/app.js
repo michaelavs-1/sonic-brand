@@ -3,7 +3,7 @@
 // fire one model call against real business inputs, and see the returned
 // directions in a readable text block with a copy button.
 //
-// As of 2026-09-20 the dashboard reads the v7 prompt (diagnostic taste
+// As of 2026-09-23 the dashboard reads the v7 prompt (diagnostic taste
 // probes, homogeneous clusters — see v7/generation/musical-directions.js).
 // It used to read v5's byte-identical mirror of v6's blend-style prompt.
 // v5's file still exists for the legacy v5/app.js standalone UI, but Ami

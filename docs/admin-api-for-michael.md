@@ -299,6 +299,10 @@ Structure (all fields listed; a few are noted as nullable):
       "event_id":     null,                            // back-ref for event playlists
       "direction_id": "uuid",                          // FK → directions[i].id
       "track_ids":    ["4uLU6hMCjMI75M1A2tKUQC", ...], // ordered Spotify IDs
+      "track_genres": {                                // v7 playlists only (null for v6):
+        "4uLU6hMCjMI75M1A2tKUQC": ["Bossa Nova"],      //   which of this playlist's genres
+        "0VjIjW4GlUZAMYd2vXMi3b": ["Bossa Nova", "Easy Listening"] // each track belongs to
+      },
       "expanded_at":  "…",
       "expires_at":   "2026-08-25T18:00:00Z",
       "created_at":   "2026-08-24T09:15:00Z"
@@ -595,7 +599,9 @@ Sections stacked top to bottom:
    / BPM / instrumentalness / active flag
 6. **Playlists** — one card per playlist. Show live/expired status
    from `expires_at`. Let the admin expand a card to see the full
-   `track_ids` array.
+   `track_ids` array — and, when `track_genres` is present, show each
+   track's genre(s) next to it (a per-genre track count per playlist is
+   a useful summary line).
 7. **Direction-edit changes** — audit log with `kind` pill
    (add/edit/remove) and expandable before/after JSON per row
 8. **Direction-edit chat transcript** — chat-log style rendering
@@ -672,6 +678,12 @@ curl -s -H "Authorization: Bearer $INTERNAL_ADMIN_API_KEY" \
   populated (that predates the migration). Playlists from before
   2026-08-20 have `track_ids: null` — that composition data was
   never captured historically and is unrecoverable.
+- **`track_genres` (added 2026-09-24):** an object keyed by Spotify
+  track ID → array of genre names, telling you which of the playlist's
+  own `genres` each track belongs to (usually one; two when the track
+  is tagged with both; `[]` if the catalog no longer ties it to any).
+  Only playlists from the new (v7) flow have it; every other row has
+  `track_genres: null`. Treat it as optional.
 - **Atmospheres come from user_metadata, not a table.** Because it's
   only written on FIRST signup for a given email, a user who
   re-onboarded under the same email still shows the atmospheres from

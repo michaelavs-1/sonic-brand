@@ -53,6 +53,10 @@
    migration. Rows created before that migration will have `track_ids:
    null` (unrecoverable from other sources).
 
+   v7 playlist rows also carry `track_genres` — { "<spotify_id>": [genre, ...] },
+   which of the playlist's own genres each track belongs to (see the
+   2026-09-24-v7-track-genres.sql migration). null for v6 rows.
+
    direction_changes and chat_transcript come from the 2026-08-25-direction-
    chat.sql migration. Rows only exist for businesses whose owner has
    used the profile-page direction-edit chat.
@@ -116,7 +120,7 @@ export default async function handler(req, res) {
         useService: true,
       }),
       pgrSelect('business_playlists', { business_id: `eq.${id}` }, {
-        select: 'spotify_id,url,label,ico,track_count,genres,bpm_range,event_id,direction_id,track_ids,expanded_at,expires_at,created_at',
+        select: 'spotify_id,url,label,ico,track_count,genres,bpm_range,event_id,direction_id,track_ids,track_genres,expanded_at,expires_at,created_at',
         order: 'created_at.desc',
         useService: true,
       }),

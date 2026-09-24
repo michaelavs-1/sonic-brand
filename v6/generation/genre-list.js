@@ -3,7 +3,7 @@
 // (api/v6/account/event-playlist.js).
 //
 // This file used to hold its own copy of the array in a thematic order (rock
-// → funk → jazz → …). Since 2026-09-20 the array lives in
+// → funk → jazz → …). Since 2026-09-23 the array lives in
 // shared/genre-universe.js and the ordering there matches the prompt-facing
 // GENRE_UNIVERSE_SECTION string (roughly alphabetical). The Haiku prompt's
 // `${GENRES.join(', ')}` render will therefore emit alphabetical order —

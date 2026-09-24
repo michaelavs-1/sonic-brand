@@ -25,7 +25,7 @@
        Reduced-motion users don't need these but the cost is trivial (~90KB
        Matter.js + ~9KB module) and simplifies the loading logic. -->
   <link rel="preload" as="script" href="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js" crossorigin>
-  <link rel="modulepreload" href="/v6/atmosphere-bubbles.js?v=21082026a">
+  <link rel="modulepreload" href="/v7/atmosphere-bubbles.js?v=23092026a">
   <script>
     // Synchronous pre-body session check. app.js runs as a deferred module and
     // by the time it executes the splash has already painted a frame — so we
@@ -70,7 +70,7 @@
           if (!s) continue;
           var notExpired = typeof s.expires_at === 'number' && s.expires_at > nowSec;
           if (s.access_token && (notExpired || s.refresh_token)) {
-            location.replace('/v6/account');
+            location.replace('/v7/account');
             return;
           }
         }
@@ -2194,6 +2194,13 @@
       animation: preview-load-fill 25s linear forwards
     }
 
+    /* Post-registration taste-profile bar (v7/result.js renderBar) fills over
+       35s instead of 25s — the taste-profile call often runs past 25s. The
+       swipe-deck loaders keep the shared 25s. */
+    .preview-load-progress-fill.taste-profile-fill {
+      animation-duration: 35s
+    }
+
     @keyframes preview-load-fill {
       to {
         width: 100%
@@ -2571,10 +2578,6 @@
       <div class="fp-bar"></div>
       <div class="fp-lbl">בחירת כיוונים</div>
     </div>
-    <div class="fp-step" data-step="6">
-      <div class="fp-bar"></div>
-      <div class="fp-lbl">פלייליסטים לדוגמה</div>
-    </div>
   </div>
 
   <div class="app">
@@ -2592,7 +2595,7 @@
     </div>
 
     <div class="screen-card" id="mainCard" hidden>
-      <a href="/v6/account" class="have-account-link" aria-label="יש לי חשבון — עברו לאזור האישי">
+      <a href="/v7/account" class="have-account-link" aria-label="יש לי חשבון — עברו לאזור האישי">
         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M5 12h14M12 5l7 7-7 7"/>
         </svg>
@@ -2694,7 +2697,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v6/app.js?v=24092026a"></script>
+  <script type="module" src="/v7/app.js?v=24092026f"></script>
 </body>
 
 </html>

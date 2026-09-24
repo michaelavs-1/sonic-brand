@@ -22,7 +22,7 @@
 //            'matcher_error',
 //     reasoning_en: '...' }
 
-// Genre universe moved to shared/ on 2026-09-20 so v5/v6/v7 share one source
+// Genre universe moved to shared/ on 2026-09-23 so v5/v6/v7 share one source
 // of truth. Re-exported below for backward compat — Ami's dashboard imports
 // GENRE_UNIVERSE_SECTION from here and keeps working unchanged.
 import { GENRE_UNIVERSE_SECTION } from '../../shared/genre-universe.js';

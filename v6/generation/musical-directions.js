@@ -35,7 +35,7 @@
 // on `/v6/*` in vercel.json (browsers revalidate on every load), which
 // makes the query-string bump redundant here anyway.
 import { callModel, parseJSONFromText } from './ai-provider.js';
-// Genre universe moved to shared/ on 2026-09-20 so v7 can import the same
+// Genre universe moved to shared/ on 2026-09-23 so v7 can import the same
 // source of truth without a manual sync. Re-exported below for backward
 // compat — every existing importer of GENRE_UNIVERSE_SECTION from this file
 // (direction-edit-chat-prompt, refined-directions) keeps working unchanged.

@@ -14,16 +14,15 @@
 //
 // Structural mirror of v6:
 //   - Two-call 4+4 split (page 1 blocks, page 2 fires in the background)
-//   - Same output shape (rank, title_en, genres, description_he, bpm_range,
+//   - Output shape (rank, title_en, genres, description_he,
 //     instrumentalness_preference, popularity_preference) so v7/preview.js
-//     can fork v6/preview.js with minimal changes
+//     can fork v6/preview.js with minimal changes. `bpm_range` was removed
+//     2026-09-23 — v7 no longer clusters or filters by tempo.
 //   - Same provider switch via ai-provider.js
 //   - Same Places injection anchors (### Processing Rules: / ## Energy &
 //     Pairing Constraints) — v7 keeps both headings in place
 //
 // Rules kept from v6 (acoustic-compatibility, not diversity — still valid):
-//   - Beat & Percussion Pairing (from v6 ENERGY_COHESION_RULE §1, bullet 2)
-//   - Jazz Isolation Rule (v6 §2, verbatim)
 //   - Pop Isolation Rule (v6 §5, verbatim)
 //   - House & Techno Containment Rule (v6 §6, verbatim)
 //   - Musical Emphases handling (verbatim)
@@ -37,6 +36,15 @@
 //     vocabulary constraints
 //   - When NOT to return directions (error contract, verbatim)
 //
+// Rules REWRITTEN for v7 (v6 versions were built for the diverse-blend world):
+//   - Beat & Percussion Pairing — rewritten as an explicit groove-family
+//     disambiguation. v6's "RnB / French RnB / Funk / Neo Soul" example set
+//     read to the model as a single cluster license and produced bad probes.
+//     v7 explicitly splits them into disjoint tight-cluster families.
+//   - Jazz Isolation Rule — simplified. Ethio-Jazz, Acid Jazz, Jazz House
+//     are named exceptions with no explicit "can blend with Funk/R&B"
+//     permission (that was v6's leak).
+//
 // Rules DROPPED from v6:
 //   - Multi-Cultural & Cross-Regional Fusion (§3) — contradicts homogeneity
 //   - Equal Genre Weight & Density (§4) — v7 clusters are smaller and tighter
@@ -46,8 +54,9 @@
 //     rule under HOMOGENEITY_SECTION
 //
 // Rules NEW for v7:
-//   - Cluster Homogeneity (same tempo / energy / instrumentation / cultural
-//     register / mood — tight enough that liking one implies liking the rest)
+//   - Cluster Homogeneity (same energy / instrumentation / cultural register
+//     / mood — tight enough that liking one implies liking the rest). Tempo
+//     was dropped 2026-09-23 (bpm_range removal).
 //   - Direction Distinctness (8 different archetypes; overlap allowed)
 //   - Title format simplified — "Clear Stylistic Identity" per Ami's brief
 //   - Hebrew description reframed for a single-vibe cluster (not a "blend")
@@ -69,7 +78,7 @@ const MAX_TOKENS = 65536;
 // same shape as v6 so v7's Ami dashboard (when we set it up) sees a familiar
 // textarea layout.
 
-const ROUND1_INTRO = `You design diagnostic taste probes for a public-facing-business playlist tool. Given a description of a business, produce up to 8 tightly-clustered "musical directions" from a fixed genre universe. Each direction is a small group of near-identical genres — same tempo band, same energy tier, same instrumentation family, same cultural register, same mood. The owner sees one representative song from each direction on a swipe deck; liking or disliking that sample flags the whole cluster as one taste vector. Downstream the picked directions dissolve into a flat liked-genres list — overlapping genres across two liked directions become a stronger signal, not a bug.`;
+const ROUND1_INTRO = `You design diagnostic taste probes for a public-facing-business playlist tool. Given a description of a business, produce up to 8 tightly-clustered "musical directions" from a fixed genre universe. Each direction is a small group of near-identical genres — same energy tier, same instrumentation family, same cultural register, same mood. The owner sees one representative song from each direction on a swipe deck; liking or disliking that sample flags the whole cluster as one taste vector. Downstream the picked directions dissolve into a flat liked-genres list — overlapping genres across two liked directions become a stronger signal, not a bug.`;
 
 const ROUND1_INPUTS_SECTION = `## Inputs
 
@@ -110,8 +119,7 @@ export const HOMOGENEITY_SECTION = `## Cluster Homogeneity (Diagnostic Probe Des
 Every direction is a diagnostic probe: a small cluster of genres so near-identical in sound that liking one implies liking the others. This is different from a curated "cohesive playlist" — clusters are tight, not blended for variety within.
 
 Rules for building a cluster:
-- **Same tempo band.** All genres in the cluster share the same BPM range.
-- **Same energy tier.** No mixing high-energy dance with mid-tempo groove, or mid-tempo groove with slow acoustic.
+- **Same energy tier.** No mixing high-energy dance with mid-energy groove, or mid-energy groove with slow acoustic.
 - **Same instrumentation family.** Guitar-forward pairs with guitar-forward, synth-forward with synth-forward, acoustic with acoustic.
 - **Same cultural register.** Regional/scene-specific genres cluster with their siblings, not their distant cousins (e.g. \`Japanese RnB\` clusters with \`Korean RnB\` or \`French RnB\`, not with \`Chamber music\`).
 - **Same mood.** Melancholic with melancholic, upbeat with upbeat, sultry with sultry.
@@ -120,7 +128,7 @@ Test: if two genres in a cluster would appeal to meaningfully different listener
 
 export const DISTINCTNESS_SECTION = `## Direction Distinctness
 
-The 8 clusters must represent distinctly different musical archetypes. Any two clusters should differ on at least two of: tempo band, energy tier, cultural register, mood. If two of your clusters test the same taste vector you've wasted a probe slot — replace one of them.
+The 8 clusters must represent distinctly different musical archetypes. Any two clusters should differ on at least two of: energy tier, instrumentation family, cultural register, mood. If two of your clusters test the same taste vector you've wasted a probe slot — replace one of them.
 
 **Overlapping genres across clusters are allowed.** If a genre legitimately sits at the intersection of two archetypes (e.g. \`Bossa Nova\` in both a "late-night jazz" cluster and a "sultry acoustic" cluster), it may appear in both. When the owner likes two clusters that share a genre, the overlap becomes a stronger genre-level taste signal downstream — a feature, not a duplicate.`;
 
@@ -131,17 +139,24 @@ The 8 clusters must represent distinctly different musical archetypes. Any two c
 // If Ami later tweaks one of these rules and both v6 and v7 should get it,
 // promote the sub-constant to shared/ the same way GENRE_UNIVERSE_SECTION was.
 
-export const BEAT_PERCUSSION_RULE = `### 1. Beat & Percussion Pairing
+export const BEAT_PERCUSSION_RULE = `### 1. Beat & Percussion Pairing (Groove-Family Disambiguation)
 
-NEVER pair genres with strong rhythmic grooves, prominent drum patterns, or sexy/upbeat vibes (e.g., \`RnB\`, \`French RnB\`, \`Funk\`, \`Neo Soul\`) with ambient, drumless, or slow acoustic genres (e.g., \`Late Night jazz\`, \`Piano Impressionism\`, \`Chamber music\`). Switching between a drum-driven beat and a beatless slow jazz track inside a single cluster is strictly forbidden.`;
+NEVER pair drum-driven groove genres with ambient, drumless, or slow acoustic genres (e.g., \`Late Night jazz\`, \`Piano Impressionism\`, \`Chamber music\`). Switching between a drum-driven beat and a beatless slow track inside a single cluster is forbidden.
+
+**Within the groove family, DO NOT group genres that share only "having a beat" as a common trait.** They test different listener profiles and belong in different diagnostic probes. The tight-cluster boundaries inside the groove family are:
+
+- **RnB family** — \`Rnb\`, \`French RnB\`, \`Japanese RnB\`, \`Korean RnB\` cluster with each other. Vocal-forward, polished, contemporary R&B. NOT with Funk. NOT with Neo Soul.
+- **Funk family** — \`Funk\`, \`Afro Funk\`, \`Italian Funk\`, \`French Funk\`, \`Greek Funk\`, \`Latin Funk\`, \`Arabic Funk\` cluster with each other. Horn-forward, raw, rhythm-section-driven organic groove. NOT with Neo Soul. NOT with the RnB family.
+- **Neo Soul family** — \`Neo Soul\`, \`Alternative R&B\` cluster with each other. Vocal-driven, contemporary, moody. NOT with Funk. NOT with the RnB family.
+- **Hip Hop family** — \`Hip Hop\`, \`French Hip Hop\`, \`German Hip Hop\`, \`Icelandic Hip Hop\` cluster with each other. Rhymed vocals over programmed beats, urban. NOT with Funk. NOT with Neo Soul.
+- **Trap / Drill family** — \`Trap\`, \`Grime & Drill\` cluster with each other, or with Hip Hop genres of matching aggressive energy. Sharp electronic beats, edgy. NOT with organic Funk. NOT with classic RnB.
+
+If a probe cluster reaches across two of these boundaries (e.g. \`Funk + Neo Soul\`, or \`Funk + Acid Jazz\`), it's testing more than one taste vector and is invalid. Split it into separate clusters.`;
 
 export const JAZZ_ISOLATION_RULE = `### 2. Jazz Isolation Rule
 
-- **Jazz Sub-genres Containment:** All Jazz genres (\`Jazz (Standards)\`, \`Late Night jazz\`, \`Smooth Jazz\`, \`Swing Jazz\`, \`French Jazz\`, \`Gypsy jazz\`, \`JazzHop\`) are intrinsically laid-back, background, or seated styles. They MUST NEVER be paired with dancing, energetic, or heavy beat-driven genres (such as RnB, Hip Hop, Funk, Pop, or Dance).
-- **Allowed Jazz Pairings:** Except for \`Ethio-Jazz\` and \`Acid Jazz\` (both rhythmic/uplifting and can blend with Afro/Funk/R&B styles) and \`Jazz House\` (enclosed under House rules), all Jazz genres can ONLY be paired with:
-  - Other Jazz genres.
-  - \`Bossa Nova\`
-  - \`Fado\``;
+- All Jazz genres (\`Jazz (Standards)\`, \`Late Night jazz\`, \`Smooth Jazz\`, \`Swing Jazz\`, \`French Jazz\`, \`Gypsy jazz\`, \`JazzHop\`) MUST NEVER be paired with dancing, energetic, or heavy beat-driven genres (RnB, Hip Hop, Funk, Pop, Dance).
+- Allowed Jazz Pairings: Only with other Jazz genres, \`Bossa Nova\`, or \`Fado\` (Exceptions: \`Ethio-Jazz\`, \`Acid Jazz\`, and \`Jazz House\`).`;
 
 export const POP_ISOLATION_RULE = `### 3. Strict Pop Isolation Rule
 
@@ -177,7 +192,6 @@ const ROUND1_TASK_WORKFLOW = `## Task Workflow
    - Japanese Folk Restriction (from Processing Rules)
    Each direction must include:
    - **Genres list:** 3 to 6 genres from the pool that form a tight, near-identical cluster. Certain genres function well standalone or paired with one closely-related style (\`Nu Metal\`, \`Indie Rock\`, \`Punk\`, \`Blues\`, \`Folk\`, \`Jazz House\`) — these may form a 1–2 genre cluster if that best fits the venue's needs.
-   - **BPM ceiling:** An upper BPM limit only. Every direction covers 0 BPM up to that ceiling — do NOT set a lower floor. Emit \`bpm_range\` as \`{"min": 0, "max": <ceiling>}\`.
 3. **Rank Directions:** Rank directions by fit to the business (best fit first).`;
 
 export const OUTPUT_LANGUAGE_SECTION = `## Output Language & Formatting
@@ -254,7 +268,6 @@ Normal case:
       "title_en": "English title, 3-6 words (see Rules for English Titles)",
       "genres": ["...", "...", "..."],
       "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
-      "bpm_range": {"min": 0, "max": 115},
       "instrumentalness_preference": "none",
       "popularity_preference": "none"
     }
@@ -403,7 +416,7 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, plac
     const priorSummary = Array.isArray(priorDirections) && priorDirections.length
       ? `\n\nALREADY CHOSEN — do not test the same taste vectors:\n${priorDirections.map(summarizeDirection).join('\n')}`
       : '';
-    return base + priorSummary + `\n\nTASK VARIANT: Return 4 additional diagnostic clusters that meaningfully broaden the probe set beyond the 4 above. Cover different tempo bands, energy tiers, or cultural registers. Overlapping genres between the two batches are allowed (per Direction Distinctness), but each new cluster must test a distinctly different taste vector from the first 4. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
+    return base + priorSummary + `\n\nTASK VARIANT: Return 4 additional diagnostic clusters that meaningfully broaden the probe set beyond the 4 above. Cover different energy tiers, instrumentation families, or cultural registers. Overlapping genres between the two batches are allowed (per Direction Distinctness), but each new cluster must test a distinctly different taste vector from the first 4. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
   }
   return base;
 }
@@ -424,17 +437,10 @@ async function callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, 
 
 // ---------- Validation & normalization ----------
 
-function validateBpmRange(bpm) {
-  return bpm && typeof bpm === 'object'
-    && Number.isFinite(bpm.min) && Number.isFinite(bpm.max)
-    && bpm.min <= bpm.max;
-}
-
 function validateDirection(d) {
   if (!d) return false;
   if (typeof d.title_en !== 'string' || !d.title_en.length) return false;
   if (typeof d.description_he !== 'string' || !d.description_he.length) return false;
-  if (!validateBpmRange(d.bpm_range)) return false;
   const hasNew = Array.isArray(d.genres) && d.genres.length
     && d.genres.every((g) => typeof g === 'string' && g.length);
   const hasLegacy = typeof d.anchor_genre === 'string' && d.anchor_genre.length;

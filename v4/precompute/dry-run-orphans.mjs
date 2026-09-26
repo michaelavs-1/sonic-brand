@@ -69,11 +69,24 @@ const INCLUDE_ERRORS = process.argv.includes('--include-errors');
 // they stay orphans in the DB, no blacklist, no writes. Use when a
 // specific genre's playlists are causing upstream storms and you want
 // to keep filling everything else.
+//
+// --include-genres="a,b,c": inverse — KEEP ONLY orphans that belong to
+// the listed genres. Any playlist not tagged to at least one included
+// genre has its orphans dropped. Mutually exclusive with --exclude-genres
+// (include wins if both are passed, and exclude is ignored with a warn).
 const norm = (s) => String(s || '').trim().toLowerCase();
 const EXCLUDE_ARG = process.argv.find((a) => a.startsWith('--exclude-genres='));
 const EXCLUDE_GENRES = EXCLUDE_ARG
     ? new Set(EXCLUDE_ARG.slice('--exclude-genres='.length).split(',').map(norm).filter(Boolean))
     : new Set();
+const INCLUDE_ARG = process.argv.find((a) => a.startsWith('--include-genres='));
+const INCLUDE_GENRES = INCLUDE_ARG
+    ? new Set(INCLUDE_ARG.slice('--include-genres='.length).split(',').map(norm).filter(Boolean))
+    : new Set();
+if (INCLUDE_GENRES.size && EXCLUDE_GENRES.size) {
+    console.warn('WARN: both --include-genres and --exclude-genres passed; --exclude-genres ignored.');
+    EXCLUDE_GENRES.clear();
+}
 
 // PostgREST paginated select via Range header — works for tables much larger
 // than the 1000-row default page.
@@ -115,6 +128,7 @@ async function main() {
     console.log('  orphan = present in playlist_tracks, MISSING from track_analyses');
     if (INCLUDE_ERRORS) console.log('  (--include-errors: also treating status=error rows as orphans)');
     if (EXCLUDE_GENRES.size) console.log(`  (--exclude-genres: dropping orphans tagged to any of: ${[...EXCLUDE_GENRES].join(', ')})`);
+    if (INCLUDE_GENRES.size) console.log(`  (--include-genres: keeping only orphans tagged to any of: ${[...INCLUDE_GENRES].join(', ')})`);
     console.log('');
 
     // 1. All (playlist_id, spotify_id, position) from playlist_tracks
@@ -192,6 +206,24 @@ async function main() {
             }
         }
         console.log(`\nExcluded ${excludedOrphanCount} orphans across ${excludedPlaylistCount} playlists via --exclude-genres`);
+    }
+
+    // 4b. Genre inclusion — drop any playlist whose genre set does NOT
+    //     intersect INCLUDE_GENRES. Same "runs after rollup" pattern so
+    //     the before-picture is honest.
+    let keptPlaylistCount = 0;
+    let keptOrphanCount   = 0;
+    if (INCLUDE_GENRES.size) {
+        for (const pid of [...orphansByPlaylist.keys()]) {
+            const genres = (playlistGenres.get(pid) || []).map(norm);
+            if (!genres.some((g) => INCLUDE_GENRES.has(g))) {
+                orphansByPlaylist.delete(pid);
+            } else {
+                keptPlaylistCount++;
+                keptOrphanCount += orphansByPlaylist.get(pid).length;
+            }
+        }
+        console.log(`\nKept ${keptOrphanCount} orphans across ${keptPlaylistCount} playlists via --include-genres`);
     }
 
     // 5. Round-robin order: sort each playlist's orphans by position, then

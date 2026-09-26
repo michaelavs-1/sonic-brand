@@ -32,7 +32,26 @@ history matters for debugging old rows.
 
 ---
 
-## 2026-09-23 (latest) — GENRE_UNIVERSE_SECTION extracted to shared module
+## 2026-09-26 (latest) — 8 new genres added to shared/genre-universe.js
+
+**Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
+
+Ami added 8 genres to Data Box Tab 2. All 8 had their seed playlists digested cleanly through Round 1 + Round 2 batches on 2026-09-24 and 2026-09-25 (4,390 total OK tracks across the group). Now added to `shared/genre-universe.js` so v6 R1 / R2 / event-playlist Haiku / direction-edit chat and v7 R1 / R2 / taste-profile can all reference them. Inserted alphabetically to preserve the existing ordering convention:
+
+- `Afro Cuban Jazz` (62 OK tracks · 3 playlists)
+- `Doo-Wop` (562 OK · 8 playlists)
+- `Electronic R&B` (518 OK · 3 playlists)
+- `French Touch` (961 OK · 9 playlists)
+- `Italian Folk` (171 OK · 7 playlists)
+- `Mo Town` (544 OK · 10 playlists)
+- `Soft Pop Hits` (1,247 OK · 9 playlists)
+- `Surf Rock` (325 OK · 8 playlists)
+
+`GENRES.length` moves from 116 → 124. No other structural changes; every consumer picks the new strings up automatically. Cross-referenced in `prompt-history-v7.md` at the same date.
+
+---
+
+## 2026-09-23 — GENRE_UNIVERSE_SECTION extracted to shared module
 
 **Applies to:** both (source-of-truth relocation; prompt content byte-identical)
 

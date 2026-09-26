@@ -45,7 +45,20 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-09-24 (latest) — Taste profile: model lists approved + conditional only; excluded computed in code
+## 2026-09-26 (latest) — 8 new genres added to shared/genre-universe.js
+
+**Applies to:** all v7 (source-of-truth edit; flows to R1 + R2 + taste-profile + energy-directions via imports)
+
+Cross-referenced from `prompt-history.md`'s 2026-09-26 entry (primary record; the change is genre-universe.js, which is shared across v6 and v7). New genres: `Afro Cuban Jazz`, `Doo-Wop`, `Electronic R&B`, `French Touch`, `Italian Folk`, `Mo Town`, `Soft Pop Hits`, `Surf Rock`. All 8 have their seed playlists ingested + analyzed (4,390 total OK tracks). `GENRES.length` moves 116 → 124.
+
+**Downstream side effects to keep in mind for v7:**
+- Taste-profile's hard schema invariant is "every canonical genre lands in exactly one bucket". The `approved / conditional / excluded` partition now spans 124 genres, not 116. `normalizeTasteProfile`'s "auto-add to excluded" fallback for genres the model forgets still works correctly because it reads `GENRES` from the same shared module.
+- `energy_levels_total` and per-genre `energy_level` are unchanged — 8 more genres to place, same 2–6 scale.
+- R1 + R2 diagnostic probes now have 8 additional canonical strings they may pick when composing homogeneous clusters. `Afro Cuban Jazz` overlaps tonally with existing `Salsa` / `Bolero` / `Bossa Nova`; `Mo Town` with `Neo Soul` / `Rnb`; `Doo-Wop` and `Surf Rock` are unusually retro and may cluster naturally into their own directions. Ami may want to eyeball early v7 outputs to make sure the new genres surface with reasonable frequency vs. being crowded out.
+
+---
+
+## 2026-09-24 — Taste profile: model lists approved + conditional only; excluded computed in code
 
 **Applies to:** taste profile
 

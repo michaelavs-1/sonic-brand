@@ -560,7 +560,7 @@ Energy calibration:
 - Each approved/conditional genre gets an `energy_level` 1..N. **RELATIVE to the user's own range**, not absolute. Hip Hop is level N for a mostly-chill user; level 3 for a rave user who also picked Dubstep. Same-energy genres get the same level.
 - Excluded genres get no level.
 
-Hard schema invariant: every one of the 116 canonical genres must land in EXACTLY ONE bucket. `normalizeTasteProfile` in `v7/generation/taste-profile.js` guarantees this by construction — `excluded_genres` = every canonical genre not in approved or conditional (any `excluded_genres` the model sends anyway is ignored); approved wins over conditional on duplicates; case drift is canonicalised via a lowercase→canonical map; invented genres (e.g. "Slow Funk") are dropped; energy levels clamped to `[1..N]`.
+Hard schema invariant: every one of the 124 canonical genres must land in EXACTLY ONE bucket. `normalizeTasteProfile` in `v7/generation/taste-profile.js` guarantees this by construction — `excluded_genres` = every canonical genre not in approved or conditional (any `excluded_genres` the model sends anyway is ignored); approved wins over conditional on duplicates; case drift is canonicalised via a lowercase→canonical map; invented genres (e.g. "Slow Funk") are dropped; energy levels clamped to `[1..N]`.
 
 **No Places injection at this stage.** Google Places is venue context; the taste profile is a property of the USER, not the venue. Places was already baked into R1/R2 when the model built the probes the user swiped on. Reusing Places here would mix venue-appropriateness signal into a user-taste extrapolation.
 
@@ -726,7 +726,7 @@ sonic-brand/
 │                                              does NOT touch v7. Both prompts + Ami's dashboard route here.
 │                                              SERVER-REACHABLE — bare imports only, no ?v= query.
 ├── shared/                                 ← Cross-version source of truth.
-│   └── genre-universe.js                   ← THE canonical genre list. Exports GENRES (array, 116 entries),
+│   └── genre-universe.js                   ← THE canonical genre list. Exports GENRES (array, 124 entries),
 │                                              GENRE_SET, and GENRE_UNIVERSE_SECTION (formatted prompt block).
 │                                              Every consumer (v5/v6/v7 musical-directions.js,
 │                                              v6/generation/genre-list.js) re-exports or imports from here.
@@ -1090,7 +1090,7 @@ Fires only when the R1 preview swipe deck yielded fewer than 3 liked directions 
 
 ### Genre list — `v6/generation/genre-list.js`
 
-Shared canonical menu, currently 116 entries. As of 2026-09-23 the list lives in **`shared/genre-universe.js`** — one source of truth. Every consumer (v5 / v6 / v7 musical-directions.js, v6/generation/genre-list.js, transitively the event-playlist Haiku prompt and the direction-edit chat prompt) imports or re-exports from there. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`. Late-Aug / early-Sep churn: `Latin Funk` and `Greek Funk` added (Greek Funk seeded from the 2 world-funk playlists that got reassigned during the world-funk purge); `World Funk` and `Brit Funk` fully removed from the DB (playlists + exclusive tracks purged); `Thai Molam Funk` renamed to `Thai Molam` to match Ami's sheet update; `Alternative R&B`, `Hawaii ukulele music`, `Musica Tropical` added on 2026-09-02 after their sheet seeds digested cleanly. See § PROMPT EDITING PROTOCOL for the current invariant.
+Shared canonical menu, currently 124 entries. As of 2026-09-23 the list lives in **`shared/genre-universe.js`** — one source of truth. Every consumer (v5 / v6 / v7 musical-directions.js, v6/generation/genre-list.js, transitively the event-playlist Haiku prompt and the direction-edit chat prompt) imports or re-exports from there. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`. Late-Aug / early-Sep churn: `Latin Funk` and `Greek Funk` added (Greek Funk seeded from the 2 world-funk playlists that got reassigned during the world-funk purge); `World Funk` and `Brit Funk` fully removed from the DB (playlists + exclusive tracks purged); `Thai Molam Funk` renamed to `Thai Molam` to match Ami's sheet update; `Alternative R&B`, `Hawaii ukulele music`, `Musica Tropical` added on 2026-09-02 after their sheet seeds digested cleanly. **2026-09-26** — 8 more added after clean Round 1 + Round 2 digestion: `Afro Cuban Jazz`, `Doo-Wop`, `Electronic R&B`, `French Touch`, `Italian Folk`, `Mo Town`, `Soft Pop Hits`, `Surf Rock` (4,390 total OK tracks across the group). See § PROMPT EDITING PROTOCOL for the current invariant.
 
 ### Playlist auto-expiry
 

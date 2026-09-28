@@ -378,7 +378,7 @@
   "rewrites": [
     {
       "source": "/",
-      "destination": "/v6/index.html"
+      "destination": "/v7/index.html"
     },
     {
       "source": "/v2",

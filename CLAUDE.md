@@ -5,12 +5,12 @@
 
 ## ⚠️ READ FIRST — VERSION LANDSCAPE
 
-The codebase contains multiple parallel "versions" that coexist. **v7 is the current active version** — it's what the user is iterating on. v6 is still served at the site root but has no accounts. Others are kept but see the notes:
+The codebase contains multiple parallel "versions" that coexist. **v7 is the current active version** — it's what the user is iterating on. Since 2026-09-28 the site root (`/`) serves **v7** (once deployed — see the rewrite note under Live URLs); v6 is still reachable at `/v6` but has no accounts. Others are kept but see the notes:
 
 | Version | State | Where |
 |---|---|---|
-| v6 | **Still served at root, but NO v6 accounts exist** (all deleted 2026-09-24) and its daily cron is hard-disabled. New signups at `/` still create v6 accounts, which get no daily playlists. Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. | `v6/`, `api/v6/` |
-| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6 (still live at root). Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 124-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built but **switched off since 2026-09-28**, so the step is currently the old placeholder (see "Payment (Hyp)" in § V7 ARCHITECTURE). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
+| v6 | **Reachable at `/v6` only — the root moved to v7 on 2026-09-28 — and NO v6 accounts exist** (all deleted 2026-09-24); its daily cron is hard-disabled. Signups at `/v6` would still create v6 accounts, which get no daily playlists. Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. | `v6/`, `api/v6/` |
+| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 124-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built but **switched off since 2026-09-28**, so the step is currently the old placeholder (see "Payment (Hyp)" in § V7 ARCHITECTURE). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
 | v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anthropic`, `anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend still runs standalone. `v5/ami-prompt-dashboard/` lives here but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
 | v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
 | v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). | `v3/`, `v2/` |
@@ -28,7 +28,7 @@ AI-powered Spotify playlist builder for physical businesses (cafés, bars, resta
 **Live URLs:**
 - https://robin-music.com — **custom domain, DNS points at this Vercel project**. Primary user-facing URL.
 - https://sonic-brand.vercel.app — Vercel's assigned alias for the same deploy. Kept as a backup identity.
-- Both hostnames serve the same deploy. Since 2026-08-20 there's a `"/" → "/v6/index.html"` rewrite in `vercel.json`, so hitting either URL at the root lands the user directly on the v6 onboarding — no more `/v6` suffix required. The legacy root `index.html` (v3 landing) was deleted in that same change; static-file precedence would otherwise beat the rewrite.
+- Both hostnames serve the same deploy. The root is a rewrite in `vercel.json` (not a Vercel-dashboard setting): **`"/" → "/v7/index.html"` since 2026-09-28** (was `/v6/index.html` from 2026-08-20), so either URL at the root lands on the v7 onboarding. v7's page only uses absolute `/v7/...` paths, so it works served at `/`; its own navigations still go to `/v7/...` URLs (account, logout → `/v7?intro=1`, restart → `/v7/?reset=1`), which is fine. v6 stays reachable at `/v6`. The legacy root `index.html` (v3 landing) was deleted on 2026-08-20; static-file precedence would otherwise beat the rewrite.
 - Origin guard + magic-link redirect allowlist covers both plus this project's Vercel preview URLs (`sonic-brand-*.vercel.app`).
 
 **Repo:** https://github.com/michaelavs-1/sonic-brand
@@ -483,7 +483,7 @@ Gemini chatbot on `/v6/account`'s Profile tab. The Profile tab's section order i
 
 ## V7 ARCHITECTURE (runtime built + live-verified 2026-09-23)
 
-v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoints, signup, taste-profile bucketing, two daily-playlist delivery modes, and its own daily cron). It was built and live-end-to-end-verified on 2026-09-23 against `vercel dev` → prod Supabase. **v6 stays live at root and is untouched**; v7 is reached at `/v7`. The version split is enforced by `businesses.version` ('v6' default, 'v7' stamped at v7 signup): v6's daily cron is now shut off and v7's targets only `version='v7'` businesses (see § VERCEL DEPLOYMENT and the v7 cron mechanism). Ami still tunes the R1 prompt via the Ami dashboard (imports v7's prompt + ai-provider since 2026-09-23). A short list of intentionally-deferred decisions remains — see § OPEN QUESTIONS FOR V7 PIPELINE BUILD.
+v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoints, signup, taste-profile bucketing, two daily-playlist delivery modes, and its own daily cron). It was built and live-end-to-end-verified on 2026-09-23 against `vercel dev` → prod Supabase. v6 is untouched and reachable at `/v6`; v7 is reached at `/v7` and, since 2026-09-28, at the site root `/`. The version split is enforced by `businesses.version` ('v6' default, 'v7' stamped at v7 signup): v6's daily cron is now shut off and v7's targets only `version='v7'` businesses (see § VERCEL DEPLOYMENT and the v7 cron mechanism). Ami still tunes the R1 prompt via the Ami dashboard (imports v7's prompt + ai-provider since 2026-09-23). A short list of intentionally-deferred decisions remains — see § OPEN QUESTIONS FOR V7 PIPELINE BUILD.
 
 ### Design shift from v6
 
@@ -745,7 +745,7 @@ sonic-brand/
 │       │                                     expand streaming, mounts direction-chat on Profile tab
 │       └── direction-chat.js               ← Direction-edit chat UI + single-card preview modal
 │                                             (lazy-loaded when Profile tab first opens)
-├── v7/                                     ← BUILT + LIVE-VERIFIED. Parallel runtime (v6 untouched at root).
+├── v7/                                     ← BUILT + LIVE-VERIFIED. Parallel runtime; served at `/` since 2026-09-28.
 │   ├── index.html                          ← Onboarding shell + v7 CSS
 │   ├── app.js                              ← Onboarding orchestrator: desc→places→atmospheres→emphases→hours
 │   │                                          →R1 swipe→(R2 if <3)→registration→payment→taste-profile bar→account.
@@ -1053,7 +1053,7 @@ sonic-brand/
 │                                              SUPABASE_AUTH (Resend key — see "Alerts via Resend"),
 │                                              ALERT_EMAIL_FROM / ALERT_EMAIL_TO (optional overrides)
 ├── vercel.json                             ← Function timeouts, cron schedule (two: expire + generate-daily),
-│                                              rewrites (incl. `/` → `/v6/index.html`), security headers
+│                                              rewrites (incl. `/` → `/v7/index.html`), security headers
 └── CLAUDE.md                               ← This file
 ```
 
@@ -1959,7 +1959,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
   - `/api/v4/ami-cron-tick` was **removed** from the cron schedule on 2026-08-13. Endpoint file still exists so it can be revived, but nothing schedules it now.
 - Cache headers: `no-cache` for `/` + `/index.html` + all `/vX/*` paths
 - Security headers (global): `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(), microphone=(self), camera=()` — added during the 2026-08-22 security audit
-- Rewrites: `/` → `/v6/index.html` (added 2026-08-20, replaced the deleted legacy root index.html), plus per-version paths `/v6`, `/v6/account`, `/v5`, `/v5/ami-prompt-dashboard`, `/v4`, `/v4/ami`, etc.
+- Rewrites: `/` → `/v7/index.html` (since 2026-09-28; was `/v6/index.html` from 2026-08-20, which replaced the deleted legacy root index.html), plus per-version paths `/v6`, `/v6/account`, `/v5`, `/v5/ami-prompt-dashboard`, `/v4`, `/v4/ami`, etc.
 
 ### Cache busting
 
@@ -2020,7 +2020,7 @@ There is no cross-file drift to check anymore. Historical (pre-2026-09-23) conte
 
 ### Run v6 locally
 1. `vercel dev` (reads cloud env)
-2. Open `http://127.0.0.1:3000/` — root rewrite lands on v6. `http://127.0.0.1:3000/v6` also works.
+2. Open `http://127.0.0.1:3000/v6` (the root `/` serves v7 since 2026-09-28).
 
 ### Run the integration tests (Supabase-live, cleans up after itself)
 Same PowerShell env-load pattern as the purge scripts, then:

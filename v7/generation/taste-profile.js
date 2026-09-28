@@ -9,7 +9,7 @@
 // Job: take the sparse swipe-deck signal (up to 12 direction probes across
 // R1 + R2, plus per-direction like/dislike, plus per-track super-likes) and
 // extrapolate to a full-catalog taste profile. Output:
-//   - Every one of the 116 canonical genres bucketed into approved /
+//   - Every canonical genre (GENRES.length — 124 as of 2026-09-26) bucketed into approved /
 //     conditional / excluded. The model only LISTS approved + conditional;
 //     excluded is computed here as "every canonical genre the model didn't
 //     list" (since 2026-09-24 — saves the output tokens the model used to
@@ -46,7 +46,7 @@ import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION, GENRES, GENRE_SET } from '../../shared/genre-universe.js';
 export { GENRE_UNIVERSE_SECTION };
 
-// Same output cap as R1/R2. The response can grow — 116 approved+conditional
+// Same output cap as R1/R2. The response can grow — ~120 approved+conditional
 // entries each carrying a genre + energy_level + optional note runs a few
 // thousand tokens on its own, plus reasoning + thinking. 65536 is Gemini
 // 3.6-flash's hard cap so we take all of it.
@@ -54,7 +54,7 @@ const MAX_TOKENS = 65536;
 
 // ---------- Prompt sub-constants ----------
 
-const TASTE_PROFILE_INTRO = `You classify a user's music taste for a public-facing-business playlist tool. The user has completed a diagnostic swipe deck of up to 12 tightly-clustered "musical direction" probes (Round 1 + optional Round 2). You will receive the probes plus the user's per-direction decisions (like / dislike) and their super-liked genres. Your job is to extrapolate that sparse signal to a full-catalog taste profile: for each of the 116 canonical genres, decide whether it belongs in the user's approved list, a conditional list, or neither. You only output the approved and conditional lists — every genre you leave out of both is treated as excluded. Then partition the approved and conditional genres into N energy levels (2–6, dynamic per user based on the SPREAD of their taste) so downstream playlist builders can slot each genre into the right operational context.`;
+const TASTE_PROFILE_INTRO = `You classify a user's music taste for a public-facing-business playlist tool. The user has completed a diagnostic swipe deck of up to 12 tightly-clustered "musical direction" probes (Round 1 + optional Round 2). You will receive the probes plus the user's per-direction decisions (like / dislike) and their super-liked genres. Your job is to extrapolate that sparse signal to a full-catalog taste profile: for each of the ${GENRES.length} canonical genres, decide whether it belongs in the user's approved list, a conditional list, or neither. You only output the approved and conditional lists — every genre you leave out of both is treated as excluded. Then partition the approved and conditional genres into N energy levels (2–6, dynamic per user based on the SPREAD of their taste) so downstream playlist builders can slot each genre into the right operational context.`;
 
 const TASTE_PROFILE_INPUTS_SECTION = `## Inputs
 
@@ -84,7 +84,7 @@ const PROCESSING_RULES_SECTION = `### Processing Rules:
 
 const DEDUCTION_LOGIC_SECTION = `## Deduction Logic
 
-Walk through all 116 canonical genres and assign each to EXACTLY ONE bucket: \`approved\`, \`conditional\`, or \`excluded\`. Only \`approved\` and \`conditional\` are written to the output. \`excluded\` is implicit: to exclude a genre, simply leave it out of both lists. This means a genre you forget to list is silently excluded — so make sure every genre that deserves \`approved\` or \`conditional\` (including the "no signal → conditional" default in step 4) is actually listed.
+Walk through all ${GENRES.length} canonical genres and assign each to EXACTLY ONE bucket: \`approved\`, \`conditional\`, or \`excluded\`. Only \`approved\` and \`conditional\` are written to the output. \`excluded\` is implicit: to exclude a genre, simply leave it out of both lists. This means a genre you forget to list is silently excluded — so make sure every genre that deserves \`approved\` or \`conditional\` (including the "no signal → conditional" default in step 4) is actually listed.
 
 ### 1. Aggregate positive signal per genre
 
@@ -347,7 +347,7 @@ function clampEnergyLevel(level, total) {
 // `excluded_genres` is then COMPUTED as every canonical genre not in
 // approved or conditional — the model is told not to output it (any
 // excluded list it sends anyway is ignored), so the three buckets always
-// partition all 116 genres.
+// partition every canonical genre.
 export function normalizeTasteProfile(parsed) {
   if (!parsed || typeof parsed !== 'object') return null;
 

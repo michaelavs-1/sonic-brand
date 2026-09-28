@@ -7,7 +7,7 @@
 // v7 diverges from v6 after the swipe deck: directions are diagnostic taste
 // PROBES, not playlist seeds. There is no per-direction playlist build at
 // onboarding. Instead the swipe deck records likes / dislikes / super-likes,
-// then the flow captures an email (registration), a placeholder payment, and a
+// then the flow captures an email (registration), a Hyp payment, and a
 // bar that awaits generateTasteProfile() — the call where the swiped
 // directions dissolve into a flat, full-catalog liked/disliked genre profile.
 // Only then does signup run: it creates the account, saves the profile and
@@ -51,7 +51,7 @@ import {
   runRegistrationStep,
   runPaymentStep,
   runTasteProfileBar,
-} from '/v7/result.js?v=24092026d';
+} from '/v7/result.js?v=28092026e';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -129,6 +129,10 @@ const state = {
   // created before then, per the "no non-paying clients" requirement. Signup
   // emails the verification magic link to this address; nothing logs this tab in.
   email: '',
+  // The paid Hyp checkout (payment_checkouts.id) from the payment step (A5).
+  // Signup requires it. Never invalidated — going back after paying must not
+  // charge the owner again.
+  paidCheckoutId: '',
   // Background generateTasteProfile() promise. Kicked off right after the swipe
   // deck resolves (A3) so it runs concurrently with registration + payment and
   // the 35s bar (A7) usually resolves it instantly. Holds the resolved profile
@@ -1085,9 +1089,17 @@ async function goToStep(start) {
         );
         state.email = email;
 
-        // A5 — payment (placeholder, all fields optional). Just advances — no
-        // account is created until the taste profile is ready (A7).
-        await abortable(runPaymentStep({ email: state.email }), signal);
+        // A5 — payment: Hyp's payment page (monthly subscription), or the old
+        // placeholder while real payments are switched off server-side
+        // (PAYMENTS_ENABLED — then it resolves with ''). Resolves with the
+        // paid checkout id. No account is created until the taste profile is
+        // ready (A7).
+        state.paidCheckoutId = await abortable(runPaymentStep({
+          email:               state.email,
+          businessName:        state.bizName,
+          onboardingSessionId: state.onboardingSessionId,
+          paidCheckoutId:      state.paidCheckoutId,
+        }), signal);
 
         // A7 — progress bar → signup → "check your email". Behind the bar,
         // await the background taste-profile call (usually already resolved),
@@ -1104,6 +1116,7 @@ async function goToStep(start) {
           // source of truth for what this user likes.
           signupPayload: {
             email: state.email,
+            checkoutId: state.paidCheckoutId,
             name: state.bizName,
             description: state.bizDesc,
             musicalEmphases: state.musicalEmphases,

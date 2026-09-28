@@ -269,7 +269,9 @@ function formatDirection(d) {
   ].join('\n');
 }
 
-function buildUserMessage({
+// Exported (with normalizeTasteProfile) for Ami's prompt dashboard, so its
+// test runs send the exact user message production sends.
+export function buildUserMessage({
   bizName, bizDesc, atmospheres, musicalEmphases, round2Emphases,
   round1Directions, round2Directions,
   likedDirections, dislikedDirections, superLikedGenres,
@@ -346,7 +348,7 @@ function clampEnergyLevel(level, total) {
 // approved or conditional — the model is told not to output it (any
 // excluded list it sends anyway is ignored), so the three buckets always
 // partition all 116 genres.
-function normalizeTasteProfile(parsed) {
+export function normalizeTasteProfile(parsed) {
   if (!parsed || typeof parsed !== 'object') return null;
 
   let energyLevelsTotal = Number(parsed.energy_levels_total);

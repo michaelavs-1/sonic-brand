@@ -507,6 +507,46 @@
       text-align: center;
     }
 
+    /* Payment step (v7/result.js): the collapsible "פרטי תשלום" section that
+       holds Hyp's card form. Same look as the account page's .hours-toggle. */
+    .pay-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      margin-top: 10px;
+      padding: 14px 0 4px;
+      background: none;
+      border: none;
+      border-top: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 16px;
+      font-weight: 800;
+      text-align: right;
+      cursor: pointer;
+      transition: color .15s;
+    }
+
+    .pay-toggle:hover {
+      color: var(--accent);
+    }
+
+    .pay-chev {
+      display: inline-flex;
+      color: var(--muted);
+      transition: transform .2s var(--ease), color .15s;
+    }
+
+    .pay-toggle:hover .pay-chev {
+      color: var(--accent);
+    }
+
+    .pay-toggle[aria-expanded="true"] .pay-chev {
+      transform: rotate(180deg);
+    }
+
     /* ---------- loading ---------- */
     .preview-loading,
     .preview-empty {
@@ -2697,7 +2737,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/app.js?v=24092026g"></script>
+  <script type="module" src="/v7/app.js?v=28092026e"></script>
 </body>
 
 </html>

@@ -45,7 +45,28 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-09-26 (latest) — 8 new genres added to shared/genre-universe.js
+## 2026-09-28 (latest) — Ami's dashboard can now edit and test the taste-profile prompt
+
+**Applies to:** `taste profile` (tooling wiring)
+
+Not a prompt content change. The taste-profile prompt is byte-identical to the previous entry's. Ami's dashboard at `/v5/ami-prompt-dashboard/` gained two steps after the existing Round 1 step:
+
+- **Step 2 — swipe simulation.** Once step 1 returns directions, each one gets a row with "אהבתי" / "לא בשבילי" (default: לא בשבילי — in onboarding every card ends up swiped one way or the other). Clicking a genre chip super-likes it and marks its direction liked; switching a direction to "לא בשבילי" clears its super-likes (same rule as onboarding). An optional Round 2 refinement emphases textarea, enabled only while fewer than 3 directions are liked (onboarding's `picked.length < 3` Round 2 trigger; when disabled its text isn't sent), and the two carried preferences (prefilled with the first non-`none` value from the directions, the same rule as `carryPref` in `v7/app.js`; Ami can override them to test).
+- **Step 3 — taste-profile prompt editor.** A textarea prefilled with `EDITABLE_PROMPT_SECTION` from `v7/generation/taste-profile.js`. On generate: system = that module's `assembleSystemPrompt(edited)`, user message = that module's `buildUserMessage` (the exact production format), response normalized by its `normalizeTasteProfile`. Output shows approved / conditional genres grouped by energy level, the computed excluded list, a "DROPPED" line for genres the model listed but production would discard (invented names, missing energy level), and `reasoning_en`. Calls are logged with `label='ami-taste-profile'`.
+
+Round 2 is not simulated: the taste profile receives `Round 2 directions: (not fired)`. The business inputs sent to the taste profile are the ones from the last step-1 run, not whatever is in the form now.
+
+Code change in `v7/generation/taste-profile.js`: `buildUserMessage` and `normalizeTasteProfile` are now exported (they were module-private). No behavior change for onboarding.
+
+Also in the dashboard: step 1's result text no longer shows a `BPM: —` line (v7 directions have no BPM); it shows each direction's `instrumentalness_preference` and `popularity_preference` instead. And the "Popularity window" line under the atmosphere checkboxes is gone: it came from v5's `derivePopularityWindow`, never reached the model, and implied atmospheres set a popularity range, which production stopped doing on 2026-09-02. Atmospheres now do only what they do in production: become the `Atmospheres: …` line in both user messages.
+
+Files touched:
+- `v7/generation/taste-profile.js` (two `export` keywords + a comment)
+- `v5/ami-prompt-dashboard/app.js`, `v5/ami-prompt-dashboard/index.html` (cache-bust `?v=28092026c`)
+
+---
+
+## 2026-09-26 — 8 new genres added to shared/genre-universe.js
 
 **Applies to:** all v7 (source-of-truth edit; flows to R1 + R2 + taste-profile + energy-directions via imports)
 

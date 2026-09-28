@@ -21,12 +21,29 @@
 //      user message = business inputs, call the shared ai-provider.
 //   4. Parse response JSON, format each direction as text, display.
 //   5. Copy button dumps the formatted text to clipboard.
+//
+// Taste-profile stage (added 2026-09-28) — the v7 prompt that runs after the
+// swipe deck (v7/generation/taste-profile.js):
+//   1. Once step 1 returns directions, a swipe-simulation card lists them:
+//      Ami marks each liked / disliked, and clicks genres to super-like them
+//      (a super-like also marks its direction liked, as in onboarding).
+//   2. A second editor holds the taste-profile EDITABLE_PROMPT_SECTION.
+//   3. On generate: system = that module's assembleSystemPrompt(edited),
+//      user message = its own buildUserMessage (the exact prod format),
+//      response normalized by its normalizeTasteProfile, then displayed.
+//   Round 2 isn't simulated — the taste profile sees "Round 2 directions:
+//   (not fired)", same as an onboarding where R1 yielded 3+ picks.
 
 import {
   EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt,
 } from '/v7/generation/musical-directions.js?v=20092026a';
-import { derivePopularityWindow } from '/v5/generation/popularity-window.js?v=29072026e';
+import {
+  EDITABLE_PROMPT_SECTION as TASTE_EDITABLE_PROMPT_SECTION,
+  assembleSystemPrompt as assembleTasteSystemPrompt,
+  buildUserMessage as buildTasteUserMessage,
+  normalizeTasteProfile,
+} from '/v7/generation/taste-profile.js?v=28092026a';
 import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=20092026a';
 
 // Match v6 production. Gemini 3.6-flash's hard output-token cap is 65536;
@@ -70,7 +87,6 @@ const els = {
   bizName:          $('bizName'),
   bizDesc:          $('bizDesc'),
   atmoContainer:    $('atmoContainer'),
-  popWindowLine:    $('popWindowLine'),
   musicalEmphases:  $('musicalEmphases'),
   promptEditor:     $('promptEditor'),
   generateBtn:      $('generateBtn'),
@@ -80,26 +96,46 @@ const els = {
   outputText:       $('outputText'),
   copyBtn:          $('copyBtn'),
   copyResultBtn:    $('copyResultBtn'),
+  swipeCard:          $('swipeCard'),
+  swipeList:          $('swipeList'),
+  round2Emphases:     $('round2Emphases'),
+  instPref:           $('instPref'),
+  popPref:            $('popPref'),
+  tastePromptEditor:  $('tastePromptEditor'),
+  tasteGenerateBtn:   $('tasteGenerateBtn'),
+  tasteStatusLine:    $('tasteStatusLine'),
+  tasteResultsCard:   $('tasteResultsCard'),
+  tasteUsageLine:     $('tasteUsageLine'),
+  tasteOutputText:    $('tasteOutputText'),
+  copyTastePromptBtn: $('copyTastePromptBtn'),
+  copyTasteResultBtn: $('copyTasteResultBtn'),
 };
 
-// Full atmosphere rows fetched from /api/v5/databox-atmospheres, kept at
-// module scope so the popularity-window computation can look up ranges by
-// name whenever a checkbox toggles.
-let atmosphereRows = [];
+// Last successful step-1 run: the directions (ranks renumbered 1..n, as
+// displayed) plus the business inputs that produced them. The taste profile
+// is built from this snapshot, so editing the inputs afterwards can't pair
+// new inputs with directions generated from old ones.
+let r1Run = null;
+// Swipe simulation, keyed by rank. decisions: rank → 'like' | 'dislike'.
+// superLiked: rank → Set of that direction's genres Ami super-liked.
+const decisions  = new Map();
+const superLiked = new Map();
 
-// Pre-fill the editor with the current default.
-els.promptEditor.value = EDITABLE_PROMPT_SECTION;
+// Pre-fill the editors with the current defaults.
+els.promptEditor.value      = EDITABLE_PROMPT_SECTION;
+els.tastePromptEditor.value = TASTE_EDITABLE_PROMPT_SECTION;
 
-// Load atmosphere checkboxes. `?fresh=1` bypasses the endpoint's 30-min
-// in-memory cache so every hard-refresh pulls the latest from Supabase.
+// Load atmosphere checkboxes. As in v7 production, the checked names only
+// become an "Atmospheres: ..." line in the user message, next to the
+// description. They don't set a popularity range: that atmosphere-derived
+// window was removed from production on 2026-09-02, and popularity is now
+// narrowed only by the model's popularity_preference.
 (async () => {
   try {
     const r = await fetch('/api/v5/databox-atmospheres?fresh=1');
     if (!r.ok) throw new Error(`databox-atmospheres ${r.status}`);
     const { rows } = await r.json();
-    atmosphereRows = Array.isArray(rows) ? rows : [];
-    renderAtmosphereCheckboxes(atmosphereRows);
-    updatePopWindow();
+    renderAtmosphereCheckboxes(Array.isArray(rows) ? rows : []);
   } catch (err) {
     els.atmoContainer.className = 'atmo-loading';
     els.atmoContainer.textContent = 'לא הצליח לטעון אווירות — ' + err.message;
@@ -117,7 +153,6 @@ function renderAtmosphereCheckboxes(rows) {
     checkbox.type    = 'checkbox';
     checkbox.className = 'atmo-checkbox';
     checkbox.id      = id;
-    checkbox.addEventListener('change', updatePopWindow);
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'atmo-name';
@@ -133,18 +168,6 @@ function renderAtmosphereCheckboxes(rows) {
   }
 }
 
-function updatePopWindow() {
-  const checked = readCheckedAtmospheres();
-  const window = derivePopularityWindow(checked, atmosphereRows);
-  if (window) {
-    els.popWindowLine.textContent = `Popularity window: ${window[0]} – ${window[1]}`;
-    els.popWindowLine.classList.add('active');
-  } else {
-    els.popWindowLine.textContent = 'Popularity window: — (no atmosphere selected — no filter applied)';
-    els.popWindowLine.classList.remove('active');
-  }
-}
-
 function readCheckedAtmospheres() {
   return Array.from(els.atmoContainer.querySelectorAll('.atmo-chip'))
     .filter((chip) => chip.querySelector('.atmo-checkbox')?.checked)
@@ -153,6 +176,7 @@ function readCheckedAtmospheres() {
 }
 
 els.generateBtn.addEventListener('click', onGenerate);
+els.tasteGenerateBtn.addEventListener('click', onGenerateTasteProfile);
 
 function wireCopyButton(btn, getText) {
   btn.addEventListener('click', async () => {
@@ -171,10 +195,20 @@ function wireCopyButton(btn, getText) {
 
 wireCopyButton(els.copyBtn,       () => els.promptEditor.value);
 wireCopyButton(els.copyResultBtn, () => els.outputText.textContent);
+wireCopyButton(els.copyTastePromptBtn, () => els.tastePromptEditor.value);
+wireCopyButton(els.copyTasteResultBtn, () => els.tasteOutputText.textContent);
 
 function setStatus(text, kind) {
-  els.statusLine.textContent = text || '';
-  els.statusLine.className = 'status-line' + (kind ? ' ' + kind : '');
+  setStatusOn(els.statusLine, text, kind);
+}
+
+function setTasteStatus(text, kind) {
+  setStatusOn(els.tasteStatusLine, text, kind);
+}
+
+function setStatusOn(el, text, kind) {
+  el.textContent = text || '';
+  el.className = 'status-line' + (kind ? ' ' + kind : '');
 }
 
 function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases }) {
@@ -187,25 +221,34 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases }) {
   return msg;
 }
 
-// Format one direction as a text block. Same format is what the copy button
-// puts on the clipboard.
-function formatDirection(d, idx) {
-  const rank = Number(d.rank) || (idx + 1);
-  const title = d.title_en || '(no title)';
-  // New schema is a flat `genres` list; older responses may still return
-  // anchor + secondaries — fold both into one line if that happens.
-  const genresList = Array.isArray(d.genres) && d.genres.length
+// New schema is a flat `genres` list; older responses may still return
+// anchor + secondaries — fold both into one list if that happens.
+function directionGenres(d) {
+  return Array.isArray(d.genres) && d.genres.length
     ? d.genres
     : [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])].filter(Boolean);
-  const genres = genresList.length ? genresList.join(', ') : '—';
-  const bpm = d.bpm_range && Number.isFinite(d.bpm_range.min) && Number.isFinite(d.bpm_range.max)
-    ? `${d.bpm_range.min}-${d.bpm_range.max}`
-    : '—';
+}
+
+// Sort by the model's rank, then renumber 1..n so the ranks shown here are
+// the same ranks the taste-profile prompt receives in LIKED / DISLIKED.
+function prepareDirections(raw) {
+  return (Array.isArray(raw) ? raw : [])
+    .filter((d) => d && typeof d === 'object')
+    .sort((a, b) => (Number(a.rank) || 999) - (Number(b.rank) || 999))
+    .map((d, idx) => ({ ...d, rank: idx + 1, genres: directionGenres(d) }));
+}
+
+// Format one direction as a text block. Same format is what the copy button
+// puts on the clipboard. v7 directions carry no BPM, so the second line shows
+// the two preferences the taste profile carries through instead.
+function formatDirection(d) {
+  const title = d.title_en || '(no title)';
+  const genres = d.genres.length ? d.genres.join(', ') : '—';
   const desc = d.description_he || '';
   return [
-    `#${rank}  ${title}`,
+    `#${d.rank}  ${title}`,
     `   Genres: ${genres}`,
-    `   BPM:    ${bpm}`,
+    `   Instrumental: ${d.instrumentalness_preference || 'none'} · Popularity: ${d.popularity_preference || 'none'}`,
     `   ${desc}`,
   ].join('\n');
 }
@@ -235,6 +278,10 @@ async function onGenerate() {
     setStatus('הפרומפט ריק — לחץ "אפס לברירת המחדל" או הדבק תוכן', 'err');
     return;
   }
+
+  // A new step-1 run replaces the directions the swipe simulation refers to.
+  r1Run = null;
+  els.swipeCard.style.display = 'none';
 
   const originalBtnHtml = els.generateBtn.innerHTML;
   els.generateBtn.disabled = true;
@@ -271,9 +318,13 @@ async function onGenerate() {
       return;
     }
 
-    const formatted = formatDirections(parsed.directions);
-    renderResult(formatted, usage, elapsed);
-    setStatus(`הוחזרו ${parsed?.directions?.length || 0} כיוונים בזמן ${(elapsed / 1000).toFixed(1)} שניות`, 'ok');
+    const directions = prepareDirections(parsed.directions);
+    renderResult(formatDirections(directions), usage, elapsed);
+    setStatus(`הוחזרו ${directions.length} כיוונים בזמן ${(elapsed / 1000).toFixed(1)} שניות`, 'ok');
+    if (directions.length) {
+      r1Run = { directions, inputs: { bizName, bizDesc, atmospheres: atmos, musicalEmphases } };
+      renderSwipeSimulation();
+    }
   } catch (err) {
     setStatus(`שגיאה: ${err.message || 'לא ידוע'}`, 'err');
   } finally {
@@ -285,18 +336,260 @@ async function onGenerate() {
 function renderResult(text, usage, elapsed) {
   els.outputText.textContent = text;
   els.resultsCard.style.display = '';
-  const base = `[${PROVIDER}]  elapsed ${(elapsed / 1000).toFixed(1)}s`;
-  if (!usage) {
-    els.usageLine.textContent = base;
-  } else if (PROVIDER === 'gemini') {
-    els.usageLine.textContent =
-      `${base} · input ${usage.input || 0} · output ${usage.output || 0}` +
-      (usage.thinking ? ` · thinking ${usage.thinking}` : '');
-  } else {
-    els.usageLine.textContent =
-      `${base} · input ${usage.input_tokens || 0} · output ${usage.output_tokens || 0}` +
-      (usage.cache_read_input_tokens     ? ` · cache_read ${usage.cache_read_input_tokens}`     : '') +
-      (usage.cache_creation_input_tokens ? ` · cache_write ${usage.cache_creation_input_tokens}` : '');
-  }
+  els.usageLine.textContent = formatUsage(usage, elapsed);
   els.resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function formatUsage(usage, elapsed) {
+  const base = `[${PROVIDER}]  elapsed ${(elapsed / 1000).toFixed(1)}s`;
+  if (!usage) return base;
+  if (PROVIDER === 'gemini') {
+    return `${base} · input ${usage.input || 0} · output ${usage.output || 0}` +
+      (usage.thinking ? ` · thinking ${usage.thinking}` : '');
+  }
+  return `${base} · input ${usage.input_tokens || 0} · output ${usage.output_tokens || 0}` +
+    (usage.cache_read_input_tokens     ? ` · cache_read ${usage.cache_read_input_tokens}`     : '') +
+    (usage.cache_creation_input_tokens ? ` · cache_write ${usage.cache_creation_input_tokens}` : '');
+}
+
+// ---------- Step 2: swipe simulation ----------
+
+// Fresh directions → fresh decisions. Everything starts as "לא בשבילי" (a
+// swipe left), and the carried preferences reset to what these directions
+// say — the same first-non-none rule as carryPref in v7/app.js.
+function renderSwipeSimulation() {
+  decisions.clear();
+  superLiked.clear();
+  for (const d of r1Run.directions) decisions.set(d.rank, 'dislike');
+  els.instPref.value = carriedPref(r1Run.directions, 'instrumentalness_preference');
+  els.popPref.value  = carriedPref(r1Run.directions, 'popularity_preference');
+
+  els.swipeList.replaceChildren(...r1Run.directions.map(buildSwipeRow));
+  updateRound2Field();
+  els.swipeCard.style.display = '';
+}
+
+// Onboarding only opens Round 2 (and its emphases textarea) when Round 1
+// ended with fewer than 3 liked directions — `picked.length < 3` in
+// v7/app.js. Outside that, the field is disabled and its text isn't sent;
+// it's kept in the box so it comes back if Ami un-likes a direction.
+function round2Open() {
+  return r1Run.directions.filter((d) => decisions.get(d.rank) === 'like').length < 3;
+}
+
+function updateRound2Field() {
+  els.round2Emphases.disabled = !round2Open();
+}
+
+function carriedPref(directions, field) {
+  const v = directions.map((d) => d[field]).find((x) => x && x !== 'none');
+  return ['soft', 'hard'].includes(v) ? v : 'none';
+}
+
+function buildSwipeRow(d) {
+  const row = document.createElement('div');
+  row.className = 'swipe-row';
+
+  const title = document.createElement('span');
+  title.className = 'swipe-title';
+  title.dir = 'ltr';
+  title.textContent = `#${d.rank}  ${d.title_en || '(no title)'}`;
+
+  const seg = document.createElement('div');
+  seg.className = 'seg';
+  const segButtons = [['like', 'אהבתי'], ['dislike', 'לא בשבילי']].map(([v, text]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.v = v;
+    b.textContent = text;
+    b.addEventListener('click', () => {
+      decisions.set(d.rank, v);
+      // A disliked direction can't hold super-likes (in onboarding a
+      // super-like is itself a like).
+      if (v === 'dislike') superLiked.delete(d.rank);
+      paint();
+      updateRound2Field();
+    });
+    return b;
+  });
+  seg.append(...segButtons);
+
+  const head = document.createElement('div');
+  head.className = 'swipe-head';
+  head.append(title, seg);
+
+  const desc = document.createElement('div');
+  desc.className = 'swipe-desc';
+  desc.textContent = d.description_he || '';
+
+  const chips = document.createElement('div');
+  chips.className = 'genre-chips';
+  const chipButtons = d.genres.map((genre) => {
+    const c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'genre-chip';
+    c.dir = 'ltr';
+    c.addEventListener('click', () => {
+      const set = superLiked.get(d.rank) || new Set();
+      if (set.has(genre)) set.delete(genre);
+      else set.add(genre);
+      superLiked.set(d.rank, set);
+      if (set.size) decisions.set(d.rank, 'like');
+      paint();
+      updateRound2Field();
+    });
+    return { c, genre };
+  });
+  chips.append(...chipButtons.map(({ c }) => c));
+
+  function paint() {
+    const liked = decisions.get(d.rank) === 'like';
+    row.classList.toggle('liked', liked);
+    for (const b of segButtons) b.classList.toggle('on', b.dataset.v === decisions.get(d.rank));
+    const set = superLiked.get(d.rank);
+    for (const { c, genre } of chipButtons) {
+      const on = !!set?.has(genre);
+      c.classList.toggle('super', on);
+      c.textContent = (on ? '⭐ ' : '') + genre;
+    }
+  }
+  paint();
+
+  row.append(head, desc, chips);
+  return row;
+}
+
+// ---------- Step 3: taste profile ----------
+
+async function onGenerateTasteProfile() {
+  const edited = els.tastePromptEditor.value;
+  if (!r1Run) {
+    setTasteStatus('קודם צריך ליצור כיוונים בשלב 1 ולסמן מה אהבתם בשלב 2', 'err');
+    return;
+  }
+  if (!edited.trim()) {
+    setTasteStatus('הפרומפט ריק — הדביקו תוכן או רעננו את הדף כדי לטעון את ברירת המחדל', 'err');
+    return;
+  }
+
+  const { directions, inputs } = r1Run;
+  const likedDirections    = directions.filter((d) => decisions.get(d.rank) === 'like');
+  const dislikedDirections = directions.filter((d) => decisions.get(d.rank) !== 'like');
+  const superLikedGenres   = [...new Set(directions.flatMap((d) => [...(superLiked.get(d.rank) || [])]))];
+
+  const userMessage = buildTasteUserMessage({
+    ...inputs,
+    round2Emphases:             round2Open() ? els.round2Emphases.value.trim() : '',
+    round1Directions:           directions,
+    round2Directions:           [],
+    likedDirections,
+    dislikedDirections,
+    superLikedGenres,
+    instrumentalnessPreference: els.instPref.value,
+    popularityPreference:       els.popPref.value,
+  });
+
+  const originalBtnHtml = els.tasteGenerateBtn.innerHTML;
+  els.tasteGenerateBtn.disabled = true;
+  els.tasteGenerateBtn.innerHTML = '<span class="sb-spinner"></span>';
+  setTasteStatus(`שולח ל־${PROVIDER}...`, '');
+
+  try {
+    const { text, usage, elapsed } = await callModel({
+      system: assembleTasteSystemPrompt(edited.trimEnd()),
+      userMessage,
+      maxTokens: MAX_TOKENS,
+      cache: false,
+      label: 'ami-taste-profile',
+    });
+
+    let parsed;
+    try {
+      parsed = parseJSONFromText(text);
+    } catch (e) {
+      renderTasteResult(text, usage, elapsed);
+      setTasteStatus(`התגובה לא הייתה JSON תקין: ${e.message}`, 'err');
+      return;
+    }
+
+    if (parsed?.error) {
+      renderTasteResult(formatError(parsed), usage, elapsed);
+      setTasteStatus(`המודל החזיר שגיאה: ${parsed.error}`, 'err');
+      return;
+    }
+
+    const profile = normalizeTasteProfile(parsed);
+    if (!profile) {
+      renderTasteResult(text, usage, elapsed);
+      setTasteStatus('חסר energy_levels_total תקין בתגובה — מוצגת התגובה הגולמית', 'err');
+      return;
+    }
+
+    renderTasteResult(formatTasteProfile(profile, droppedGenres(parsed, profile)), usage, elapsed);
+    setTasteStatus(
+      `${profile.approved_genres.length} approved · ${profile.conditional_genres.length} conditional · ` +
+      `${profile.excluded_genres.length} excluded — בזמן ${(elapsed / 1000).toFixed(1)} שניות`,
+      'ok',
+    );
+  } catch (err) {
+    setTasteStatus(`שגיאה: ${err.message || 'לא ידוע'}`, 'err');
+  } finally {
+    els.tasteGenerateBtn.disabled  = false;
+    els.tasteGenerateBtn.innerHTML = originalBtnHtml;
+  }
+}
+
+// Genres the model listed that production would silently drop — names not
+// verbatim in the genre universe, or entries without a usable energy_level.
+// Shown so prompt edits that make the model invent names are visible.
+function droppedGenres(parsed, profile) {
+  const kept = new Set(
+    [...profile.approved_genres, ...profile.conditional_genres].map((e) => e.genre.toLowerCase()),
+  );
+  const listed = [
+    ...(Array.isArray(parsed.approved_genres) ? parsed.approved_genres : []),
+    ...(Array.isArray(parsed.conditional_genres) ? parsed.conditional_genres : []),
+  ].map((e) => e?.genre).filter((g) => typeof g === 'string');
+  return [...new Set(listed.filter((g) => !kept.has(g.trim().toLowerCase())))];
+}
+
+function formatTasteProfile(profile, dropped) {
+  const N = profile.energy_levels_total;
+  const levels = [];
+  for (let lvl = N; lvl >= 1; lvl--) levels.push(lvl);
+
+  const lines = [
+    `Energy levels: ${N}   (level ${N} = highest energy for this owner, 1 = lowest)`,
+    `Instrumental: ${profile.instrumentalness_preference} · Popularity: ${profile.popularity_preference}`,
+    '',
+    `APPROVED (${profile.approved_genres.length})`,
+  ];
+  for (const lvl of levels) {
+    const genres = profile.approved_genres.filter((e) => e.energy_level === lvl).map((e) => e.genre);
+    if (genres.length) lines.push(`  Level ${lvl}: ${genres.join(', ')}`);
+  }
+
+  lines.push('', `CONDITIONAL (${profile.conditional_genres.length})`);
+  for (const lvl of levels) {
+    const entries = profile.conditional_genres.filter((e) => e.energy_level === lvl);
+    if (!entries.length) continue;
+    lines.push(`  Level ${lvl}:`);
+    for (const e of entries) lines.push(`    ${e.genre}${e.note_en ? ' — ' + e.note_en : ''}`);
+  }
+
+  lines.push('', `EXCLUDED (${profile.excluded_genres.length})`, `  ${profile.excluded_genres.join(', ') || '—'}`);
+
+  if (dropped.length) {
+    lines.push('', `DROPPED — listed by the model but not usable (${dropped.length})`, `  ${dropped.join(', ')}`);
+  }
+
+  lines.push('', 'Reasoning:', profile.reasoning_en || '(none)');
+  return lines.join('\n');
+}
+
+function renderTasteResult(text, usage, elapsed) {
+  els.tasteOutputText.textContent = text;
+  els.tasteResultsCard.style.display = '';
+  els.tasteUsageLine.textContent = formatUsage(usage, elapsed);
+  els.tasteResultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }

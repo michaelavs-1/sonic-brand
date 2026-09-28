@@ -7,9 +7,10 @@
    owner on /v7/account. The client shows "בדקו את המייל ✉️".
 
    v7 differs from v6 signup in three ways:
-     1. It is called only after the (placeholder) payment step, once the
-        taste profile has resolved — "no non-paying clients", so no account
-        exists for anyone who abandons before paying.
+     1. It is called only after the Hyp payment step, once the taste profile
+        has resolved — "no non-paying clients", so no account exists for
+        anyone who abandons before paying. It REQUIRES a paid
+        payment_checkouts row (checkoutId) and links it to the business.
      2. It writes NO business_directions. v7 dissolves the swiped directions
         into a flat taste profile, which is sent IN this request and saved
         here (business_taste_profiles) BEFORE the email goes out — so an owner
@@ -21,11 +22,13 @@
         2026-09-24).
 
    The businesses row is stamped version='v7' (the v7 cron targets it) and
-   paid_at=now() (placeholder payment-completion marker — no real payment
-   integration yet).
+   paid_at = the checkout's paid_at.
 
    Request body: {
      email,
+     checkoutId,                         // paid payment_checkouts id — REQUIRED while
+                                         // PAYMENTS_ENABLED (internal test callers
+                                         // may omit it); ignored-if-absent while off
      tasteProfile,                       // generateTasteProfile() result — REQUIRED
      genreTally?: [{ genre, like, dislike }],
      name?, description?, musicalEmphases?,
@@ -45,10 +48,11 @@
 */
 
 import { timingSafeEqual } from 'node:crypto';
-import { pgrUpsert, pgrPatch } from '../../v5/supabase-client.js';
+import { pgrSelect, pgrUpsert, pgrPatch } from '../../v5/supabase-client.js';
 import { requireSite, isAllowedHost, setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
 import { tasteProfileRow, isUsableTasteProfile } from './_taste-profile.js';
+import { PAYMENTS_ENABLED } from '../payment/_hyp.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -110,8 +114,8 @@ async function findOrCreateUser(email) {
 // business if any (updating name/desc/emphases + flipping it to v7); creates
 // a fresh one otherwise. paid_at is only set on the v7 write path — never
 // cleared — so re-onboarding never un-marks a paid business.
-async function ensureBusinessV7(ownerId, name, credits, promptInputs = {}) {
-  const nowIso = new Date().toISOString();
+async function ensureBusinessV7(ownerId, name, credits, promptInputs = {}, paidAtIso) {
+  const paidAt = paidAtIso || new Date().toISOString();
   const q = `${SUPABASE_URL}/rest/v1/businesses?owner_id=eq.${ownerId}&select=id,name,paid_at`;
   const existingRes = await fetch(q, { headers: adminHeaders() });
   const rows = await existingRes.json().catch(() => []);
@@ -127,7 +131,7 @@ async function ensureBusinessV7(ownerId, name, credits, promptInputs = {}) {
     if (name) patch.name = name;
     if (promptInputs.description)     patch.business_description = promptInputs.description;
     if (promptInputs.musicalEmphases) patch.musical_emphases     = promptInputs.musicalEmphases;
-    if (!match.paid_at) patch.paid_at = nowIso;   // don't overwrite an earlier payment
+    if (!match.paid_at) patch.paid_at = paidAt;   // don't overwrite an earlier payment
     const r = await fetch(`${SUPABASE_URL}/rest/v1/businesses?id=eq.${match.id}`, {
       method: 'PATCH',
       headers: { ...adminHeaders(), Prefer: 'return=minimal' },
@@ -146,7 +150,7 @@ async function ensureBusinessV7(ownerId, name, credits, promptInputs = {}) {
       monthly_credits:      credits,
       credits_remaining:    credits,
       version:              'v7',
-      paid_at:              nowIso,
+      paid_at:              paidAt,
       business_description: promptInputs.description     || null,
       musical_emphases:     promptInputs.musicalEmphases || null,
     }),
@@ -215,6 +219,24 @@ function isInternalCaller(req) {
   return timingSafeEqual(Buffer.from(got), Buffer.from(expected));
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The Hyp payment that entitles this signup (see api/v7/payment/). It must be
+// paid; the first signup claims it (business_id), and after that only the
+// same email may reuse it — the check-email screen's resend re-posts it.
+async function loadPaidCheckout(checkoutId, email) {
+  const noPayment = { status: 402, error: 'לא מצאנו תשלום עבור ההרשמה הזו.' };
+  if (!UUID_RE.test(String(checkoutId || ''))) return noPayment;
+  const rows = await pgrSelect('payment_checkouts', { id: `eq.${checkoutId}` },
+    { select: 'id,status,email,business_id,paid_at', limit: 1, useService: true });
+  const checkout = Array.isArray(rows) ? rows[0] : null;
+  if (!checkout || checkout.status !== 'paid') return noPayment;
+  if (checkout.business_id && checkout.email !== email) {
+    return { status: 409, error: 'התשלום הזה כבר שימש להרשמה אחרת.' };
+  }
+  return { checkout };
+}
+
 export default async function handler(req, res) {
   setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -243,6 +265,7 @@ export default async function handler(req, res) {
       tasteProfile,
       genreTally,
       skipEmail,
+      checkoutId,
     } = req.body || {};
 
     const cleanEmail = String(email || '').trim().toLowerCase();
@@ -255,6 +278,18 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'tasteProfile required' });
     }
 
+    // No payment, no account — while real payments are on (PAYMENTS_ENABLED
+    // in api/v7/payment/_hyp.js). The walkthrough test scripts (internal key)
+    // may sign up without one. While payments are off (placeholder screen),
+    // nothing is required and paid_at is the signup time; a paid checkout
+    // that's passed anyway is still claimed.
+    let checkout = null;
+    if (checkoutId || (PAYMENTS_ENABLED && !isInternalCaller(req))) {
+      const paid = await loadPaidCheckout(checkoutId, cleanEmail);
+      if (paid.checkout) checkout = paid.checkout;
+      else if (PAYMENTS_ENABLED) return res.status(paid.status).json({ error: paid.error });
+    }
+
     const bizName = String(name || '').trim().slice(0, 80);
     const desc     = String(description     || '').trim().slice(0, 4000);
     const emphases = String(musicalEmphases || '').trim().slice(0, 2000);
@@ -263,7 +298,14 @@ export default async function handler(req, res) {
     const businessId = await ensureBusinessV7(user.id, bizName, DEFAULT_CREDITS, {
       description:     desc || null,
       musicalEmphases: emphases || null,
-    });
+    }, checkout?.paid_at);
+
+    // Claim the payment for this business. Fatal: an unclaimed paid checkout
+    // could be reused (the retry is idempotent).
+    if (checkout && checkout.business_id !== businessId) {
+      await pgrPatch('payment_checkouts', { id: `eq.${checkout.id}` },
+        { business_id: businessId, email: cleanEmail, updated_at: new Date().toISOString() });
+    }
 
     // user_metadata: only small identity flags (dashboard reads currentBizId
     // on load; onboarding.* is a one-time first-flow snapshot). Everything

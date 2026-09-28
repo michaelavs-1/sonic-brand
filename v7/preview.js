@@ -9,6 +9,8 @@
 // direction", swipe left = "skip this direction". Returns the array of liked
 // directions, matching v5's runDirectionPreviewFlow contract.
 
+import { WAIT_DOTS_HTML, waitNodes } from '/v7/wait-dots.js?v=28092026a';
+
 const HEADING = 'בחרו כיוונים מוזיקליים שמתאימים לעסק';
 
 // Play/pause glyphs are sized 36×36 (up from 22×22) so they fill more of
@@ -73,7 +75,7 @@ function el(tag, attrs = {}, ...children) {
 function showLoading(card, text = 'טוען שירים לדוגמא…') {
   card.replaceChildren(
     el('div', { class: 'preview-load-column' },
-      el('div', { class: 'preview-load-label' }, text),
+      el('div', { class: 'preview-load-label' }, ...waitNodes(text)),
       el('div', { class: 'preview-load-progress' },
         el('div', { class: 'preview-load-progress-fill' }),
       ),
@@ -457,7 +459,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
             // direction generation) don't get the class so their layout
             // stays as-is.
             el('div', { class: 'preview-load-column in-deck' },
-              el('div', { class: 'preview-load-label' }, 'טוענים עוד שירים…'),
+              el('div', { class: 'preview-load-label' }, ...waitNodes('טוענים עוד שירים…')),
               el('div', { class: 'preview-load-progress' },
                 el('div', { class: 'preview-load-progress-fill' }),
               ),
@@ -730,7 +732,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         // to widen. Otherwise a successful swap after that message would end
         // up restoring the message, and the user sees "no more songs" while
         // songs keep loading.
-        swap.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים…';
+        swap.innerHTML = '<span class="sb-spinner" style="width:12px;height:12px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים' + WAIT_DOTS_HTML;
         try {
           const hit = await walkCycle();
           if (!hit) {
@@ -1299,7 +1301,7 @@ export function showRefinedDirectionsLoading() {
   const wrap = document.createElement('div');
   wrap.className = 'preview-load-column';
   wrap.innerHTML =
-    '<div class="preview-load-label">מחדדים את הטעם שלכם…</div>' +
+    '<div class="preview-load-label">מחדדים את הטעם שלכם' + WAIT_DOTS_HTML + '</div>' +
     '<div class="preview-load-progress"><div class="preview-load-progress-fill"></div></div>';
   card.replaceChildren(h, sub, wrap);
 }

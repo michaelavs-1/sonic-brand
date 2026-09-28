@@ -57,6 +57,7 @@ import { replaceStatus, liveDailyRows, businessDaySinceIso, REPLACE_FIELD } from
 import { acquireBuildLock } from './_build-lock.js';
 import { verifyUser, auditSetting } from './_settings-helpers.js';
 import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
+import { datedLabel, undatedLabel } from '../../../v7/generation/playlist-length.js';
 
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const INTER_PLAYLIST_STAGGER_MS = 3000;   // same as _daily-builder.js BUILD_STAGGER_MS
@@ -85,7 +86,9 @@ function selfOrigin(req) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Today's slots as { key, title, build() → {skipped, reason?, row?} }.
+// Today's slots as { key, title, label, build() → {skipped, reason?, row?} }.
+// title = the undated name ("Daily Mix #1"), label = the dated dashboard name
+// ("Daily Mix #1 · 28.09.2026") the built row carries.
 async function planSlots({ mode, businessId, hours, now, replaceToday, origin, ownerId, bizName }) {
   if (mode === 'option2') {
     const plan = await planOption2Timeline({ businessId, hours, now, onDemand: true });
@@ -96,8 +99,9 @@ async function planSlots({ mode, businessId, hours, now, replaceToday, origin, o
         slots: plan.slots.map((s) => ({
           key: s.key,
           title: s.title,
+          label: datedLabel(s.title, plan.meta?.il_date),
           build: () => createTimelineMix({
-            origin, ownerId, businessId, bizName, title: s.title, tracks: s.tracks, expiryIso: plan.expiryIso, meta: plan.meta,
+            origin, ownerId, businessId, bizName, title: s.title, tracks: s.tracks, expiryIso: plan.expiryIso, meta: s.meta,
           }),
         })),
       };
@@ -112,11 +116,15 @@ async function planSlots({ mode, businessId, hours, now, replaceToday, origin, o
     slots: plan.directions.map((direction, i) => ({
       key: `slot-${i}`,
       title: direction.title_en || 'פלייליסט',
+      label: datedLabel(direction.title_en || 'פלייליסט', plan.labelDate),
       build: async () => {
         const r = await buildOneDailyPlaylist({
           origin, ownerId, businessId, direction, target: plan.target, bizName, expiryIso: plan.expiryIso,
         });
-        if (!r.skipped) await attachTrackGenres(r.row);
+        if (!r.skipped) {
+          r.row.label = datedLabel(r.row.label, plan.labelDate);
+          await attachTrackGenres(r.row);
+        }
         return r;
       },
     })),
@@ -200,7 +208,7 @@ export default async function handler(req, res) {
     res.flushHeaders?.();
     const send = (obj) => { res.write(JSON.stringify(obj) + '\n'); };
 
-    send({ type: 'plan', directions: slots.map((s) => ({ direction_id: s.key, title: s.title })) });
+    send({ type: 'plan', directions: slots.map((s) => ({ direction_id: s.key, title: s.label })) });
 
     const plannedTitles = new Set(slots.map((s) => s.title));
     const pendingOld = new Map(oldRows.map((r) => [r.spotify_id, r]));
@@ -255,9 +263,10 @@ export default async function handler(req, res) {
               { mode, playlists: oldRows.map((r) => ({ spotify_id: r.spotify_id, label: r.label })) },
               { mode, titles: [...plannedTitles] });
             // Type switch: old names don't match the new ones → all go now.
-            await hideOld([...pendingOld.values()].filter((r) => !plannedTitles.has(r.label)));
+            await hideOld([...pendingOld.values()].filter((r) => !plannedTitles.has(undatedLabel(r.label))));
           }
-          await hideOld([...pendingOld.values()].filter((r) => r.label === slot.title));
+          // Names match without the date (older rows may carry none).
+          await hideOld([...pendingOld.values()].filter((r) => undatedLabel(r.label) === slot.title));
         }
       } catch (e) {
         console.error(`[v7 generate-daily] "${slot.title}" build threw:`, e.message);

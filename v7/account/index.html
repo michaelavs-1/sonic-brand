@@ -80,12 +80,14 @@
     /* Login view is short — override the dashboard-sized min-height + bottom
    padding so the card wraps its content tightly, and center the body so it
    sits mid-viewport instead of hanging from the top. */
-    #loginView {
+    #loginView,
+    #newPasswordView {
       min-height: 0;
       padding-bottom: 22px
     }
 
-    body:has(#loginView:not(.hide)) {
+    body:has(#loginView:not(.hide)),
+    body:has(#newPasswordView:not(.hide)) {
       align-items: center
     }
 
@@ -153,14 +155,105 @@
       box-shadow: 0 0 0 3px rgba(240, 167, 63, .12)
     }
 
-    #email {
+    /* Chrome paints autofilled fields (saved email / password) light blue with
+       dark text. An inset shadow is the only way to cover its background. */
+    .input:-webkit-autofill,
+    .input:-webkit-autofill:hover {
+      -webkit-text-fill-color: var(--text);
+      caret-color: var(--text);
+      box-shadow: 0 0 0 1000px var(--bg-2) inset;
+    }
+
+    .input:-webkit-autofill:focus {
+      -webkit-text-fill-color: var(--text);
+      box-shadow: 0 0 0 1000px var(--bg-2) inset, 0 0 0 3px rgba(240, 167, 63, .12)
+    }
+
+    /* Chrome fills a saved login as the page opens, but until the first click
+       it draws the values in its own locked font (font: -webkit-small-control
+       + sans-serif, ~13.3px — Chromium html.css, ::-internal-input-suggested).
+       The login fields use that same font so nothing jumps on the first click.
+       Computers only: phones don't pre-fill on open, and iOS zooms into fields
+       under 16px. Placeholders keep Heebo. */
+    @media (hover: hover) and (pointer: fine) {
+      @supports (font: -webkit-small-control) {
+        #loginView .input {
+          font: -webkit-small-control;
+          font-family: sans-serif;
+        }
+
+        #loginView .input::placeholder {
+          font-family: 'Heebo', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+      }
+    }
+
+    /* Email / password inputs: LTR value, right-aligned Hebrew placeholder. */
+    .ltr {
       direction: ltr;
       text-align: left
     }
 
-    #email:placeholder-shown:not(:focus) {
+    .ltr:placeholder-shown:not(:focus) {
       direction: rtl;
       text-align: right
+    }
+
+    /* Password field + eye-icon show/hide toggle (login, new-password screen,
+       Profile). The toggle sits inside the field on the right. */
+    .pw-wrap {
+      position: relative
+    }
+
+    .pw-wrap .input {
+      padding-right: 46px
+    }
+
+    /* Eye icon: open eye while the password is hidden, crossed-out eye
+       while it's shown (.showing). */
+    .pw-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 6px;
+    }
+
+    .pw-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .pw-toggle .eye-off,
+    .pw-toggle.showing .eye {
+      display: none;
+    }
+
+    .pw-toggle.showing .eye-off {
+      display: block;
+    }
+
+    .pw-toggle:hover {
+      color: var(--text)
+    }
+
+    .pw-hint {
+      margin: 6px 2px 0;
+      font-size: 12px
+    }
+
+    .login-gap {
+      margin-top: 10px
+    }
+
+    .forgot-link {
+      display: block;
+      margin: 12px auto 0
     }
 
     select.input {
@@ -3015,30 +3108,73 @@
         <rect x="152" y="100" width="26" height="52" rx="13" fill="#f0a73f" />
       </svg>
       <h1 style="font-size:26px">כניסה</h1>
-      <p class="muted">שלחו לעצמכם קישור חד־פעמי לאימייל</p>
+      <p class="muted" id="loginSub">היכנסו עם האימייל והסיסמה שלכם</p>
     </div>
+    <!-- Three panels, one visible at a time (showLoginPanel in app.js):
+         #loginForm   email + password
+         #forgotForm  "שכחתי סיסמה" — email → reset link
+         #linkPanel   "we sent a link" + resend (reset link, or a new
+                      verification link for an account that was never
+                      verified) -->
     <div style="margin-top:34px">
-      <form id="emailForm" novalidate>
-        <input class="input" id="email" type="email" placeholder="האימייל שלכם" autocomplete="email">
-        <button class="btn sec" id="sendLink" type="submit">
-          <span class="btn-label">שלחו לי קישור כניסה</span>
-          <span class="sb-spinner hide" id="sendSpinner"
-            style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+      <form id="loginForm" novalidate>
+        <input class="input ltr" id="email" type="email" name="email" placeholder="האימייל שלכם"
+          autocomplete="username" inputmode="email">
+        <div class="pw-wrap login-gap">
+          <input class="input ltr" id="password" type="password" name="password" placeholder="סיסמה"
+            autocomplete="current-password">
+          <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+        </div>
+        <button class="btn sec" id="loginBtn" type="submit">
+          <span class="btn-label">כניסה</span>
+          <span class="sb-spinner hide" id="loginSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
         </button>
+        <button class="btn-ghost forgot-link" id="forgotLink" type="button">שכחתי סיסמה</button>
         <a href="/v7?start=1" class="no-account-link">אין לי חשבון עדיין</a>
       </form>
-      <div id="resendRow" class="hide" style="text-align:center">
-        <p style="margin:0 0 14px;font-size:15px">שלחנו קישור כניסה ל־<span id="sentToEmail" dir="ltr"
-            style="unicode-bidi:isolate;font-weight:700;color:var(--text)"></span> ✉️</p>
-        <button class="btn sec" id="resendLink" type="button">
-          <span class="btn-label">שלחו לי קישור חדש</span>
-          <span class="sb-spinner hide" id="resendSpinner"
-            style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+      <form id="forgotForm" class="hide" novalidate>
+        <input class="input ltr" id="forgotEmail" type="email" placeholder="האימייל שלכם" autocomplete="username"
+          inputmode="email">
+        <button class="btn sec" id="forgotSend" type="submit">
+          <span class="btn-label">שלחו לי קישור</span>
+          <span class="sb-spinner hide" id="forgotSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
         </button>
-        <button class="btn-ghost" id="changeEmail" type="button" style="margin-top:10px">שנו כתובת אימייל</button>
+        <button class="btn-ghost forgot-link" type="button" data-login-back>חזרה לכניסה</button>
+      </form>
+      <div id="linkPanel" class="hide" style="text-align:center">
+        <p id="linkText" style="margin:0 0 14px;font-size:15px"></p>
+        <button class="btn sec" id="linkSend" type="button">
+          <span class="btn-label" id="linkLabel">שלחו לי קישור חדש</span>
+          <span class="sb-spinner hide" id="linkSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+        </button>
+        <button class="btn-ghost forgot-link" type="button" data-login-back>חזרה לכניסה</button>
       </div>
       <p class="muted" id="loginMsg" style="text-align:center;margin-top:14px"></p>
     </div>
+  </div>
+
+  <!-- NEW PASSWORD — shown after a "שכחתי סיסמה" link (app.js
+       showNewPasswordView). The link already logged the owner in; saving
+       the new password enters the dashboard. -->
+  <div class="screen hide" id="newPasswordView">
+    <div class="center" style="margin-top:8px">
+      <h1 style="font-size:24px">בחרו סיסמה חדשה</h1>
+      <p class="muted">מעכשיו תיכנסו איתה לחשבון</p>
+    </div>
+    <form id="newPasswordForm" novalidate style="margin-top:28px">
+      <input type="email" id="newPasswordUser" autocomplete="username" hidden>
+      <div class="pw-wrap">
+        <input class="input ltr" id="newPassword" type="password" placeholder="סיסמה חדשה"
+          autocomplete="new-password">
+        <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+      </div>
+      <p class="muted pw-hint">לפחות 8 תווים, כולל אות גדולה ואות קטנה באנגלית ומספר</p>
+      <button class="btn sec" id="newPasswordSave" type="submit">
+        <span class="btn-label">שמרו והיכנסו</span>
+        <span class="sb-spinner hide" id="newPasswordSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+      </button>
+      <p class="muted" id="newPasswordMsg" style="text-align:center;margin-top:14px"></p>
+    </form>
   </div>
 
   <!-- DASHBOARD -->
@@ -3235,6 +3371,41 @@
           </div>
         </div>
       </div>
+
+      <!-- Password change. Same collapsible pattern as the sections above.
+           The current password is checked (signInWithPassword) before the
+           new one is saved — see savePassword in app.js. -->
+      <div class="hours-section">
+        <button type="button" class="hours-toggle" id="passwordToggle" aria-expanded="false" aria-controls="passwordBody">
+          <h2 style="margin:0"><span class="h-ico">🔒</span>סיסמה</h2>
+          <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
+        <div class="hours-body hide" id="passwordBody">
+          <form id="passwordForm" novalidate style="margin-top:10px">
+            <input type="email" id="passwordUser" autocomplete="username" hidden>
+            <div class="frow">
+              <label class="flabel" for="currentPassword">סיסמה נוכחית</label>
+              <div class="pw-wrap">
+                <input class="input ltr" id="currentPassword" type="password" autocomplete="current-password">
+                <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+              </div>
+            </div>
+            <div class="frow">
+              <label class="flabel" for="nextPassword">סיסמה חדשה</label>
+              <div class="pw-wrap">
+                <input class="input ltr" id="nextPassword" type="password" autocomplete="new-password">
+                <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+              </div>
+              <p class="muted pw-hint">לפחות 8 תווים, כולל אות גדולה ואות קטנה באנגלית ומספר</p>
+            </div>
+            <button class="btn" id="savePassword" type="submit">שמור סיסמה</button>
+            <p class="muted" id="passwordMsg" style="text-align:center;margin-top:8px;font-size:12.5px"></p>
+          </form>
+        </div>
+      </div>
     </div>
 
     <!-- bottom nav -->
@@ -3247,7 +3418,7 @@
   </div>
 
   <div class="screen center hide" id="loading" style="justify-content:center">
-    <div class="muted">טוען…</div>
+    <div class="muted">טוען<span class="wait-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></div>
   </div>
 
   <!-- Direction-edit preview modal. Shown when the chat proposes an edit
@@ -3335,7 +3506,8 @@
       </div>
       <div class="v7-mode-err hide" id="v7ModeErr">משהו השתבש. נסו שוב.</div>
       <div class="v7-mode-building hide" id="v7ModeBuilding" style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">
-        <span class="sb-spinner" style="width:16px;height:16px;vertical-align:-3px;margin-inline-end:8px"></span>מכינים את הכיוונים המוזיקליים שלכם…
+        <span class="sb-spinner" style="width:16px;height:16px;vertical-align:-3px;margin-inline-end:8px"></span>מכינים את הכיוונים המוזיקליים שלכם<span class="wait-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+        <div style="margin-top:6px">עלול לארוך עד דקה וחצי, נא לא לסגור את החלון<span class="wait-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></div>
       </div>
     </div>
   </div>
@@ -3373,7 +3545,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=24092026f"></script>
+  <script type="module" src="/v7/account/app.js?v=28092026f"></script>
 </body>
 
 </html>

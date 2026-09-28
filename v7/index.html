@@ -319,10 +319,103 @@
       box-shadow: 0 0 0 4px rgba(240, 167, 63, .12);
     }
 
+    /* Chrome paints autofilled fields (saved email / password) light blue with
+       dark text. An inset shadow is the only way to cover its background. */
+    .input-text:-webkit-autofill,
+    .input-text:-webkit-autofill:hover {
+      -webkit-text-fill-color: var(--text);
+      caret-color: var(--text);
+      box-shadow: 0 0 0 1000px #0d1822 inset;
+    }
+
+    .input-text:-webkit-autofill:focus {
+      -webkit-text-fill-color: var(--text);
+      box-shadow: 0 0 0 1000px #0e1a25 inset, 0 0 0 4px rgba(240, 167, 63, .12);
+    }
+
     .input-text.err,
     .input-textarea.err {
       border-color: #e07a6a;
       box-shadow: 0 0 0 3px rgba(224, 122, 106, .16);
+    }
+
+    /* Password field + show/hide toggle (registration screen, v7/result.js).
+       The value is LTR; the placeholder stays right-aligned Hebrew. */
+    .pw-wrap {
+      position: relative;
+    }
+
+    .pw-wrap .input-text {
+      direction: ltr;
+      text-align: left;
+      padding-right: 46px;
+    }
+
+    .pw-wrap .input-text:placeholder-shown:not(:focus) {
+      direction: rtl;
+      text-align: right;
+    }
+
+    /* Eye icon: open eye while the password is hidden, crossed-out eye
+       while it's shown (.showing). */
+    .pw-toggle {
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: flex;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 6px;
+    }
+
+    .pw-toggle svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .pw-toggle .eye-off,
+    .pw-toggle.showing .eye {
+      display: none;
+    }
+
+    .pw-toggle.showing .eye-off {
+      display: block;
+    }
+
+    .pw-toggle:hover {
+      color: var(--text);
+    }
+
+    .pw-hint {
+      margin: 6px 2px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    /* "This email is already registered" box under the registration form. */
+    .reg-exists {
+      margin-top: 12px;
+      padding: 14px;
+      border-radius: 14px;
+      border: 1px solid var(--border-2);
+      background: rgba(255, 255, 255, .03);
+      text-align: center;
+      animation: fadeUp .3s var(--ease);
+    }
+
+    .reg-exists p {
+      margin: 0 0 10px;
+      font-size: 14.5px;
+    }
+
+    .reg-exists a.btn {
+      display: block;
+      text-align: center;
+      text-decoration: none;
+      margin-top: 0;
     }
 
     .field-hint {
@@ -2737,7 +2830,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/app.js?v=28092026e"></script>
+  <script type="module" src="/v7/app.js?v=28092026i"></script>
 </body>
 
 </html>

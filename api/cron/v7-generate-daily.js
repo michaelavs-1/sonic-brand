@@ -17,7 +17,9 @@
          option2 → buildOption2TimelineBatch (2 mixes/day whose energy follows
                    the owner's timeline, placed by track duration —
                    api/v7/account/_option2-builder.js; starts at max(now,
-                   opening), runs to closing + 30 min)
+                   opening), runs to closing + 30 min; each level plays
+                   today's direction from its level-direction library,
+                   which rotates daily)
        Both reuse the v6 builder primitives (Spotify create/add + ledger +
        history + business_playlists INSERT, with direction_id:null for the FK).
 

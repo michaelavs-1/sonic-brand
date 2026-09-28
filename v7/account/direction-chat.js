@@ -13,6 +13,8 @@
 // transcript + directions the first time the profile tab is opened, so
 // nothing hits the network until the user switches to the Profile tab.
 
+import { WAIT_DOTS_HTML, waitNodes } from '../wait-dots.js?v=28092026a';
+
 const $ = (id) => document.getElementById(id);
 
 const SPOTIFY_ART_FALLBACK = '🎵';
@@ -479,7 +481,7 @@ function askRemoveOptions(directionId, messageId) {
     spinnerSpan.className = 'sb-spinner';
     spinnerSpan.style.cssText = 'width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px';
     bubble.append(spinnerSpan);
-    bubble.append(document.createTextNode(
+    bubble.append(...waitNodes(
       expireLive ? 'מסירים את הכיוון ומכבים את הפלייליסט…' : 'מסירים את הכיוון…',
     ));
     runApplyWithSpinnerBubble({
@@ -717,7 +719,7 @@ function closePreviewModal() {
 
 function showLoading() {
   $('dpBody').innerHTML =
-    '<div class="dp-loading"><span class="sb-spinner"></span>בונים דוגמה…</div>';
+    '<div class="dp-loading"><span class="sb-spinner"></span>בונים דוגמה' + WAIT_DOTS_HTML + '</div>';
   $('dpActions').replaceChildren();
 }
 
@@ -1041,7 +1043,7 @@ async function renderCard(spotifyId, meta, mergedSpec) {
 
   swapBtn.addEventListener('click', async () => {
     swapBtn.disabled = true;
-    swapBtn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים…';
+    swapBtn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;margin-inline-end:6px;vertical-align:-2px"></span>מחליפים' + WAIT_DOTS_HTML;
     // Tear down the current embed so a fresh createController fires cleanly
     // — otherwise Chromium keeps the old iframe around and the new play
     // button ends up controlling the previous track.
@@ -1181,7 +1183,7 @@ function askEditPlaylistOption(directionId, updates, messageId) {
     spinnerSpan.className = 'sb-spinner';
     spinnerSpan.style.cssText = 'width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px';
     bubble.append(spinnerSpan);
-    bubble.append(document.createTextNode(
+    bubble.append(...waitNodes(
       expireLive ? 'מעדכנים את הכיוון ובונים פלייליסט חדש…' : 'מעדכנים את הכיוון…',
     ));
     runApplyWithSpinnerBubble({
@@ -1213,7 +1215,7 @@ async function runApplyWithSpinnerBubble({ body, inProgressLabel, successLabel, 
     bubble = document.createElement('div');
     bubble.className = 'chat-bubble assistant';
     bubble.innerHTML =
-      `<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>${escHtmlInline(inProgressLabel || '…')}`;
+      `<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>${escHtmlInline(inProgressLabel || '…').replace(/…$/, '') + WAIT_DOTS_HTML}`;
     if (box) { box.append(bubble); scrollTranscriptToBottom(); }
   }
 

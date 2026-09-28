@@ -22,23 +22,55 @@ if (new URLSearchParams(location.search).has('reset')) {
   Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
 }
 
+// Emailed links land here with their result in the URL hash. Read it BEFORE
+// createClient below — supabase-js consumes the tokens and clears the hash.
+//   #...type=recovery...   a "שכחתי סיסמה" link → ask for a new password.
+//                          Remembered in sessionStorage until it's saved, so a
+//                          reload of this tab still asks.
+//   #error_code=...        an expired / already-used link.
+// ?email= pre-fills the login form (the onboarding's "already registered"
+// screen links here with it).
+const RECOVERY_KEY = 'rubin-v7-set-password';
+const LINK_ERROR = (() => {
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const query = new URLSearchParams(location.search);
+  if (hash.get('type') === 'recovery') {
+    try { sessionStorage.setItem(RECOVERY_KEY, '1'); } catch { /* private mode */ }
+  }
+  const err = hash.get('error_code') || hash.get('error') || query.get('error_code');
+  if (err) history.replaceState(null, '', location.pathname);
+  return err || null;
+})();
+const PREFILL_EMAIL = new URLSearchParams(location.search).get('email') || '';
+
+function needsNewPassword() {
+  try { return sessionStorage.getItem(RECOVERY_KEY) === '1'; } catch { return false; }
+}
+function clearNeedsNewPassword() {
+  try { sessionStorage.removeItem(RECOVERY_KEY); } catch { /* ignore */ }
+}
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeTargetForToday, ilPartsFromDate } from '../generation/playlist-length.js?v=24092026a';
+import { computeTargetForToday, ilPartsFromDate, datedLabel } from '../generation/playlist-length.js?v=28092026a';
 import {
   reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf, levelOf, fmtHM,
 } from '../generation/energy-timeline.js?v=24092026a';
 import { TimelineEditor, energyColor } from './energy-timeline-editor.js?v=24092026a';
 import { mountHoursEditor } from '../hours-selector.js?v=23092026a';
 import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=23092026a';
-import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=23092026a';
-import { generateEnergyDirections } from '../generation/energy-directions.js?v=23092026a';
+import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=28092026a';
+import { generateEnergyDirections } from '../generation/energy-directions.js?v=28092026b';
+import { generateLevelDirections } from '../generation/level-directions.js?v=28092026a';
+import { pickLevelDirections, levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
+import { setWaitText, WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
+import { PASSWORD_RULES_TEXT, passwordProblem } from '/shared/password-rules.js?v=28092026a';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
 });
 
 const $ = (id) => document.getElementById(id);
-const show = (id) => { ['loginView', 'dashView', 'loading'].forEach((v) => $(v).classList.add('hide')); $(id).classList.remove('hide'); };
+const show = (id) => { ['loginView', 'newPasswordView', 'dashView', 'loading'].forEach((v) => $(v).classList.add('hide')); $(id).classList.remove('hide'); };
 
 // HTML-escape for the (rare) sites where user- or AI-provided strings need
 // to flow into innerHTML because the surrounding markup is complex enough
@@ -178,7 +210,15 @@ function sortPlaylistsByClicksDesc(playlists) {
 (async function boot() {
   show('loading');
   const { data: { session } } = await sb.auth.getSession();
-  if (!session) { show('loginView'); return; }
+  if (!session) {
+    clearNeedsNewPassword();
+    showLogin();
+    if (LINK_ERROR) {
+      setLoginMsg('הקישור פג תוקף או שכבר השתמשו בו. היכנסו עם הסיסמה, או לחצו "שכחתי סיסמה" לקישור חדש.', 'err');
+    }
+    return;
+  }
+  if (needsNewPassword()) { showNewPasswordView(session.user?.email); return; }
   await enterDashboard();
 })();
 
@@ -187,107 +227,239 @@ function sortPlaylistsByClicksDesc(playlists) {
 sb.auth.onAuthStateChange((event, session) => {
   if (event === 'SIGNED_OUT') {
     if (loggingOut) return; // logout button handles its own navigation
-    show('loginView');
+    showLogin();
+    return;
+  }
+  if (event === 'PASSWORD_RECOVERY' && session) {
+    try { sessionStorage.setItem(RECOVERY_KEY, '1'); } catch { /* ignore */ }
+    setTimeout(() => showNewPasswordView(session.user?.email), 0);
     return;
   }
   if (event === 'SIGNED_IN' && session) {
-    setTimeout(() => { if (!business && !entering) enterDashboard(); }, 0);
+    setTimeout(() => { if (!business && !entering && !needsNewPassword()) enterDashboard(); }, 0);
   }
 });
 
-// ---------- login (magic link) ----------
-// Supabase enforces a per-address rate limit (~60s) between OTP sends. We
-// mirror that on the client with a countdown so users can't just spam the
-// button — and once they've sent one, the UI switches to a "resend / change
-// address" panel instead of leaving them staring at the same form.
-const RESEND_COOLDOWN_SEC = 60;
-let resendTimerId = null;
-let pendingEmail = '';
+// ---------- login (email + password) ----------
+// Three panels inside #loginView (showLoginPanel):
+//   login   email + password → signInWithPassword
+//   forgot  "שכחתי סיסמה" → resetPasswordForEmail → a link that lands back
+//           here and asks for a new password (#newPasswordView)
+//   link    "we sent a link" + resend. Also used when the account was never
+//           verified: password login is refused until the email link is
+//           clicked, so the owner can ask for a new one (signInWithOtp with
+//           shouldCreateUser:false — the login page never creates accounts).
+// Supabase sends at most one email per address per ~60s, so resending waits
+// out a countdown.
+const LINK_COOLDOWN_SEC = 60;
+let linkTimerId = null;
+let linkMode = 'reset';   // 'reset' | 'verify'
+let linkEmail = '';
 
-async function sendMagicLink(email, { isResend = false } = {}) {
-  const btn = isResend ? $('resendLink') : $('sendLink');
-  const spinner = isResend ? $('resendSpinner') : $('sendSpinner');
-  btn.disabled = true;
-  spinner?.classList.remove('hide');
-  $('loginMsg').textContent = '';
-  const { error } = await sb.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.origin + '/v7/account' },
-  });
-  spinner?.classList.add('hide');
-  if (error) {
-    btn.disabled = false;
-    $('loginMsg').textContent = 'שגיאה: ' + error.message;
-    return false;
+function showLogin() {
+  show('loginView');
+  showLoginPanel('login');
+}
+
+function setLoginMsg(text, kind) {
+  const msg = $('loginMsg');
+  msg.style.color = kind === 'err' ? '#ff9b8a' : '';
+  msg.textContent = text || '';
+}
+
+function showLoginPanel(panel) {
+  if (linkTimerId) { clearInterval(linkTimerId); linkTimerId = null; }
+  $('loginForm').classList.toggle('hide', panel !== 'login');
+  $('forgotForm').classList.toggle('hide', panel !== 'forgot');
+  $('linkPanel').classList.toggle('hide', panel !== 'link');
+  $('loginSub').textContent = panel === 'forgot'
+    ? 'הזינו את האימייל ונשלח לכם קישור לבחירת סיסמה חדשה'
+    : 'היכנסו עם האימייל והסיסמה שלכם';
+  $('loginBtn').disabled = false;
+  $('forgotSend').disabled = false;
+  setLoginMsg('');
+}
+
+function isRateLimited(error) {
+  return error?.status === 429 || /rate limit|security purposes/i.test(error?.message || '');
+}
+
+function emailSpan(email) {
+  const span = document.createElement('span');
+  span.dir = 'ltr';
+  span.style.cssText = 'unicode-bidi:isolate;font-weight:700;color:var(--text)';
+  span.textContent = email;
+  return span;
+}
+
+// sent=false: the "not verified yet" prompt (button enabled, nothing sent).
+// sent=true:  "we sent a link" + resend countdown.
+function showLinkPanel(mode, email, { sent }) {
+  linkMode = mode;
+  linkEmail = email;
+  showLoginPanel('link');
+  const text = $('linkText');
+  if (sent) {
+    text.replaceChildren('שלחנו קישור ל־', emailSpan(email), mode === 'reset'
+      ? ' ✉️ לחצו עליו כדי לבחור סיסמה חדשה.'
+      : ' ✉️ לחצו עליו כדי לאשר את האימייל ולהיכנס.');
+    startLinkCooldown();
+  } else {
+    text.replaceChildren('עוד לא אישרתם את האימייל ', emailSpan(email),
+      '. לחצו על הקישור ששלחנו לכם בהרשמה, או בקשו קישור חדש.');
+    $('linkSend').disabled = false;
+    $('linkLabel').textContent = 'שלחו לי קישור חדש';
   }
-  pendingEmail = email;
-  showResendPanel(email);
-  startResendCooldown();
-  if (isResend) flashResendConfirm();
-  return true;
 }
 
-function showResendPanel(email) {
-  $('sentToEmail').textContent = email;
-  $('emailForm').classList.add('hide');
-  $('resendRow').classList.remove('hide');
-  $('loginMsg').textContent = '';
-}
-
-function showEmailForm() {
-  if (resendTimerId) { clearInterval(resendTimerId); resendTimerId = null; }
-  $('resendRow').classList.add('hide');
-  $('emailForm').classList.remove('hide');
-  $('sendLink').disabled = false;
-  $('loginMsg').textContent = '';
-  $('email').focus();
-}
-
-function startResendCooldown() {
-  const btn = $('resendLink');
-  const baseLabel = 'שלחו לי קישור חדש';
-  let left = RESEND_COOLDOWN_SEC;
+function startLinkCooldown() {
+  const btn = $('linkSend');
+  const label = $('linkLabel');
+  const base = 'שלחו שוב';
+  let left = LINK_COOLDOWN_SEC;
   const tick = () => {
     if (left <= 0) {
+      clearInterval(linkTimerId);
+      linkTimerId = null;
       btn.disabled = false;
-      btn.textContent = baseLabel;
-      clearInterval(resendTimerId);
-      resendTimerId = null;
+      label.textContent = base;
       return;
     }
     btn.disabled = true;
-    btn.textContent = `${baseLabel} (${left})`;
+    label.textContent = `${base} (${left})`;
     left--;
   };
-  if (resendTimerId) clearInterval(resendTimerId);
+  if (linkTimerId) clearInterval(linkTimerId);
   tick();
-  resendTimerId = setInterval(tick, 1000);
+  linkTimerId = setInterval(tick, 1000);
 }
 
-function flashResendConfirm() {
-  const msg = $('loginMsg');
-  msg.textContent = 'נשלח שוב ✉️';
-  setTimeout(() => { if (msg.textContent === 'נשלח שוב ✉️') msg.textContent = ''; }, 4000);
+async function requestLink(mode, email, btn, spinner) {
+  btn.disabled = true;
+  spinner.classList.remove('hide');
+  setLoginMsg('');
+  const redirectTo = window.location.origin + '/v7/account';
+  const { error } = mode === 'reset'
+    ? await sb.auth.resetPasswordForEmail(email, { redirectTo })
+    : await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: redirectTo } });
+  spinner.classList.add('hide');
+  if (error && !isRateLimited(error)) {
+    btn.disabled = false;
+    setLoginMsg('השליחה נכשלה — נסו שוב עוד רגע', 'err');
+    return;
+  }
+  showLinkPanel(mode, email, { sent: true });
+  // Rate-limited = a link already went out within the last minute.
+  if (error) setLoginMsg('שלחנו קישור לפני רגע — אפשר לבקש שוב בעוד דקה');
 }
 
-// Bind on the form so Enter inside the email input submits (native <form>
-// behavior) — not just mouse clicks on the button. Prevent default to avoid a
-// page reload; sendMagicLink handles the rest.
-$('emailForm')?.addEventListener('submit', async (e) => {
+$('loginForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const email = $('email').value.trim();
-  if (!email) { $('loginMsg').textContent = 'הכניסו אימייל'; return; }
-  await sendMagicLink(email);
+  const email = $('email').value.trim().toLowerCase();
+  const password = $('password').value;
+  if (!email) { setLoginMsg('הכניסו אימייל', 'err'); $('email').focus(); return; }
+  if (!password) { setLoginMsg('הכניסו סיסמה', 'err'); $('password').focus(); return; }
+  const btn = $('loginBtn');
+  btn.disabled = true;
+  $('loginSpinner').classList.remove('hide');
+  setLoginMsg('');
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  $('loginSpinner').classList.add('hide');
+  btn.disabled = false;
+  if (!error) { await enterDashboard(); return; }
+  if (error.code === 'email_not_confirmed' || /not confirmed/i.test(error.message || '')) {
+    showLinkPanel('verify', email, { sent: false });
+    return;
+  }
+  if (isRateLimited(error)) { setLoginMsg('יותר מדי ניסיונות — נסו שוב בעוד כמה דקות', 'err'); return; }
+  // Same message whether the email exists or not.
+  setLoginMsg('האימייל או הסיסמה שגויים', 'err');
 });
 
-$('resendLink')?.addEventListener('click', async () => {
-  if (!pendingEmail) return;
-  await sendMagicLink(pendingEmail, { isResend: true });
+$('forgotLink')?.addEventListener('click', () => {
+  $('forgotEmail').value = $('email').value.trim();
+  showLoginPanel('forgot');
+  $('forgotEmail').focus();
 });
 
-$('changeEmail')?.addEventListener('click', () => {
-  pendingEmail = '';
-  showEmailForm();
+$('forgotForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = $('forgotEmail').value.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setLoginMsg('הכניסו כתובת אימייל תקינה', 'err'); return; }
+  await requestLink('reset', email, $('forgotSend'), $('forgotSpinner'));
+});
+
+$('linkSend')?.addEventListener('click', async () => {
+  if (!linkEmail) return;
+  await requestLink(linkMode, linkEmail, $('linkSend'), $('linkSpinner'));
+});
+
+document.querySelectorAll('[data-login-back]').forEach((b) => b.addEventListener('click', () => {
+  showLoginPanel('login');
+  $('email').focus();
+}));
+
+if (PREFILL_EMAIL) $('email').value = PREFILL_EMAIL;
+
+// Rules hint under every new-password field (text lives in shared/password-rules.js).
+document.querySelectorAll('.pw-hint').forEach((p) => { p.textContent = PASSWORD_RULES_TEXT; });
+
+// Eye icon on every password field (login, new password, Profile).
+document.querySelectorAll('.pw-toggle').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    const input = btn.parentElement.querySelector('input');
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.classList.toggle('showing', show);
+    btn.setAttribute('aria-label', show ? 'הסתרת הסיסמה' : 'הצגת הסיסמה');
+  });
+});
+
+// Supabase's reasons for refusing a new password, in Hebrew.
+function passwordErrorText(error) {
+  // Length / characters are checked before saving (shared/password-rules.js),
+  // so a refusal here is normally the leaked-password check.
+  if (error?.code === 'weak_password') {
+    return (error.reasons || []).includes('pwned')
+      ? 'הסיסמה הזו הופיעה בדליפת מידע ולכן לא בטוחה — בחרו סיסמה אחרת'
+      : 'הסיסמה לא עומדת בדרישות — בחרו סיסמה אחרת';
+  }
+  if (error?.code === 'same_password') return 'זו הסיסמה הנוכחית — בחרו סיסמה אחרת';
+  return 'שגיאה בשמירה — נסו שוב';
+}
+
+// ---------- new password (after a "שכחתי סיסמה" link) ----------
+function showNewPasswordView(email) {
+  $('newPasswordUser').value = email || '';
+  $('newPasswordMsg').textContent = '';
+  show('newPasswordView');
+  $('newPassword').focus();
+}
+
+$('newPasswordForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const msg = $('newPasswordMsg');
+  const password = $('newPassword').value;
+  msg.style.color = '#ff9b8a';
+  const problem = passwordProblem(password);
+  if (problem) {
+    msg.textContent = problem;
+    return;
+  }
+  const btn = $('newPasswordSave');
+  btn.disabled = true;
+  $('newPasswordSpinner').classList.remove('hide');
+  msg.textContent = '';
+  const { error } = await sb.auth.updateUser({ password });
+  $('newPasswordSpinner').classList.add('hide');
+  btn.disabled = false;
+  // Typing the password they already had is fine — they're in.
+  if (error && error.code !== 'same_password') {
+    msg.textContent = passwordErrorText(error);
+    return;
+  }
+  clearNeedsNewPassword();
+  await enterDashboard();
 });
 
 // Logout: swallow the SIGNED_OUT event so we don't briefly flash the loginView
@@ -297,6 +469,7 @@ $('changeEmail')?.addEventListener('click', () => {
 let loggingOut = false;
 $('logout')?.addEventListener('click', async () => {
   loggingOut = true;
+  clearNeedsNewPassword();
   try { await sb.auth.signOut(); } catch { /* proceed regardless */ }
   window.location.replace('/v7?intro=1');
 });
@@ -313,12 +486,21 @@ async function enterDashboard() {
 async function enterDashboardInner() {
   show('loading');
   const { data: { user: u } } = await sb.auth.getUser();
-  if (!u) { show('loginView'); return; }
+  if (!u) { showLogin(); return; }
   user = u;
   meta = (u.user_metadata && u.user_metadata.sonic) || {};
 
   businesses = await loadBusinesses();
-  if (!businesses.length) { show('loginView'); return; }
+  if (!businesses.length) {
+    // A login with no business behind it — sign out, or /v7 would keep
+    // redirecting here on the saved session.
+    loggingOut = true;
+    try { await sb.auth.signOut(); } catch { /* ignore */ }
+    loggingOut = false;
+    showLogin();
+    setLoginMsg('לא מצאנו עסק שמחובר לחשבון הזה.', 'err');
+    return;
+  }
   const wanted = businesses.find((b) => b.id === meta.currentBizId);
   business = wanted || businesses[0];
   if (business.id !== meta.currentBizId) {
@@ -370,13 +552,15 @@ const DEBUG_TASTE_LOG = true;
 async function logTasteForTesting() {
   if (!DEBUG_TASTE_LOG || !business) return;
   try {
-    const [tpRes, setRes, dirRes] = await Promise.all([
+    const [tpRes, setRes, dirRes, lvlRes] = await Promise.all([
       sb.from('business_taste_profiles')
         .select('energy_levels_total,approved_genres,conditional_genres,excluded_genres,instrumentalness_preference,popularity_preference,reasoning_en')
         .eq('business_id', business.id).maybeSingle(),
       sb.from('business_v7_settings').select('delivery_mode,timeline').eq('business_id', business.id).maybeSingle(),
       sb.from('business_v7_directions').select('energy_tier,rank,title_en,genres')
         .eq('business_id', business.id).eq('active', true).order('energy_tier').order('rank'),
+      sb.from('business_v7_level_directions').select('id,energy_level,rank,title_en,genres,profile_key')
+        .eq('business_id', business.id).eq('active', true).order('energy_level').order('rank'),
     ]);
     const tp = tpRes.data;
     const mode = setRes.data?.delivery_mode || null;
@@ -419,6 +603,20 @@ async function logTasteForTesting() {
         console.log(`  ${groupDaysLabel(g.days)} ${g.open}–${g.close}: ` + g.points.map((p) => `${fmtHM(p.m)} → ${p.e} (L${levelOf(p.e, N)})`).join(' · '));
       }
     }
+    const lvl = lvlRes.data || [];
+    if (lvl.length) {
+      const fits = tp && lvl.every((d) => d.profile_key === levelProfileKey(tp));
+      console.log(`Option 2 level directions (${lvl.length}; ${fits ? 'built from the current taste profile' : 'built from an OLDER taste profile — regenerated on the next switch to Option 2'}). Each day every level plays one of its directions per mix, then moves on to the next:`);
+      console.table(lvl.map((d) => ({ level: `L${d.energy_level}`, rank: d.rank, title: d.title_en, genres: (d.genres || []).join(', ') })));
+      if (bmeta().hours) {
+        const lib = new Map();
+        for (const d of lvl) (lib.get(d.energy_level) || lib.set(d.energy_level, []).get(d.energy_level)).push(d);
+        const isoDate = businessWindowAt(bmeta().hours, new Date()).isoDate;
+        const picks = pickLevelDirections(lib, isoDate);
+        console.log(`Today's picks (${isoDate}):`);
+        picks.forEach((m, i) => console.log(`  Daily Mix #${i + 1}: ` + [...m].sort((a, b) => a[0] - b[0]).map(([L, d]) => `L${L} ${d.title_en}`).join(' · ')));
+      }
+    }
 
     const today = (bmeta().playlists || []).filter((p) => p && !p.eventId && playlistIsLive(p));
     if (today.length) {
@@ -437,6 +635,11 @@ async function logTasteForTesting() {
           else runs.push({ from: fmtHM(start), level: t.levels[i], genre: t.run_genres[i], tracks: 1 });
         });
         console.groupCollapsed(`  ${p.label} — ${p.trackCount} tracks, ${fmtHM(t.window[0])}–${fmtHM(t.window[1])}, ${runs.length} genre runs`);
+        if (t.directions) {
+          console.log('  Directions per level: ' + Object.entries(t.directions).map(([L, d]) => `L${L} ${d.title_en} [${d.genres.join(', ')}]`).join(' · '));
+        } else {
+          console.log('  Every genre of each level (no level-direction library at build time).');
+        }
         console.table(runs.map((r) => ({ from: r.from, level: `L${r.level}`, genre: r.genre, tracks: r.tracks })));
         console.groupEnd();
       }
@@ -482,6 +685,20 @@ async function checkV7ModeGate() {
       state.energyBuildFailed = !count;
     } catch (e) {
       console.warn('v7 energy-directions check failed:', e?.message || e);
+    }
+  }
+  if (mode === 'option2') {
+    // Option 2 still builds without its level directions (every genre of the
+    // level), but flag a missing library so the Profile tab offers a retry.
+    // A read error (e.g. the table isn't there yet) leaves the flag off.
+    try {
+      const { count, error } = await sb.from('business_v7_level_directions')
+        .select('id', { count: 'exact', head: true })
+        .eq('business_id', business.id)
+        .eq('active', true);
+      if (!error) state.levelBuildFailed = !count;
+    } catch (e) {
+      console.warn('v7 level-directions check failed:', e?.message || e);
     }
   }
   if (mode) return false;
@@ -536,7 +753,11 @@ async function checkV7ModeGate() {
     };
     // Option 2 → the energy-timeline modal first (stacked above the gate).
     // Saving it IS choosing Option 2 (mode + timeline in one POST); "חזרה"
-    // returns to the gate to choose again.
+    // returns to the gate to choose again. Then the per-level directions are
+    // prepared (a new account always generates them) under the gate's
+    // "מכינים את הכיוונים המוזיקליים…" line. A failed build doesn't hold the
+    // owner here: Option 2 still builds without it (every genre of the
+    // level), and the Profile tab offers the retry.
     const pickOption2 = async () => {
       if (busy) return;
       busy = true;
@@ -550,8 +771,13 @@ async function checkV7ModeGate() {
           return {};
         },
       });
+      if (!r.saved) { busy = false; return; }
+      opt1.disabled = true;
+      opt2.disabled = true;
+      const { ok } = await ensureLevelDirections({ onGenerate: () => building?.classList.remove('hide') });
+      building?.classList.add('hide');
+      state.levelBuildFailed = !ok;
       busy = false;
-      if (!r.saved) return;
       gate.classList.add('hide');
       resolve();
     };
@@ -729,7 +955,7 @@ function openTimelineModal({ context, onSave }) {
       const timeline = { version: 2, groups };
       saveBtn.disabled = true;
       cancelBtn.disabled = true;
-      saveBtn.textContent = 'שומרים…';
+      setWaitText(saveBtn, 'שומרים…');
       errEl.classList.add('hide');
       let result;
       try {
@@ -794,6 +1020,11 @@ async function setDeliveryMode(mode, timeline) {
 // business_v7_directions rows. BEST-EFFORT: every failure is logged, never
 // thrown — the delivery-mode POST already succeeded, and re-picking Option 1
 // retries. Returns true only on a successful persist.
+// Shown under "מכינים את הכיוונים המוזיקליים…" while buildEnergyDirections
+// runs (Profile tab; the first-login gate has the same line in index.html).
+// Large taste profiles take up to ~70s, and closing the tab loses the build.
+const ENERGY_BUILD_WAIT_NOTE = 'עלול לארוך עד דקה וחצי, נא לא לסגור את החלון...';
+
 async function buildEnergyDirections() {
   try {
     const { data: tp } = await sb.from('business_taste_profiles')
@@ -833,6 +1064,71 @@ async function buildEnergyDirections() {
   } catch (e) {
     console.warn('buildEnergyDirections failed:', e?.message || e);
     return false;
+  }
+}
+
+// Option-2 level directions: a library of directions per energy level (each
+// day every level plays one direction per mix — v7/generation/level-
+// directions.js, rotation in timeline-assembler.js). Kept across type
+// switches: when the stored library was built from the same taste profile
+// (same genres at the same levels — levelProfileKey), it's reused with no
+// Gemini call; otherwise it's generated in the browser (like Option 1's) and
+// POSTed to save-level-directions.js, which replaces the stored set.
+// onGenerate() fires just before a generation starts, so callers show the
+// "מכינים את הכיוונים המוזיקליים…" wait only when there's a wait.
+// BEST-EFFORT: never throws. → { ok, generated }
+async function ensureLevelDirections({ onGenerate } = {}) {
+  try {
+    const [{ data: tp }, stored] = await Promise.all([
+      sb.from('business_taste_profiles')
+        .select('approved_genres,energy_levels_total')
+        .eq('business_id', business.id)
+        .maybeSingle(),
+      sb.from('business_v7_level_directions')
+        .select('profile_key')
+        .eq('business_id', business.id)
+        .eq('active', true),
+    ]);
+    if (!tp?.approved_genres?.length) {
+      console.warn('ensureLevelDirections: no taste profile / approved genres — skipping');
+      return { ok: false, generated: false };
+    }
+    const key = levelProfileKey(tp);
+    const rows = stored?.error ? [] : (stored?.data || []);
+    if (rows.length && rows.every((r) => r.profile_key === key)) {
+      console.log(`ensureLevelDirections: reusing the ${rows.length} stored directions (taste profile unchanged)`);
+      return { ok: true, generated: false };
+    }
+
+    onGenerate?.();
+    const result = await generateLevelDirections({
+      tasteProfile: tp,
+      bizName: business.name || '',
+      bizDesc: business.business_description || '',
+      atmospheres: meta.onboarding?.atmospheres || [],
+      musicalEmphases: business.musical_emphases || '',
+      place: bmeta().place || null,
+      businessId: business.id,
+    });
+    if (result?.error || !Array.isArray(result?.directions) || !result.directions.length) {
+      console.warn('ensureLevelDirections: generation returned no directions', result?.error || '');
+      return { ok: false, generated: true };
+    }
+
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) { console.warn('ensureLevelDirections: no session'); return { ok: false, generated: true }; }
+    const r = await fetch('/api/v7/account/save-level-directions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ business_id: business.id, directions: result.directions }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) { console.warn('ensureLevelDirections: persist failed', data?.error || r.status); return { ok: false, generated: true }; }
+    console.log(`ensureLevelDirections: saved ${data.count} directions`);
+    return { ok: true, generated: true };
+  } catch (e) {
+    console.warn('ensureLevelDirections failed:', e?.message || e);
+    return { ok: false, generated: false };
   }
 }
 
@@ -987,6 +1283,11 @@ function renderProfileTab() {
   updateSaveHoursButton();
   renderDeliverySection();
 
+  $('passwordUser').value = user?.email || '';
+  $('currentPassword').value = '';
+  $('nextPassword').value = '';
+  $('passwordMsg').textContent = '';
+
   // Reset every collapsible section (hours + directions) to closed on
   // each tab open. The hours editor above stays mounted so its dirty-
   // tracking + save-state are ready the moment the owner expands. The
@@ -1004,6 +1305,10 @@ function renderProfileTab() {
 //   Option 1 → 2: the timeline modal is MANDATORY — the type only switches
 //                 when the owner saves a timeline; cancel keeps Option 1.
 //   Option 2 → 1: regenerates the energy-tiered directions (as before).
+//   → Option 2:   after the timeline is saved, prepares the per-level
+//                 directions (ensureLevelDirections — reused when the taste
+//                 profile hasn't changed since they were built, else ~1 min
+//                 of generation), then any "replace now" build.
 //   Either switch, and every timeline save, then asks whether to replace
 //   today's playlists now (only when today has a live set — see
 //   api/v7/account/_replace-status.js — and at most 2 times a day).
@@ -1023,7 +1328,7 @@ function renderDeliverySection() {
   const setMsg = (text, kind) => {
     if (!msg) return;
     msg.style.color = kind === 'err' ? '#ff9b8a' : kind === 'ok' ? 'var(--teal-soft)' : '';
-    msg.textContent = text;
+    setWaitText(msg, text);
   };
   const lock = (on) => {
     opt1.disabled = on;
@@ -1035,6 +1340,21 @@ function renderDeliverySection() {
   if (state.deliveryMode === 'option1' && state.energyBuildFailed) {
     setMsg('הכיוונים המוזיקליים עדיין לא הוכנו — לחצו על האפשרות הראשונה כדי לנסות שוב', 'err');
   }
+  if (state.deliveryMode === 'option2' && state.levelBuildFailed) {
+    setMsg('הכיוונים המוזיקליים עדיין לא הוכנו — לחצו על האפשרות השנייה כדי לנסות שוב', 'err');
+  }
+
+  // Option 2's per-level directions (see ensureLevelDirections). The wait
+  // message shows only when they're actually generated. → ok
+  const prepareLevelDirections = async (replaceNow) => {
+    const { ok } = await ensureLevelDirections({
+      onGenerate: () => setMsg((replaceNow
+        ? 'מכינים את הכיוונים המוזיקליים… מיד נבנה את הפלייליסטים החדשים של היום'
+        : 'מכינים את הכיוונים המוזיקליים…') + '\n' + ENERGY_BUILD_WAIT_NOTE),
+    });
+    state.levelBuildFailed = !ok;
+    return ok;
+  };
 
   const afterModal = (r) => {
     if (!r.saved) return;
@@ -1062,9 +1382,9 @@ function renderDeliverySection() {
       // Choosing Option 1 regenerates the energy-tiered directions (the
       // persist endpoint replace-existing DELETEs the old set first). Option 1
       // can't build without them, so a replacement waits for this.
-      setMsg(replaceNow
+      setMsg((replaceNow
         ? 'מכינים את הכיוונים המוזיקליים… מיד נבנה את הפלייליסטים החדשים של היום'
-        : 'מכינים את הכיוונים המוזיקליים…');
+        : 'מכינים את הכיוונים המוזיקליים…') + '\n' + ENERGY_BUILD_WAIT_NOTE);
       const ok = await buildEnergyDirections();
       state.energyBuildFailed = !ok;
       if (!ok) {
@@ -1086,7 +1406,19 @@ function renderDeliverySection() {
   };
 
   const chooseOption2 = async () => {
-    if (state.deliveryMode === 'option2') return;
+    // Re-clicking is a no-op — except after a failed level-directions build,
+    // where the click IS the retry (directions only; the timeline stays).
+    if (state.deliveryMode === 'option2') {
+      if (!state.levelBuildFailed) return;
+      lock(true);
+      try {
+        const ok = await prepareLevelDirections(false);
+        setMsg(ok ? 'הכיוונים המוזיקליים מוכנים ✓' : 'הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות השנייה', ok ? 'ok' : 'err');
+      } finally {
+        lock(false);
+      }
+      return;
+    }
     lock(true);
     setMsg('');
     try {
@@ -1100,7 +1432,18 @@ function renderDeliverySection() {
           return data;
         },
       });
-      if (r.saved) paint('option2');   // cancelled → still Option 1
+      if (!r.saved) return;            // cancelled → still Option 1
+      paint('option2');
+      // The level directions come before any "replace now" build, which
+      // plays from them. If they fail, the replacement still runs — Option 2
+      // builds without them (every genre of each level).
+      if (!await prepareLevelDirections(r.replaceNow)) {
+        setMsg(r.replaceNow
+          ? 'הכיוונים המוזיקליים לא הוכנו (לחצו שוב על האפשרות השנייה) — בונים בינתיים את הפלייליסטים של היום בדף הבית'
+          : 'הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות השנייה', 'err');
+        if (r.replaceNow) runReplaceToday();
+        return;
+      }
       afterModal(r);
     } finally {
       lock(false);
@@ -1186,7 +1529,7 @@ async function saveName() {
 
   btn.disabled = true;
   const origLabel = btn.textContent;
-  btn.textContent = 'שומרים…';
+  setWaitText(btn, 'שומרים…');
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
@@ -1217,6 +1560,49 @@ async function saveName() {
 
 $('saveName')?.addEventListener('click', saveName);
 $('cancelName')?.addEventListener('click', cancelName);
+
+// ---- password section ----
+// The current password is checked first (signInWithPassword on the same
+// account — it just refreshes the session), so an unlocked, logged-in device
+// can't be used to lock the owner out.
+async function savePassword(e) {
+  e.preventDefault();
+  const current = $('currentPassword').value;
+  const next = $('nextPassword').value;
+  const msg = $('passwordMsg');
+  const btn = $('savePassword');
+  const setMsg = (text, kind) => {
+    msg.style.color = kind === 'err' ? '#ff9b8a' : kind === 'ok' ? 'var(--teal-soft)' : '';
+    msg.textContent = text;
+  };
+  if (!current) { setMsg('הכניסו את הסיסמה הנוכחית', 'err'); return; }
+  const problem = passwordProblem(next);
+  if (problem) { setMsg(problem, 'err'); return; }
+
+  btn.disabled = true;
+  setWaitText(btn, 'שומרים…');
+  setMsg('');
+  try {
+    const { error: authErr } = await sb.auth.signInWithPassword({ email: user.email, password: current });
+    if (authErr) {
+      setMsg(isRateLimited(authErr) ? 'יותר מדי ניסיונות — נסו שוב בעוד כמה דקות' : 'הסיסמה הנוכחית שגויה', 'err');
+      return;
+    }
+    const { error } = await sb.auth.updateUser({ password: next });
+    if (error) { setMsg(passwordErrorText(error), 'err'); return; }
+    $('currentPassword').value = '';
+    $('nextPassword').value = '';
+    setMsg('הסיסמה עודכנה ✓', 'ok');
+  } catch (err) {
+    console.error('savePassword:', err);
+    setMsg('שגיאה בשמירה — נסו שוב', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'שמור סיסמה';
+  }
+}
+
+$('passwordForm')?.addEventListener('submit', savePassword);
 
 // ---- hours section ----
 function isHoursDirty() {
@@ -1258,7 +1644,7 @@ async function saveHours() {
 
   btn.disabled = true;
   const origLabel = btn.textContent;
-  btn.textContent = 'שומרים…';
+  setWaitText(btn, 'שומרים…');
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
@@ -1405,7 +1791,7 @@ function renderPlaylists() {
       row.innerHTML =
         `<div class="s-info">` +
         `<div class="s-title">🎵 פלייליסט</div>` +
-        `<div class="s-meta">בונים…<span class="pl-inline-spinner" aria-label="בונים"></span></div>` +
+        `<div class="s-meta">בונים${WAIT_DOTS_HTML}<span class="pl-inline-spinner" aria-label="בונים"></span></div>` +
         `</div>`;
       wrap.append(row);
       return;
@@ -1421,7 +1807,7 @@ function renderPlaylists() {
       row.className = 'slot slot-pending' + (s === 'failed' ? ' slot-failed' : '');
       const metaText = s === 'failed'
         ? 'לא הצליח — ננסה שוב בבנייה הבאה'
-        : 'בונים…';
+        : `בונים${WAIT_DOTS_HTML}`;
       const spinnerHtml = s === 'failed'
         ? ''
         : '<span class="pl-inline-spinner" aria-label="בונים"></span>';
@@ -1980,7 +2366,11 @@ function expectedDailySlots(mode) {
   const titles = mode === 'option1' ? ['אנרגיה גבוהה #1', 'אנרגיה גבוהה #2', 'אנרגיה רגועה #1', 'אנרגיה רגועה #2']
     : mode === 'option2' ? ['Daily Mix #1', 'Daily Mix #2']
     : null;
-  return titles ? titles.map((title, i) => ({ direction_id: `slot-${i}`, title })) : null;
+  if (!titles) return null;
+  // Dated like the rows the server builds ("Daily Mix #1 · 28.09.2026").
+  let isoDate = null;
+  try { isoDate = businessWindowAt(bmeta().hours, new Date()).isoDate; } catch { /* undated placeholder */ }
+  return titles.map((title, i) => ({ direction_id: `slot-${i}`, title: datedLabel(title, isoDate) }));
 }
 
 // replaceToday (Profile tab "החליפו עכשיו"): the server builds a new set that
@@ -2210,7 +2600,7 @@ function renderEvents() {
 async function createEventPlaylist(ev, btn) {
   const orig = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>בונים…';
+  btn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>בונים' + WAIT_DOTS_HTML;
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
@@ -2476,7 +2866,7 @@ async function finalizeAndSaveEvent(goBtn) {
   const { name_he: name, description_he: description } = chatState.proposed;
   goBtn.disabled = true;
   const origHtml = goBtn.innerHTML;
-  goBtn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>מכינים…';
+  goBtn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>מכינים' + WAIT_DOTS_HTML;
 
   try {
     const { data: { session } } = await sb.auth.getSession();

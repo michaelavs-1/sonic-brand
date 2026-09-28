@@ -1,0 +1,817 @@
+{
+  "playlist_id": "1n6KbH3Nm1cRyVEXxM3RW8",
+  "generated_at": "2026-09-28T13:19:16.636Z",
+  "total_tracks": 32,
+  "completed": 32,
+  "summary": {
+    "ok": 30,
+    "not_found": 0,
+    "terminal": 2
+  },
+  "results": [
+    {
+      "spotify_id": "2Gu7CKDGsmHx3MSRCRXWk4",
+      "name": "Vuelve / Kurşun Adres Sormaz Ki",
+      "artist": "Elif Sanchez, Kenan Doğulu",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dnVlbHZlLWt1cnVuLWFkcmVzLXNvcm1hei1raS1lbGlmLXNhbmNoZXota2VuYW4tZG91bHU=",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 165,
+          "duration": "4:38",
+          "popularity": 31,
+          "energy": 42,
+          "danceability": 62,
+          "happiness": 55,
+          "acousticness": 76,
+          "instrumentalness": 0,
+          "liveness": 20,
+          "speechiness": 21,
+          "loudness": "-10 dB"
+        },
+        "ms": 425466
+      }
+    },
+    {
+      "spotify_id": "6KYqVrYa6Ni3BimQedKdub",
+      "name": "Neyleyim",
+      "artist": "Gökçe Kılınçer",
+      "result": {
+        "kind": "terminal",
+        "reason": "200 error payload retries exhausted",
+        "status": 200,
+        "body": "{\"error\":\"Failed to pull track data\"}",
+        "ms": 1418588
+      }
+    },
+    {
+      "spotify_id": "0OE2LxnPvPWYN6RNfCBdJd",
+      "name": "Asi Nacemos",
+      "artist": "Julio Iglesias",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YXNpLW5hY2Vtb3MtanVsaW8taWdsZXNpYXM=",
+          "key": "F",
+          "mode": "minor",
+          "camelot": "4A",
+          "tempo": 92,
+          "duration": "3:28",
+          "popularity": 25,
+          "energy": 36,
+          "danceability": 34,
+          "happiness": 58,
+          "acousticness": 69,
+          "instrumentalness": 0,
+          "liveness": 56,
+          "speechiness": 4,
+          "loudness": "-14 dB"
+        },
+        "ms": 404185
+      }
+    },
+    {
+      "spotify_id": "4eB9mq1dsBtwTwlkT8mdkJ",
+      "name": "Espiral",
+      "artist": "La Jose",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZXNwaXJhbC1sYS1qb3Nl",
+          "key": "C#",
+          "mode": "minor",
+          "camelot": "12A",
+          "tempo": 129,
+          "duration": "4:47",
+          "popularity": 0,
+          "energy": 55,
+          "danceability": 79,
+          "happiness": 48,
+          "acousticness": 59,
+          "instrumentalness": 0,
+          "liveness": 11,
+          "speechiness": 5,
+          "loudness": "-7 dB"
+        },
+        "ms": 45908
+      }
+    },
+    {
+      "spotify_id": "4zeLnkO3UTDLT5ws4WJ4YI",
+      "name": "Bajo la luna",
+      "artist": "Marinah, Chicuelo",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YmFqby1sYS1sdW5hLW1hcmluYWgtY2hpY3VlbG8=",
+          "key": "E",
+          "mode": "minor",
+          "camelot": "9A",
+          "tempo": 97,
+          "duration": "4:43",
+          "popularity": 7,
+          "energy": 67,
+          "danceability": 51,
+          "happiness": 35,
+          "acousticness": 75,
+          "instrumentalness": 0,
+          "liveness": 6,
+          "speechiness": 6,
+          "loudness": "-10 dB"
+        },
+        "ms": 92238
+      }
+    },
+    {
+      "spotify_id": "1SMJlP4hgVPzMbcgbBxA1F",
+      "name": "Amarte Despacito",
+      "artist": "Amparo Velasco \"La Negra\"",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YW1hcnRlLWRlc3BhY2l0by1hbXBhcm8tdmVsYXNjby1xdW90bGEtbmVncmFxdW90",
+          "key": "C#",
+          "mode": "major",
+          "camelot": "3B",
+          "tempo": 85,
+          "duration": "4:23",
+          "popularity": 22,
+          "energy": 52,
+          "danceability": 69,
+          "happiness": 44,
+          "acousticness": 75,
+          "instrumentalness": 0,
+          "liveness": 15,
+          "speechiness": 24,
+          "loudness": "-9 dB"
+        },
+        "ms": 43737
+      }
+    },
+    {
+      "spotify_id": "3QPxxHmSKtmoP7HPQhm0il",
+      "name": "Que Volen Aquesta Gent?",
+      "artist": "Maria del Mar Bonet",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "cXVlLXZvbGVuLWFxdWVzdGEtZ2VudC1tYXJpYS1kZWwtbWFyLWJvbmV0",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 141,
+          "duration": "2:01",
+          "popularity": 32,
+          "energy": 52,
+          "danceability": 51,
+          "happiness": 75,
+          "acousticness": 77,
+          "instrumentalness": 0,
+          "liveness": 25,
+          "speechiness": 5,
+          "loudness": "-8 dB"
+        },
+        "ms": 789440
+      }
+    },
+    {
+      "spotify_id": "5qArmiMHkS6SPJj12Js4Tv",
+      "name": "Tonada Camagüeyana",
+      "artist": "Maria del Mar Bonet",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dG9uYWRhLWNhbWFnZXlhbmEtbWFyaWEtZGVsLW1hci1ib25ldA==",
+          "key": "G",
+          "mode": "major",
+          "camelot": "9B",
+          "tempo": 126,
+          "duration": "2:06",
+          "popularity": 8,
+          "energy": 59,
+          "danceability": 66,
+          "happiness": 69,
+          "acousticness": 74,
+          "instrumentalness": 0,
+          "liveness": 8,
+          "speechiness": 3,
+          "loudness": "-7 dB"
+        },
+        "ms": 744984
+      }
+    },
+    {
+      "spotify_id": "2pIPaHgwY4q21O57T683vO",
+      "name": "Inevitable",
+      "artist": "Amparo Velasco \"La Negra\"",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "aW5ldml0YWJsZS1hbXBhcm8tdmVsYXNjby1xdW90bGEtbmVncmFxdW90",
+          "key": "G",
+          "mode": "minor",
+          "camelot": "6A",
+          "tempo": 91,
+          "duration": "4:10",
+          "popularity": 29,
+          "energy": 48,
+          "danceability": 79,
+          "happiness": 44,
+          "acousticness": 75,
+          "instrumentalness": 0,
+          "liveness": 23,
+          "speechiness": 18,
+          "loudness": "-9 dB"
+        },
+        "ms": 40256
+      }
+    },
+    {
+      "spotify_id": "7dC4TwmdBJicLtHV3MECD7",
+      "name": "Geçecek Böyle",
+      "artist": "Ayyuka",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Z2VlY2VrLWJ5bGUtYXl5dWth",
+          "key": "B",
+          "mode": "minor",
+          "camelot": "10A",
+          "tempo": 133,
+          "duration": "2:50",
+          "popularity": 22,
+          "energy": 28,
+          "danceability": 69,
+          "happiness": 53,
+          "acousticness": 32,
+          "instrumentalness": 0,
+          "liveness": 12,
+          "speechiness": 3,
+          "loudness": "-12 dB"
+        },
+        "ms": 41001
+      }
+    },
+    {
+      "spotify_id": "0jUVeQNL9FPSUIXm52udQp",
+      "name": "Email",
+      "artist": "Gökçe Kılınçer",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZW1haWwtZ2tlLWtsbmVy",
+          "key": "F",
+          "mode": "minor",
+          "camelot": "4A",
+          "tempo": 100,
+          "duration": "4:34",
+          "popularity": 23,
+          "energy": 50,
+          "danceability": 82,
+          "happiness": 31,
+          "acousticness": 2,
+          "instrumentalness": 8,
+          "liveness": 12,
+          "speechiness": 5,
+          "loudness": "-13 dB"
+        },
+        "ms": 454352
+      }
+    },
+    {
+      "spotify_id": "6qyma8w3277cEBZGrPc0j7",
+      "name": "Her Akşam Votka Rakı ve Şarap (Sarhoş)",
+      "artist": "Gökçe Kılınçer",
+      "result": {
+        "kind": "terminal",
+        "reason": "200 error payload retries exhausted",
+        "status": 200,
+        "body": "{\"error\":\"Failed to pull track data\"}",
+        "ms": 1417304
+      }
+    },
+    {
+      "spotify_id": "2tDMqIPCqKWeOhtZ4Gfh4s",
+      "name": "Clarao Da Lua",
+      "artist": "Roseaux, Aloe Blacc",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y2xhcmFvLWRhLWx1YS1yb3NlYXV4LWFsb2UtYmxhY2M=",
+          "key": "E",
+          "mode": "minor",
+          "camelot": "9A",
+          "tempo": 78,
+          "duration": "3:14",
+          "popularity": 48,
+          "energy": 14,
+          "danceability": 78,
+          "happiness": 59,
+          "acousticness": 58,
+          "instrumentalness": 0,
+          "liveness": 9,
+          "speechiness": 22,
+          "loudness": "-20 dB"
+        },
+        "ms": 437035
+      }
+    },
+    {
+      "spotify_id": "6TyynFODLCHUWFcEtCDSHd",
+      "name": "Soprou",
+      "artist": "Silva, Criolo",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "c29wcm91LXNpbHZhLWNyaW9sbw==",
+          "key": "E",
+          "mode": "minor",
+          "camelot": "9A",
+          "tempo": 102,
+          "duration": "5:03",
+          "popularity": 48,
+          "energy": 53,
+          "danceability": 60,
+          "happiness": 26,
+          "acousticness": 83,
+          "instrumentalness": 2,
+          "liveness": 9,
+          "speechiness": 24,
+          "loudness": "-11 dB"
+        },
+        "ms": 53598
+      }
+    },
+    {
+      "spotify_id": "66oYPCeJsdITBXc1HBazgd",
+      "name": "Compacto",
+      "artist": "Curumin",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y29tcGFjdG8tY3VydW1pbg==",
+          "key": "C#",
+          "mode": "minor",
+          "camelot": "12A",
+          "tempo": 150,
+          "duration": "3:27",
+          "popularity": 26,
+          "energy": 81,
+          "danceability": 73,
+          "happiness": 97,
+          "acousticness": 35,
+          "instrumentalness": 1,
+          "liveness": 14,
+          "speechiness": 5,
+          "loudness": "-6 dB"
+        },
+        "ms": 67151
+      }
+    },
+    {
+      "spotify_id": "3LMfXdsrv0wF8c0cgzQ03i",
+      "name": "Vento a Favor",
+      "artist": "Sessa",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dmVudG8tYS1mYXZvci1zZXNzYQ==",
+          "key": "E",
+          "mode": "minor",
+          "camelot": "9A",
+          "tempo": 105,
+          "duration": "2:41",
+          "popularity": 34,
+          "energy": 62,
+          "danceability": 57,
+          "happiness": 79,
+          "acousticness": 86,
+          "instrumentalness": 90,
+          "liveness": 11,
+          "speechiness": 3,
+          "loudness": "-11 dB"
+        },
+        "ms": 62100
+      }
+    },
+    {
+      "spotify_id": "0TStZchybICJD3ALEQAD3G",
+      "name": "Ainda Lembro",
+      "artist": "Silva",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YWluZGEtbGVtYnJvLXNpbHZh",
+          "key": "D",
+          "mode": "major",
+          "camelot": "10B",
+          "tempo": 80,
+          "duration": "4:01",
+          "popularity": 48,
+          "energy": 31,
+          "danceability": 81,
+          "happiness": 77,
+          "acousticness": 75,
+          "instrumentalness": 0,
+          "liveness": 9,
+          "speechiness": 6,
+          "loudness": "-8 dB"
+        },
+        "ms": 66426
+      }
+    },
+    {
+      "spotify_id": "7sJ6ya6m6N0GImEJAVYcr6",
+      "name": "Deixa",
+      "artist": "Da Lata, Jandira Silva",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZGVpeGEtZGEtbGF0YS1qYW5kaXJhLXNpbHZh",
+          "key": "A",
+          "mode": "minor",
+          "camelot": "8A",
+          "tempo": 165,
+          "duration": "4:54",
+          "popularity": 25,
+          "energy": 57,
+          "danceability": 71,
+          "happiness": 79,
+          "acousticness": 11,
+          "instrumentalness": 0,
+          "liveness": 5,
+          "speechiness": 9,
+          "loudness": "-12 dB"
+        },
+        "ms": 83756
+      }
+    },
+    {
+      "spotify_id": "28XfvsCGpvMdOaX20lpwMG",
+      "name": "Una Noche Mas",
+      "artist": "Yasmin Levy",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dW5hLW5vY2hlLW1hcy15YXNtaW4tbGV2eQ==",
+          "key": "G",
+          "mode": "minor",
+          "camelot": "6A",
+          "tempo": 97,
+          "duration": "4:54",
+          "popularity": 45,
+          "energy": 34,
+          "danceability": 39,
+          "happiness": 35,
+          "acousticness": 86,
+          "instrumentalness": 11,
+          "liveness": 9,
+          "speechiness": 3,
+          "loudness": "-14 dB"
+        },
+        "ms": 2521
+      }
+    },
+    {
+      "spotify_id": "52NFgCjGw7oZKIBABYKLPG",
+      "name": "Meu Lugar",
+      "artist": "Arlindo Cruz",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bWV1LWx1Z2FyLWFybGluZG8tY3J1eg==",
+          "key": "C",
+          "mode": "major",
+          "camelot": "8B",
+          "tempo": 148,
+          "duration": "4:53",
+          "popularity": 64,
+          "energy": 54,
+          "danceability": 61,
+          "happiness": 63,
+          "acousticness": 68,
+          "instrumentalness": 0,
+          "liveness": 14,
+          "speechiness": 4,
+          "loudness": "-8 dB"
+        },
+        "ms": 919
+      }
+    },
+    {
+      "spotify_id": "7ERR6oaGdjhpjz93yuaBsv",
+      "name": "Ogum",
+      "artist": "Zeca Pagodinho, Jorge Ben Jor",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "b2d1bS16ZWNhLXBhZ29kaW5oby1qb3JnZS1iZW4tam9y",
+          "key": "A",
+          "mode": "major",
+          "camelot": "11B",
+          "tempo": 159,
+          "duration": "4:37",
+          "popularity": 53,
+          "energy": 71,
+          "danceability": 50,
+          "happiness": 79,
+          "acousticness": 61,
+          "instrumentalness": 0,
+          "liveness": 70,
+          "speechiness": 12,
+          "loudness": "-8 dB"
+        },
+        "ms": 404944
+      }
+    },
+    {
+      "spotify_id": "6J4gdn9L1im9uqzqBLhht6",
+      "name": "As Rosas Não Falam",
+      "artist": "Cartola",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YXMtcm9zYXMtbm8tZmFsYW0tY2FydG9sYQ==",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 112,
+          "duration": "2:53",
+          "popularity": 56,
+          "energy": 45,
+          "danceability": 78,
+          "happiness": 81,
+          "acousticness": 61,
+          "instrumentalness": 5,
+          "liveness": 9,
+          "speechiness": 6,
+          "loudness": "-11 dB"
+        },
+        "ms": 1048
+      }
+    },
+    {
+      "spotify_id": "3auN910HHNYykQo8i9q5J1",
+      "name": "Ateşe Düştüm",
+      "artist": "Mert Demir",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YXRlZS1kdG0tbWVydC1kZW1pcg==",
+          "key": "E",
+          "mode": "minor",
+          "camelot": "9A",
+          "tempo": 188,
+          "duration": "3:50",
+          "popularity": 65,
+          "energy": 37,
+          "danceability": 66,
+          "happiness": 92,
+          "acousticness": 84,
+          "instrumentalness": 1,
+          "liveness": 10,
+          "speechiness": 5,
+          "loudness": "-14 dB"
+        },
+        "ms": 438855
+      }
+    },
+    {
+      "spotify_id": "6ABRaZcaKrbfLbvwMdOdCF",
+      "name": "Esperança",
+      "artist": "Curumin",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZXNwZXJhbmEtY3VydW1pbg==",
+          "key": "C",
+          "mode": "major",
+          "camelot": "8B",
+          "tempo": 109,
+          "duration": "3:07",
+          "popularity": 11,
+          "energy": 68,
+          "danceability": 87,
+          "happiness": 96,
+          "acousticness": 11,
+          "instrumentalness": 0,
+          "liveness": 11,
+          "speechiness": 3,
+          "loudness": "-6 dB"
+        },
+        "ms": 47125
+      }
+    },
+    {
+      "spotify_id": "5c5S9N8ZmytIWaNRvYU5tQ",
+      "name": "Floreando",
+      "artist": "Fino Coletivo, Adriano Siri, Alvaro Lancellotti",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZmxvcmVhbmRvLWZpbm8tY29sZXRpdm8tYWRyaWFuby1zaXJpLWFsdmFyby1sYW5jZWxsb3R0aQ==",
+          "key": "B",
+          "mode": "minor",
+          "camelot": "10A",
+          "tempo": 156,
+          "duration": "4:16",
+          "popularity": 47,
+          "energy": 61,
+          "danceability": 71,
+          "happiness": 92,
+          "acousticness": 64,
+          "instrumentalness": 0,
+          "liveness": 6,
+          "speechiness": 5,
+          "loudness": "-9 dB"
+        },
+        "ms": 64479
+      }
+    },
+    {
+      "spotify_id": "2kOdSOu7imEWFLgeYcY7tq",
+      "name": "Let Me Feel Your Charm - Spotify Singles",
+      "artist": "Thee Sacred Souls, Jensine Benitez",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bGV0LW1lLWZlZWwteW91ci1jaGFybS1zcG90aWZ5LXNpbmdsZXMtdGhlZS1zYWNyZWQtc291bHMtamVuc2luZS1iZW5pdGV6",
+          "key": "C#",
+          "mode": "minor",
+          "camelot": "12A",
+          "tempo": 93,
+          "duration": "2:42",
+          "popularity": 53,
+          "energy": 53,
+          "danceability": 57,
+          "happiness": 86,
+          "acousticness": 46,
+          "instrumentalness": 2,
+          "liveness": 19,
+          "speechiness": 2,
+          "loudness": "-8 dB"
+        },
+        "ms": 1555
+      }
+    },
+    {
+      "spotify_id": "3qdCZnhs8OfUC8vHEoWAmf",
+      "name": "True",
+      "artist": "Darondo",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dHJ1ZS1kYXJvbmRv",
+          "key": "C#",
+          "mode": "minor",
+          "camelot": "12A",
+          "tempo": 95,
+          "duration": "4:47",
+          "popularity": 37,
+          "energy": 48,
+          "danceability": 86,
+          "happiness": 88,
+          "acousticness": 31,
+          "instrumentalness": 0,
+          "liveness": 6,
+          "speechiness": 3,
+          "loudness": "-9 dB"
+        },
+        "ms": 931
+      }
+    },
+    {
+      "spotify_id": "2CkEWbwNtzW4a6WXIdW55E",
+      "name": "My Thing",
+      "artist": "Wilfred Luckie",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bXktdGhpbmctd2lsZnJlZC1sdWNraWU=",
+          "key": "C",
+          "mode": "major",
+          "camelot": "8B",
+          "tempo": 172,
+          "duration": "4:35",
+          "popularity": 41,
+          "energy": 53,
+          "danceability": 52,
+          "happiness": 85,
+          "acousticness": 36,
+          "instrumentalness": 0,
+          "liveness": 30,
+          "speechiness": 3,
+          "loudness": "-9 dB"
+        },
+        "ms": 145020
+      }
+    },
+    {
+      "spotify_id": "2fw6QwoQff44oVzQLhg2nN",
+      "name": "Walk With Me",
+      "artist": "Dwight Sykes",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "d2Fsay13aXRoLW1lLWR3aWdodC1zeWtlcw==",
+          "key": "C",
+          "mode": "minor",
+          "camelot": "5A",
+          "tempo": 153,
+          "duration": "5:23",
+          "popularity": 37,
+          "energy": 45,
+          "danceability": 48,
+          "happiness": 59,
+          "acousticness": 56,
+          "instrumentalness": 0,
+          "liveness": 30,
+          "speechiness": 11,
+          "loudness": "-13 dB"
+        },
+        "ms": 56242
+      }
+    },
+    {
+      "spotify_id": "4A48ckONJNoXU5smWT9CeG",
+      "name": "If You Don't Want My Love",
+      "artist": "Jalen Ngonda",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "aWYteW91LWRvbngyN3Qtd2FudC1teS1sb3ZlLWphbGVuLW5nb25kYQ==",
+          "key": "B",
+          "mode": "minor",
+          "camelot": "10A",
+          "tempo": 93,
+          "duration": "2:27",
+          "popularity": 78,
+          "energy": 78,
+          "danceability": 60,
+          "happiness": 93,
+          "acousticness": 13,
+          "instrumentalness": 0,
+          "liveness": 25,
+          "speechiness": 4,
+          "loudness": "-6 dB"
+        },
+        "ms": 1234
+      }
+    },
+    {
+      "spotify_id": "0KNKtfE0jOcGBeu7Y5pL7h",
+      "name": "Just Like You Used To",
+      "artist": "Jalen Ngonda",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "anVzdC1saWtlLXlvdS11c2VkLXRvLWphbGVuLW5nb25kYQ==",
+          "key": "E",
+          "mode": "major",
+          "camelot": "12B",
+          "tempo": 87,
+          "duration": "3:10",
+          "popularity": 64,
+          "energy": 57,
+          "danceability": 55,
+          "happiness": 55,
+          "acousticness": 62,
+          "instrumentalness": 0,
+          "liveness": 12,
+          "speechiness": 3,
+          "loudness": "-6 dB"
+        },
+        "ms": 45233
+      }
+    },
+    {
+      "spotify_id": "2OmqoJl13usVC4LpvqYTM4",
+      "name": "Rose Gold",
+      "artist": "Jason Joshua & The Beholders, Jason Joshua",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "cm9zZS1nb2xkLWphc29uLWpvc2h1YS1qYXNvbi1qb3NodWEtYW1wLXRoZS1iZWhvbGRlcnM=",
+          "key": "C",
+          "mode": "major",
+          "camelot": "8B",
+          "tempo": 84,
+          "duration": "5:10",
+          "popularity": 43,
+          "energy": 82,
+          "danceability": 61,
+          "happiness": 65,
+          "acousticness": 5,
+          "instrumentalness": 45,
+          "liveness": 17,
+          "speechiness": 4,
+          "loudness": "-6 dB"
+        },
+        "ms": 1362
+      }
+    }
+  ]
+}

@@ -5,12 +5,12 @@
 
 ## ⚠️ READ FIRST — VERSION LANDSCAPE
 
-The codebase contains multiple parallel "versions" that coexist. **v6 is the current active version.** Others are kept but see the notes:
+The codebase contains multiple parallel "versions" that coexist. **v7 is the current active version** — it's what the user is iterating on. v6 is still served at the site root but has no accounts. Others are kept but see the notes:
 
 | Version | State | Where |
 |---|---|---|
-| **v6** | **Still served at root, but NO v6 accounts exist** (all deleted 2026-09-24) and its daily cron is hard-disabled. New signups at `/` still create v6 accounts, which get no daily playlists. Michael's v4 UI shell + our v5 pipeline (Claude musical directions). This is what the user is iterating on. | `v6/`, `api/v6/` |
-| v7 | **Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6 (still live at root). Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 116-genre bucketed taste profile at signup. Signup fires AFTER a real Hyp payment (₪200/month subscription — see "Payment (Hyp)" in § V7 ARCHITECTURE), and the owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
+| v6 | **Still served at root, but NO v6 accounts exist** (all deleted 2026-09-24) and its daily cron is hard-disabled. New signups at `/` still create v6 accounts, which get no daily playlists. Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. | `v6/`, `api/v6/` |
+| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6 (still live at root). Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 124-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built but **switched off since 2026-09-28**, so the step is currently the old placeholder (see "Payment (Hyp)" in § V7 ARCHITECTURE). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
 | v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anthropic`, `anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend still runs standalone. `v5/ami-prompt-dashboard/` lives here but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
 | v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
 | v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). | `v3/`, `v2/` |
@@ -515,14 +515,16 @@ Stage 2 (only if fewer than 3 R1 picks):
 [owner swipes refined deck]
        ↓
 Stage 3: v7/generation/taste-profile.js
-         → full 116-genre bucketing + per-user energy scale + carry-through prefs
+         → full-catalog (124-genre) bucketing + per-user energy scale + carry-through prefs
          label='v7-taste-profile'
        ↓
-[registration → Hyp payment (iframe) → taste-profile bar
-  → signup (api/v7/account/signup.js: account + taste profile saved + magic link emailed)
+[registration (email + password; a registered email is stopped here) → payment (Hyp iframe; placeholder while
+  payments are switched off) → taste-profile bar
+  → signup (api/v7/account/signup.js: account with the password + taste profile saved + magic link emailed)
   → "בדקו את המייל ✉️"]
        ↓
-[owner clicks the emailed magic link (= email verification) → /v7/account → first-login delivery-mode gate]
+[owner clicks the emailed magic link (= email verification, logs them in) → /v7/account → first-login delivery-mode gate]
+[later visits: email + password on /v7/account; "שכחתי סיסמה" → reset link → new password]
        ↓
 Daily v7 playlist builder (BUILT — Option 1 / Option 2, see § v7 daily runtime below)
 ```
@@ -566,11 +568,11 @@ Hard schema invariant: every one of the 124 canonical genres must land in EXACTL
 
 ### Prompt stack
 
-All three v7 prompts route through **`v7/generation/ai-provider.js`** — same shape as v6's (`PROVIDER='gemini' | 'anthropic'`, model `gemini-3.6-flash`, thinking `high`) but INDEPENDENT. Flipping v6's PROVIDER doesn't touch v7. Ami's dashboard (which imports from v7's ai-provider since 2026-09-23) follows v7's switch.
+All five v7 prompts (R1, R2, taste profile, Option-1 energy directions, Option-2 level directions) route through **`v7/generation/ai-provider.js`** — same shape as v6's (`PROVIDER='gemini' | 'anthropic'`, model `gemini-3.6-flash`, thinking `high`) but INDEPENDENT. Flipping v6's PROVIDER doesn't touch v7. Ami's dashboard (which imports from v7's ai-provider since 2026-09-23) follows v7's switch.
 
 `gemini_call_log.label` values in use:
 - v6: `onboarding` (R1), `onboarding-refined` (R2), plus post-signup labels for event chat / direction-edit chat / preview-direction.
-- v7: `v7-onboarding` (R1), `v7-onboarding-refined` (R2), `v7-taste-profile`, `v7-energy-directions` (Option-1 energy-tier generation at the delivery-mode gate).
+- v7: `v7-onboarding` (R1), `v7-onboarding-refined` (R2), `v7-taste-profile`, `v7-energy-directions` (Option-1 energy-tier generation at the delivery-mode gate), `v7-level-directions` (Option-2 per-level libraries, when Option 2 is chosen and the stored library doesn't fit the profile; the 2026-09-28 test runs used `v7-level-directions-test`).
 
 Admin API `/api/internal/gemini-spend`'s `by_label[]` breaks these out separately, so v7 spend is trackable from day one of runtime.
 
@@ -589,8 +591,15 @@ v7 does NOT write `business_directions` (v6's per-direction table). Instead, sig
 ### v7 daily runtime (Option 1 / Option 2) — BUILT
 
 After signup, `/v7/account` shows a first-login **delivery-mode gate**, labelled "סוג פלייליסטים יומיים" in the UI (`set-delivery-mode.js` writes `business_v7_settings.delivery_mode` + `updated_at`). **As soon as the owner picks a type in the gate, the dashboard builds TODAY's set** (`checkV7ModeGate` returns true → `runGenerateDaily` → `api/v7/account/generate-daily.js`; expires 2h after today's close, or next 04:00 IL on a closed day / after closing). From tomorrow the v7 cron builds. Two duplicate guards: the cron skips a business as `mode-just-set` (silent) for 15 min after `updated_at`, so it can't race the in-flight first build; and the endpoint returns 409 if a live daily set already exists for the current business day (IL, overnight-aware) or another build for the business is running. If the first build fails entirely, the next cron tick builds.
-- **Option 1 — 4 playlists/day.** On selecting option1, energy-tiered directions are generated (`v7/generation/energy-directions.js`, `label='v7-energy-directions'`) and stored in `business_v7_directions` (2+ high-energy, 2+ low-energy tiers). Each day the builder fills 4 fixed names — 2 per tier — with a **random** pick of 2 directions from that tier's active pool (`pickTwo` in `api/v7/account/_daily-builder.js`; 2 distinct directions when the pool has ≥ 2, the same direction twice when it has 1 — the second playlist still gets different tracks via same-day history). So every name gets a random direction of the right energy each day; with exactly 2 directions per tier only the #1/#2 assignment varies, and variety comes from the tracks (random draw + 7-day dedup). **Owner-facing names are fixed** (since 2026-09-24): "אנרגיה גבוהה #1/#2" and "אנרגיה רגועה #1/#2", derived at build time from `energy_tier` + position within the tier (`tierPlaylistName` in `api/v7/account/_daily-builder.js`) — used for the dashboard label (`business_playlists.label`) and the Spotify playlist title/description. Gemini's `business_v7_directions.title_en` (e.g. "Smooth Jazz Lounge") is kept as an internal descriptor only and never shown to owners. Tiers are RELATIVE to the owner's own energy scale (high = upper half of their `energy_levels_total`), so a calm-jazz owner's "אנרגיה גבוהה" can be smooth jazz. **Length** (since 2026-09-24): each of the 4 playlists is sized to half of today's opening minutes + 90 min, at the assumed 3.5 min/track (`buildOption1Batch`; e.g. 09:00–21:00 → (360+90)/3.5 = 129 tracks). Count-based, so real playing time runs ~19% long — measured catalog average is 4.16 min/track (3k-row sample of `track_analyses.raw_analysis->>'duration'`, 2026-09-24). Becomes exact once builders fill by duration.
-- **Option 2 — 2 mixes/day whose energy follows the owner's timeline (BUILT 2026-09-24).** Named **"Daily Mix #1"** and **"Daily Mix #2"**. See "Option 2: energy timeline" below.
+- **Option 1 — 4 playlists/day.** On selecting option1, a **library of energy-tiered directions** — as many as the genres support, up to 30, no minimum — is generated (`v7/generation/energy-directions.js`, `label='v7-energy-directions'`, since 2026-09-28) and stored in `business_v7_directions`.
+  - **Each direction** is a curated, internally coherent blend in the style of the v6 onboarding directions: 4–6 genres, following v6's energy / jazz / cross-cultural / pop / house pairing rules (copied into the prompt, not imported). It sits wholly in the HIGH or the LOW tier.
+  - **Across the library,** directions sound different from one another, and genres may repeat across directions without limit.
+  - **Tier sizes:** tiers are sized roughly in proportion to their approved genres, with at least 2 per tier. A tier with few genres gets fewer directions, never padding. Measured on the 6 Option-1 accounts (2026-09-28 regeneration): 6 approved genres → 9 directions, 14 → 12, 19 → 16, 27 → 17, 32 → 19, 40 → 19; 19–52s in the browser.
+  - **Normalizer:** drops genres that aren't approved or sit in the other tier, drops repeated genre sets, and caps the library at 30 (so does `save-energy-directions.js`).
+  - **Before 2026-09-28** this step made 4–7 tight probe-style clusters. Every Option-1 account was regenerated with the new prompt on 2026-09-28 by `scripts/_v7-regenerate-energy-directions.mjs`. Rerun it after future prompt changes: it's a dry run by default, `--confirm` applies it, and it needs `vercel dev`. A failed generation keeps the old set.
+  - **While it builds** (first-login gate + Profile Option 2 → 1) the owner sees "מכינים את הכיוונים המוזיקליים…" plus "עלול לארוך עד דקה וחצי, נא לא לסגור את החלון…" (`ENERGY_BUILD_WAIT_NOTE` in `v7/account/app.js`, and in `#v7ModeBuilding` in `v7/account/index.html`).
+  - **Daily draw:** each day the builder fills 4 fixed names, 2 per tier. Each name gets a **random** direction from that tier's active pool, one direction per playlist (`pickTwo` in `api/v7/account/_daily-builder.js`). A pool of ≥ 2 gives 2 distinct directions. A pool of 1 is used twice, and the second playlist still gets different tracks via same-day history. The tracks also vary day to day (random draw + 7-day dedup). **Owner-facing names are fixed** (since 2026-09-24): "אנרגיה גבוהה #1/#2" and "אנרגיה רגועה #1/#2", derived at build time from `energy_tier` + position within the tier (`tierPlaylistName` in `api/v7/account/_daily-builder.js`) — used for the dashboard label (`business_playlists.label`) and the Spotify playlist title/description. **Both options' names carry the date** (since 2026-09-28): the dashboard label is "<name> · dd.mm.yyyy" with the venue's business-day date (`datedLabel` in `v7/generation/playlist-length.js`; "replace now" matches names without it via `undatedLabel`), and the Spotify name was already "<business> · <name> · dd.mm.yyyy" (v6's `playlistName`). Gemini's `business_v7_directions.title_en` (e.g. "Smooth Jazz Lounge") is kept as an internal descriptor only and never shown to owners. Tiers are RELATIVE to the owner's own energy scale (high = upper half of their `energy_levels_total`), so a calm-jazz owner's "אנרגיה גבוהה" can be smooth jazz. **Length** (since 2026-09-24): each of the 4 playlists is sized to half of today's opening minutes + 90 min, at the assumed 3.5 min/track (`buildOption1Batch`; e.g. 09:00–21:00 → (360+90)/3.5 = 129 tracks). Count-based, so real playing time runs ~19% long — measured catalog average is 4.16 min/track (3k-row sample of `track_analyses.raw_analysis->>'duration'`, 2026-09-24). Becomes exact once builders fill by duration.
+- **Option 2 — 2 mixes/day whose energy follows the owner's timeline (BUILT 2026-09-24).** Named **"Daily Mix #1"** and **"Daily Mix #2"**. Since 2026-09-28 each energy level plays from a **library of per-level directions**, one direction per mix per day, rotating daily. See "Option 2: energy timeline" and "Option 2: level directions" below.
 
 #### Option 2: energy timeline
 
@@ -599,18 +608,53 @@ The owner draws the day's energy as a curve through draggable dots (the editor a
 - **Where:** one modal (`#timelineModal`, `openTimelineModal` in `v7/account/app.js`) — first-login gate (choosing Option 2 opens it; "חזרה" returns to the gate; saving = choosing Option 2), Profile tab "עריכת ציר האנרגיה" (button carries a mini preview of today's curve), and Profile Option 1 → 2 (**mandatory** — the type only switches on save; cancel keeps Option 1).
 - **Opening hours edited → the timeline updates in the same request, keeping clock times** (`api/v7/account/update-hours.js`, v7's own copy of v6's endpoint): dots stay at their hours, a dot on the old opening/closing moves to the new one, out-of-hours dots are dropped (≥ 2 kept), a day that gets its own hours copies its old group's curve, merged groups prefer the one whose hours didn't change. No replace question on an hours change.
 - **Replace question:** after a timeline save or a type switch (1→2 or 2→1 — on 2→1 it's asked right after the switch is saved, BEFORE the ~1-minute energy-directions build; a "now" answer rebuilds once the directions exist) in the Profile tab, if today has live daily playlists and the venue hasn't closed yet (right up to closing time), step 2 of the modal asks v6's "להחליף את הפלייליסטים של היום עכשיו, או להשאיר את הקיימים עד סגירה?". **"החליפו עכשיו"** → Home tab + `runGenerateDaily({replaceToday:true})`: the new set **starts at the current time** and runs to closing + 30; each old playlist leaves the dashboard as its replacement lands (`business_playlists.expires_at = now` only — the ledger keeps the original close + 2h so a phone still playing it isn't cut off at the next :30 sweep). **Cap: 2 replacements per business day**, visible in the question ("נותרה החלפה אחת להיום"; at the cap the button is disabled with "הגעתם למקסימום של 2 החלפות ביום — השינוי ייכנס לתוקף מחר"). Counted as `business_settings_changes` rows `field='daily_playlists_replaced'` (written only once something actually built). One build at a time per business (Upstash lock, `_build-lock.js` → 409 `build-in-progress`).
-- **Builder** (`api/v7/account/_option2-builder.js`): window = `businessWindowAt` (IL + overnight-aware) → **start = max(now, opening)** (any build after opening — first login mid-day, late cron, "צור פלייליסטים", replace — starts at the build time), **end = closing + 30 min** (energy after closing = closing value). Closed day / after closing on demand ("המקום פתוח?"): the main group's curve (most days) stretched over now → now + 12h, expiring next 04:00. Level at any moment = the grid row the curve is in (`min(N, 1+floor(e·N))`); a level with no approved genres falls back to the nearest one. Pool: `v7_timeline_pool` RPC (random playlists per genre → tracks with `duration_sec`, 7-day no-repeat across the whole business, wider sample for short genres, recently-served refill for short levels). Assembly (`v7/generation/timeline-assembler.js`, pure, seeded): tracks end to end **by duration**, **short genre runs** (3–5 songs, then another genre at the same level), two mixes never share a track. Rows carry `expansion.v7_timeline` (window, dots, per-track start minute / level / run genre, seed) + the usual `track_genres`. History key `'v7-option2'`. Falls back to the naive `planOption2` if the RPC isn't deployed.
+- **Builder** (`api/v7/account/_option2-builder.js`): window = `businessWindowAt` (IL + overnight-aware) → **start = max(now, opening)** (any build after opening — first login mid-day, late cron, "צור פלייליסטים", replace — starts at the build time), **end = closing + 30 min** (energy after closing = closing value). Closed day / after closing on demand ("המקום פתוח?"): the main group's curve (most days) stretched over now → now + 12h, expiring next 04:00. Level at any moment = the grid row the curve is in (`min(N, 1+floor(e·N))`); a level with no approved genres falls back to the nearest one. Pool: `v7_timeline_pool` RPC (random playlists per genre → tracks with `duration_sec`, 7-day no-repeat across the whole business, wider sample for short genres, recently-served refill for short levels). Assembly (`v7/generation/timeline-assembler.js`, pure, seeded): tracks end to end **by duration**, **each track's genre drawn at random** from the genres that mix plays at that level (that day's direction — see "Option 2: level directions" below), weighted by how many unused tracks each has left, the way Option 1 mixes a direction's genres. The 3–5-song "genre runs" rule (2026-09-24) was removed on 2026-09-28, two mixes never share a track. Rows carry `expansion.v7_timeline` (window, dots, per-track start minute / level / run genre, seed) + the usual `track_genres`. History key `'v7-option2'`. Falls back to the naive `planOption2` if the RPC isn't deployed.
 - **Storage:** `business_v7_settings.timeline` = `{ version: 2, groups: [{ days, open, close, points: [{ m, e }] }] }` — `m` = clock minutes from midnight of the opening day (overnight > 1440), `e` 0..1. Always normalised against the current hours (`reconcileTimeline`). Timeline saves don't touch `updated_at` (the cron's `mode-just-set` skip means "mode changed").
 - **Model** (`v7/generation/energy-timeline.js`, browser + server): hours groups, slots, curve (Fritsch–Carlson monotone cubic, verbatim from the sandbox), levels, reconciliation, `businessWindowAt`. Offline tests: `node --test scripts/test-energy-timeline.mjs`. Read-only plan preview: `node scripts/_v7-option2-dryrun.mjs [businessId] [--at=HH:MM]`. Live E2E (real Spotify, Roni runs): `scripts/_v7-option2-walkthrough.mjs`.
 - **Loading placeholders:** the dashboard draws today's cards with their final names the moment a build starts (`expectedDailySlots` in `v7/account/app.js` — names are fixed per type); the server's `plan` line then takes over.
-- **TEMPORARY testing log (Ami, 2026-09-24):** `DEBUG_TASTE_LOG` in `v7/account/app.js` prints the account's taste profile (genres by energy level), Option-1 directions / Option-2 timeline, and today's playlists (Option 2: level/genre runs) to the browser console on every dashboard load. Turn off / delete when testing ends.
+- **TEMPORARY testing log (Ami, 2026-09-24):** `DEBUG_TASTE_LOG` in `v7/account/app.js` prints the account's taste profile (genres by energy level), Option-1 directions / Option-2 timeline, the Option-2 level-direction library (whether it still fits the profile, and today's pick per mix), and today's playlists (Option 2: each mix's directions + consecutive level/genre stretches) to the browser console on every dashboard load. Turn off / delete when testing ends.
 - **Needs migration `v5/precompute/migrations/2026-09-24-v7-timeline-pool.sql`** (track_analyses.duration_sec + trigger + backfill, and the pool RPC).
+
+#### Option 2: level directions (2026-09-28)
+
+Before this, every energy level of a mix played from ALL of that level's approved genres. Now:
+
+- **The library.** For each energy level, Gemini builds a library of directions made only from that level's genres (`v7/generation/level-directions.js`, `label='v7-level-directions'`, stored in `business_v7_level_directions`).
+  - Each direction is a coherent blend, following the same pairing rules as Option 1.
+  - **No forced pairings** (Roni): a genre with no natural partner in its level gets a direction of its own.
+  - **No target count:** the model builds as many as the genres support. Measured on all 10 v7 profiles: about 1 direction per 2–3 genres (1 genre → 1, 2 → 2–3, 3–7 → 2–4, 8–14 → 3–6, 19 → 7), 5–24 per business, 20–50s.
+  - At least 2 directions per level with 2+ genres; `MAX_PER_LEVEL` 10 is only a safety ceiling.
+- **Daily rotation** (`pickLevelDirections` in `v7/generation/timeline-assembler.js`). With K directions at a level and d = the business day's date as a day number:
+  - Mix #1 plays `dirs[d mod K]` and Mix #2 plays `dirs[(d + floor(K/2)) mod K]`.
+  - Each mix moves to the next direction every day and goes through all K before repeating.
+  - The mixes differ whenever K ≥ 2; K = 1 → both play the same one. With K ≥ 4, nothing from yesterday plays in either mix.
+  - Computed from the date alone (no stored state), so a same-day rebuild ("החליפו עכשיו") keeps the day's directions.
+- **Builder** (`_option2-builder.js`):
+  - `levelLibrary` keeps only genres still approved at that level; a level with genres but no stored direction plays its genres as one implicit direction.
+  - Pool sizing (`estimateDemandPerMix`) and assembly are per mix, and each track's genre is drawn at random from the day's direction for that level (no genre runs).
+  - Each row's `expansion.v7_timeline` carries `source` ('level-directions' | 'level-genres'), `day_number` and `directions` (`{level: {id, title_en, genres}}` for that mix).
+  - **No library** (never generated, generation failed, migration not run) → the old behaviour, every genre of the level. Option 2 never gets stuck.
+- **When it's generated:**
+  - When Option 2 is chosen: the first-login gate after the timeline save (the gate's "מכינים את הכיוונים המוזיקליים…" line), and the Profile switch from Option 1 (after the timeline modal, before any "replace now" build).
+  - **Kept across type switches:** each row stores `profile_key` (`levelProfileKey`, a hash of N + every approved genre with its level). `ensureLevelDirections` in `v7/account/app.js` reuses the stored library with no Gemini call while the key matches the live profile, and regenerates only when a genre was added, removed or moved to another level.
+  - Timeline edits never touch it.
+  - **On failure:** the Profile tab says "הכיוונים המוזיקליים לא הוכנו" and a click on Option 2 retries just this step.
+- **Saving:** `api/v7/account/save-level-directions.js` replaces the set, re-checks the genres against the stored profile, and stamps `profile_key`.
+- **Existing accounts:** `scripts/_v7-regenerate-level-directions.mjs`:
+  - With no flag, lists.
+  - `--generate [--all]` prints per-level results with no writes.
+  - `--confirm` replaces the libraries of Option-2 businesses.
+  - Needs `vercel dev`.
+- **Tools:**
+  - `node scripts/_v7-option2-dryrun.mjs <biz> --date=YYYY-MM-DD` shows each mix's direction per level on any day.
+  - Offline tests: `node --test scripts/test-energy-timeline.mjs`.
+- **Needs migration `v5/precompute/migrations/2026-09-28-v7-level-directions.sql`.**
 
 Option 1 is planned by **`api/v7/account/_daily-builder.js`** `planOption1` (Option 2 by `_option2-builder.js`, above; `planOption2` there is only the naive fallback) — directions, per-playlist target, expiry — and built either by `buildOption1Batch` (the cron: plan + `buildBatch`, a v7 copy of v6's `buildDailyBatch` that also writes the per-track genre record — v6's function is untouched) or by the owner-triggered **`api/v7/account/generate-daily.js`** (the dashboard's "צור פלייליסטים" / "המקום פתוח?" links: same plan with `onDemand:true`, then v6 `buildOneDailyPlaylist` per playlist, streaming v6's ndjson contract with `slot-N` keys). `onDemand` sizes a closed/unknown day as `CLOSED_DAY_MINUTES` and never hands out an already-passed expiry (falls back to next 04:00 IL); the cron path is unchanged. Everything reuses v6's `_daily-builder.js` primitives (`buildDailyBatch`, `fetchTracksWithHistory`, ledger + history + insert). v7 directions carry `bpm_range:{min:0,max:300}` and **`id:null`** — `business_playlists.direction_id` is an FK to v6's `business_directions`, so passing a `business_v7_directions` id would violate it. The daily cron is **`api/cron/v7-generate-daily.js`** (see § VERCEL DEPLOYMENT). Spotify resilience + alerts are inherited unchanged: v7's build path flows through the version-agnostic `api/new/spotify.js` proxy.
 
 ### v7 onboarding + signup runtime — BUILT
 
-- **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (R1 + R2 swipe decks) / `result.js` (registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → R1 swipe → (R2 if <3 picks) → registration → Hyp payment → taste-profile bar → `/v7/account`.
+- **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (R1 + R2 swipe decks) / `result.js` (registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → R1 swipe → (R2 if <3 picks) → registration → payment (Hyp; the placeholder screen while `PAYMENTS_ENABLED = false`) → taste-profile bar → `/v7/account`.
 - **Account** (`v7/account/`): `index.html` + `app.js` (delivery-mode gate, energy-directions build) + `direction-chat.js` (dormant for v7 — reads empty `business_directions`). The Home tab's special-events chat ("צריכים משהו אחר היום?") is a collapsible dropdown, closed by default (same `.hours-toggle` pattern as the Profile sections, since 2026-09-24); the saved events list ("פלייליסטים אחרים") stays visible.
 - **No inline playlist rename in v7 (kept this way for now; may change).** v6's Home-tab inline rename (click a playlist title → edit) and the per-playlist edit / trash icons are NOT available in v7. This wasn't a deliberate product decision — it fell out of the build: the code was copied from v6 and is still in `v7/account/app.js` (`enterRenameMode`, `editDirectionFromCard`, `openTrashDirectionModal`), but every one of those controls only renders when the row has a `direction_id` (`canRename = !!p.directionId …`, `if (p.directionId)`), and v7 rows always insert `direction_id: null` (FK to v6's `business_directions`). Roni has chosen to keep it off for now. Reviving it would need a v7 path that edits `business_v7_directions` instead of calling v6's `apply-direction-change` — and a decision on how a rename interacts with the fixed "אנרגיה גבוהה/רגועה #N" names.
 - **⚠️ Real payments are SWITCHED OFF (2026-09-28):** `PAYMENTS_ENABLED = false` in `api/v7/payment/_hyp.js`. Tax invoices must come from the company's own invoicing system (not Hyp's — the Hyp portal shows invoicing as a separate sign-up), and that isn't connected yet; Roni is sorting it out with the people who manage invoicing at the company. While off: the payment step shows the OLD placeholder screen (`runPlaceholderPaymentStep` in `v7/result.js` — all fields optional, resolves with `''`), `GET /api/v7/payment/checkout` returns `{paymentsEnabled:false}`, POST returns 503, and signup requires no checkout (`paid_at` = signup time, as before Hyp). Everything below is intact — flip the switch to restore. Open design point for when it comes back: Hyp-managed monthly charges send no notification, so an external invoicing system can't be triggered per charge — either it integrates with Hyp directly, or we move monthly billing to our side (saved card token + our own monthly `action=soft` charge + invoice API call), which would also bring coupons back without `TashFirstPayment`.
@@ -626,7 +670,16 @@ Option 1 is planned by **`api/v7/account/_daily-builder.js`** `planOption1` (Opt
   - **Credentials check:** `node scripts/_hyp-sign-probe.mjs` signs a page with the current terminal and prints its URL (CCode 902 = wrong PassP). Nothing is charged or written.
   - **Cancelling agreements by hand:** `node scripts/_hyp-hk-status.mjs <HKId> ...` terminates (`--resume` resumes) on the `HYP_ENV` terminal via `action=HKStatus`. Agreement numbers: `payment_checkouts.hyp_hk_id`, or the Hyp portal's standing-order list (which has no delete button). There's no API to list a terminal's agreements — never guess HKIds.
   - **Not built yet:** owner-facing subscription cancellation (the account page calling `HKStatus` with the stored `hyp_hk_id`); visibility of later monthly charges (Hyp-managed charges send no notification — failures show only in the Hyp portal); a 100% coupon (₪0 first charge) is undocumented — test it before offering one.
-- **Email verification is REQUIRED (like v6; decided 2026-09-24).** Nothing in the v7 funnel logs the owner in. After payment, the bar awaits the taste profile, THEN `api/v7/account/signup.js` runs ("no non-paying clients" — no account before payment): it checks the paid Hyp checkout, creates/updates the user + a `businesses` row (`version='v7'`, `paid_at` = the payment time) and claims the checkout, **saves the taste profile** (`business_taste_profiles`, via the shared `_taste-profile.js` row builder) BEFORE emailing, backfills `gemini_call_log` once (all onboarding calls incl. the taste profile have resolved by then), and finally emails the one-time magic link (`/auth/v1/otp`, fatal if it fails). The client shows "בדקו את המייל ✉️" with a "לא הגיע? שלחו שוב" resend that re-posts the same (idempotent) payload. The resend waits out a 60-second countdown ("אפשר לשלוח שוב בעוד 0:59") that starts when the screen appears and restarts after every resend or 429 — Supabase sends at most one login email per user per ~60s. Clicking the link verifies the email and lands on `/v7/account`. Returning owners are looked up via the admin user list's `?filter=` — NOT admin `generate_link`, which counts as a login-link send and tripped Supabase's ~60s per-user email interval (the reason v7's email never arrived before 2026-09-24; v6's signup still uses `generate_link` for returning users). A too-soon resend gets a friendly 429. Test scripts skip the email with `skipEmail:true` + a valid `x-sonic-internal` header (their addresses are `@example.invalid`) and mint their own session via admin `generate_link` + `verify`. Caveat: an owner who pays and then closes the tab before signup finishes has a paid, unclaimed `payment_checkouts` row but no account (Hyp has no server callback to create it from). Reopening onboarding in the same browser skips the payment step via the localStorage checkout id; otherwise find it in `payment_checkouts` (status `paid`, `business_id` null).
+- **Passwords (added 2026-09-28).** v7 owners log in with email + password; emailed links are only for verifying the email (first login) and "שכחתי סיסמה".
+  - **Password rule:** at least 8 characters incl. an uppercase + a lowercase English letter + a digit, and not in a known data leak. One source, **`shared/password-rules.js`** (`passwordProblem` → Hebrew message or null, `PASSWORD_RULES_TEXT`), used by the registration screen, the new-password screen, Profile, signup and `set-v7-passwords.mjs`. It mirrors the Supabase settings (min length 8 + "Digits, lowercase and uppercase letters"), which Supabase enforces on save; checking first lets registration reject a password BEFORE payment. The leaked check only runs in Supabase on save — at signup that's after payment, so a refused password (400 `weak_password`) gets a "choose another password" screen and a retry.
+  - **Registration** (`runRegistrationStep` in `v7/result.js`) asks for email + password (held in memory only, never localStorage) and calls **`POST /api/v7/account/check-email`** → `{registered}` before resolving. Registered = an auth user that owns a business; a registered email is stopped there ("האימייל הזה כבר רשום" + a link to `/v7/account?email=…`), before payment. Rate-limited 20 per 10 min per IP — it tells anyone whether an email has an account, like most sign-up forms.
+  - **Signup's password rules** (`prepareUser` in `api/v7/account/signup.js`; shared lookups in `api/v7/account/_auth-users.js`). A password only ever lands on an UNVERIFIED account, so it can't be used until the inbox owner clicks the link: no account → create it (unverified) with the password; unverified with no business → set the password; unverified WITH a business → only a resend of the same signup, which must carry `resendFor` = the business id the first call returned (the client's "שלחו שוב" and error-retry paths send it; error responses echo `business_id` once it exists) — anything else 409; verified + business → 409 `already_registered`, password never touched; verified with no business (a leftover login) → deleted and recreated unverified. A password Supabase refuses (weak / leaked, `weak_password`) returns 400 and the client asks for another one before retrying. Internal test callers may omit the password.
+  - **Account login** (`v7/account/app.js`): `signInWithPassword`. Wrong email or password → one generic message. `email_not_confirmed` → "עוד לא אישרתם את האימייל" + a button that sends a new verification link (`signInWithOtp` with `shouldCreateUser:false` — the login page never creates accounts; before 2026-09-28 it did, for any email typed in). "שכחתי סיסמה" → `resetPasswordForEmail` (redirect `/v7/account`) → the link's `#type=recovery` is read before `createClient` consumes the hash and remembered in sessionStorage (`rubin-v7-set-password`) → `#newPasswordView` → `updateUser({password})` → dashboard. Expired / used links (`#error_code=…`) show a message on the login screen. Resends wait out a 60s countdown. A login with no business behind it is signed out with a message.
+  - **Profile → סיסמה** (collapsible): current + new password; the current one is checked with `signInWithPassword` before `updateUser`.
+  - **Existing accounts** got a shared password via `scripts/set-v7-passwords.mjs <password> --before=<date>` (dry run by default; `--confirm`; only owners of a v7 business created before the date, so a re-run can't overwrite owner-chosen passwords).
+  - **Supabase dashboard settings** (manual): Auth → Email keeps "Confirm email" on, minimum password length 8, password requirements "Digits, lowercase and uppercase letters", leaked-password protection on; Email Templates → "Reset Password" in Hebrew (same design as the magic-link email). If the rule changes, change `shared/password-rules.js` with it.
+  - Tests: `scripts/test-v7-signup-passwords.mjs` (check-email + every signup rule against `vercel dev`, throwaway `@example.invalid` users, self-cleaning).
+- **Email verification is REQUIRED (like v6; decided 2026-09-24).** Nothing in the v7 funnel logs the owner in. After payment, the bar awaits the taste profile, THEN `api/v7/account/signup.js` runs ("no non-paying clients" — no account before payment): it checks the paid Hyp checkout, creates/updates the user + a `businesses` row (`version='v7'`, `paid_at` = the payment time) and claims the checkout (while payments are switched off: no checkout is required and `paid_at` = signup time), **saves the taste profile** (`business_taste_profiles`, via the shared `_taste-profile.js` row builder) BEFORE emailing, backfills `gemini_call_log` once (all onboarding calls incl. the taste profile have resolved by then), and finally emails the one-time magic link (`/auth/v1/otp`, fatal if it fails). The client shows "בדקו את המייל ✉️" with a "לא הגיע? שלחו שוב" resend that re-posts the same (idempotent) payload. The resend waits out a 60-second countdown ("אפשר לשלוח שוב בעוד 0:59") that starts when the screen appears and restarts after every resend or 429 — Supabase sends at most one login email per user per ~60s. Clicking the link verifies the email and lands on `/v7/account`. Returning owners are looked up via the admin user list's `?filter=` — NOT admin `generate_link`, which counts as a login-link send and tripped Supabase's ~60s per-user email interval (the reason v7's email never arrived before 2026-09-24; v6's signup still uses `generate_link` for returning users). A too-soon resend gets a friendly 429. Test scripts skip the email with `skipEmail:true` + a valid `x-sonic-internal` header (their addresses are `@example.invalid`) and mint their own session via admin `generate_link` + `verify`. Caveat: an owner who pays and then closes the tab before signup finishes has a paid, unclaimed `payment_checkouts` row but no account (Hyp has no server callback to create it from). Reopening onboarding in the same browser skips the payment step via the localStorage checkout id; otherwise find it in `payment_checkouts` (status `paid`, `business_id` null).
 - **Direction ranks are globally unique across rounds:** R1 = 1–8 (page 1 = 1–4, page 2 = 5–8), R2 = **9–12** (`R2_RANK_START` in `v7/generation/refined-directions.js`). The R2 and taste-profile prompts reference LIKED/DISLIKED by rank, so `v7/app.js round1DirectionsSeen()` passes page 1 **plus** every page-2 direction that was liked/disliked (`state.directions` alone is page 1 only). `state.round2Directions` holds the R2 set so the taste-profile retry can rebuild the same call.
 - **Endpoints**: `api/v7/anchor-tracks.js` (swipe-deck anchors → `v7_anchor_tracks` RPC, anon key — see the bpm_range note above) + `api/v7/payment/`: `checkout.js`, `return.js`, `status.js`, `_hyp.js` (see "Payment (Hyp)" above) + `api/v7/account/`: `signup.js`, `save-taste-profile.js`, `set-delivery-mode.js`, `save-energy-directions.js`, `generate-daily.js`, `_daily-builder.js`.
 - **Live verification scripts** (self-cleaning, throwaway user/business, safe against prod): `scripts/_v7-walkthrough.mjs` (Phase A onboarding→signup→account) and `scripts/_v7-phaseb-walkthrough.mjs` (Phase B daily builders + v7 cron + expiry). `/v7/?reset=1` (and the account app) clears the Supabase session for re-testing, same as v6.
@@ -699,8 +752,14 @@ sonic-brand/
 │   ├── atmosphere.js / atmosphere-bubbles.js / emphases.js / hours-selector.js  ← ports of the v6 steps
 │   ├── preview.js                          ← R1 + R2 swipe decks. Anchors via /api/v7/anchor-tracks → v7_anchor_tracks
 │   │                                          (no BPM) — NOT v6's /api/v5/anchor-tracks.
-│   ├── result.js                           ← registration + Hyp payment (iframe) + taste-profile bar → signup →
-│   │                                          "בדקו את המייל ✉️" (resend re-posts signup)
+│   ├── result.js                           ← registration (email + password + check-email) + payment (Hyp iframe; placeholder while off) +
+│   │                                          taste-profile bar → signup → "בדקו את המייל ✉️" (resend re-posts signup
+│   │                                          with resendFor)
+│   ├── wait-dots.js                        ← Animated "…" for WAITING messages (dots appear in order, then clear), used by
+│   │                                          the onboarding and account apps; injects its own CSS. setWaitText(el, text) /
+│   │                                          waitNodes(text) turn every "…" / "..." into the animation and "
+" into <br>;
+│   │                                          WAIT_DOTS_HTML for innerHTML templates. Placeholders keep a plain "…".
 │   ├── test-timeline/index.html            ← SANDBOX (not linked from the app; /v7/test-timeline, served — ES-module
 │   │                                          imports don't load from file://). Runs the SAME editor + model as the
 │   │                                          account (imports both), so it can't drift. Dev panel: sample hours
@@ -719,18 +778,22 @@ sonic-brand/
 │       │                                      monotone curve, levels, reconcileTimeline (keep clock times),
 │       │                                      businessWindowAt (IL + overnight). Bare imports.
 │       ├── timeline-assembler.js           ← Option-2 duration-based assembler (pure, seeded RNG): demand → pool
-│       │                                      sizes, 3–5-song genre runs, two disjoint mixes. Bare imports.
+│       │                                      sizes, per-track random genre, two disjoint mixes. Bare imports.
 │       ├── musical-directions.js           ← R1 diagnostic taste probes (8, 4+4 split). label='v7-onboarding'.
 │       ├── refined-directions.js           ← R2 refinement (4 probes, fires when R1 picks < 3).
 │       │                                      label='v7-onboarding-refined'. Imports R1 sub-constants.
-│       ├── taste-profile.js                ← Full 116-genre bucketing + dynamic 2-6 energy levels.
+│       ├── taste-profile.js                ← Full 124-genre bucketing + dynamic 2-6 energy levels.
 │       │                                      Runs once after R1/R2 resolve, before signup. Output:
 │       │                                      approved/conditional/excluded + energy_levels_total +
 │       │                                      per-genre energy_level + inst_pref/pop_pref carry-through.
 │       │                                      label='v7-taste-profile'. NO Places injection (venue
 │       │                                      context is a property of the venue, not the user's taste).
+│       ├── level-directions.js             ← Option-2 per-energy-level direction libraries from approved_genres.
+│       │                                      label='v7-level-directions'. No forced pairings; rotated daily
+│       │                                      (pickLevelDirections in timeline-assembler.js) (2026-09-28).
 │       ├── energy-directions.js            ← Option-1 energy-tiered directions from approved_genres.
-│       │                                      label='v7-energy-directions'. ≥2 high + ≥2 low tiers.
+│       │                                      label='v7-energy-directions'. Library of up to 30 v6-style
+│       │                                      blends, each wholly high or low, ≥2 per tier (2026-09-28).
 │       ├── playlist-length.js              ← port of the v6 helper (server-reachable: bare imports). v7 has no
 │       │                                      popularity-window.js (unused copy deleted 2026-09-24).
 │       ├── event-chat-prompt.js            ← port (account-tab event chat; parity with v6)
@@ -739,6 +802,8 @@ sonic-brand/
 │                                              does NOT touch v7. Both prompts + Ami's dashboard route here.
 │                                              SERVER-REACHABLE — bare imports only, no ?v= query.
 ├── shared/                                 ← Cross-version source of truth.
+│   ├── password-rules.js                   ← v7 password rule (browser + server): passwordProblem, PASSWORD_RULES_TEXT.
+│   │                                          Mirrors the Supabase Auth password settings.
 │   └── genre-universe.js                   ← THE canonical genre list. Exports GENRES (array, 124 entries),
 │                                              GENRE_SET, and GENRE_UNIVERSE_SECTION (formatted prompt block).
 │                                              Every consumer (v5/v6/v7 musical-directions.js,
@@ -751,7 +816,9 @@ sonic-brand/
 │   │                                          `/v7/generation/musical-directions.js` (was v5). Also imports
 │   │                                          callModel/PROVIDER from `/v7/generation/ai-provider.js` (was v6).
 │   │                                          Since 2026-09-28 also edits + tests the v7 taste-profile prompt
-│   │                                          (swipe simulation → `/v7/generation/taste-profile.js`).
+│   │                                          (swipe simulation → `/v7/generation/taste-profile.js`), and
+│   │                                          step 4 shows the Option-1 / Option-2 directions built from the
+│   │                                          profile (`playlist-directions.js`; each option's prompt editable).
 │   └── generation/musical-directions.js    ← Still consumed by legacy v5/app.js standalone UI. No longer
 │                                              read by Ami's dashboard. Header comments + `MODEL='claude…'`
 │                                              constant are dead code from the pre-ai-provider era.
@@ -814,9 +881,13 @@ sonic-brand/
 │   │   └── account/
 │   │       ├── signup.js                   ← v7 onboarding→account bridge, after payment + the taste-profile bar.
 │   │       │                                  Requires a paid payment_checkouts row (checkoutId) and claims it.
-│   │       │                                  Creates user + businesses row (version='v7', paid_at), SAVES the taste
-│   │       │                                  profile, backfills gemini_call_log, then emails the magic link.
+│   │       │                                  Creates user (with the password — rules in § V7 "Passwords") +
+│   │       │                                  businesses row (version='v7', paid_at), SAVES the taste profile,
+│   │       │                                  backfills gemini_call_log, then emails the magic link.
 │   │       │                                  Never returns a session — email verification required.
+│   │       ├── check-email.js              ← Registration-screen check: {registered} (auth user owning a business).
+│   │       ├── _auth-users.js              ← Shared admin-API helpers: user lookup, business ids, create / set
+│   │       │                                  password / delete, password validation.
 │   │       ├── _taste-profile.js           ← Shared taste-profile → business_taste_profiles row builder.
 │   │       ├── save-taste-profile.js       ← Owner-JWT profile write. NOT used by onboarding since 2026-09-24
 │   │       │                                  (signup saves the profile); kept for later profile updates.
@@ -826,6 +897,8 @@ sonic-brand/
 │   │       │                                  bump); audits; returns the replace-today status.
 │   │       ├── update-hours.js             ← v7 copy of v6's update-hours + reconciles the timeline (keep clock times).
 │   │       ├── save-energy-directions.js   ← Persists Option-1 energy tiers into business_v7_directions.
+│   │       ├── save-level-directions.js    ← Persists Option-2 level libraries into business_v7_level_directions
+│   │       │                                  (genres re-checked against the profile; stamps profile_key).
 │   │       ├── generate-daily.js           ← Today's build: auto-fired after the first-login gate + dashboard
 │   │       │                                  "צור פלייליסטים" / "המקום פתוח?" + "החליפו עכשיו" (replaceToday:
 │   │       │                                  cap 2/day, old rows hidden as new ones land). 409 if a live set exists
@@ -916,10 +989,22 @@ sonic-brand/
 │   ├── _v7-backfill-track-genres.mjs        ← Fill business_playlists.track_genres for v7 playlists built before
 │   │                                          2026-09-24. Same attachTrackGenres as live builds. Dry run; --apply writes.
 │   ├── test-energy-timeline.mjs             ← Offline tests (node --test) for the Option-2 timeline model, assembler, build window.
+│   ├── test-v7-signup-passwords.mjs         ← v7 passwords: check-email + signup password rules vs `vercel dev`. Self-cleaning.
+│   ├── set-v7-passwords.mjs                 ← One-off: shared password for v7 owners created before --before. Dry run;
+│   │                                          --confirm applies.
+│   ├── _v7-regenerate-level-directions.mjs  ← Option-2 level libraries: list / --generate [--all] (no writes) / --confirm
+│   │                                          (replace, Option-2 businesses). Needs vercel dev.
+│   ├── _v7-regenerate-energy-directions.mjs ← Regenerate + replace the Option-1 directions of every Option-1 business
+│   │                                          with the current prompt (dry run by default; --confirm; needs vercel dev).
+│   │                                          Ran 2026-09-28 for the library change.
 │   ├── _v7-option2-dryrun.mjs               ← READ-ONLY: print a planned Option-2 day (clock, level, genre, duration per
-│   │                                          track) for a fixture or a real business; --at=HH:MM to plan as of a time.
+│   │                                          track) for a fixture or a real business; --at=HH:MM to plan as of a time,
+│   │                                          --date=YYYY-MM-DD for another day. Prints each mix's direction per level.
 │   ├── _v7-option2-walkthrough.mjs          ← Option-2 live E2E (real Spotify, ~6 playlists, self-cleaning): timeline save,
 │   │                                          hours reconciliation, build, replace-today (hide old / keep ledger), lock, cap.
+│   ├── _hyp-sign-probe.mjs                  ← Hyp credentials check: signs a payment page on the HYP_ENV terminal and prints
+│   │                                          its URL. Nothing charged or written.
+│   ├── _hyp-hk-status.mjs                   ← Terminate (or --resume) Hyp recurring agreements by HKId via action=HKStatus.
 │   ├── backup-db.mjs                         ← Dependency-free JSON snapshot of v6 prod data via PostgREST (no
 │   │                                          Docker/pg_dump, no DB password). Writes backups/db-<ts>/{json,restore.sql,
 │   │                                          manifest.json,auth-users.json}. Skips the heavy track-analysis catalog.
@@ -1260,7 +1345,7 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 - `/api/v5/prewarm` — 30/min
 - `/api/v5/record-playlist` — 30/min
 - `/api/new/spotify`, `/api/v4/spotify` — 60/min
-- `/api/v6/account/signup` — 20/hour (per IP; abuse-mitigation)
+- `/api/v6/account/signup` — 20/hour (per IP; abuse-mitigation). `/api/v7/account/signup` uses the SAME `signup` bucket, so v6 and v7 signups share one per-IP counter.
 - `/api/v6/account/direction-chat` — 20/min (profile-tab chat turn)
 - `/api/v6/account/event-chat` — 20/min (events-tab chat turn)
 - `/api/v6/account/preview-direction` — shares the `anchor-tracks` bucket (60/min)
@@ -1269,7 +1354,9 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 - `/api/v6/account/log-playlist-open` — 120/min (dashboard "▶ פתח" click log; higher than other write endpoints because bursty clicking through several playlists is legitimate)
 - `/api/v7/account/update-timeline` (`v7-update-timeline`), `/api/v7/account/update-hours` (`v7-update-hours`), `set-delivery-mode` — 20/min
 - `/api/v7/account/generate-daily` (`v7-generate-daily`) — 12/hour, plus a per-business build lock and the 2/day replace cap
-- `/api/v7/payment/checkout` (`v7-checkout`) — 20/min; `/api/v7/payment/status` (`v7-payment-status`) — 120/min; `/api/v7/payment/return` (`v7-payment-return`) — 60/min
+- `/api/v7/account/save-energy-directions` (`save-energy-directions`), `/api/v7/account/save-level-directions` (`save-level-directions`), `/api/v7/account/save-taste-profile` (`save-taste-profile`) — 20/min
+- `/api/v7/account/check-email` (`v7-check-email`) — 20 per 10 min (it reveals whether an email is registered)
+- `/api/v7/payment/checkout` (`v7-checkout`) — 30/min; `/api/v7/payment/status` (`v7-payment-status`) — 120/min; `/api/v7/payment/return` (`v7-payment-return`) — 60/min
 
 **Behavior notes:**
 - Keyed by client IP (via `x-forwarded-for` first-hop, `x-real-ip`, or
@@ -1602,7 +1689,8 @@ Everything the account dashboard reads lives here:
 - `business_taste_profiles` — one row per v7 business (PK `business_id`). The flat, full-catalog taste profile produced by `v7/generation/taste-profile.js` and persisted by `signup.js` at onboarding (before the verification email goes out). Columns: { business_id (uuid PK), energy_levels_total (int 2..6), approved_genres (jsonb — [{genre, energy_level}]), conditional_genres (jsonb — [{genre, energy_level, note_en}]; **DATA ONLY, builders ignore it**), excluded_genres (jsonb — [string]), instrumentalness_preference (text), popularity_preference (text), reasoning_en (text), audit_tally (jsonb, analytics) }. Owner-scoped RLS SELECT; service-role writes. Replaces `business_directions` as v7's taste source of truth.
 - `business_v7_settings` — one row per v7 business (PK `business_id`). { business_id (uuid PK), delivery_mode (text CHECK IN ('option1','option2'); NULL until the gate is picked), timeline (jsonb — Option 2's energy timeline, v2 shape `{version:2, groups:[{days, open, close, points:[{m,e}]}]}`, see § V7 ARCHITECTURE "Option 2: energy timeline"), updated_at (bumped only by delivery-mode changes) }. Written by `set-delivery-mode.js`, `update-timeline.js`, and `update-hours.js` (reconciliation). Changes are audited in `business_settings_changes` (fields `delivery_mode`, `energy_timeline`; plus `daily_playlists_replaced` per "replace now").
 - **`track_analyses.duration_sec`** (int, added 2026-09-24, migration `2026-09-24-v7-timeline-pool.sql`) — track length parsed from `raw_analysis->>'duration'` ("m:ss"), filled by a `BEFORE INSERT OR UPDATE OF raw_analysis` trigger (covers every analysis writer) + a one-time backfill. Used by the Option-2 builder via the `v7_timeline_pool` RPC.
-- `business_v7_directions` — Option-1 energy-tiered directions (populated at mode selection via `save-energy-directions.js`). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_tier (text CHECK IN ('high','low')), rank (int), title_en (text), genres (jsonb — [string], canonical), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active. Only Option 1 uses this; Option 2 builds straight from `business_taste_profiles.approved_genres`.
+- `business_v7_directions` — Option-1 energy-tiered directions: a library of up to 30 per business (populated at mode selection via `save-energy-directions.js`, which replaces the whole set and keeps at most 30; `rank` is bookkeeping only — the daily draw is random). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_tier (text CHECK IN ('high','low')), rank (int), title_en (text), genres (jsonb — [string], canonical), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active. Only Option 1 uses this; Option 2 uses `business_v7_level_directions` (below).
+- `business_v7_level_directions` — Option-2 per-energy-level direction libraries (migration `2026-09-28-v7-level-directions.sql`). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_level (int CHECK 1..6), rank (int — rotation order within the level), title_en (text, internal), genres (jsonb — canonical, all approved at that level), profile_key (text — `levelProfileKey` of the taste profile it was built from), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active; owner-scoped RLS SELECT. Written by `save-level-directions.js` (replace-all) and `scripts/_v7-regenerate-level-directions.mjs`; separate from Option 1's table, so switching types never touches it. See "Option 2: level directions" in § V7 ARCHITECTURE.
 - **v7 `business_playlists` rows insert `direction_id: null`** — that column is an FK to v6's `business_directions`; a `business_v7_directions` id would violate it (the two are different tables). See the v7 daily runtime mechanism in § V7 ARCHITECTURE.
 - **`payment_checkouts`** (migration `2026-09-27-v7-payments.sql`) — one row per Hyp payment attempt from the v7 payment step. { id (uuid PK — the client's handle), order_no (bigserial, sent to Hyp as `Order`), hyp_env ('test'|'production'), masof, email, business_name, onboarding_session_id, coupon_code (FK → payment_coupons), percent_off, amount_first, amount_monthly, status ('pending'|'paid'|'failed'), hyp_trans_id (Hyp `Id`), hyp_hk_id (Hyp `HKId` — the recurring agreement, needed to cancel), hyp_acode, hyp_ccode, hyp_amount, return_query (raw redirect query, audit), paid_at, business_id (FK → businesses ON DELETE SET NULL — set when signup claims it), **billing** (jsonb `{name, address, invoiceBusinessName, taxId}` — what the payment screen sent Hyp for the invoice; migration `2026-09-28-v7-payment-billing.sql`), created_at, updated_at }. RLS on, no policies (server-only). A paid row with `business_id` null = paid but never signed up.
 - **`payment_coupons`** — { code (PK, uppercase), percent_off (1..100, first month only), active, note, created_at }. Seeded with `TEST50` (50%) for testing — deactivate before real customers: `UPDATE payment_coupons SET active = false WHERE code = 'TEST50';`. RLS on, no policies.
@@ -1622,7 +1710,7 @@ Everything the account dashboard reads lives here:
 
 ### Track pool coverage
 
-**~121k successfully-analyzed tracks** in `track_analyses` as of 2026-09-08; the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, Israeli genres, Japanese Folk, and a handful of others through early September). This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses` in Supabase (or grep the batch log: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (116 entries as of 2026-09-02 per `v6/generation/genre-list.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
+**128,652 successfully-analyzed tracks** (`status = ok`) in `track_analyses` as of 2026-09-28 (~121k on 2026-09-08); the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, Israeli genres, Japanese Folk through early September; the 8 genres added 2026-09-26 — Afro Cuban Jazz, Doo-Wop, Electronic R&B, French Touch, Italian Folk, Mo Town, Soft Pop Hits, Surf Rock). This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses` in Supabase (or grep the batch log: `grep -Ec "\] ok [A-Za-z0-9]{22} " v4/precompute/state/batch.log`). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (124 entries as of 2026-09-26, `shared/genre-universe.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
 
 ---
 
@@ -1680,7 +1768,7 @@ Belt-and-suspenders. `pgrRequest` catches errors whose message contains `"57014"
 | Feature | Model | Where selected | Rationale |
 |---|---|---|---|
 | v6 Musical directions (main flow) | `gemini-3.6-flash`, thinking=high | `v6/generation/ai-provider.js` `PROVIDER='gemini'` | Faster + cheaper than Sonnet at comparable quality once thinking=high is set; better JSON compliance with `responseMimeType`. Flip `PROVIDER` back to `'anthropic'` in that one file to revert. |
-| v7 Musical directions (R1 + R2 + taste-profile + energy-directions) | `gemini-3.6-flash`, thinking=high | `v7/generation/ai-provider.js` `PROVIDER='gemini'` | INDEPENDENT of v6's switch. Same values today but decoupled — flipping v6's PROVIDER does not affect v7 or Ami's dashboard (which imports v7's ai-provider since 2026-09-23). Labels for `gemini_call_log`: `v7-onboarding`, `v7-onboarding-refined`, `v7-taste-profile`, `v7-energy-directions`. |
+| v7 Musical directions (R1 + R2 + taste-profile + energy-directions + level-directions) | `gemini-3.6-flash`, thinking=high | `v7/generation/ai-provider.js` `PROVIDER='gemini'` | INDEPENDENT of v6's switch. Same values today but decoupled — flipping v6's PROVIDER does not affect v7 or Ami's dashboard (which imports v7's ai-provider since 2026-09-23). Labels for `gemini_call_log`: `v7-onboarding`, `v7-onboarding-refined`, `v7-taste-profile`, `v7-energy-directions`, `v7-level-directions`. |
 | Event chat (special-events dashboard) | `gemini-3.6-flash`, thinking=low | `v6/account/app.js` (chat state machine) | Multi-turn JSON, low latency for a chat feel. Prompt in `v6/generation/event-chat-prompt.js`. |
 | Direction-edit chat (profile-tab) | `gemini-3.6-flash`, thinking=low, max_tokens=3000 | hardcoded in `api/v6/account/direction-chat.js` | Same rationale as event chat — multi-turn JSON, low latency. Prompt in `v6/generation/direction-edit-chat-prompt.js`. Kept distinct from the ai-provider switch used for musical directions. |
 | Event playlist genre+BPM extraction | `claude-haiku-4-5-20251001` | hardcoded in `api/v6/account/event-playlist.js` | Fast one-shot classify; kept on Anthropic because the task is narrow + the Haiku path is well-tested. |
@@ -1760,6 +1848,32 @@ step on the same page:
   fired)"). The business inputs used are the ones from the last step-1 run;
   re-running step 1 resets the swipe simulation.
 
+**Daily playlist directions (added 2026-09-28).** Step 4 appears once step 3
+returns a taste profile with approved genres:
+- Ami picks **Option 1** or **Option 2**, edits that option's prompt (its own
+  editor, prefilled with production's `EDITABLE_PROMPT_SECTION`), and
+  generates the directions the daily playlists would be built from, using
+  the latest step-3 profile.
+- **Switching back and forth:** each option keeps its own edited prompt, last
+  result and status. Switching shows that option's editor and result, and one
+  option can keep generating while Ami looks at the other.
+- The logic lives in `v5/ami-prompt-dashboard/playlist-directions.js`. The
+  edited text is assembled with production's FIXED section, `buildUserMessage`
+  and normalizer (`v7/generation/energy-directions.js` / `level-directions.js`),
+  with no Places block, logged as `label='ami-energy-directions'` /
+  `'ami-level-directions'`. When Ami's version is ready, Roni ports it into
+  the v7 module (and `prompt-history-v7.md`).
+- The results show:
+  - a short Hebrew explanation of how that option's playlists are built from
+    the directions (`EXPLANATION_HE` — keep it in sync with `planOption1` and
+    `_option2-builder.js` when those rules change),
+  - the directions per tier or per level,
+  - any approved genres left unused, and genres the normalizer dropped,
+  - Option 1: one example random daily draw;
+  - Option 2: the next 4 days of `pickLevelDirections` rotation per mix.
+- A new step-3 run clears both options' results (the edited prompts stay) and
+  hides step 4 until it succeeds.
+
 The dashboard's prompt assembly runs through a **lenient wrapper**
 `normalizeForProdAssembly` in `v5/ami-prompt-dashboard/app.js` (added 2026-08-30)
 before calling the prod `assembleSystemPrompt` helper. It widens the Google
@@ -1805,7 +1919,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 | `OPENAI_API_KEY` | `api/v6/transcribe.js`, legacy proxies | Env-only. The old Supabase `app_settings.openai_key` fallback was removed during the 2026-08-14 security audit (was readable via the public anon key). |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Michael's app for CC reads | Hardcoded copy of client_id in v3/app.js for legacy OAuth |
 | `RUBIN_SPOTIFY_CLIENT_ID` / `RUBIN_SPOTIFY_CLIENT_SECRET` | Rubin's app for user-context writes | client_id: `431c55feb024444c979f2aa51e04426d` |
-| `RUBIN_REFRESH_TOKEN` | `api/new/spotify.js` refreshUserToken | Scope: `playlist-modify-private` only. Re-seed for wider scopes. |
+| `RUBIN_REFRESH_TOKEN` | `api/new/spotify.js` refreshUserToken | Scope: `playlist-modify-private` + `playlist-modify-public` + `playlist-read-private` (widened 2026-09-06 — see § SPOTIFY SETUP). Re-seed for other scopes. |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | All v5/v6 endpoints via api/v5/supabase-client.js | Anon safe to expose client-side; service role server-only |
 | `INTERNAL_API_KEY` | `api/v6/origin-guard.js requireSiteOrInternal`; passed as `x-sonic-internal` header for server-to-server calls into `api/new/spotify.js`; also rate-limit bypass in `api/v6/ratelimit.js` | Fail-open if not set. |
 | `INTERNAL_ADMIN_API_KEY` | `api/internal/_guard.js requireAdmin` — Michael's dashboard bearer token | Fail-CLOSED if unset (500s the endpoint). Must be set in Vercel prod + `.env.local`; share the value with Michael out-of-band. |
@@ -1814,10 +1928,11 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 | `GOOGLE_PLACES_API_KEY` | `api/v6/place-lookup.js` | Optional — endpoint silently skips if unset. Currently sensitive in Vercel + set to empty on some environments. |
 | `CRON_SECRET` | `api/cron/expire-playlists.js`, `api/cron/v7-generate-daily.js` (+ the unscheduled `generate-daily.js`) auth check | Vercel Cron sets `Authorization: Bearer <secret>` header. Also gates the v7 walkthrough scripts' manual cron trigger. |
 | `V6_ACCOUNT_REDIRECT_URL` | `api/v6/account/signup.js accountRedirectUrl` | Optional pin. When unset, magic-link redirect derives from request host (validated against `isAllowedHost`). |
+| `V7_ACCOUNT_REDIRECT_URL` | `api/v7/account/signup.js accountRedirectUrl` | Optional pin for where the v7 signup email's magic link lands. When unset (the normal case), it's `<request host>/v7/account`, host checked against `isAllowedHost`. |
 | `HYP_ENV` | `api/v7/payment/_hyp.js` | `test` (default when unset) or `production` — which Hyp terminal takes v7 payments. Any other value throws. |
 | `HYP_TEST_MASOF` / `HYP_TEST_API_KEY` / `HYP_TEST_PASSP` | same | Hyp **test** terminal: terminal number (10 digits), API key (`KEY`), API password (`PassP`). `KEY` + `PassP` are in the terminal's Hyp portal → הגדרות → API-דף תשלום ו → אימות. |
 | `HYP_PROD_MASOF` / `HYP_PROD_API_KEY` / `HYP_PROD_PASSP` | same | Hyp **production** terminal. Only needed where `HYP_ENV=production`. |
-| `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json`. The *automated cron* is off (ami-cron-tick killed 2026-08-13) but the CLI batch worker `node v4/precompute/batch.mjs` is still run manually to digest new genres as Ami adds them. Key rotated 2026-08-25 after a paid-tier upgrade — the old key kept returning provider-side errors on the higher tier; new key resolved it. Regen a key at RapidAPI dashboard → your app → security. |
+| `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json`. The *automated cron* is off (ami-cron-tick killed 2026-08-13) but the CLI batch worker `node v4/precompute/batch.mjs` is still run manually to digest new genres as Ami adds them. Key rotated 2026-08-25 after a paid-tier upgrade — the old key kept returning provider-side errors on the higher tier; new key resolved it. Rotated again 2026-09-24 when the plan went back from Ultra to Pro (same lesson: a tier change → a new key). Track analysis only runs locally (the batch worker on Roni's machine reads the key from `.env.local`); nothing in the cloud runs it on a schedule. Regen a key at RapidAPI dashboard → your app → security. |
 | `RAPIDAPI_BILLING_CYCLE_DAY` | Precompute batch | Day of month billing resets |
 
 **Also configured in external dashboards:**
@@ -1852,13 +1967,15 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 `v6/account/index.html` similarly at `01082026b`.
 
+**v7 uses the same scheme.** `v7/index.html` and `v7/account/index.html` load `app.js?v=DDMMYYYY{letter}`, and the browser-side imports inside `v7/app.js` / `v7/account/app.js` carry their own `?v=` (e.g. `../generation/level-directions.js?v=28092026a`). When you change a v7 client module, bump its `?v=` on the importing line AND the `app.js?v=` in the page's `index.html`. The server-shared rule below applies to v7 too: modules under `v7/generation/` that `api/` imports (`energy-timeline.js`, `timeline-assembler.js`, `playlist-length.js`, `ai-provider.js`, …) must use bare imports among themselves.
+
 **Server-shared modules must NOT use `?v=` on their internal imports.** Node's ESM loader treats the query string as part of the filename and prod cold-deploys crash with `Cannot find module './foo.js?v=...'`. `vercel dev` sometimes strips the query (loader-chain dependent) so this passes locally but breaks on Vercel. The specific offender that took down `/api/v6/account/direction-chat` on 2026-09-02 was `v6/generation/musical-directions.js` importing `./ai-provider.js?v=25082026a` — that file got pulled into the server bundle transitively when `direction-edit-chat-prompt.js` started importing rule sub-constants from it (2026-08-31), and the chat prompt is in turn imported by the server-side chat endpoint. Any module that is (or might become) transitively reachable from an `api/` file must use bare `import 'x'` / `import './x.js'` — no query. Browser cache freshness for those modules is handled by the `Cache-Control: no-cache` header on `/v6/*` in `vercel.json` (browsers revalidate on every load), so the `?v=` bump was redundant there anyway.
 
 ---
 
 ## PROMPT EDITING PROTOCOL
 
-Five musical-directions prompts exist across two versions, tracked in two audit-log files:
+Seven prompts (musical directions and the v7 prompts built on them) exist across two versions, tracked in two audit-log files:
 
 **v6 (production)** — tracked in `prompt-history.md`:
 - **v6 Round 1** — `EDITABLE_PROMPT_SECTION` + `FIXED_PROMPT_SECTION` in `v6/generation/musical-directions.js`, both composed from named sub-constants. Mirrored byte-for-byte in `v5/generation/musical-directions.js` (kept for legacy `v5/app.js` — no longer read by Ami's dashboard).
@@ -1867,11 +1984,12 @@ Five musical-directions prompts exist across two versions, tracked in two audit-
 **v7 (runtime built)** — tracked in `prompt-history-v7.md`:
 - **v7 Round 1** — `v7/generation/musical-directions.js`. Diagnostic taste probes (see § V7 ARCHITECTURE). What Ami's dashboard tunes against.
 - **v7 Round 2** — `v7/generation/refined-directions.js`. Imports shared sub-constants from v7 R1.
-- **v7 Taste profile** — `v7/generation/taste-profile.js`. Full 116-genre bucketing + per-user energy scale.
+- **v7 Taste profile** — `v7/generation/taste-profile.js`. Full-catalog bucketing (every genre in `shared/genre-universe.js` — 124 as of 2026-09-26; the prompt reads the count from the list) + per-user energy scale.
 - **v7 Energy directions** — `v7/generation/energy-directions.js`. Option-1 energy-tiered directions from `approved_genres`. `Applies to: energy directions`.
+- **v7 Level directions** — `v7/generation/level-directions.js`. Option-2 per-energy-level direction libraries from `approved_genres`. `Applies to: level directions`.
 
 **Any edit to any prompt** appends a NEW entry at the top of the correct history file (v6 edits → `prompt-history.md`; v7 edits → `prompt-history-v7.md`). Each entry MUST include:
-- An **Applies to:** line. For v6: `Round 1` / `Round 2` / `both`. For v7: `Round 1` / `Round 2` / `taste profile` / `R1+R2` / `all v7`.
+- An **Applies to:** line. For v6: `Round 1` / `Round 2` / `both`. For v7: `Round 1` / `Round 2` / `taste profile` / `R1+R2` / `energy directions` / `level directions` / `all v7`.
 - Today's date + one-sentence summary of what changed and why
 - The FULL text of the changed sub-constants (for substantive content changes) OR a clear diff description (for structural/refactor changes with byte-identical output). Never delete old entries — the files are the audit log.
 
@@ -1937,7 +2055,7 @@ Get-Content .env.local | ForEach-Object {
 node scripts/purge-rubin-playlists.mjs             # dry-run
 node scripts/purge-rubin-playlists.mjs --confirm   # actually unfollow
 ```
-Source: `created_playlists` ledger (not `GET /me/playlists`) because current refresh token lacks read scope. Ledger row marked `deleted_at` automatically so the cron doesn't re-process.
+Source: `created_playlists` ledger (not `GET /me/playlists`) — written before the refresh token could read playlists; to sweep by what's actually in Rubin's library (incl. pre-ledger playlists) use `scripts/purge-pre-cron-playlists.mjs`, which reads `GET /me/playlists`. Ledger row marked `deleted_at` automatically so the cron doesn't re-process.
 
 ### Reset a user for re-testing
 Supabase Dashboard → SQL Editor:
@@ -1961,6 +2079,7 @@ node scripts/benchmark-directions.mjs --out=benchmark-results/run.json
 
 `v4/precompute/dry-run-orphans.mjs` gained:
 - `--exclude-genres="a,b,c"` — drops orphans whose playlist is tagged to any of the listed genres. Use when a specific genre's playlists are causing upstream storms and you want to keep filling everything else without touching the DB (they stay orphans, no blacklist).
+- `--include-genres="a,b,c"` (added 2026-09-26) — the inverse: keeps ONLY orphans whose playlist is tagged to one of the listed genres. Use it to scan newly added genres first (e.g. the first playlists of each new genre, then the rest). If both flags are passed, `--exclude-genres` is ignored.
 
 Typical fail-fast recovery run:
 ```powershell
@@ -1973,14 +2092,13 @@ node v4/precompute/batch.mjs --max-rapidapi-calls=1000000 --max-error-retries=0 
 ## KNOWN ISSUES / ROUGH EDGES
 
 1. **`GOOGLE_PLACES_API_KEY` may be empty in Vercel** — endpoint silently no-ops. Check with a debug-length endpoint if uncertain. Places confirmation step is optional in v6.
-2. **RUBIN_REFRESH_TOKEN lacks `playlist-read-private`** — can't enumerate playlists from Spotify API. Ledger source works for anything created since v5's record-playlist. Legacy pre-ledger playlists are invisible without re-seed.
-3. **Spotify iframe autoplay blocked** in preview swipe deck. Custom play button on the artwrap requires user gesture. This is expected browser behavior; not a bug.
-4. **Track pool coverage varies by genre** — niche genres (e.g., Klezmer, Medieval music) have small pools. Event playlists floor at 5 tracks; below that the endpoint returns an error asking user to describe differently.
-5. **v5 tests + v3/v4 legacy scripts** may reference stale endpoints. Prefer building fresh under `scripts/` for new tools.
-6. **Prod deploys are manual** (`vercel --prod`). Easy to forget after code changes.
-7. **Vercel dev + moved files race**: if you move a file, update `vercel.json` in the same edit — otherwise `vercel dev` picks up the mismatch and crashes with "pattern doesn't match any Serverless Functions". Recovery: fix vercel.json and restart.
-8. **Vercel dev's `VERCEL_URL=localhost:3000` quirk**: server-to-server URLs built as `https://${VERCEL_URL}` resolve to `https://localhost:3000` in dev — every fetch fails with a bare "fetch failed". Both cron files use a `resolveSpotifyBase()` helper that scheme-normalises via a `/^(localhost|127\.)/` regex → http, everything else → https. If you add another server-to-server caller that builds a base URL from `VERCEL_URL` / `VERCEL_PROJECT_PRODUCTION_URL`, copy the same helper — do NOT hard-code `https://`.
-9. **Vercel serverless kills fire-and-forget promises after `res.end()`**: this bit us on 2026-08-29 when cron cluster alerts never arrived despite the code running. Any Resend / logging / analytics send that started with `.catch(() => {})` and wasn't awaited was cut mid-flight when the function returned. If you're adding async work in a handler, either await it before responding OR collect the promises and `await Promise.allSettled(alertPromises)` at the end. See "Alerts via Resend" mechanism for the pattern.
+2. **Spotify iframe autoplay blocked** in preview swipe deck. Custom play button on the artwrap requires user gesture. This is expected browser behavior; not a bug.
+3. **Track pool coverage varies by genre** — niche genres (e.g., Klezmer, Medieval music) have small pools. Event playlists floor at 5 tracks; below that the endpoint returns an error asking user to describe differently.
+4. **v5 tests + v3/v4 legacy scripts** may reference stale endpoints. Prefer building fresh under `scripts/` for new tools.
+5. **Prod deploys are manual** (`vercel --prod`). Easy to forget after code changes.
+6. **Vercel dev + moved files race**: if you move a file, update `vercel.json` in the same edit — otherwise `vercel dev` picks up the mismatch and crashes with "pattern doesn't match any Serverless Functions". Recovery: fix vercel.json and restart.
+7. **Vercel dev's `VERCEL_URL=localhost:3000` quirk**: server-to-server URLs built as `https://${VERCEL_URL}` resolve to `https://localhost:3000` in dev — every fetch fails with a bare "fetch failed". Both cron files use a `resolveSpotifyBase()` helper that scheme-normalises via a `/^(localhost|127\.)/` regex → http, everything else → https. If you add another server-to-server caller that builds a base URL from `VERCEL_URL` / `VERCEL_PROJECT_PRODUCTION_URL`, copy the same helper — do NOT hard-code `https://`.
+8. **Vercel serverless kills fire-and-forget promises after `res.end()`**: this bit us on 2026-08-29 when cron cluster alerts never arrived despite the code running. Any Resend / logging / analytics send that started with `.catch(() => {})` and wasn't awaited was cut mid-flight when the function returned. If you're adding async work in a handler, either await it before responding OR collect the promises and `await Promise.allSettled(alertPromises)` at the end. See "Alerts via Resend" mechanism for the pattern.
 
 ---
 
@@ -2012,7 +2130,7 @@ The `/v7` + `/v7/(.*)` no-cache header blocks now exist in `vercel.json` (added 
 
 Confirmed by reading both sides; not yet fixed (each needs a decision):
 - **v6 and v7 share one browser session.** Same origin → same `sb-*-auth-token` localStorage key. A v6-logged-in owner opening `/v7` is redirected to `/v7/account` (head script in `v7/index.html`) and sees their v6 business behind the v7 delivery-mode gate; `v7/account/app.js` never checks `businesses.version`, so picking a mode writes `business_v7_settings` for a `version='v6'` business the v7 cron never builds. Reverse also holds. Test with `?reset=1`. Likely fix: route by `business.version` in both account apps.
-- **Misleading copy:** the v7 registration heading "הפלייליסטים שלכם מוכנים!" (`v7/result.js`) claims playlists are ready; v7 hasn't built any at that point.
+- ~~**Misleading copy:** the v7 registration heading "הפלייליסטים שלכם מוכנים!" (`v7/result.js`) claims playlists are ready; v7 hasn't built any at that point.~~ RESOLVED — the heading no longer exists anywhere in `v7/` (checked 2026-09-28).
 
 Fixed in the same audit: taste-profile retry ReferenceError loop, R1 page-2 / R2 rank collisions in the R2 + taste-profile prompt inputs, and silent Option-1 energy-directions failures (see `prompt-history-v7.md` and `v7/account/app.js energyBuildFailed`). Fixed 2026-09-24: the v7 dashboard's "צור פלייליסטים" / "המקום פתוח?" links called v6's `/api/v6/account/generate-daily` (reads v6 `business_directions` → always 400 for v7); they now call the new `api/v7/account/generate-daily.js`. The taste-profile call (~57–88s, estimated from `gemini_call_log` token counts at ~150 tok/s) exceeded `/api/v6/gemini`'s 60s `maxDuration` — raised to 300s (`vercel dev` doesn't enforce the limit, so local runs never showed it). Verified 2026-09-24: `/v7/account` is on Supabase Auth's Redirect URLs allowlist.
 

@@ -1,10 +1,26 @@
 /* /api/v7/account/signup.js
-   v7 onboarding → account bridge (passwordless), fired AFTER the payment step.
+   v7 onboarding → account bridge, fired AFTER the payment step.
 
    Email verification is REQUIRED (same as v6, decided 2026-09-24): this
    endpoint never logs anyone in. It creates/updates the account and emails a
    one-time magic link; clicking it is the verification step and lands the
-   owner on /v7/account. The client shows "בדקו את המייל ✉️".
+   owner on /v7/account, logged in. The client shows "בדקו את המייל ✉️".
+
+   Passwords (2026-09-28): the owner picks one at registration and it is set
+   here. A password only ever lands on an UNVERIFIED account, so it can't be
+   used until the inbox owner clicks the link:
+     - no account              → create it (unverified) with the password
+     - unverified, no business → set its password (an earlier attempt that
+                                 failed before creating the business)
+     - unverified + business   → only a RESEND of this signup: the request must
+                                 carry `resendFor` = the business id the first
+                                 call returned. Anything else → 409.
+     - verified + business     → 409 'already_registered'. A verified account's
+                                 password is never touched.
+     - verified, no business   → a leftover login with nothing behind it: delete
+                                 it and create a fresh unverified one
+   The registration screen (check-email.js) stops a registered email before
+   payment; the 409s are the server-side backstop.
 
    v7 differs from v6 signup in three ways:
      1. It is called only after the Hyp payment step, once the taste profile
@@ -26,6 +42,9 @@
 
    Request body: {
      email,
+     password,                           // REQUIRED (internal test callers may omit it)
+     resendFor?,                         // business_id from the first call — set by
+                                         // the "שלחו שוב" / retry paths
      checkoutId,                         // paid payment_checkouts id — REQUIRED while
                                          // PAYMENTS_ENABLED (internal test callers
                                          // may omit it); ignored-if-absent while off
@@ -40,11 +59,16 @@
                                          // a valid x-sonic-internal header
    }
    Response: { ok: true, existing_user, business_id, emailed, email }
-             | { error }   (429 with a friendly message when Supabase's
-                             per-user email interval hasn't passed yet)
+             | { error, code?, business_id? }
+               (429 with a friendly message when Supabase's per-user email
+                interval hasn't passed yet; 409 code 'already_registered';
+                400 code 'bad_password' when it breaks shared/password-rules.js,
+                'weak_password' when Supabase refuses it (leaked).
+                business_id is included once the business exists, so the
+                client's retry can pass it as resendFor.)
 
    Idempotent: the "resend" button on the check-email screen re-posts the same
-   payload (upserts + a fresh email).
+   payload + resendFor (upserts + a fresh email).
 */
 
 import { timingSafeEqual } from 'node:crypto';
@@ -53,6 +77,11 @@ import { requireSite, isAllowedHost, setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
 import { tasteProfileRow, isUsableTasteProfile } from './_taste-profile.js';
 import { PAYMENTS_ENABLED } from '../payment/_hyp.js';
+import {
+  adminHeaders, findUserByEmail, businessIdsOf, isVerified,
+  createUser, setPassword, deleteUser,
+} from './_auth-users.js';
+import { passwordProblem } from '../../../shared/password-rules.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -71,42 +100,33 @@ function accountRedirectUrl(req) {
   return `${proto}://${host}/v7/account`;
 }
 
-function adminHeaders() {
-  return {
-    apikey: SERVICE_KEY,
-    Authorization: `Bearer ${SERVICE_KEY}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-// Look up an existing auth user by email via the admin user list's `filter`
-// (a substring match — so exact-match the result). Deliberately NOT admin
-// generate_link: that counts as a login-link send and would trip Supabase's
-// per-user email interval, making the real magic-link email below fail.
-// Returns { id, ... } or null.
-async function findUserByEmail(email) {
-  const r = await fetch(
-    `${SUPABASE_URL}/auth/v1/admin/users?filter=${encodeURIComponent(email)}&per_page=50`,
-    { headers: adminHeaders() },
-  );
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) return null;
-  const list = Array.isArray(data?.users) ? data.users : [];
-  return list.find((u) => String(u.email || '').toLowerCase() === email) || null;
-}
-
-async function findOrCreateUser(email) {
-  const createRes = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-    method: 'POST',
-    headers: adminHeaders(),
-    body: JSON.stringify({ email, email_confirm: false }),
-  });
-  const created = await createRes.json().catch(() => ({}));
-  if (createRes.ok && created?.id) return { user: created, existing: false };
-
-  const existing = await findUserByEmail(email);
-  if (existing?.id) return { user: existing, existing: true };
-  throw new Error(created?.msg || created?.message || 'could not create or find user');
+// Find or create the owner's auth user and apply the password (rules in the
+// header). Returns { user, existing } or { conflict: true } for an email that
+// is already registered.
+async function prepareUser(email, password, resendFor) {
+  // Two passes: the second covers a concurrent signup for the same email
+  // creating the user between our lookup and our create.
+  for (let pass = 0; pass < 2; pass++) {
+    const found = await findUserByEmail(email);
+    if (found) {
+      const bizIds = await businessIdsOf(found.id);
+      if (isVerified(found)) {
+        if (bizIds.length) return { conflict: true };
+        // Verified but empty (e.g. left over from the old login page, which
+        // created an account for any email typed into it). Recreate it
+        // unverified so the new password only works once the inbox owner
+        // clicks the link.
+        await deleteUser(found.id);
+      } else {
+        if (bizIds.length && !bizIds.includes(resendFor)) return { conflict: true };
+        if (password) await setPassword(found.id, password);
+        return { user: found, existing: true };
+      }
+    }
+    const created = await createUser(email, password);
+    if (created) return { user: created, existing: false };
+  }
+  throw new Error('could not create or find user');
 }
 
 // Ensure a businesses row exists for the owner, stamped version='v7' +
@@ -186,7 +206,7 @@ async function writeUserSonicMeta(userId, sonic) {
 
 // Send the magic-link email via the PUBLIC anon endpoint — this is what makes
 // Supabase SMTP actually email the owner (admin generate_link only returns a
-// URL). create_user:false because findOrCreateUser already ensured the account.
+// URL). create_user:false because prepareUser already ensured the account.
 // FATAL (like v6): without this email the owner has no way into the account.
 // Supabase allows one login email per user per ~60s; a too-soon repeat comes
 // back 429 and is surfaced as err.rateLimited.
@@ -246,6 +266,7 @@ export default async function handler(req, res) {
   if (!requireSite(req, res)) return;
   if (!await guard(req, res, 'signup', 20, 3600)) return;
 
+  let businessId = null;   // echoed on errors once known — the client's retry sends it back as resendFor
   try {
     if (!SERVICE_KEY) {
       return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not set' });
@@ -266,11 +287,19 @@ export default async function handler(req, res) {
       genreTally,
       skipEmail,
       checkoutId,
+      password,
+      resendFor,
     } = req.body || {};
 
     const cleanEmail = String(email || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({ error: 'valid email required' });
+    }
+    // Password — chosen on the registration screen. Internal test callers
+    // (walkthrough scripts) may omit it; they mint their own session.
+    if (password != null || !isInternalCaller(req)) {
+      const pwErr = passwordProblem(password);
+      if (pwErr) return res.status(400).json({ error: pwErr, code: 'bad_password' });
     }
     // The taste profile is what every v7 daily build reads — an account
     // without one can't get playlists, so refuse rather than create it.
@@ -294,8 +323,16 @@ export default async function handler(req, res) {
     const desc     = String(description     || '').trim().slice(0, 4000);
     const emphases = String(musicalEmphases || '').trim().slice(0, 2000);
 
-    const { user, existing } = await findOrCreateUser(cleanEmail);
-    const businessId = await ensureBusinessV7(user.id, bizName, DEFAULT_CREDITS, {
+    const prepared = await prepareUser(cleanEmail, typeof password === 'string' ? password : null,
+      String(resendFor || ''));
+    if (prepared.conflict) {
+      return res.status(409).json({
+        error: 'לאימייל הזה כבר יש חשבון — היכנסו עם הסיסמה שלכם.',
+        code:  'already_registered',
+      });
+    }
+    const { user, existing } = prepared;
+    businessId = await ensureBusinessV7(user.id, bizName, DEFAULT_CREDITS, {
       description:     desc || null,
       musicalEmphases: emphases || null,
     }, checkout?.paid_at);
@@ -401,9 +438,9 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error('[signup:v7] magic-link send failed:', e.message);
         if (e.rateLimited) {
-          return res.status(429).json({ error: 'שלחנו קישור לפני רגע — אפשר לבקש שוב בעוד דקה.' });
+          return res.status(429).json({ error: 'שלחנו קישור לפני רגע — אפשר לבקש שוב בעוד דקה.', business_id: businessId });
         }
-        return res.status(502).json({ error: 'לא הצלחנו לשלוח את קישור הכניסה. נסו שוב עוד רגע.' });
+        return res.status(502).json({ error: 'לא הצלחנו לשלוח את קישור הכניסה. נסו שוב עוד רגע.', business_id: businessId });
       }
     }
 
@@ -417,6 +454,10 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error('[signup:v7] failed:', err.message);
-    return res.status(500).json({ error: err.message || 'Server error' });
+    return res.status(err.status || 500).json({
+      error:       err.message || 'Server error',
+      code:        err.code,
+      business_id: businessId,
+    });
   }
 }

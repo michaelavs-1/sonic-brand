@@ -14,9 +14,11 @@
    rows carry direction_id:null → v6 business_directions), so a hard delete is
    safe.
 
-   Rank is assigned per tier by array order (the model's priority order), so
-   buildOption1Batch's "order by rank.asc, split by tier, take first 2 per tier"
-   selection is deterministic.
+   The set is a LIBRARY of up to 30 directions (see v7/generation/energy-
+   directions.js); planOption1 draws 2 per tier at random each day. Rank is
+   assigned per tier by array order — bookkeeping only, the daily draw ignores
+   it. At most MAX_ROWS directions are kept, so a crafted request can't flood
+   the table.
 
    Auth: owner JWT (Authorization: Bearer <access_token>) + requireBusinessOwner.
 
@@ -54,13 +56,19 @@ const canonicalize = (g) =>
 
 const TIER_SET = new Set(['high', 'low']);
 
+// Same cap as MAX_DIRECTIONS in v7/generation/energy-directions.js (not
+// imported — that module pulls in the browser-side model client).
+const MAX_ROWS = 30;
+
 // Coerce raw client directions into insertable rows. Drops directions with a
 // bad tier or zero valid genres; assigns per-tier rank by array order.
-function shapeRows(businessId, directions) {
+// Exported for scripts/_v7-regenerate-energy-directions.mjs.
+export function shapeRows(businessId, directions) {
   let hi = 0;
   let lo = 0;
   const rows = [];
   for (const d of directions) {
+    if (rows.length >= MAX_ROWS) break;
     if (!d || typeof d !== 'object') continue;
     const tier = typeof d.energy_tier === 'string' ? d.energy_tier.trim().toLowerCase() : '';
     if (!TIER_SET.has(tier)) continue;

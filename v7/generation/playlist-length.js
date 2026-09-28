@@ -158,6 +158,24 @@ export function ilWallClockToUtc({ year, month, day, hour, minute }) {
   return new Date(guess - off2 * 60 * 1000);
 }
 
+// v7 daily-playlist dashboard names carry the date (Roni, 2026-09-28), like
+// the Spotify names already do: "אנרגיה גבוהה #1 · 28.09.2026",
+// "Daily Mix #2 · 28.09.2026". The date is the venue's BUSINESS day
+// (businessWindowAt(...).isoDate — an overnight venue at 01:00 still shows
+// yesterday). Only business_playlists.label gets it; the Spotify name comes
+// from v6's playlistName, which appends its own date.
+const DATED_SUFFIX = / · \d{2}\.\d{2}\.\d{4}$/;
+export function datedLabel(name, isoDate) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(isoDate || ''));
+  const base = undatedLabel(name);
+  return m ? `${base} · ${m[3]}.${m[2]}.${m[1]}` : base;
+}
+// The name without the date — for matching today's names against a new
+// build's (the replace-today flow) regardless of which rows carry a date.
+export function undatedLabel(label) {
+  return String(label ?? '').replace(DATED_SUFFIX, '');
+}
+
 // Returns the UTC ISO string for the NEXT 04:00 Asia/Jerusalem strictly
 // after `now`. Used by event playlists and closed-day manual playlists —
 // one-offs we keep visible through the night but sweep before the morning

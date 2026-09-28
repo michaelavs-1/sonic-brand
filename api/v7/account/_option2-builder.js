@@ -19,13 +19,23 @@
      3. Genres: business_taste_profiles.approved_genres grouped by
         energy_level (conditional genres ignored). The curve's grid row picks
         the level; a level with no genres falls back to the nearest one.
+        Level directions (2026-09-28): when the business has a library in
+        business_v7_level_directions, each mix plays ONE direction per level
+        today — pickLevelDirections in timeline-assembler.js, a daily cycle
+        from the business-day date; the two mixes differ when a level has 2+
+        directions. A level with genres but no stored direction plays its
+        genres as one implicit direction. No library (not generated yet,
+        generation failed, table missing) → every genre of the level, as
+        before.
      4. Pool: v7_timeline_pool RPC (migration 2026-09-24-v7-timeline-pool.sql)
         — random tracks per genre with durations, sized from the curve,
         excluding tracks served to this business in the last 7 days; wider
         sample for short genres; recently-served refill for levels still short.
      5. Assembly: v7/generation/timeline-assembler.js — tracks end to end by
-        duration, 3–5-song genre runs, two disjoint mixes. Seeded RNG; the
-        seed is stored on the row.
+        duration, each track's genre drawn at random from the mix's genres
+        at that level (the day's direction; no genre runs since
+        2026-09-28), two disjoint mixes. Seeded RNG; the seed and each mix's directions are
+        stored on the row (expansion.v7_timeline).
      6. Each mix → Spotify create + add (v6 spotifyCall / addAllTracks: same
         retry + spotify_paused handling), history (direction_key
         'v7-option2'), expiry ledger, business_playlists row (+ track_genres).
@@ -41,8 +51,11 @@ import {
   reconcileTimeline, groupForDay, mainGroup, businessWindowAt, energyAtFn, windowOf, defaultPoints,
   normLevels, AFTER_CLOSE_MIN,
 } from '../../../v7/generation/energy-timeline.js';
-import { estimateDemand, assembleMixes, mulberry32, seedFrom, shuffle, DEFAULT_TRACK_SEC } from '../../../v7/generation/timeline-assembler.js';
-import { CLOSED_DAY_MINUTES, nextIl4amIso } from '../../../v7/generation/playlist-length.js';
+import {
+  estimateDemand, estimateDemandPerMix, assembleMixes, pickLevelDirections, dayNumber,
+  mulberry32, seedFrom, shuffle, DEFAULT_TRACK_SEC,
+} from '../../../v7/generation/timeline-assembler.js';
+import { CLOSED_DAY_MINUTES, nextIl4amIso, datedLabel } from '../../../v7/generation/playlist-length.js';
 
 export const OPTION2_DIRECTION_KEY = 'v7-option2';
 export const OPTION2_TITLES = ['Daily Mix #1', 'Daily Mix #2'];
@@ -55,12 +68,27 @@ const normPref = (v) => (PREF_SET.has(v) ? v : 'none');
 // Missing RPC (migration not run yet) → PostgREST 404 PGRST202.
 const isMissingRpc = (e) => e?.status === 404 || /PGRST202|Could not find the function/i.test(e?.detail || e?.message || '');
 
+// The business's active level directions. A missing table (migration
+// 2026-09-28-v7-level-directions.sql not run) or a read error → [] (the
+// builder then plays every genre of the level, as before).
+export async function readLevelDirections(businessId) {
+  try {
+    return await pgrSelect('business_v7_level_directions',
+      { business_id: `eq.${businessId}`, active: 'is.true' },
+      { select: 'id,energy_level,rank,title_en,genres', order: 'energy_level.asc,rank.asc.nullslast', useService: true }) || [];
+  } catch (e) {
+    console.warn(`[v7 option2] level directions read failed for biz=${businessId}:`, e.message);
+    return [];
+  }
+}
+
 async function readInputs(businessId) {
-  const [settings, profiles] = await Promise.all([
+  const [settings, profiles, levelDirections] = await Promise.all([
     pgrSelect('business_v7_settings', { business_id: `eq.${businessId}` },
       { select: 'timeline', limit: 1, useService: true }),
     pgrSelect('business_taste_profiles', { business_id: `eq.${businessId}` },
       { select: 'approved_genres,energy_levels_total,instrumentalness_preference,popularity_preference', limit: 1, useService: true }),
+    readLevelDirections(businessId),
   ]);
   const tp = profiles?.[0] || null;
   return {
@@ -69,8 +97,38 @@ async function readInputs(businessId) {
     N: normLevels(tp?.energy_levels_total),
     inst: normPref(tp?.instrumentalness_preference),
     pop: normPref(tp?.popularity_preference),
+    levelDirections,
   };
 }
+
+// Stored level-direction rows → Map<level, [{ id, title_en, genres }]> in
+// rank order, keeping only genres that are approved AT that level (the
+// profile is the source of truth). A level with approved genres but no
+// usable direction gets its genre list as one implicit direction (id null).
+// No usable rows at all → null (no library).
+export function levelLibrary(rows, genresByLevel) {
+  if (!Array.isArray(rows) || !rows.length) return null;
+  const sorted = [...rows].sort((a, b) =>
+    (a.energy_level - b.energy_level) || ((a.rank ?? 1e9) - (b.rank ?? 1e9)));
+  const lib = new Map();
+  for (const r of sorted) {
+    const L = Number(r.energy_level);
+    const allowed = new Map((genresByLevel.get(L) || []).map((g) => [g.toLowerCase(), g]));
+    const genres = [...new Set((Array.isArray(r.genres) ? r.genres : [])
+      .map((g) => allowed.get(String(g).toLowerCase())).filter(Boolean))];
+    if (!genres.length) continue;
+    if (!lib.has(L)) lib.set(L, []);
+    lib.get(L).push({ id: r.id || null, title_en: r.title_en || '', genres });
+  }
+  if (!lib.size) return null;
+  for (const [L, genres] of genresByLevel) {
+    if (!lib.has(L) && genres.length) lib.set(L, [{ id: null, title_en: `(all level ${L} genres)`, genres }]);
+  }
+  return lib;
+}
+
+const directionsMeta = (picks) => Object.fromEntries([...picks].sort((a, b) => a[0] - b[0])
+  .map(([L, d]) => [L, { id: d.id, title_en: d.title_en, genres: d.genres }]));
 
 // Which stretch of the day to fill, and the energy curve over it.
 export function planWindow({ hours, timeline, now = new Date(), onDemand = false }) {
@@ -124,7 +182,8 @@ export async function planOption2Timeline({ businessId, hours, now = new Date(),
 
 // Same, from explicit inputs (scripts/_v7-option2-dryrun.mjs plans for fixture
 // profiles with this). Read-only: the only DB access is the pool RPC.
-export async function planFromInputs({ businessId, hours, timeline, approved, N, inst = 'none', pop = 'none', now = new Date(), onDemand = false }) {
+// levelDirections = business_v7_level_directions rows ([] → no library).
+export async function planFromInputs({ businessId, hours, timeline, approved, N, inst = 'none', pop = 'none', levelDirections = [], now = new Date(), onDemand = false }) {
   N = normLevels(N);
   const genresByLevel = new Map();
   const canonical = new Map();
@@ -141,11 +200,19 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
   const win = planWindow({ hours, timeline, now, onDemand });
   if (win.reason) return { slots: [], reason: win.reason };
 
+  // Today's direction per level for each mix (null → no library: every mix
+  // plays every genre of the level).
+  const MIXES = OPTION2_TITLES.length;
+  const lib = levelLibrary(levelDirections, genresByLevel);
+  const picks = lib ? pickLevelDirections(lib, win.isoDate, MIXES) : null;
+  const perMix = picks ? picks.map((m) => new Map([...m].map(([L, d]) => [L, d.genres]))) : null;
+  if (!lib && levelDirections?.length) console.warn(`[v7 option2] biz=${businessId}: stored level directions don't match the taste profile — playing every genre of each level`);
+
   const hardPref = inst === 'hard' || pop === 'hard';
-  const { specs, minsByLevel } = estimateDemand({
-    startMin: win.startMin, endMin: win.endMin, energyAt: win.energyAt, N, genresByLevel,
-    mixes: OPTION2_TITLES.length, hardPref,
-  });
+  const demandArgs = { startMin: win.startMin, endMin: win.endMin, energyAt: win.energyAt, N, hardPref };
+  const { specs, minsByLevel, minsByLevelPerMix } = perMix
+    ? estimateDemandPerMix({ ...demandArgs, genresByLevelPerMix: perMix })
+    : estimateDemand({ ...demandArgs, genresByLevel, mixes: MIXES });
 
   // Tier 1 + tier 2 (wider playlist sample for genres that came back short).
   const t0 = Date.now();
@@ -173,15 +240,36 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
     add(await callPool({ businessId, specs: short.map((s) => ({ ...s, playlists: 200 })), inst, pop, excludeDays: EXCLUDE_DAYS }), byGenre);
   }
 
-  // Refill: levels whose fresh supply is under 1.1× what both mixes need get
-  // recently-served tracks too, queued AFTER the fresh ones.
-  const refill = new Map([...canonical.values()].map((g) => [g, new Map()]));
-  const refillSpecs = [];
-  for (const [L, genres] of genresByLevel) {
-    const need = Math.ceil(((minsByLevel.get(L) || 0) * 60 * OPTION2_TITLES.length) / DEFAULT_TRACK_SEC);
-    const supply = genres.reduce((n, g) => n + (byGenre.get(g)?.size || 0), 0);
-    if (need && supply < need * 1.1) refillSpecs.push(...specs.filter((s) => s.level === L));
+  // Refill: a genre group whose fresh supply is under 1.1× what it has to
+  // cover gets recently-served tracks too, queued AFTER the fresh ones.
+  // Groups: each level's genres for both mixes (no library), or each mix's
+  // direction at each level plus the two directions together (library —
+  // they may share genres).
+  const groups = [];
+  const trackNeed = (mins, mixes = 1) => Math.ceil(((mins || 0) * 60 * mixes) / DEFAULT_TRACK_SEC);
+  if (perMix) {
+    for (const L of genresByLevel.keys()) {
+      let needAll = 0;
+      const union = new Set();
+      perMix.forEach((m, k) => {
+        const genres = m.get(L) || [];
+        const need = trackNeed(minsByLevelPerMix[k].get(L));
+        groups.push({ need, genres });
+        needAll += need;
+        genres.forEach((g) => union.add(g));
+      });
+      groups.push({ need: needAll, genres: [...union] });
+    }
+  } else {
+    for (const [L, genres] of genresByLevel) groups.push({ need: trackNeed(minsByLevel.get(L), MIXES), genres });
   }
+  const refillGenres = new Set();
+  for (const grp of groups) {
+    const supply = grp.genres.reduce((n, g) => n + (byGenre.get(g)?.size || 0), 0);
+    if (grp.need && supply < grp.need * 1.1) grp.genres.forEach((g) => refillGenres.add(g));
+  }
+  const refill = new Map([...canonical.values()].map((g) => [g, new Map()]));
+  const refillSpecs = specs.filter((s) => refillGenres.has(s.genre));
   if (refillSpecs.length) {
     add(await callPool({ businessId, specs: refillSpecs, inst, pop, excludeDays: 0 }), refill);
   }
@@ -198,8 +286,8 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
   }
 
   const { mixes, stats } = assembleMixes({
-    startMin: win.startMin, endMin: win.endMin, energyAt: win.energyAt, N, genresByLevel, pools, rng,
-    mixes: OPTION2_TITLES.length,
+    startMin: win.startMin, endMin: win.endMin, energyAt: win.energyAt, N, genresByLevel: perMix || genresByLevel, pools, rng,
+    mixes: MIXES,
   });
 
   const meta = {
@@ -213,11 +301,20 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
     levels_total: N,
     window: [Math.round(win.startMin), Math.round(win.endMin)],
     seed,
+    // 'level-directions' = each mix played one direction per level (each
+    // slot's meta.directions); 'level-genres' = no library, every genre of
+    // the level.
+    source: picks ? 'level-directions' : 'level-genres',
+    day_number: dayNumber(win.isoDate),
   };
-  console.log(`[v7 option2] biz=${businessId} window=${meta.window.join('-')} kind=${win.kind} pool=${poolMs}ms tracks=${mixes.map((m) => m.tracks.length).join('+')} stats=${JSON.stringify(stats)}`);
+  const slotMeta = (i) => ({ ...meta, directions: picks ? directionsMeta(picks[i]) : null });
+  const pickLog = picks
+    ? ' picks=' + picks.map((m, i) => `#${i + 1}{${[...m].sort((a, b) => a[0] - b[0]).map(([L, d]) => `L${L}:${d.title_en}`).join(', ')}}`).join(' ')
+    : ' picks=none(level-genres)';
+  console.log(`[v7 option2] biz=${businessId} window=${meta.window.join('-')} kind=${win.kind} pool=${poolMs}ms tracks=${mixes.map((m) => m.tracks.length).join('+')} stats=${JSON.stringify(stats)}${pickLog}`);
   return {
     reason: null,
-    slots: mixes.map((m, i) => ({ key: `slot-${i}`, title: OPTION2_TITLES[i], tracks: m.tracks })),
+    slots: mixes.map((m, i) => ({ key: `slot-${i}`, title: OPTION2_TITLES[i], tracks: m.tracks, meta: slotMeta(i) })),
     expiryIso: win.expiryIso,
     meta,
     stats,
@@ -252,7 +349,7 @@ export async function createTimelineMix({ origin, ownerId, businessId, bizName, 
     spotify_id: created.id,
     business_id: businessId,
     url: created.external_urls?.spotify || '',
-    label: title,
+    label: datedLabel(title, meta?.il_date),   // "Daily Mix #1 · 28.09.2026"
     ico: '🎵',
     track_count: ids.length,
     genres,
@@ -264,7 +361,7 @@ export async function createTimelineMix({ origin, ownerId, businessId, bizName, 
         ...meta,
         starts: tracks.map((t) => t.startMin),
         levels: tracks.map((t) => t.level),
-        run_genres: tracks.map((t) => t.genre),
+        run_genres: tracks.map((t) => t.genre),   // each track's genre (name kept from the genre-runs era)
       },
     },
     event_id: null,
@@ -289,7 +386,7 @@ export async function buildOption2TimelineBatch({ ownerId, businessId, bizName, 
     const slot = plan.slots[i];
     try {
       const r = await createTimelineMix({
-        origin, ownerId, businessId, bizName, title: slot.title, tracks: slot.tracks, expiryIso: plan.expiryIso, meta: plan.meta,
+        origin, ownerId, businessId, bizName, title: slot.title, tracks: slot.tracks, expiryIso: plan.expiryIso, meta: slot.meta,
       });
       if (r.skipped) failures.push({ title: r.title, reason: r.reason });
       else built.push(r.row);

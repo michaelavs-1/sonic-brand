@@ -7,8 +7,13 @@ import {
   curveThrough, energyAtFn, levelOf, effectiveLevel, sanitizePoints, reconcileTimeline,
   groupForDay, mainGroup, businessWindowAt, MAX_POINTS,
 } from '../v7/generation/energy-timeline.js';
-import { assembleMixes, estimateDemand, mulberry32, shuffle, seedFrom } from '../v7/generation/timeline-assembler.js';
-import { planWindow } from '../api/v7/account/_option2-builder.js';
+import {
+  assembleMixes, estimateDemand, estimateDemandPerMix, mulberry32, shuffle, seedFrom,
+  dayNumber, pickLevelDirections, levelProfileKey,
+} from '../v7/generation/timeline-assembler.js';
+import { planWindow, levelLibrary } from '../api/v7/account/_option2-builder.js';
+import { normalizeLevelDirections, MAX_PER_LEVEL } from '../v7/generation/level-directions.js';
+import { shapeLevelRows } from '../api/v7/account/save-level-directions.js';
 
 const week = (fn) => Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, fn(d)]));
 const open = (o, c) => ({ closed: false, open: o, close: c });
@@ -240,12 +245,23 @@ test('assembler: covers the window, two disjoint mixes, levels follow the curve'
     assert.ok(m.tracks[m.tracks.length - 1].startMin < 1050, 'last track starts inside the window');
     assert.equal(m.tracks[0].startMin, 540);
     for (const t of m.tracks) assert.equal(t.level, levelOf(CURVE(t.startMin + 2), 3));
-    for (const s of segments(m.tracks)) assert.ok(s.n <= 5, `run of ${s.n} ${s.genre}`);
     // cumulative duration is consistent
     let c = 540;
     for (const t of m.tracks) { assert.ok(Math.abs(t.startMin - c) < .02); c += t.sec / 60; }
   }
   assert.equal(stats.short, false);
+});
+
+test('assembler: no genre runs — each track draws its genre at random from the level', () => {
+  const { mixes } = assembleMixes(base());
+  for (const m of mixes) {
+    const segs = segments(m.tracks);
+    const avg = m.tracks.length / segs.length;
+    // Two genres per level, picked per track: consecutive tracks switch genre
+    // about half the time (the old 3–5-song runs averaged 4 per stretch).
+    assert.ok(avg < 2.6, `average same-genre stretch ${avg.toFixed(2)}`);
+    assert.ok(segs.some((s) => s.n === 1), 'single-track stretches happen');
+  }
 });
 
 test('assembler: deterministic per seed, different across seeds', () => {
@@ -312,4 +328,133 @@ test('planWindow: closed day on demand → main curve over now → now + 12h, ex
   assert.equal(w.endMin, 780 + 720);
   assert.equal(w.expiryIso, '2026-09-23T01:00:00.000Z');
   assert.ok(Math.abs(w.energyAt(780) - .1) < 1e-9 && Math.abs(w.energyAt(1500) - .9) < 1e-9, 'curve stretched over the 12h');
+});
+
+// ---------------------------------------------------------------- level directions (2026-09-28)
+const DAY0 = '2026-09-28';
+const addDaysIso = (iso, n) => new Date(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10) + n)).toISOString().slice(0, 10);
+const libOf = (K) => new Map([[1, Array.from({ length: K }, (_, i) => ({ id: `d${i}`, title_en: `D${i}`, genres: [`G${i}`] }))]]);
+const pickIds = (lib, iso) => pickLevelDirections(lib, iso).map((m) => m.get(1).id);
+
+test('dayNumber: consecutive calendar days, month/year boundaries', () => {
+  assert.equal(dayNumber('2026-10-01') - dayNumber('2026-09-30'), 1);
+  assert.equal(dayNumber('2027-01-01') - dayNumber('2026-12-31'), 1);
+  assert.equal(dayNumber('garbage'), 0);
+});
+
+test('rotation: K=1 → both mixes the same direction every day', () => {
+  for (let i = 0; i < 4; i++) assert.deepEqual(pickIds(libOf(1), addDaysIso(DAY0, i)), ['d0', 'd0']);
+});
+
+test('rotation: K=2 → the mixes swap every day', () => {
+  const a = pickIds(libOf(2), DAY0);
+  const b = pickIds(libOf(2), addDaysIso(DAY0, 1));
+  assert.notEqual(a[0], a[1]);
+  assert.deepEqual(b, [a[1], a[0]]);
+});
+
+test('rotation: K≥2 → mixes differ, each mix changes daily and covers all K; K≥4 → never two days in a row', () => {
+  for (let K = 2; K <= 8; K++) {
+    const days = Array.from({ length: K }, (_, i) => pickIds(libOf(K), addDaysIso(DAY0, i)));
+    for (const [m1, m2] of days) assert.notEqual(m1, m2, `K=${K}: the two mixes differ`);
+    for (const k of [0, 1]) {
+      assert.equal(new Set(days.map((d) => d[k])).size, K, `K=${K}: mix ${k + 1} plays every direction once per cycle`);
+      for (let i = 1; i < K; i++) assert.notEqual(days[i][k], days[i - 1][k], `K=${K}: mix ${k + 1} changes daily`);
+    }
+    if (K >= 4) {
+      for (let i = 1; i < K; i++) {
+        const prev = new Set(days[i - 1]);
+        assert.ok(days[i].every((id) => !prev.has(id)), `K=${K}: nothing from yesterday`);
+      }
+    }
+  }
+  assert.deepEqual(pickIds(libOf(5), DAY0), pickIds(libOf(5), DAY0), 'same date → same picks');
+});
+
+test('rotation: every level rotates independently; empty levels skipped', () => {
+  const lib = new Map([[1, libOf(3).get(1)], [2, []], [3, libOf(1).get(1)]]);
+  const [m1, m2] = pickLevelDirections(lib, DAY0);
+  assert.deepEqual([...m1.keys()].sort(), [1, 3]);
+  assert.equal(m1.get(3).id, m2.get(3).id);
+});
+
+test('levelProfileKey: order-independent; changes on add / remove / level move / N', () => {
+  const tp = { energy_levels_total: 4, approved_genres: [{ genre: 'Funk', energy_level: 3 }, { genre: 'Bossa Nova', energy_level: 1 }] };
+  const k = levelProfileKey(tp);
+  assert.match(k, /^v1-[0-9a-f]{16}$/);
+  assert.equal(levelProfileKey({ ...tp, approved_genres: [...tp.approved_genres].reverse() }), k);
+  assert.equal(levelProfileKey({ ...tp, approved_genres: [{ genre: 'funk', energy_level: 3 }, { genre: 'Bossa Nova', energy_level: 1 }] }), k, 'case-insensitive');
+  assert.notEqual(levelProfileKey({ ...tp, approved_genres: [...tp.approved_genres, { genre: 'Disco', energy_level: 4 }] }), k);
+  assert.notEqual(levelProfileKey({ ...tp, approved_genres: tp.approved_genres.slice(1) }), k);
+  assert.notEqual(levelProfileKey({ ...tp, approved_genres: [{ genre: 'Funk', energy_level: 4 }, { genre: 'Bossa Nova', energy_level: 1 }] }), k);
+  assert.notEqual(levelProfileKey({ ...tp, energy_levels_total: 5 }), k);
+});
+
+test('assembler: per-mix genre maps — each mix plays only its own direction per level, no shared tracks', () => {
+  const perMix = [
+    new Map([[1, ['A']], [2, ['C']], [3, ['E', 'F']]]),
+    new Map([[1, ['B']], [2, ['C', 'D']], [3, ['F']]]),       // C and F shared with mix 1
+  ];
+  const { mixes } = assembleMixes(base({ genresByLevel: perMix }));
+  mixes.forEach((m, k) => {
+    for (const t of m.tracks) assert.ok(perMix[k].get(t.level).includes(t.genre), `mix ${k + 1}: ${t.genre} at L${t.level}`);
+  });
+  const all = mixes.flatMap((m) => m.tracks.map((t) => t.id));
+  assert.equal(new Set(all).size, all.length);
+});
+
+test('assembler: per-mix level fallback when a mix has nothing at a level', () => {
+  const perMix = [new Map([[1, ['A']], [3, ['E']]]), new Map([[1, ['B']], [2, ['D']], [3, ['F']]])];
+  const { mixes, stats } = assembleMixes(base({ genresByLevel: perMix }));
+  assert.ok(stats.levelFallbacks > 0);
+  assert.ok(mixes[0].tracks.every((t) => t.level !== 2), 'mix 1 has no level-2 direction');
+  assert.ok(mixes[1].tracks.some((t) => t.level === 2));
+});
+
+test('estimateDemandPerMix: per-mix demand merged per genre', () => {
+  const perMix = [new Map([[1, ['A']], [2, ['C']], [3, ['E']]]), new Map([[1, ['B']], [2, ['C']], [3, ['F']]])];
+  const { specs, minsByLevelPerMix } = estimateDemandPerMix({ startMin: 540, endMin: 1050, energyAt: CURVE, N: 3, genresByLevelPerMix: perMix });
+  assert.equal(minsByLevelPerMix.length, 2);
+  const byG = Object.fromEntries(specs.map((sp) => [sp.genre, sp]));
+  assert.deepEqual(Object.keys(byG).sort(), ['A', 'B', 'C', 'E', 'F']);
+  assert.ok(byG.C.n > byG.A.n, 'a genre both mixes play gets both demands');
+  assert.equal(byG.C.level, 2);
+  assert.ok(specs.every((sp) => sp.n <= 600 && sp.playlists <= 200));
+});
+
+test('levelLibrary: rank order, profile filter, implicit direction for a level without one', () => {
+  const byLevel = new Map([[1, ['Bossa Nova', 'Fado']], [2, ['Funk']], [3, ['Disco']]]);
+  assert.equal(levelLibrary([], byLevel), null);
+  const lib = levelLibrary([
+    { id: 'b', energy_level: 1, rank: 2, title_en: 'B', genres: ['Fado'] },
+    { id: 'a', energy_level: 1, rank: 1, title_en: 'A', genres: ['bossa nova', 'Funk'] },   // Funk is level 2 → dropped
+    { id: 'x', energy_level: 2, rank: 1, title_en: 'X', genres: ['Disco'] },                // wrong level only → skipped
+  ], byLevel);
+  assert.deepEqual(lib.get(1).map((d) => d.id), ['a', 'b']);
+  assert.deepEqual(lib.get(1)[0].genres, ['Bossa Nova']);
+  assert.deepEqual(lib.get(2), [{ id: null, title_en: '(all level 2 genres)', genres: ['Funk'] }]);
+  assert.deepEqual(lib.get(3)[0].genres, ['Disco']);
+});
+
+test('normalizeLevelDirections + shapeLevelRows: level-checked genres, no duplicate sets, caps, profile key', () => {
+  const tp = { energy_levels_total: 3, approved_genres: [
+    { genre: 'Bossa Nova', energy_level: 1 }, { genre: 'Fado', energy_level: 1 }, { genre: 'Funk', energy_level: 3 },
+  ] };
+  const raw = { directions: [
+    { energy_level: 1, title_en: 'A', genres: ['Bossa Nova', 'Funk', 'Made Up'] },
+    { energy_level: 1, title_en: 'dup', genres: ['bossa nova'] },
+    { energy_level: 1, title_en: 'B', genres: ['Fado', 'Bossa Nova'] },
+    { energy_level: 9, title_en: 'bad', genres: ['Funk'] },
+    { energy_level: 3, title_en: 'C', genres: ['Funk'] },
+    ...Array.from({ length: MAX_PER_LEVEL + 3 }, (_, i) => ({ energy_level: 1, title_en: `x${i}`, genres: i % 2 ? ['Fado'] : ['Bossa Nova', 'Fado'] })),
+  ] };
+  const { directions } = normalizeLevelDirections(raw, tp.approved_genres, 3);
+  assert.deepEqual(directions.map((d) => [d.energy_level, d.genres]), [
+    [1, ['Bossa Nova']], [1, ['Fado', 'Bossa Nova']], [3, ['Funk']], [1, ['Fado']],
+  ]);
+  const { rows, profileKey } = shapeLevelRows('biz', directions, tp);
+  assert.equal(profileKey, levelProfileKey(tp));
+  assert.ok(rows.every((r) => r.profile_key === profileKey && r.business_id === 'biz' && r.active));
+  assert.deepEqual(rows.map((r) => [r.energy_level, r.rank]), [[1, 1], [1, 2], [3, 1], [1, 3]]);
+  assert.equal(shapeLevelRows('biz', [{ energy_level: 3, genres: ['Fado'] }], tp).rows.length, 0, 'wrong-level genre rejected server-side');
 });

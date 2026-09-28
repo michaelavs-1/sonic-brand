@@ -399,6 +399,36 @@
       color: #ff8080;
     }
 
+    /* Step 4 — Option 1 / Option 2 picker */
+    .seg button.on[data-opt] {
+      background: rgba(29, 185, 84, .18);
+      color: var(--accent);
+    }
+
+    #playlistOptionSeg {
+      flex-wrap: wrap;
+      margin-bottom: 6px;
+    }
+
+    /* Step 4 — how the playlists are built from the directions */
+    .explain {
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .explain p {
+      margin: 0 0 6px;
+    }
+
+    .explain p:last-child {
+      margin-bottom: 0;
+    }
+
     .genre-chips {
       display: flex;
       flex-wrap: wrap;
@@ -461,8 +491,8 @@
   <div class="app">
     <h1>עורך פרומפט מוזיקלי</h1>
     <p class="subtitle">
-      עורך את הפרומפטים שהולכים למודל: פרומפט הכיוונים המוזיקליים (שלב 1) ופרומפט פרופיל הטעם (שלב 3). שינויים כאן
-      משפיעים רק על הריצה הזו — לא נשמר לפרודקשן.
+      עורך את הפרומפטים שהולכים למודל: פרומפט הכיוונים המוזיקליים (שלב 1) ופרומפט פרופיל הטעם (שלב 3). שלב 4 מראה מה
+      נבנה מפרופיל הטעם לכל סוג פלייליסטים יומיים. שינויים כאן משפיעים רק על הריצה הזו — לא נשמר לפרודקשן.
     </p>
 
     <!-- Business inputs -->
@@ -565,9 +595,45 @@
         <button class="btn btn-yellow" id="copyTasteResultBtn" type="button">📋 העתק את התוצאה</button>
       </div>
     </div>
+
+    <!-- Step 4 — daily playlist type → the directions the playlists are built
+         from (appears once step 3 returned a taste profile) -->
+    <div class="card" id="playlistCard" style="display:none">
+      <div class="card-title">שלב 4 — סוג הפלייליסטים היומיים</div>
+      <div class="card-hint">
+        בעל העסק בוחר סוג פלייליסטים יומיים, ומפרופיל הטעם האחרון משלב 3 נבנים הכיוונים שמהם הפלייליסטים מורכבים. לכל
+        אפשרות פרומפט משלה — אפשר לעבור בין האפשרויות בכל רגע, וכל אחת שומרת את הפרומפט והתוצאה האחרונה שלה. פורמט ה-JSON
+        וטיפול בשגיאות נשארים קבועים ומצטרפים אוטומטית לפני השליחה.
+      </div>
+      <div class="seg" id="playlistOptionSeg">
+        <button type="button" data-opt="option1" class="on">אפשרות 1 — 4 פלייליסטים (גבוהה / רגועה)</button>
+        <button type="button" data-opt="option2">אפשרות 2 — 2 מיקסים לפי ציר אנרגיה</button>
+      </div>
+      <div class="warn" style="margin-top:12px">
+        <b>אזהרה: לא לשנות את רשימת הז'אנרים (Genre universe) — הם חייבים להיות זהים לרשימה במסד הנתונים.</b>
+      </div>
+      <textarea class="txt prompt" id="energyPromptEditor" data-opt="option1" spellcheck="false"></textarea>
+      <textarea class="txt prompt" id="levelPromptEditor" data-opt="option2" spellcheck="false" style="display:none"></textarea>
+      <div class="btn-row">
+        <button class="btn btn-yellow" id="copyPlaylistPromptBtn" type="button">📋 העתק את הפרומפט</button>
+        <button class="btn btn-primary" id="playlistGenerateBtn" type="button">צור כיוונים ←</button>
+      </div>
+      <div class="status-line" id="playlistStatusLine"></div>
+    </div>
+
+    <!-- Step 4 results -->
+    <div class="card" id="playlistResultsCard" style="display:none">
+      <div class="card-title" id="playlistResultsTitle">הכיוונים</div>
+      <div class="explain" id="playlistExplain"></div>
+      <div class="usage-line" id="playlistUsageLine"></div>
+      <pre class="output ltr" id="playlistOutputText"></pre>
+      <div class="btn-row">
+        <button class="btn btn-yellow" id="copyPlaylistResultBtn" type="button">📋 העתק את התוצאה</button>
+      </div>
+    </div>
   </div>
 
-  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=28092026c"></script>
+  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=28092026f"></script>
 </body>
 
 </html>

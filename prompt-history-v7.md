@@ -34,7 +34,8 @@ a duplicate.
 
 **Update this file every time any v7 prompt changes.** New entries at the TOP.
 Each entry starts with an **Applies to:** line
-(`Round 1` / `Round 2` / `taste profile` / `R1+R2` / `all v7`). Include:
+(`Round 1` / `Round 2` / `taste profile` / `R1+R2` / `energy directions` /
+`level directions` / `all v7`). Include:
 date, one-line summary of what changed and why, full text of new or edited
 sub-constants (or a clear diff description for structural refactors). Never
 delete old entries.
@@ -45,7 +46,440 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-09-28 (latest) — Ami's dashboard can now edit and test the taste-profile prompt
+## 2026-09-28 (latest) — Level directions: a new prompt for Option 2
+
+**Applies to:** `level directions` (new prompt, `v7/generation/level-directions.js`, label `v7-level-directions`)
+
+Roni's change for Option 2, in the spirit of the Option 1 library change below. Until now every energy level of an Option-2 mix played from ALL of that level's approved genres. Now Gemini builds a **library of directions for each energy level**, made only from that level's genres. Each day, each mix plays ONE direction per level. The two mixes get different directions when a level has 2 or more. The next day every level moves on to its next direction, cycling through all of them before any repeats (`pickLevelDirections` in `v7/generation/timeline-assembler.js`).
+
+Decisions (Roni, 2026-09-28):
+- **Keep the model's own count.** There is no target number. `MAX_PER_LEVEL` = 10 is only a safety ceiling; the test never went above 7.
+- **Single-genre directions are fine, forced pairings are not.** A genre with no natural partner in its level gets a direction of its own.
+- **A level with two genres** may get both together, each alone, or all three. It depends on whether they make musical sense together.
+
+**How the prompt was built.** It is modeled on Option 1's energy-directions prompt. The coherence rules §6–11 are copied from Option 1's §7–12 and worded for levels. They are copied, not imported, so the two prompts can be tuned separately. Additions for levels:
+- Every direction belongs to exactly one level and uses only that level's genres.
+- At least 2 directions for a level with 2 or more genres, so the two mixes can differ; 1 for a single-genre level.
+- **No forced pairings**, a rule added after the first test run. It is a new paragraph at the top of the coherence section. §8 ("avoid monocultural silos") no longer pushes a fusion that isn't natural, and §9's "4 to 6 genres" applies only when that many genres genuinely belong together.
+
+**Tests** (2026-09-28): Gemini 3.6-flash, thinking=high, all 10 v7 taste profiles, label `v7-level-directions-test`, nothing written.
+
+- **Run 1** (before the no-forced-pairings rule):
+  - All 10 calls succeeded in 18–56s.
+  - The normalizer dropped nothing (no wrong-level or unapproved genres), and every approved genre was used.
+  - Some forced pairings came through: "Blues & Argentine Tango", "Acoustic Blues & Doo-Wop", "Afro Cuban & Ethio-Jazz + Lovers Rock".
+- **Run 2** (this prompt):
+  - All 10 calls succeeded in 20–50s, and again nothing was dropped or unused.
+  - Most forced pairings are gone. "Blues & Argentine Tango", for example, is now a Blues direction and a Tango direction.
+
+Run 2, genres in a level → directions:
+
+| Genres in the level | Levels seen | Directions per level | Genres per direction |
+|---|---|---|---|
+| 1 | 3 | 1 | 1 |
+| 2 | 2 | 2–3 | 1–2 |
+| 3–4 | 8 | 2–3 | 2–3 (avg 2.3) |
+| 5–7 | 9 | 3–4 | 1–4 (avg 2.4) |
+| 8–10 | 9 | 3–5 | 1–6 (avg 3.6) |
+| 11–14 | 7 | 4–6 | 1–6 (avg 3.3) |
+| 19 | 1 | 7 | 2–5 |
+
+Per business: 6 approved genres → 5 directions; 14 → 10; 16 → 10; 19 → 13; 27 → 14; 32 → 15; 40 → 19 and 24; 41 → 19; 44 → 16.
+
+**Code:**
+- `normalizeLevelDirections`:
+  - Drops genres that aren't approved at the direction's level.
+  - Drops out-of-range levels and repeated (level, genre set) pairs.
+  - Caps each level at `MAX_PER_LEVEL`.
+- `save-level-directions.js` re-checks the genres against the stored taste profile and stamps `profile_key`.
+- Stored in the new `business_v7_level_directions` table (migration `2026-09-28-v7-level-directions.sql`).
+
+Full text of the system prompt (EDITABLE + FIXED, with the shared genre list elided):
+
+```
+You build a library of "energy-level musical directions" for a public-facing-business playlist tool. The business owner has finished onboarding and has a taste profile: a list of APPROVED genres, each tagged with an energy level on the owner's own energy scale (1 = calmest, N = most energetic). The owner has drawn how the energy of their day should move, and every day the tool plays two continuous mixes that follow that curve. Whenever a mix is at a given energy level, it plays from ONE direction of that level for the whole day; the next day the level moves on to another of its directions, and so on through the whole set before any direction repeats. So for EACH energy level you build a library of directions made only from that level's genres. Each direction is a curated, internally coherent blend of genres — a complete musical concept that can carry its energy level on its own for a whole day.
+
+[GENRE_UNIVERSE_SECTION — shared/genre-universe.js, unchanged]
+
+## Inputs
+
+You will receive:
+
+- **Approved genres, grouped by energy level** — the ONLY genres in play. Every genre is a verbatim string from the Genre Universe and sits in exactly one level.
+- **Energy levels total (N)** — the size of the user's dynamic energy scale (an integer 2–6). Energy levels are RELATIVE to this user's own taste range, not absolute: level 1 is the calmest music this owner likes, level N the most energetic.
+- Optionally: Business name.
+- Optionally: Free-text description of the business (any language).
+- Optionally: Selected atmospheres (short adjectives from a fixed menu).
+- Optionally: **Musical emphases** — free-text preferences the owner typed during onboarding.
+- Optionally: **Venue context** — a short block describing the physical venue (name / type / summary). Use it only to lightly inform how genres are combined for venue-appropriateness; it does NOT add or remove genres.
+
+You will NOT receive conditional or excluded genres. Do not ask for them, do not infer them, do not reintroduce them. Build directions strictly from the approved genres given.
+
+## Energy Levels
+
+### 1. Only approved genres are in play
+
+Build every direction ONLY from the approved genres you were given. NEVER invent a genre, translate one, add a qualifier, or pull in a genre that is not in the approved list. Any string not present verbatim in both the approved list AND the Genre Universe will be silently dropped downstream.
+
+### 2. Every direction belongs to exactly one energy level
+
+Tag every direction with an `energy_level` — one of the levels in the input — and build it ONLY from the genres listed under that level. NEVER use a genre from another level, not even an adjacent one: the mix plays this direction exactly when the owner's curve is at this level, so every genre in it must carry that level's energy. A genre placed in a direction of the wrong level will be silently dropped downstream. Build no directions for a level that has no approved genres.
+
+## Library Size & Diversity
+
+### 3. How many directions per level
+
+- Each direction is one day's music for its level, so more directions mean more days before the owner hears a repeat. Build as many directions for each level as that level's genres genuinely support — there is no target number.
+- At least 2 directions for every level that has 2 or more approved genres (the two daily mixes play different directions of the same level). Reach that by splitting genres into separate directions when they don't belong together — never by pairing genres that don't make sense together. A level with a single approved genre gets exactly 1 direction.
+- At most 10 directions per level.
+- Add a direction only if it is a genuinely different listening experience from the other directions of the same level. Never pad a level with near-duplicates to reach a number.
+
+### 4. Diverse within each level
+
+- The directions of one level should sound clearly different from one another: vary the genre combinations, the mood, the cultural flavour, the instrumentation and the groove.
+- Use the whole approved list: every approved genre should appear in at least one direction of its level.
+
+### 5. Genre overlap between directions is fine
+
+- Within a level, the same genre may appear in as many directions as make sense — there is no limit on how many genres two directions share.
+- The only thing to avoid is repeating a whole sound: no two directions of the same level may have the same set of genres, and don't return two directions whose genre lists are so close that they would sound the same.
+
+## Coherence Inside Each Direction
+
+A direction is played as one continuous stretch of the mix, so everything inside it must belong together. These rules decide which genres may share a direction.
+
+**Above all — no forced pairings.** Only put genres together in a direction when they genuinely make sense together musically. A genre that doesn't blend naturally with any other genre of its level gets a direction of its own: a single-genre direction is always better than a forced pairing. Never add a genre to a direction to reach a genre count, to use up a genre, or to make a level's directions look richer.
+
+### 6. Absolute Energy & Dynamic Cohesion (Zero Tolerance for Mismatches)
+
+- **Unbroken Dynamic & Rhythm Compatibility:** Every direction MUST maintain a completely cohesive dynamic feel, rhythmic foundation, and energy level.
+- **Strict Beat/Percussion Pairing Rules:** NEVER pair genres with strong rhythmic grooves, prominent drum patterns, or sexy/upbeat vibes (e.g., `RnB`, `French RnB`, `Funk`, `Neo Soul`) with ambient, drumless, or slow acoustic genres (e.g., `Late Night jazz`, `Piano Impressionism`, `Chamber music`). Switching between a drum-driven beat and a beatless slow jazz track within the same direction is strictly forbidden.
+- **Strict Energy Filtering within Regional Blends:** When combining cultural/regional music, remove high-energy outliers that break the room's vibe (e.g., if creating a mid-tempo Mediterranean/Latin direction, pair Flamenco, Arab Classic, and Turk Arabesk, but strictly EXCLUDE high-energy festival genres like Samba, Salsa, or Dabke).
+
+### 7. Jazz Isolation Rule
+
+- **Jazz Sub-genres Containment:** All Jazz genres (`Jazz (Standards)`, `Late Night jazz`, `Smooth Jazz`, `Swing Jazz`, `French Jazz`, `Gypsy jazz`, `JazzHop`) are intrinsically laid-back, background, or seated styles. They MUST NEVER be paired with dancing, energetic, or heavy beat-driven genres (such as RnB, Hip Hop, Funk, Pop, or Dance).
+- **Allowed Jazz Pairings:** Except for `Ethio-Jazz` and `Acid Jazz` (both rhythmic/uplifting and can blend with Afro/Funk/R&B styles) and `Jazz House` (enclosed under House rules), all Jazz genres can ONLY be paired with:
+  - Other Jazz genres.
+  - `Bossa Nova`
+  - `Fado`
+
+### 8. Multi-Cultural & Cross-Regional Genre Fusion
+
+- **Avoid Monocultural Silos — but never force a fusion:** Do NOT restrict directions to a single geographic or stylistic domain (e.g., a "purely Latin" or "purely Arabic" direction) when the level holds genres from other regions that genuinely share the same energy and feel. A fusion is only right when it sounds natural; a single-region or single-genre direction is better than a forced one.
+- **Maximize Complementary Global Genres:** Proactively weave together genres from different regions and cultural scenes that share the exact same energy and dynamic feel. The examples below name genres only to show the idea — use only genres from the approved list, in their own level.
+  - *Example 1 (Cross-Cultural Lounge/Dining):* Blend Latin, Middle Eastern, Turkish, and European flavours (Flamenco, Arab Classic, Turk Arabesk, Rebetiko, Fado) under one cohesive mid-tempo vibe.
+  - *Example 2 (Cross-Cultural Energetic Dining):* Blend Latin, Middle Eastern, Asian, and European flavours (Cha Cha Cha, Peruvian Cumbia, Anatolian Psychedelic Rock, Tishoumaren, Thai Molam, Samba-Choro) under one cohesive, not danceable yet groove-filled vibe.
+  - *Example 3 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, Neo Soul, Acid Jazz, French RnB, Japanese RnB, and Korean RnB.
+  - *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk, Latin Funk).
+  - *Example 5 (Global Disco and City Pop):* Genres from around the world that share a similar groove background, such as a disco groove, pair naturally. In this case, Disco (not Nu Disco or Italo Disco) along with Japanese City Pop and Chinese City Pop.
+
+### 9. Equal Genre Weight & Density (No Anchor Genre)
+
+- **Holistic Direction Composition:** There is NO anchor genre. Every direction is defined as the unified sum of all its constituent genres.
+- **Target Genre Count:** Aim for 4 to 6 genres per direction when the level holds that many genres that genuinely belong together, to create rich, varied sonic identities.
+- **Fewer Genres (1–3):** A direction contains fewer than 4 genres (down to a single genre) whenever its level doesn't hold more approved genres that genuinely fit together with it, or when it serves an isolated, hyper-specific contextual need (e.g., pure שירי ארץ ישראל or dedicated electronic sub-genres) where adding external genres would destroy dynamic or cultural coherence. Never add a genre just to reach a count.
+- **Stand-Alone / Near-Stand-Alone Genres:** Certain musical styles function effectively as a complete, standalone direction or paired with at most ONE closely related genre. If any of the following genres are in the approved list, you may present a direction consisting **solely of that genre** or **that genre plus one closely related style** from the same level:
+  - `Nu Metal`
+  - `Indie Rock`
+  - `Punk`
+  - `Blues`
+  - `Folk`
+  - `Jazz House`
+
+### 10. Strict Pop Isolation Rule
+
+- **Pop Isolation:** ALL Pop genres (including `Bedroom Pop`, `Modern Pop`, `Female Pop`, `80s Pop`, `90's pop party`, `Electro Pop`, `Alternative Pop`, `K-Pop`, `פופ מזרחית`, `Cantopop`) must NEVER be mixed with non-pop, niche, esoteric, acoustic, or electronic dance genres.
+- **Pop-Only Pairs:** Pop sub-genres can ONLY be paired with other Pop sub-genres of matching energy tiers.
+- **City Pop Exception:** City Pop sub-genres (`Japanese City Pop` and `Chinese City Pop`) are explicitly **EXEMPT** from the Pop Isolation rule and may be mixed with appropriate non-pop genres (such as Funk, Disco, or DownTempo) based on energy cohesion.
+
+### 11. House & Techno Containment Rule
+
+- **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
+- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.
+
+## Titles
+
+### 12. Titles
+
+`title_en` is a short English label, 3–6 words, that says what the direction sounds like (e.g. "Global Funk & Disco Grooves", "Late-Night Jazz & Bossa", "Mediterranean Acoustic Café"). English only. It is an internal label — the owner never sees it — so describe the music, not the time of day or the venue.
+
+## Output format
+
+Return a single JSON object with exactly this shape, and NOTHING ELSE — no prose before or after, no markdown code fences around it. Do not add fields not listed here.
+
+Normal case:
+{
+  "directions": [
+    {"energy_level": 1, "title_en": "Late-Night Jazz & Bossa",     "genres": ["Late Night jazz", "Smooth Jazz", "Jazz (Standards)", "Bossa Nova", "Fado"]},
+    {"energy_level": 1, "title_en": "Mediterranean Acoustic Café", "genres": ["Flamenco", "Arab Classic", "Turk Arabesk", "Rebetiko"]},
+    {"energy_level": 3, "title_en": "Global Funk Grooves",         "genres": ["Funk", "Afro Funk", "Italian Funk", "Latin Funk", "Greek Funk"]},
+    {"energy_level": 3, "title_en": "Disco & City Pop Glow",       "genres": ["Disco", "Japanese City Pop", "Chinese City Pop", "Funk"]}
+    // ... for every level that has approved genres: as many as its genres genuinely support,
+    //     at least 2 when it has 2 or more genres, 1 when it has a single genre, at most 10
+  ]
+}
+
+Field contracts:
+- `directions`: array of `{energy_level, title_en, genres}`.
+- `energy_level`: an integer — one of the levels that has approved genres in the input.
+- `title_en`: a short English label for the direction.
+- `genres`: a non-empty array of genre strings, each VERBATIM from the Genre Universe and each drawn ONLY from the approved genres listed under this direction's level.
+
+Hard invariants:
+- Every genre in every direction is an approved genre of that direction's level.
+- Every genre string is VERBATIM from the Genre Universe.
+- At least 2 directions for each level that has 2 or more approved genres; exactly 1 for a level with a single approved genre; none for a level with no approved genres.
+- At most 10 directions per level.
+- No two directions of the same level have the same set of genres.
+- No direction puts together genres that don't make sense together musically.
+
+Error case (return instead of directions):
+{"error": "<code>", "reasoning_en": "one short English sentence"}
+
+## When NOT to return directions
+
+If the input genuinely has no approved genres to work with, return an error instead of fabricating directions.
+
+Return `{"error": "insufficient_signal", "reasoning_en": "..."}` when the approved genres list is empty — there is nothing to build from.
+
+Do NOT emit this error just because a level is small. A level with even one approved genre still gets its direction. Only error when there is genuinely nothing to work with.
+```
+
+The user message lists the approved genres per level ("### Level 1 (calmest) — k genres", …, "### Level N (most energetic)"; empty levels say "(no approved genres — build no directions for this level)"), after N / business name / description / atmospheres / emphases, then the venue context. It ends with: "For every level that has approved genres, build a library of as many directions as its genres genuinely support (at least 2 when it has 2 or more genres, 1 when it has a single genre, at most 10): each a coherent blend of that level's genres only — never pairing genres that don't belong together (a genre with no natural partner gets its own direction) — the directions of a level clearly different from one another."
+
+---
+
+## 2026-09-28 — Taste profile: genre count comes from the list (was a hardcoded 116)
+
+**Applies to:** `taste profile`
+
+The taste-profile prompt told the model to walk through "all 116 canonical genres", but the Genre Universe has held 124 since the 8 genres added on 2026-09-26. The count in the prompt is now `${GENRES.length}`, so it follows `shared/genre-universe.js` automatically. Ami's dashboard shows the rendered number, 124. The prompt is otherwise byte-identical.
+
+Two sentences changed:
+- Intro: "…for each of the 116 canonical genres, decide whether it belongs…" → "…for each of the ${GENRES.length} canonical genres, decide whether it belongs…" (renders as 124).
+- Deduction Logic: "Walk through all 116 canonical genres and assign each to EXACTLY ONE bucket…" → "Walk through all ${GENRES.length} canonical genres and assign each to EXACTLY ONE bucket…" (renders as 124).
+
+Code comments in `v7/generation/taste-profile.js` that said 116 were updated too.
+
+---
+
+## 2026-09-28 — Energy directions: no minimum, up to 30
+
+**Applies to:** `energy directions`
+
+Roni: drop the 20-direction minimum and make as many directions as make sense, up to 30. It's a text change on top of the entry below. All other sections are unchanged. Changes:
+
+- **Intro:** "From those genres you build 20–30 directions." → "From those genres you build a library of as many directions as make sense, up to 30."
+- **§4** — heading and bullets replaced:
+
+```
+### 4. As many directions as make sense — up to 30
+
+- There is no minimum. Build as many directions as the approved genres genuinely support, up to 30 in total.
+- Split them between the two tiers roughly in proportion to how many approved genres each tier holds, with at least 2 directions for every tier that has any approved genres.
+- Add a direction only if it is a genuinely different listening experience from the ones you already have. Never pad the library with near-duplicates to reach a number.
+```
+
+- **Output format:** the example's closing comment is now "// ... as many as make sense, up to 30 in total, at least 2 per tier that has approved genres". New hard invariant: "- At most 30 directions in total."
+- **User message:** the closing line now starts "Build a library of as many directions as make sense, up to 30, from these approved genres: …".
+- **Code:**
+  - `MAX_DIRECTIONS` went from 40 to 30 (normalizer), and `save-energy-directions.js` `MAX_ROWS` likewise.
+  - `MIN_DIRECTIONS_TARGET` and its "below 20" warning were removed.
+
+All 6 Option-1 accounts were regenerated with this version the same day (`scripts/_v7-regenerate-energy-directions.mjs --confirm`, all replaced):
+
+| Approved genres | Directions | Time |
+|---|---|---|
+| 6 | 9 | 19s |
+| 14 | 12 | 26s |
+| 19 | 16 | 28s |
+| 27 | 17 | 52s |
+| 32 | 19 | 37s |
+| 40 | 19 | 33s |
+
+---
+
+## 2026-09-28 — Energy directions: a 20–30 direction library of v6-style blends
+
+**Applies to:** `energy directions`
+
+Roni's change for Option 1. The old prompt grouped the approved genres into a small set (typically 4–7) of tight, near-identical clusters, the same idea as the onboarding probes. Now it builds a **library of 20–30 directions**. Each one is a curated, internally coherent blend like the v6 onboarding directions: 4–6 genres, with v6's energy / jazz / cross-cultural / pop / house pairing rules. Every direction is entirely high-energy or entirely calm. The directions should sound different from one another, and **genre overlap between directions is unlimited**. Only exact repeats of the same genre set are dropped. The daily builder is unchanged: each day it draws 2 directions per tier at random, and each playlist is one direction.
+
+Changes:
+- **Intro rewritten** (below).
+- **Inputs:** one word ("grouped" → "combined" in the venue-context line).
+- **Old §4 "Small tight clusters" and §5 "How many directions per tier" removed.** Replaced by a new "Library Size & Diversity" section (§4–6). A tier with too few genres gets fewer directions (floor 2) instead of padding.
+- **New "Coherence Inside Each Direction" section (§7–12)** copied from v6's Round 1 prompt, `ENERGY_COHESION_RULE`, `JAZZ_ISOLATION_RULE`, `MULTI_CULTURAL_RULE`, `EQUAL_GENRE_WEIGHT_RULE`, `POP_ISOLATION_RULE` and `HOUSE_TECHNO_RULE` as of 2026-09-02. It's copied, not imported, so v7 has no runtime dependency on v6. Adapted lines:
+  - §7 drops "(1 to 10)" after "energy level".
+  - §9 says "if the approved genres allow" (was "if the energy tier allows") and notes that the examples name genres only to show the idea.
+  - §10's 1–3 genre exception adds "or if its tier simply doesn't hold enough approved genres that fit together". Its stand-alone list is keyed to "are in the approved list" (was "fit the business context well based on the client's input").
+  - v6's Non-Overlap rule is NOT included.
+- **Titles (§13):** internal 3–6 word label describing the music. The owner never sees it.
+- **Output format:** the example now shows 4–6 genre blends; new hard invariant "No two directions have the same set of genres".
+- **When NOT to return:** the "FLOOR of 2" wording was reworded.
+- **User message:** approved genres are now listed under "### HIGH tier (energy level > N/2)" / "### LOW tier (energy level <= N/2)", with the split computed in code. The closing instruction now asks for the 20–30 library.
+- **Code:**
+  - `MAX_TOKENS` raised from 8192 to 65536, because thinking counts against the cap.
+  - `normalizeEnergyDirections` now drops genres that aren't approved or sit in the other tier. This was promised by the prompt but wasn't enforced before. It also drops repeated genre sets, caps the library at 40, and warns below 20.
+  - `api/v7/account/save-energy-directions.js` caps at 40 rows.
+
+Dry run on three real taste profiles (read-only, 2026-09-28):
+
+| Approved genres | Directions | Genres per direction | Time | Unused approved genres |
+|---|---|---|---|---|
+| 6 | 12 | 1–3 | 28s | none |
+| 19 | 26 | 4–6 | 46s | none |
+| 44 | 24 | 2–5 | 70s | none |
+
+Full text of the new intro:
+
+```
+You build a library of "energy-tiered musical directions" for a public-facing-business playlist tool. The business owner has finished onboarding and has a taste profile: a list of APPROVED genres, each tagged with an energy level on the owner's own energy scale. From those genres you build 20–30 directions. Each direction is a curated, internally coherent blend of genres — a complete musical concept that can carry one full playlist on its own — and every direction is either entirely HIGH-energy or entirely LOW-energy (calm). Every day the tool picks two HIGH directions and two LOW directions from your library at random and turns each one into a playlist, so the library must give the owner real variety from one day to the next.
+```
+
+Full text from "## Energy Tiers" to the end of the system prompt (everything after the unchanged Genre Universe + Inputs sections):
+
+```
+## Energy Tiers
+
+### 1. Only approved genres are in play
+
+Build every direction ONLY from the approved genres you were given. NEVER invent a genre, translate one, add a qualifier, or pull in a genre that is not in the approved list. Any string not present verbatim in both the approved list AND the Genre Universe will be silently dropped downstream.
+
+### 2. Split the approved genres into two energy tiers by the user's own scale
+
+The user's scale has N levels (N = energy levels total). Define the midpoint as `N/2`:
+- **HIGH tier** = approved genres whose `energy_level` is in the UPPER half of the scale, i.e. `energy_level > N/2`.
+- **LOW tier** = approved genres whose `energy_level` is in the LOWER half of the scale, i.e. `energy_level <= N/2`.
+
+Every approved genre lands in exactly one tier based on its `energy_level`. Examples:
+- N=4, midpoint 2: levels 3–4 are HIGH, levels 1–2 are LOW.
+- N=6, midpoint 3: levels 4–6 are HIGH, levels 1–3 are LOW.
+- N=2, midpoint 1: level 2 is HIGH, level 1 is LOW.
+
+### 3. Every direction sits inside one tier — never mix tiers
+
+A HIGH direction contains only HIGH-tier genres; a LOW direction contains only LOW-tier genres. NEVER place a high-energy genre in a low direction or a low-energy genre in a high direction. The whole point of the split is that each daily playlist has a coherent energy register — mixing tiers breaks that. A genre placed in the wrong tier will be silently dropped from its direction downstream.
+
+## Library Size & Diversity
+
+### 4. Aim for 20–30 directions in total
+
+- Split them between the two tiers roughly in proportion to how many approved genres each tier holds, with at least 2 directions for every tier that has any approved genres.
+- More is better only while each new direction is a genuinely different listening experience. If a tier has too few approved genres to support that many different directions, return fewer for that tier — never pad the library with near-duplicates to reach a number.
+
+### 5. Diverse across the library
+
+- Directions should sound clearly different from one another: vary the genre combinations, the mood, the cultural flavour, the instrumentation and the groove within each tier. For example, a HIGH tier might hold a global funk blend, a disco and city-pop blend, a driving house set and a Latin dance blend; a LOW tier might hold a late-night jazz blend, a Mediterranean acoustic blend and an ambient downtempo set.
+- Use the whole approved list: every approved genre should appear in at least one direction.
+
+### 6. Genre overlap between directions is fine
+
+- The same genre may appear in as many directions as make sense — there is no limit on how many genres two directions share.
+- The only thing to avoid is repeating a whole sound: no two directions may have the same set of genres, and don't return two directions whose genre lists are so close that they would sound the same.
+
+## Coherence Inside Each Direction
+
+A direction is played as one continuous playlist, so everything inside it must belong together. These rules decide which genres may share a direction.
+
+### 7. Absolute Energy & Dynamic Cohesion (Zero Tolerance for Mismatches)
+
+- **Unbroken Dynamic & Rhythm Compatibility:** Every direction MUST maintain a completely cohesive dynamic feel, rhythmic foundation, and energy level.
+- **Strict Beat/Percussion Pairing Rules:** NEVER pair genres with strong rhythmic grooves, prominent drum patterns, or sexy/upbeat vibes (e.g., `RnB`, `French RnB`, `Funk`, `Neo Soul`) with ambient, drumless, or slow acoustic genres (e.g., `Late Night jazz`, `Piano Impressionism`, `Chamber music`). Switching between a drum-driven beat and a beatless slow jazz track within the same direction is strictly forbidden.
+- **Strict Energy Filtering within Regional Blends:** When combining cultural/regional music, remove high-energy outliers that break the room's vibe (e.g., if creating a mid-tempo Mediterranean/Latin direction, pair Flamenco, Arab Classic, and Turk Arabesk, but strictly EXCLUDE high-energy festival genres like Samba, Salsa, or Dabke).
+
+### 8. Jazz Isolation Rule
+
+- **Jazz Sub-genres Containment:** All Jazz genres (`Jazz (Standards)`, `Late Night jazz`, `Smooth Jazz`, `Swing Jazz`, `French Jazz`, `Gypsy jazz`, `JazzHop`) are intrinsically laid-back, background, or seated styles. They MUST NEVER be paired with dancing, energetic, or heavy beat-driven genres (such as RnB, Hip Hop, Funk, Pop, or Dance).
+- **Allowed Jazz Pairings:** Except for `Ethio-Jazz` and `Acid Jazz` (both rhythmic/uplifting and can blend with Afro/Funk/R&B styles) and `Jazz House` (enclosed under House rules), all Jazz genres can ONLY be paired with:
+  - Other Jazz genres.
+  - `Bossa Nova`
+  - `Fado`
+
+### 9. Multi-Cultural & Cross-Regional Genre Fusion
+
+- **Avoid Monocultural Silos:** Do NOT restrict directions to a single geographic or stylistic domain (e.g., avoid creating a "purely Latin" or "purely Arabic" direction if the approved genres allow for cross-cultural integration).
+- **Maximize Complementary Global Genres:** Proactively weave together genres from different regions and cultural scenes that share the exact same energy and dynamic feel. The examples below name genres only to show the idea — use only genres from the approved list.
+  - *Example 1 (Cross-Cultural Lounge/Dining):* Blend Latin, Middle Eastern, Turkish, and European flavours (Flamenco, Arab Classic, Turk Arabesk, Rebetiko, Fado) under one cohesive mid-tempo vibe.
+  - *Example 2 (Cross-Cultural Energetic Dining):* Blend Latin, Middle Eastern, Asian, and European flavours (Cha Cha Cha, Peruvian Cumbia, Anatolian Psychedelic Rock, Tishoumaren, Thai Molam, Samba-Choro) under one cohesive, not danceable yet groove-filled vibe.
+  - *Example 3 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, Neo Soul, Acid Jazz, French RnB, Japanese RnB, and Korean RnB.
+  - *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk, Latin Funk).
+  - *Example 5 (Global Disco and City Pop):* Genres from around the world that share a similar groove background, such as a disco groove, pair naturally. In this case, Disco (not Nu Disco or Italo Disco) along with Japanese City Pop and Chinese City Pop.
+
+### 10. Equal Genre Weight & Density (No Anchor Genre)
+
+- **Holistic Direction Composition:** There is NO anchor genre. Every direction is defined as the unified sum of all its constituent genres.
+- **Target Genre Count:** Actively aim for 4 to 6 genres per direction to create rich, varied sonic identities.
+- **Justified Minimal Exceptions (1–3 Genres):** A direction may contain fewer than 4 genres (1–3 genres) ONLY if it serves an isolated, hyper-specific contextual need (e.g., pure שירי ארץ ישראל or dedicated electronic sub-genres) where adding external genres would destroy dynamic or cultural coherence, or if its tier simply doesn't hold enough approved genres that fit together.
+- **Stand-Alone / Near-Stand-Alone Genres:** Certain musical styles function effectively as a complete, standalone direction or paired with at most ONE closely related genre. If any of the following genres are in the approved list, you may present a direction consisting **solely of that genre** or **that genre plus one closely related style**:
+  - `Nu Metal`
+  - `Indie Rock`
+  - `Punk`
+  - `Blues`
+  - `Folk`
+  - `Jazz House`
+
+### 11. Strict Pop Isolation Rule
+
+- **Pop Isolation:** ALL Pop genres (including `Bedroom Pop`, `Modern Pop`, `Female Pop`, `80s Pop`, `90's pop party`, `Electro Pop`, `Alternative Pop`, `K-Pop`, `פופ מזרחית`, `Cantopop`) must NEVER be mixed with non-pop, niche, esoteric, acoustic, or electronic dance genres.
+- **Pop-Only Pairs:** Pop sub-genres can ONLY be paired with other Pop sub-genres of matching energy tiers.
+- **City Pop Exception:** City Pop sub-genres (`Japanese City Pop` and `Chinese City Pop`) are explicitly **EXEMPT** from the Pop Isolation rule and may be mixed with appropriate non-pop genres (such as Funk, Disco, or DownTempo) based on energy cohesion.
+
+### 12. House & Techno Containment Rule
+
+- **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
+- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.
+
+## Titles
+
+### 13. Titles
+
+`title_en` is a short English label, 3–6 words, that says what the direction sounds like (e.g. "Global Funk & Disco Grooves", "Late-Night Jazz & Bossa", "Mediterranean Acoustic Café"). English only. It is an internal label — the owner never sees it — so describe the music, not the time of day or the venue.
+
+## Output format
+
+Return a single JSON object with exactly this shape, and NOTHING ELSE — no prose before or after, no markdown code fences around it. Do not add fields not listed here.
+
+Normal case:
+{
+  "directions": [
+    {"energy_tier": "high", "title_en": "Global Funk Grooves",        "genres": ["Funk", "Afro Funk", "Italian Funk", "Latin Funk", "Greek Funk"]},
+    {"energy_tier": "high", "title_en": "Disco & City Pop Glow",      "genres": ["Disco", "Japanese City Pop", "Chinese City Pop", "Funk"]},
+    {"energy_tier": "low",  "title_en": "Late-Night Jazz & Bossa",    "genres": ["Late Night jazz", "Smooth Jazz", "Jazz (Standards)", "Bossa Nova", "Fado"]},
+    {"energy_tier": "low",  "title_en": "Mediterranean Acoustic Café", "genres": ["Flamenco", "Arab Classic", "Turk Arabesk", "Rebetiko"]}
+    // ... 20–30 directions in total, at least 2 per tier that has approved genres
+  ]
+}
+
+Field contracts:
+- `directions`: array of `{energy_tier, title_en, genres}`.
+- `energy_tier`: exactly `"high"` or `"low"`.
+- `title_en`: a short English label for the direction.
+- `genres`: a non-empty array of genre strings, each VERBATIM from the Genre Universe and each drawn ONLY from the approved genres you were given.
+
+Hard invariants:
+- Every genre in every direction must be one of the approved genres provided in the input.
+- Every genre string must be VERBATIM from the Genre Universe.
+- HIGH directions contain only HIGH-tier genres; LOW directions contain only LOW-tier genres.
+- At least 2 directions for each tier that has any approved genres.
+- No two directions have the same set of genres.
+
+Error case (return instead of directions):
+{"error": "<code>", "reasoning_en": "one short English sentence"}
+
+## When NOT to return directions
+
+If the input genuinely has no approved genres to work with, return an error instead of fabricating directions.
+
+Return `{"error": "insufficient_signal", "reasoning_en": "..."}` when the approved genres list is empty — there is nothing to build from.
+
+Do NOT emit this error just because the approved list or a tier is small. A tier with even one approved genre should still yield at least 2 directions (they may share genres). Only error when there is genuinely nothing to work with.
+```
+
+---
+
+## 2026-09-28 — Ami's dashboard can now edit and test the taste-profile prompt
 
 **Applies to:** `taste profile` (tooling wiring)
 

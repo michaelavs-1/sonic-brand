@@ -42,7 +42,7 @@ import {
   showR2FailureScreen,
   showRestartOnboardingScreen,
   preparePreview,
-} from '/v7/preview.js?v=24092026b';
+} from '/v7/preview.js?v=28092026a';
 // v7 has NO per-direction playlist build at onboarding — directions are
 // diagnostic probes, not playlist seeds. After the swipe deck the flow goes
 // registration → payment → taste-profile (the point where directions dissolve
@@ -51,7 +51,8 @@ import {
   runRegistrationStep,
   runPaymentStep,
   runTasteProfileBar,
-} from '/v7/result.js?v=28092026e';
+} from '/v7/result.js?v=28092026i';
+import { WAIT_DOTS_HTML } from '/v7/wait-dots.js?v=28092026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
 // experience starts truly from zero.
@@ -129,6 +130,10 @@ const state = {
   // created before then, per the "no non-paying clients" requirement. Signup
   // emails the verification magic link to this address; nothing logs this tab in.
   email: '',
+  // Password chosen on the registration screen. Memory only (never
+  // localStorage) — sent once with the signup request, which sets it on the
+  // new account.
+  password: '',
   // The paid Hyp checkout (payment_checkouts.id) from the payment step (A5).
   // Signup requires it. Never invalidated — going back after paying must not
   // charge the owner again.
@@ -673,7 +678,7 @@ function showDirectionsLoading() {
   const wrap = document.createElement('div');
   wrap.className = 'preview-load-column';
   wrap.innerHTML =
-    '<div class="preview-load-label">מתאימים כיוונים מוזיקליים…</div>' +
+    '<div class="preview-load-label">מתאימים כיוונים מוזיקליים' + WAIT_DOTS_HTML + '</div>' +
     '<div class="preview-load-progress"><div class="preview-load-progress-fill"></div></div>';
   card.replaceChildren(h, sub, wrap);
 }
@@ -1080,14 +1085,16 @@ async function goToStep(start) {
       else if (s === 6) {
         hideFlowProgress();
 
-        // A4 — registration: capture the email ONLY. No account is created
-        // here (the "no non-paying clients" requirement); signup fires after
-        // payment. The email is held in client state.
-        const email = await abortable(
-          runRegistrationStep({ initialValue: state.email }),
+        // A4 — registration: email + password. No account is created here
+        // (the "no non-paying clients" requirement); signup fires after
+        // payment. An already-registered email is stopped on this screen,
+        // before payment. Both are held in client state (memory only).
+        const { email, password } = await abortable(
+          runRegistrationStep({ initialValue: state.email, initialPassword: state.password }),
           signal,
         );
         state.email = email;
+        state.password = password;
 
         // A5 — payment: Hyp's payment page (monthly subscription), or the old
         // placeholder while real payments are switched off server-side
@@ -1116,6 +1123,7 @@ async function goToStep(start) {
           // source of truth for what this user likes.
           signupPayload: {
             email: state.email,
+            password: state.password,
             checkoutId: state.paidCheckoutId,
             name: state.bizName,
             description: state.bizDesc,

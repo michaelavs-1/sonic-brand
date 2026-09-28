@@ -33,6 +33,15 @@
 //      response normalized by its normalizeTasteProfile, then displayed.
 //   Round 2 isn't simulated — the taste profile sees "Round 2 directions:
 //   (not fired)", same as an onboarding where R1 yielded 3+ picks.
+//
+// Daily-playlist stage (added 2026-09-28) — step 4, once step 3 returned a
+// taste profile: Ami picks Option 1 or Option 2, edits that option's prompt,
+// and sees the directions the playlists would be built from, with a short
+// Hebrew explanation of how the day's playlists use them (Option 2 also
+// shows the next days' rotation). Each option keeps its own editor, last
+// result and status, so Ami can switch back and forth (and one option can
+// keep generating while he looks at the other). Production's FIXED section,
+// user message and normalizer — see playlist-directions.js.
 
 import {
   EDITABLE_PROMPT_SECTION,
@@ -45,6 +54,7 @@ import {
   normalizeTasteProfile,
 } from '/v7/generation/taste-profile.js?v=28092026a';
 import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=20092026a';
+import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=28092026c';
 
 // Match v6 production. Gemini 3.6-flash's hard output-token cap is 65536;
 // values above that are silently clamped by Google. Under thinkingLevel
@@ -109,6 +119,18 @@ const els = {
   tasteOutputText:    $('tasteOutputText'),
   copyTastePromptBtn: $('copyTastePromptBtn'),
   copyTasteResultBtn: $('copyTasteResultBtn'),
+  playlistCard:          $('playlistCard'),
+  playlistOptionSeg:     $('playlistOptionSeg'),
+  playlistEditors:       { option1: $('energyPromptEditor'), option2: $('levelPromptEditor') },
+  copyPlaylistPromptBtn: $('copyPlaylistPromptBtn'),
+  playlistGenerateBtn:   $('playlistGenerateBtn'),
+  playlistStatusLine:    $('playlistStatusLine'),
+  playlistResultsCard:   $('playlistResultsCard'),
+  playlistResultsTitle:  $('playlistResultsTitle'),
+  playlistExplain:       $('playlistExplain'),
+  playlistUsageLine:     $('playlistUsageLine'),
+  playlistOutputText:    $('playlistOutputText'),
+  copyPlaylistResultBtn: $('copyPlaylistResultBtn'),
 };
 
 // Last successful step-1 run: the directions (ranks renumbered 1..n, as
@@ -120,10 +142,23 @@ let r1Run = null;
 // superLiked: rank → Set of that direction's genres Ami super-liked.
 const decisions  = new Map();
 const superLiked = new Map();
+// Last successful step-3 run: the normalized taste profile + the business
+// inputs it came from. Step 4 builds directions from this.
+let tasteRun = null;
+// Step 4: the selected daily playlist type, and per option its last result
+// ({ text, usage, elapsed } or null), status line [text, kind] and
+// in-flight flag.
+let playlistOption = 'option1';
+const playlistState = {
+  option1: { result: null, status: ['', ''], busy: false },
+  option2: { result: null, status: ['', ''], busy: false },
+};
 
 // Pre-fill the editors with the current defaults.
 els.promptEditor.value      = EDITABLE_PROMPT_SECTION;
 els.tastePromptEditor.value = TASTE_EDITABLE_PROMPT_SECTION;
+els.playlistEditors.option1.value = DEFAULT_EDITABLE.option1;
+els.playlistEditors.option2.value = DEFAULT_EDITABLE.option2;
 
 // Load atmosphere checkboxes. As in v7 production, the checked names only
 // become an "Atmospheres: ..." line in the user message, next to the
@@ -177,6 +212,10 @@ function readCheckedAtmospheres() {
 
 els.generateBtn.addEventListener('click', onGenerate);
 els.tasteGenerateBtn.addEventListener('click', onGenerateTasteProfile);
+els.playlistGenerateBtn.addEventListener('click', onGeneratePlaylistDirections);
+for (const b of els.playlistOptionSeg.querySelectorAll('button[data-opt]')) {
+  b.addEventListener('click', () => selectPlaylistOption(b.dataset.opt));
+}
 
 function wireCopyButton(btn, getText) {
   btn.addEventListener('click', async () => {
@@ -197,6 +236,9 @@ wireCopyButton(els.copyBtn,       () => els.promptEditor.value);
 wireCopyButton(els.copyResultBtn, () => els.outputText.textContent);
 wireCopyButton(els.copyTastePromptBtn, () => els.tastePromptEditor.value);
 wireCopyButton(els.copyTasteResultBtn, () => els.tasteOutputText.textContent);
+wireCopyButton(els.copyPlaylistPromptBtn, () => els.playlistEditors[playlistOption].value);
+wireCopyButton(els.copyPlaylistResultBtn, () =>
+  [els.playlistResultsTitle.textContent, els.playlistExplain.innerText, els.playlistOutputText.textContent].join('\n\n'));
 
 function setStatus(text, kind) {
   setStatusOn(els.statusLine, text, kind);
@@ -472,6 +514,10 @@ async function onGenerateTasteProfile() {
     return;
   }
 
+  // Step 4 always reflects the profile on screen — a new run clears it.
+  tasteRun = null;
+  hidePlaylistStep();
+
   const { directions, inputs } = r1Run;
   const likedDirections    = directions.filter((d) => decisions.get(d.rank) === 'like');
   const dislikedDirections = directions.filter((d) => decisions.get(d.rank) !== 'like');
@@ -531,6 +577,10 @@ async function onGenerateTasteProfile() {
       `${profile.excluded_genres.length} excluded — בזמן ${(elapsed / 1000).toFixed(1)} שניות`,
       'ok',
     );
+    if (profile.approved_genres.length) {
+      tasteRun = { profile, inputs };
+      els.playlistCard.style.display = '';
+    }
   } catch (err) {
     setTasteStatus(`שגיאה: ${err.message || 'לא ידוע'}`, 'err');
   } finally {
@@ -592,4 +642,102 @@ function renderTasteResult(text, usage, elapsed) {
   els.tasteResultsCard.style.display = '';
   els.tasteUsageLine.textContent = formatUsage(usage, elapsed);
   els.tasteResultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ---------- Step 4: daily playlist type → directions ----------
+
+const PLAYLIST_TITLES = {
+  option1: 'אפשרות 1 — הכיוונים לפי אנרגיה גבוהה / רגועה',
+  option2: 'אפשרות 2 — הכיוונים לפי רמת אנרגיה',
+};
+
+// A new taste profile makes both options' results stale: clear them (the
+// edited prompts stay) and hide the step until the new profile lands.
+function hidePlaylistStep() {
+  els.playlistCard.style.display = 'none';
+  for (const st of Object.values(playlistState)) {
+    st.result = null;
+    st.status = ['', ''];
+  }
+  paintPlaylistStep();
+}
+
+function selectPlaylistOption(option) {
+  playlistOption = option;
+  paintPlaylistStep();
+}
+
+function setPlaylistStatus(option, text, kind = '') {
+  playlistState[option].status = [text, kind];
+  if (option === playlistOption) setStatusOn(els.playlistStatusLine, text, kind);
+}
+
+// Show the selected option's editor, button state, status line and last result.
+function paintPlaylistStep() {
+  const st = playlistState[playlistOption];
+  for (const b of els.playlistOptionSeg.querySelectorAll('button[data-opt]')) {
+    b.classList.toggle('on', b.dataset.opt === playlistOption);
+  }
+  for (const [opt, ed] of Object.entries(els.playlistEditors)) ed.style.display = opt === playlistOption ? '' : 'none';
+  els.playlistGenerateBtn.disabled = st.busy;
+  els.playlistGenerateBtn.innerHTML = st.busy ? '<span class="sb-spinner"></span>' : 'צור כיוונים ←';
+  setStatusOn(els.playlistStatusLine, ...st.status);
+
+  if (!st.result) {
+    els.playlistResultsCard.style.display = 'none';
+    return;
+  }
+  els.playlistResultsTitle.textContent = PLAYLIST_TITLES[playlistOption];
+  els.playlistExplain.replaceChildren(...EXPLANATION_HE[playlistOption].map((t) => {
+    const p = document.createElement('p');
+    p.textContent = t;
+    return p;
+  }));
+  els.playlistOutputText.textContent = st.result.text;
+  els.playlistUsageLine.textContent = formatUsage(st.result.usage, st.result.elapsed);
+  els.playlistResultsCard.style.display = '';
+}
+
+async function onGeneratePlaylistDirections() {
+  const option = playlistOption;
+  const st = playlistState[option];
+  if (!tasteRun) {
+    setPlaylistStatus(option, 'קודם צריך ליצור פרופיל טעם בשלב 3', 'err');
+    return;
+  }
+  const editable = els.playlistEditors[option].value;
+  if (!editable.trim()) {
+    setPlaylistStatus(option, 'הפרומפט ריק — הדביקו תוכן או רעננו את הדף כדי לטעון את ברירת המחדל', 'err');
+    return;
+  }
+  const run = tasteRun;           // a newer taste profile makes this result stale
+  st.busy = true;
+  setPlaylistStatus(option, `שולח ל־${PROVIDER}...`);
+  paintPlaylistStep();
+
+  try {
+    const r = await generateForOption(option, {
+      profile: run.profile,
+      inputs: run.inputs,
+      editable,
+      label: option === 'option1' ? 'ami-energy-directions' : 'ami-level-directions',
+    });
+    if (run !== tasteRun) return;
+    if (!r.ok) {
+      if (r.rawText) st.result = { text: r.rawText, usage: r.usage, elapsed: r.elapsed };
+      setPlaylistStatus(option, r.error, 'err');
+      return;
+    }
+    const text = option === 'option1' ? formatOption1(run.profile, r) : formatOption2(run.profile, r);
+    st.result = { text, usage: r.usage, elapsed: r.elapsed };
+    setPlaylistStatus(option, `הוחזרו ${r.directions.length} כיוונים בזמן ${(r.elapsed / 1000).toFixed(1)} שניות`, 'ok');
+  } catch (err) {
+    if (run === tasteRun) setPlaylistStatus(option, `שגיאה: ${err.message || 'לא ידוע'}`, 'err');
+  } finally {
+    st.busy = false;
+    paintPlaylistStep();
+    if (option === playlistOption && st.result && run === tasteRun) {
+      els.playlistResultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
 }

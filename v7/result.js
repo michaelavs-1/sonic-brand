@@ -1,22 +1,27 @@
-// v7 checkout screens: registration (email only) → payment (Hyp) →
+// v7 checkout screens: registration (email + password) → payment (Hyp) →
 // taste-profile bar → "check your email". Replaces v6's step-6 example-playlist
 // build entirely: v7 directions are diagnostic PROBES that dissolve into a
 // flat, full-catalog taste profile (via generateTasteProfile), so there are no
 // per-direction example playlists to show here.
 //
 // Flow (all render into .screen-card and resolve when the owner advances):
-//   runRegistrationStep({ initialValue })                  -> Promise<email>  (A4)
+//   runRegistrationStep({ initialValue, initialPassword }) -> Promise<{ email, password }> (A4)
 //   runPaymentStep({ email, businessName, onboardingSessionId, paidCheckoutId })
 //                                                          -> Promise<checkoutId> (A5)
 //   runTasteProfileBar({ tasteProfilePromise, signupPayload, genreTally, retry })  (A7)
 //
 // Auth (decided 2026-09-24 — email verification REQUIRED, same as v6): nothing
-// here ever logs the owner in. Registration only CAPTURES the email. After the
-// payment, the bar waits for the taste profile, then the v7
-// signup endpoint creates the account, saves the profile and emails a one-time
-// magic link; this screen then shows "בדקו את המייל ✉️". Clicking the link is
-// the verification step and lands the owner on /v7/account. No account exists
+// here ever logs the owner in. Registration CAPTURES the email + password
+// (held in memory only) and stops an already-registered email before payment.
+// After the payment, the bar waits for the taste profile, then the v7 signup
+// endpoint creates the account (with the password), saves the profile and
+// emails a one-time magic link; this screen then shows "בדקו את המייל ✉️".
+// Clicking the link is the verification step and lands the owner on
+// /v7/account, logged in. Later logins use the password. No account exists
 // for anyone who abandons before paying ("no non-paying clients").
+
+import { waitNodes, setWaitText } from '/v7/wait-dots.js?v=28092026a';
+import { PASSWORD_RULES_TEXT, passwordProblem } from '/shared/password-rules.js?v=28092026a';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_BAR_MS = 2000; // let the "dissolving" bar breathe even when the call is already resolved
@@ -57,58 +62,141 @@ function existingSessionEmail() {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /* =========================================================================
-   A4 — Registration. Email capture ONLY. No account is created here.
-   Resolves with the lowercased, validated email string.
+   A4 — Registration: email + password. No account is created here (signup
+   runs after payment). Before resolving, the email is checked against
+   /api/v7/account/check-email — an already-registered owner is stopped here,
+   before paying, and offered a link to log in instead.
+   Resolves with { email (lowercased), password }.
    ========================================================================= */
-export function runRegistrationStep({ initialValue = '' } = {}) {
+export function runRegistrationStep({ initialValue = '', initialPassword = '' } = {}) {
   return new Promise((resolve) => {
     const card = getCard();
 
     const emailInput = el('input', {
       class: 'input-text',
       type: 'email',
-      autocomplete: 'email',
+      name: 'email',
+      autocomplete: 'username',
       inputmode: 'email',
       placeholder: 'you@business.co.il',
     });
     emailInput.value = initialValue || existingSessionEmail() || '';
 
-    const msg = el('p', { class: 'hint', style: 'color:#ff9b8a;font-size:13px;min-height:18px' }, '');
-    const goBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'המשך ←');
+    const pwInput = el('input', {
+      class: 'input-text',
+      type: 'password',
+      name: 'password',
+      autocomplete: 'new-password',
+    });
+    pwInput.value = initialPassword || '';
+    const pwToggle = passwordToggle(pwInput);
 
-    let done = false;
-    const submit = () => {
-      if (done) return;
-      const email = emailInput.value.trim().toLowerCase();
-      if (!EMAIL_RE.test(email)) {
-        msg.textContent = 'הזינו כתובת אימייל תקינה';
-        emailInput.classList.add('err');
-        emailInput.focus();
-        return;
-      }
-      done = true;
-      resolve(email);
+    const msg = el('p', { class: 'hint', style: 'color:#ff9b8a;font-size:13px;min-height:18px' }, '');
+    const exists = el('div', { class: 'reg-exists' });
+    exists.hidden = true;
+    const goBtn = el('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'המשך ←');
+
+    const setError = (text, input) => {
+      msg.textContent = text;
+      exists.hidden = true;
+      if (input) { input.classList.add('err'); input.focus(); }
     };
 
-    goBtn.addEventListener('click', submit);
-    emailInput.addEventListener('input', () => emailInput.classList.remove('err'));
-    emailInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); submit(); }
-    });
+    const showExists = (email) => {
+      msg.textContent = '';
+      exists.replaceChildren(
+        el('p', {}, 'האימייל הזה כבר רשום אצלנו.'),
+        el('a', {
+          class: 'btn btn-secondary btn-block',
+          href: `/v7/account?email=${encodeURIComponent(email)}`,
+        }, 'להתחברות'),
+      );
+      exists.hidden = false;
+    };
 
-    card.replaceChildren(
-      el('h1', {}, 'הכל מוכן! הירשמו עכשיו'),
-      el('p', { class: 'subtitle', style: 'margin-bottom:12px' },
-        'השאירו אימייל כדי לשמור את הפרופיל המוזיקלי שלכם ולהתחיל לקבל פלייליסטים יומיים.'),
+    let busy = false;
+    const submit = async () => {
+      if (busy) return;
+      const email = emailInput.value.trim().toLowerCase();
+      const password = pwInput.value;
+      if (!EMAIL_RE.test(email)) return setError('הזינו כתובת אימייל תקינה', emailInput);
+      const pwProblem = passwordProblem(password);
+      if (pwProblem) return setError(pwProblem, pwInput);
+
+      busy = true;
+      goBtn.disabled = true;
+      setWaitText(goBtn, 'בודקים…');
+      msg.textContent = '';
+      let registered = false;
+      try {
+        const r = await fetch('/api/v7/account/check-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        if (r.status === 429) {
+          setError('יותר מדי ניסיונות — נסו שוב בעוד כמה דקות');
+          return;
+        }
+        // Any other failure lets the owner continue — signup enforces the
+        // same rule server-side.
+        if (r.ok) registered = !!(await r.json().catch(() => ({}))).registered;
+      } catch { /* network — continue, see above */ }
+      finally {
+        busy = false;
+        goBtn.disabled = false;
+        goBtn.textContent = 'המשך ←';
+      }
+      if (registered) { showExists(email); return; }
+      busy = true;   // resolved — ignore further submits
+      resolve({ email, password });
+    };
+
+    const form = el('form', { novalidate: '' },
       el('div', { class: 'input-wrap' },
         el('label', { class: 'input-label' }, 'אימייל'),
         emailInput,
       ),
+      el('div', { class: 'input-wrap' },
+        el('label', { class: 'input-label' }, 'בחרו סיסמה'),
+        el('div', { class: 'pw-wrap' }, pwInput, pwToggle),
+        el('p', { class: 'pw-hint' }, PASSWORD_RULES_TEXT),
+      ),
       goBtn,
       msg,
+      exists,
+    );
+    form.addEventListener('submit', (e) => { e.preventDefault(); submit(); });
+    for (const input of [emailInput, pwInput]) {
+      input.addEventListener('input', () => {
+        input.classList.remove('err');
+        exists.hidden = true;
+      });
+    }
+
+    card.replaceChildren(
+      el('h1', {}, 'הכל מוכן! הירשמו עכשיו'),
+      el('p', { class: 'subtitle', style: 'margin-bottom:12px' },
+        'השאירו אימייל ובחרו סיסמה כדי לשמור את הפרופיל המוזיקלי שלכם ולהתחיל לקבל פלייליסטים יומיים.'),
+      form,
     );
     emailInput.focus();
   });
+}
+
+// Eye icon that flips a password input's visibility: open eye while hidden,
+// crossed-out eye while shown.
+const EYE_ICONS = '<svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+function passwordToggle(input) {
+  const btn = el('button', { class: 'pw-toggle', type: 'button', 'aria-label': 'הצגת הסיסמה' });
+  btn.innerHTML = EYE_ICONS;
+  btn.addEventListener('click', () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.classList.toggle('showing', show);
+    btn.setAttribute('aria-label', show ? 'הסתרת הסיסמה' : 'הצגת הסיסמה');
+  });
+  return btn;
 }
 
 /* =========================================================================
@@ -422,6 +510,8 @@ async function postV7Signup(payload) {
   if (!r.ok || !data.ok) {
     const err = new Error(data?.error || r.statusText || 'signup failed');
     err.status = r.status;   // 429 = Supabase's ~60s per-user email interval
+    err.code = data?.code || null;              // 'already_registered' | 'weak_password' | 'bad_password'
+    err.businessId = data?.business_id || null; // set once the business exists
     throw err;
   }
   return data;
@@ -443,16 +533,29 @@ export function runTasteProfileBar({ tasteProfilePromise, signupPayload, genreTa
       genreTally: Array.isArray(genreTally) ? genreTally : [],
     });
 
+    // Once the first attempt has created the business, every later post
+    // (retry after an error, "שלחו שוב") carries its id as resendFor — the
+    // server only lets a not-yet-verified account with a business be
+    // re-posted by the signup that created it.
+    let resendFor = '';
+    // Replaces the registration password when Supabase refused it.
+    let passwordOverride = null;
+
     const signUp = async (profile) => {
       const payload = payloadFor(profile);
+      if (passwordOverride) payload.password = passwordOverride;
+      if (resendFor) payload.resendFor = resendFor;
+      let data;
       try {
-        await Promise.all([postV7Signup(payload), sleep(MIN_BAR_MS)]);
+        [data] = await Promise.all([postV7Signup(payload), sleep(MIN_BAR_MS)]);
       } catch (err) {
+        if (err.businessId) resendFor = err.businessId;
         showSignupError(err, profile);
         return;
       }
       forgetPaidCheckout();   // the payment now belongs to this account
-      showCheckEmail({ email: payload.email, resend: () => postV7Signup(payload) });
+      const resendPayload = { ...payload, resendFor: data.business_id };
+      showCheckEmail({ email: payload.email, resend: () => postV7Signup(resendPayload) });
       resolve();
     };
 
@@ -498,6 +601,14 @@ export function runTasteProfileBar({ tasteProfilePromise, signupPayload, genreTa
     // Profile computed fine, but signup failed (network / server / email send).
     // Retry the SIGNUP only — no need to re-run the expensive Gemini call.
     const showSignupError = (err, profile) => {
+      if (err?.code === 'weak_password' || err?.code === 'bad_password') {
+        showNewPassword(err, profile);
+        return;
+      }
+      if (err?.code === 'already_registered') {
+        showAlreadyRegistered(payloadFor(profile).email);
+        return;
+      }
       const card = getCard();
       const btn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'נסו שוב');
       const msg = el('p', { class: 'hint', style: 'color:#ff9b8a;font-size:13px;min-height:18px' },
@@ -517,13 +628,77 @@ export function runTasteProfileBar({ tasteProfilePromise, signupPayload, genreTa
       );
     };
 
+    // Supabase refused the password (weak / leaked). Ask for another one and
+    // retry the signup with it.
+    const showNewPassword = (err, profile) => {
+      const card = getCard();
+      const pwInput = el('input', {
+        class: 'input-text',
+        type: 'password',
+        name: 'password',
+        autocomplete: 'new-password',
+      });
+      const msg = el('p', { class: 'hint', style: 'color:#ff9b8a;font-size:13px;min-height:18px' },
+        String(err?.message || ''));
+      const btn = el('button', { class: 'btn btn-primary btn-block', type: 'submit' }, 'המשך ←');
+      const form = el('form', { novalidate: '' },
+        el('div', { class: 'input-wrap' },
+          el('label', { class: 'input-label' }, 'סיסמה חדשה'),
+          el('div', { class: 'pw-wrap' }, pwInput, passwordToggle(pwInput)),
+          el('p', { class: 'pw-hint' }, PASSWORD_RULES_TEXT),
+        ),
+        btn,
+        msg,
+      );
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (btn.disabled) return;
+        const pwProblem = passwordProblem(pwInput.value);
+        if (pwProblem) {
+          msg.textContent = pwProblem;
+          pwInput.classList.add('err');
+          pwInput.focus();
+          return;
+        }
+        btn.disabled = true;
+        passwordOverride = pwInput.value;
+        renderBar();
+        signUp(profile);
+      });
+      pwInput.addEventListener('input', () => pwInput.classList.remove('err'));
+      card.replaceChildren(
+        el('h1', {}, 'בחרו סיסמה אחרת'),
+        el('p', { class: 'subtitle', style: 'margin-bottom:14px' },
+          'הפרופיל המוזיקלי מוכן — רק צריך סיסמה אחרת כדי להשלים את ההרשמה.'),
+        form,
+      );
+      pwInput.focus();
+    };
+
+    // Registered in the meantime (e.g. another tab finished first). Nothing
+    // to retry — send the owner to log in.
+    const showAlreadyRegistered = (email) => {
+      const card = getCard();
+      card.replaceChildren(
+        el('h1', {}, 'כבר יש לכם חשבון'),
+        el('p', { class: 'subtitle', style: 'margin-bottom:14px' },
+          `האימייל ${email} כבר רשום אצלנו. היכנסו לחשבון עם הסיסמה שלכם.`),
+        el('a', {
+          class: 'btn btn-primary btn-block',
+          href: `/v7/account?email=${encodeURIComponent(email)}`,
+          style: 'display:block;text-align:center;text-decoration:none',
+        }, 'להתחברות'),
+      );
+    };
+
     run(tasteProfilePromise);
   });
 }
 
-// "Check your email" — mirror of v6's showCheckEmailState. The magic link is
-// the only way into the account; resend re-posts the same signup payload
-// (idempotent server-side).
+// "Check your email" — mirror of v6's showCheckEmailState. The magic link
+// verifies the email and logs the owner in (later visits use the password);
+// resend re-posts the same signup payload + resendFor (idempotent
+// server-side).
 //
 // Resend waits out a 60-second countdown — Supabase sends at most one login
 // email per user per ~60s, so an earlier click could only fail. The countdown
@@ -565,7 +740,7 @@ function showCheckEmail({ email, resend }) {
   resendBtn.addEventListener('click', async () => {
     if (resendBtn.disabled) return;
     setWaiting(true);
-    resendBtn.textContent = 'שולחים…';
+    setWaitText(resendBtn, 'שולחים…');
     msg.style.color = '';
     msg.textContent = '';
     try {
@@ -587,7 +762,7 @@ function showCheckEmail({ email, resend }) {
     el('p', { class: 'subtitle', style: 'margin-bottom:8px' },
       `שלחנו קישור כניסה חד־פעמי אל ${email}`),
     el('p', { class: 'hint', style: 'margin-top:14px' },
-      'הפרופיל המוזיקלי שלכם כבר שמור בחשבון — לחצו על הקישור במייל כדי להיכנס.'),
+      'הפרופיל המוזיקלי שלכם כבר שמור בחשבון — לחצו על הקישור במייל כדי לאשר את האימייל ולהיכנס. בפעמים הבאות תיכנסו עם הסיסמה שבחרתם.'),
     resendBtn,
     msg,
   );
@@ -599,7 +774,7 @@ function renderBar() {
     el('h1', {}, 'בונים את הפרופיל המוזיקלי שלכם'),
     el('div', { class: 'preview-load-column' },
       el('p', { class: 'preview-load-label' },
-        'מנתחים את כל הבחירות שלכם והופכים אותן לפרופיל טעם מלא…'),
+        ...waitNodes('מנתחים את כל הבחירות שלכם והופכים אותן לפרופיל טעם מלא…')),
       el('div', { class: 'preview-load-progress' },
         // taste-profile-fill: this bar fills over 35s (the swipe-deck loaders
         // keep the shared 25s) — see v7/index.html.

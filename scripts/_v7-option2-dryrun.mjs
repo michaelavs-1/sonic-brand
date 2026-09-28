@@ -16,7 +16,12 @@
  *   node scripts/_v7-option2-dryrun.mjs --at=15:30         fixture, planned as of 15:30 (starts at 15:30)
  *   node scripts/_v7-option2-dryrun.mjs <businessId>       a real business (its hours, timeline, profile), as of now
  *   node scripts/_v7-option2-dryrun.mjs <businessId> --at=09:00
+ *   node scripts/_v7-option2-dryrun.mjs <businessId> --date=2026-10-02 --at=09:00
+ *                                                          plan another day (the level-direction rotation follows the date)
  *   add --quiet to print only the summary.
+ *
+ * A business with a level-direction library (business_v7_level_directions)
+ * prints which direction each mix plays at each level that day.
  */
 
 import fs from 'node:fs';
@@ -39,6 +44,8 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
 
 const args = process.argv.slice(2);
 const at = args.find((a) => a.startsWith('--at='))?.slice(5) || null;
+const date = args.find((a) => a.startsWith('--date='))?.slice(7) || null;
+if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { console.error('--date must be YYYY-MM-DD'); process.exit(1); }
 const quiet = args.includes('--quiet');
 const businessId = args.find((a) => /^[0-9a-f-]{36}$/i.test(a)) || null;
 
@@ -48,10 +55,13 @@ const { pgrSelect } = await imp('api/v5/supabase-client.js');
 const { ilPartsFromDate } = await imp('v7/generation/playlist-length.js');
 const { ilIsoAt, fmtHM, parseHM } = await imp('v7/generation/energy-timeline.js');
 
-// "now" as an IL wall-clock time today (so a plan can be previewed at any hour).
+// "now" as an IL wall-clock time today — or on --date — so a plan can be
+// previewed at any hour of any day.
 function nowAt(hhmm) {
   const il = ilPartsFromDate(new Date());
-  return new Date(ilIsoAt({ year: il.year, month: il.month, day: il.day }, parseHM(hhmm)));
+  const d = date ? { year: +date.slice(0, 4), month: +date.slice(5, 7), day: +date.slice(8, 10) }
+    : { year: il.year, month: il.month, day: il.day };
+  return new Date(ilIsoAt(d, parseHM(hhmm || fmtHM(il.hour * 60 + il.minute))));
 }
 
 const FIXTURE_PROFILE = {
@@ -67,7 +77,7 @@ const FIXTURE_PROFILE = {
 const t0 = Date.now();
 let plan, label, now;
 if (businessId) {
-  now = at ? nowAt(at) : new Date();
+  now = at || date ? nowAt(at) : new Date();
   const [h] = await pgrSelect('business_hours', { business_id: `eq.${businessId}` }, { select: 'hours', limit: 1, useService: true });
   if (!h?.hours) { console.error('That business has no hours row.'); process.exit(1); }
   plan = await planOption2Timeline({ businessId, hours: h.hours, now, onDemand: true });
@@ -92,6 +102,13 @@ const m = plan.meta;
 console.log(`window ${fmtHM(m.window[0])}–${fmtHM(m.window[1])} (${m.kind}) · group ${m.open}–${m.close} · levels ${m.levels_total} · expires ${plan.expiryIso} · planned in ${ms} ms`);
 console.log(`curve dots: ${m.points.map((p) => `${fmtHM(p.m)}=${p.e}`).join('  ')}`);
 console.log(`stats: ${JSON.stringify(plan.stats)}`);
+console.log(`genres per level: ${m.source === 'level-directions' ? `level directions (day ${m.day_number} of the rotation)` : 'every genre of the level (no level-direction library)'}`);
+for (const slot of plan.slots) {
+  const dirs = slot.meta?.directions;
+  if (!dirs) continue;
+  console.log(`  ${slot.title}:`);
+  for (const [L, d] of Object.entries(dirs)) console.log(`    L${L}  ${d.title_en}  [${d.genres.join(', ')}]`);
+}
 const dur = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 for (const slot of plan.slots) {
   const total = slot.tracks.reduce((n, t) => n + t.sec, 0);

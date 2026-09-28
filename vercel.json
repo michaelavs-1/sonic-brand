@@ -99,6 +99,9 @@
     "api/v7/account/save-energy-directions.js": {
       "maxDuration": 10
     },
+    "api/v7/account/save-level-directions.js": {
+      "maxDuration": 10
+    },
     "api/v7/account/generate-daily.js": {
       "maxDuration": 300
     },

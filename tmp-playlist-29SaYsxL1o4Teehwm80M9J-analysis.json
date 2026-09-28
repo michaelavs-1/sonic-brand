@@ -1,0 +1,741 @@
+{
+  "playlist_id": "29SaYsxL1o4Teehwm80M9J",
+  "generated_at": "2026-09-28T14:52:25.095Z",
+  "total_tracks": 28,
+  "completed": 28,
+  "summary": {
+    "ok": 28,
+    "not_found": 0,
+    "terminal": 0
+  },
+  "results": [
+    {
+      "spotify_id": "2xEicKqb9neAYrLTxT7wJm",
+      "name": "Ihna Inhabasna",
+      "artist": "Autostrad",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "aWhuYS1pbmhhYmFzbmEtYXV0b3N0cmFk",
+          "key": "D",
+          "mode": "major",
+          "camelot": "10B",
+          "tempo": 105,
+          "duration": "3:46",
+          "popularity": 27,
+          "energy": 77,
+          "danceability": 75,
+          "happiness": 87,
+          "acousticness": 6,
+          "instrumentalness": 0,
+          "liveness": 39,
+          "speechiness": 6,
+          "loudness": "-8 dB"
+        },
+        "ms": 771760
+      }
+    },
+    {
+      "spotify_id": "5QBpbdNDaX7ymXBTKVQHk1",
+      "name": "Kol Shams W Liha Del",
+      "artist": "Nesma Mahgoub",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "a29sLXNoYW1zLXctbGVoYS1kZWwtbmVzbWEtbWFoZ291Yg==",
+          "key": "C#",
+          "mode": "minor",
+          "camelot": "12A",
+          "tempo": 100,
+          "duration": "3:09",
+          "popularity": 17,
+          "energy": 80,
+          "danceability": 75,
+          "happiness": 79,
+          "acousticness": 2,
+          "instrumentalness": 0,
+          "liveness": 3,
+          "speechiness": 4,
+          "loudness": "-6 dB"
+        },
+        "ms": 747718
+      }
+    },
+    {
+      "spotify_id": "3ZTuYuaV1fhdNnuIBuzTYy",
+      "name": "Nour El Ein",
+      "artist": "Amr Diab",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bm91ci1lbC1laW4tYW1yLWRpYWI=",
+          "key": "Ab",
+          "mode": "major",
+          "camelot": "4B",
+          "tempo": 100,
+          "duration": "5:08",
+          "popularity": 66,
+          "energy": 66,
+          "danceability": 75,
+          "happiness": 77,
+          "acousticness": 27,
+          "instrumentalness": 0,
+          "liveness": 4,
+          "speechiness": 8,
+          "loudness": "-12 dB"
+        },
+        "ms": 1895
+      }
+    },
+    {
+      "spotify_id": "0WcFWvjYOAEFJn1LuvqX7F",
+      "name": "Amarain",
+      "artist": "Amr Diab",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YW1hcmFpbi1hbXItZGlhYg==",
+          "key": "E",
+          "mode": "minor",
+          "camelot": "9A",
+          "tempo": 100,
+          "duration": "4:25",
+          "popularity": 64,
+          "energy": 71,
+          "danceability": 72,
+          "happiness": 93,
+          "acousticness": 60,
+          "instrumentalness": 0,
+          "liveness": 9,
+          "speechiness": 6,
+          "loudness": "-10 dB"
+        },
+        "ms": 765
+      }
+    },
+    {
+      "spotify_id": "0KBvzId54EcxXie2jiX73a",
+      "name": "Alby",
+      "artist": "Amr Diab, Khaled",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YWxieS1hbXItZGlhYi1raGFsZWQ=",
+          "key": "C#",
+          "mode": "major",
+          "camelot": "3B",
+          "tempo": 94,
+          "duration": "4:22",
+          "popularity": 41,
+          "energy": 91,
+          "danceability": 65,
+          "happiness": 94,
+          "acousticness": 7,
+          "instrumentalness": 0,
+          "liveness": 15,
+          "speechiness": 4,
+          "loudness": "-6 dB"
+        },
+        "ms": 49601
+      }
+    },
+    {
+      "spotify_id": "3qNtGvCC1tgeZFK9ClBz4k",
+      "name": "Napule Canta E More",
+      "artist": "Donatella Viggiano",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bmFwdWxlLWNhbnRhLWUtbW9yZS1kb25hdGVsbGEtdmlnZ2lhbm8=",
+          "key": "G",
+          "mode": "minor",
+          "camelot": "6A",
+          "tempo": 106,
+          "duration": "2:54",
+          "popularity": 49,
+          "energy": 78,
+          "danceability": 60,
+          "happiness": 85,
+          "acousticness": 43,
+          "instrumentalness": 0,
+          "liveness": 22,
+          "speechiness": 11,
+          "loudness": "-8 dB"
+        },
+        "ms": 1347
+      }
+    },
+    {
+      "spotify_id": "7KePwNA8puA4BX8unrPygx",
+      "name": "Rebels",
+      "artist": "Wild Fire",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "cmViZWxzLXdpbGQtZmlyZQ==",
+          "key": "Bb",
+          "mode": "major",
+          "camelot": "6B",
+          "tempo": 102,
+          "duration": "3:56",
+          "popularity": 47,
+          "energy": 53,
+          "danceability": 82,
+          "happiness": 83,
+          "acousticness": 9,
+          "instrumentalness": 0,
+          "liveness": 13,
+          "speechiness": 6,
+          "loudness": "-11 dB"
+        },
+        "ms": 756
+      }
+    },
+    {
+      "spotify_id": "2okMBeJ3zQtdAtDUetyKkB",
+      "name": "Téléphone-moi",
+      "artist": "Bibi Flash",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dGxwaG9uZW1vaS1iaWJpLWZsYXNo",
+          "key": "A",
+          "mode": "minor",
+          "camelot": "8A",
+          "tempo": 96,
+          "duration": "3:31",
+          "popularity": 25,
+          "energy": 69,
+          "danceability": 72,
+          "happiness": 71,
+          "acousticness": 27,
+          "instrumentalness": 0,
+          "liveness": 48,
+          "speechiness": 5,
+          "loudness": "-8 dB"
+        },
+        "ms": 1061
+      }
+    },
+    {
+      "spotify_id": "4O4RFEWff8GeQwypae0ibM",
+      "name": "I Heard a Sigh",
+      "artist": "Cortex",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "aS1oZWFyZC1hLXNpZ2gtY29ydGV4",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 90,
+          "duration": "3:30",
+          "popularity": 51,
+          "energy": 50,
+          "danceability": 77,
+          "happiness": 75,
+          "acousticness": 56,
+          "instrumentalness": 0,
+          "liveness": 8,
+          "speechiness": 6,
+          "loudness": "-11 dB"
+        },
+        "ms": 1470040
+      }
+    },
+    {
+      "spotify_id": "3JcVxQlgVLkjeRcIYBaMD1",
+      "name": "Falah",
+      "artist": "Ahmed Fakroun",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZmFsYWgtYWhtZWQtZmFrcm91bg==",
+          "key": "A",
+          "mode": "minor",
+          "camelot": "8A",
+          "tempo": 178,
+          "duration": "3:35",
+          "popularity": 32,
+          "energy": 57,
+          "danceability": 73,
+          "happiness": 90,
+          "acousticness": 7,
+          "instrumentalness": 6,
+          "liveness": 3,
+          "speechiness": 16,
+          "loudness": "-15 dB"
+        },
+        "ms": 1101
+      }
+    },
+    {
+      "spotify_id": "6Nl8NcFCS4HuzGpeiJsZyC",
+      "name": "دبرها",
+      "artist": "Walla'at",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "d2FsbGFhdA==",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 113,
+          "duration": "4:49",
+          "popularity": 29,
+          "energy": 46,
+          "danceability": 71,
+          "happiness": 65,
+          "acousticness": 85,
+          "instrumentalness": 0,
+          "liveness": 28,
+          "speechiness": 3,
+          "loudness": "-10 dB"
+        },
+        "ms": 54165
+      }
+    },
+    {
+      "spotify_id": "7zPZzQsUtxktljIrxtMFzA",
+      "name": "Ya Ba la La",
+      "artist": "Amal Murkus",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "eWEtYmEtbGEtbGEtYW1hbC1tdXJrdXM=",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 93,
+          "duration": "3:53",
+          "popularity": 11,
+          "energy": 56,
+          "danceability": 60,
+          "happiness": 38,
+          "acousticness": 68,
+          "instrumentalness": 0,
+          "liveness": 10,
+          "speechiness": 4,
+          "loudness": "-8 dB"
+        },
+        "ms": 67825
+      }
+    },
+    {
+      "spotify_id": "03QgO3lV2SxLD2rrdetFHt",
+      "name": "Histoire d'1 soir - Bye bye les galères",
+      "artist": "Bibi Flash",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "aGlzdG9pcmUtZDEtc29pci1ieWUtYnllLWxlcy1nYWxyZXMtYmliaS1mbGFzaA==",
+          "key": "D",
+          "mode": "major",
+          "camelot": "10B",
+          "tempo": 115,
+          "duration": "4:36",
+          "popularity": 51,
+          "energy": 77,
+          "danceability": 81,
+          "happiness": 87,
+          "acousticness": 13,
+          "instrumentalness": 0,
+          "liveness": 15,
+          "speechiness": 11,
+          "loudness": "-7 dB"
+        },
+        "ms": 743537
+      }
+    },
+    {
+      "spotify_id": "78q6wnyVOCzVL3BwNJZ94H",
+      "name": "A me me piace 'o blues - 2017 Remaster",
+      "artist": "Pino Daniele",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YS1tZS1tZS1waWFjZS1vLWJsdWVzLTIwMTctcmVtYXN0ZXItcGluby1kYW5pZWxl",
+          "key": "B",
+          "mode": "minor",
+          "camelot": "10A",
+          "tempo": 117,
+          "duration": "3:09",
+          "popularity": 24,
+          "energy": 72,
+          "danceability": 74,
+          "happiness": 91,
+          "acousticness": 40,
+          "instrumentalness": 0,
+          "liveness": 34,
+          "speechiness": 6,
+          "loudness": "-7 dB"
+        },
+        "ms": 450188
+      }
+    },
+    {
+      "spotify_id": "2VeXI9CcoekqU1VGMljovo",
+      "name": "La Guayaba",
+      "artist": "Riccie Oriach",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bGEtZ3VheWFiYS1yaWNjaWUtb3JpYWNo",
+          "key": "E",
+          "mode": "minor",
+          "camelot": "9A",
+          "tempo": 92,
+          "duration": "4:24",
+          "popularity": 27,
+          "energy": 55,
+          "danceability": 68,
+          "happiness": 93,
+          "acousticness": 52,
+          "instrumentalness": 0,
+          "liveness": 33,
+          "speechiness": 6,
+          "loudness": "-10 dB"
+        },
+        "ms": 47317
+      }
+    },
+    {
+      "spotify_id": "5vOgVbKboeY8hSbRCdFrCM",
+      "name": "Anabalina",
+      "artist": "Las Grecas",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YW5hYmFsaW5hLWxhcy1ncmVjYXM=",
+          "key": "G",
+          "mode": "major",
+          "camelot": "9B",
+          "tempo": 104,
+          "duration": "3:53",
+          "popularity": 25,
+          "energy": 60,
+          "danceability": 67,
+          "happiness": 74,
+          "acousticness": 16,
+          "instrumentalness": 0,
+          "liveness": 10,
+          "speechiness": 5,
+          "loudness": "-10 dB"
+        },
+        "ms": 83706
+      }
+    },
+    {
+      "spotify_id": "2Ke23CgIITCxvH8iLWOHpI",
+      "name": "Coge la onda",
+      "artist": "El Lebrijano",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y29nZS1sYS1vbmRhLWVsLWxlYnJpamFubw==",
+          "key": "C#",
+          "mode": "major",
+          "camelot": "3B",
+          "tempo": 181,
+          "duration": "3:41",
+          "popularity": 5,
+          "energy": 63,
+          "danceability": 70,
+          "happiness": 66,
+          "acousticness": 17,
+          "instrumentalness": 0,
+          "liveness": 8,
+          "speechiness": 35,
+          "loudness": "-8 dB"
+        },
+        "ms": 42044
+      }
+    },
+    {
+      "spotify_id": "75PclUxdBjldwGVMGc9qcr",
+      "name": "Shagrat El Ahlam",
+      "artist": "Hanan",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "c2hhZ3JhdC1lbC1haGxhbS1oYW5hbg==",
+          "key": "C",
+          "mode": "minor",
+          "camelot": "5A",
+          "tempo": 143,
+          "duration": "5:10",
+          "popularity": 14,
+          "energy": 49,
+          "danceability": 64,
+          "happiness": 87,
+          "acousticness": 75,
+          "instrumentalness": 0,
+          "liveness": 9,
+          "speechiness": 4,
+          "loudness": "-12 dB"
+        },
+        "ms": 895
+      }
+    },
+    {
+      "spotify_id": "4PzJpD928dFuoLmpj7vmXO",
+      "name": "Celebrai",
+      "artist": "Alberto Radius",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y2VsZWJyYWktYWxiZXJ0by1yYWRpdXM=",
+          "key": "B",
+          "mode": "minor",
+          "camelot": "10A",
+          "tempo": 97,
+          "duration": "4:39",
+          "popularity": 36,
+          "energy": 73,
+          "danceability": 69,
+          "happiness": 97,
+          "acousticness": 3,
+          "instrumentalness": 11,
+          "liveness": 32,
+          "speechiness": 5,
+          "loudness": "-10 dB"
+        },
+        "ms": 899
+      }
+    },
+    {
+      "spotify_id": "7sEg7uKu9BcECbB7tFSEAR",
+      "name": "Auccalamma",
+      "artist": "Beija Flor",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YXVjY2FsYW1tYS1iZWlqYS1mbG9y",
+          "key": "C#",
+          "mode": "major",
+          "camelot": "3B",
+          "tempo": 170,
+          "duration": "3:46",
+          "popularity": 9,
+          "energy": 74,
+          "danceability": 60,
+          "happiness": 88,
+          "acousticness": 16,
+          "instrumentalness": 0,
+          "liveness": 13,
+          "speechiness": 11,
+          "loudness": "-8 dB"
+        },
+        "ms": 40728
+      }
+    },
+    {
+      "spotify_id": "5zKZdrpCZjEXzLdmBSpJxt",
+      "name": "Thlipsi - Remix",
+      "artist": "Meri Lida, Imam Baildi",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dGhsaXBzaS1yZW1peC1tZXJpLWxpZGEtaW1hbS1iYWlsZGk=",
+          "key": "D",
+          "mode": "major",
+          "camelot": "10B",
+          "tempo": 103,
+          "duration": "3:15",
+          "popularity": 33,
+          "energy": 84,
+          "danceability": 81,
+          "happiness": 82,
+          "acousticness": 19,
+          "instrumentalness": 0,
+          "liveness": 6,
+          "speechiness": 4,
+          "loudness": "-5 dB"
+        },
+        "ms": 63897
+      }
+    },
+    {
+      "spotify_id": "5uvcwuIjRwU4LIURlalyz2",
+      "name": "Eskitilmiş",
+      "artist": "Sattas",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZXNraXRpbG1pLXNhdHRhcw==",
+          "key": "G",
+          "mode": "minor",
+          "camelot": "6A",
+          "tempo": 170,
+          "duration": "3:35",
+          "popularity": 55,
+          "energy": 52,
+          "danceability": 65,
+          "happiness": 85,
+          "acousticness": 45,
+          "instrumentalness": 0,
+          "liveness": 18,
+          "speechiness": 6,
+          "loudness": "-10 dB"
+        },
+        "ms": 64619
+      }
+    },
+    {
+      "spotify_id": "1h1tfCL6gA4Z7wQwwrAAIw",
+      "name": "Te Estoy Amando Locamente",
+      "artist": "Las Grecas",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dGUtZXN0b3ktYW1hbmRvLWxvY2FtZW50ZS1sYXMtZ3JlY2Fz",
+          "key": "G",
+          "mode": "minor",
+          "camelot": "6A",
+          "tempo": 81,
+          "duration": "3:11",
+          "popularity": 47,
+          "energy": 76,
+          "danceability": 62,
+          "happiness": 94,
+          "acousticness": 28,
+          "instrumentalness": 0,
+          "liveness": 10,
+          "speechiness": 8,
+          "loudness": "-7 dB"
+        },
+        "ms": 1160
+      }
+    },
+    {
+      "spotify_id": "0TOPlZpC6cdzxAhlMn1WKk",
+      "name": "Charro del Marinero y la Estrella (The Charro of the Sailor and the Star)",
+      "artist": "El Naan",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y2hhcnJvLWRlbC1tYXJpbmVyby15LWxhLWVzdHJlbGxhLWVsLW5hYW4=",
+          "key": "C#",
+          "mode": "major",
+          "camelot": "3B",
+          "tempo": 144,
+          "duration": "4:15",
+          "popularity": 19,
+          "energy": 44,
+          "danceability": 76,
+          "happiness": 44,
+          "acousticness": 20,
+          "instrumentalness": 0,
+          "liveness": 21,
+          "speechiness": 4,
+          "loudness": "-11 dB"
+        },
+        "ms": 83459
+      }
+    },
+    {
+      "spotify_id": "1VPUpUwtbpoRVXt0txVU0w",
+      "name": "S.O.B.",
+      "artist": "Nathaniel Rateliff & The Night Sweats",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "c29iLW5hdGhhbmllbC1yYXRlbGlmZi10aGUtbmlnaHQtc3dlYXRz",
+          "key": "C#",
+          "mode": "major",
+          "camelot": "3B",
+          "tempo": 110,
+          "duration": "4:08",
+          "popularity": 66,
+          "energy": 58,
+          "danceability": 70,
+          "happiness": 13,
+          "acousticness": 27,
+          "instrumentalness": 1,
+          "liveness": 45,
+          "speechiness": 4,
+          "loudness": "-7 dB"
+        },
+        "ms": 818
+      }
+    },
+    {
+      "spotify_id": "6PH0AFkmiAIJAjaaUU52kt",
+      "name": "Zimba Ku",
+      "artist": "Black Heat",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "emltYmEta3UtYmxhY2staGVhdA==",
+          "key": "Bb",
+          "mode": "major",
+          "camelot": "6B",
+          "tempo": 90,
+          "duration": "4:39",
+          "popularity": 34,
+          "energy": 59,
+          "danceability": 66,
+          "happiness": 94,
+          "acousticness": 23,
+          "instrumentalness": 0,
+          "liveness": 9,
+          "speechiness": 6,
+          "loudness": "-13 dB"
+        },
+        "ms": 839
+      }
+    },
+    {
+      "spotify_id": "2vSP08kmQopI5kcxfcpjbE",
+      "name": "Ay Que Dolor",
+      "artist": "Los Chunguitos",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YXktcXVlLWRvbG9yLWxvcy1jaHVuZ3VpdG9z",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 95,
+          "duration": "4:06",
+          "popularity": 49,
+          "energy": 90,
+          "danceability": 69,
+          "happiness": 86,
+          "acousticness": 37,
+          "instrumentalness": 0,
+          "liveness": 19,
+          "speechiness": 4,
+          "loudness": "-7 dB"
+        },
+        "ms": 106278
+      }
+    },
+    {
+      "spotify_id": "4L1hwPLUPg6xJuIqrRwMQH",
+      "name": "Balkan Bollywood",
+      "artist": "New York Gypsy All Stars",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YmFsa2FuLWJvbGx5d29vZC1uZXcteW9yay1neXBzeS1hbGwtc3RhcnM=",
+          "key": "F",
+          "mode": "minor",
+          "camelot": "4A",
+          "tempo": 98,
+          "duration": "4:29",
+          "popularity": 12,
+          "energy": 61,
+          "danceability": 70,
+          "happiness": 87,
+          "acousticness": 26,
+          "instrumentalness": 27,
+          "liveness": 12,
+          "speechiness": 4,
+          "loudness": "-6 dB"
+        },
+        "ms": 61555
+      }
+    }
+  ]
+}

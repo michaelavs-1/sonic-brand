@@ -19,8 +19,9 @@
        energy_tier, and fills the 4 fixed names ("אנרגיה גבוהה #1/#2",
        "אנרגיה רגועה #1/#2") with a random pick of 2 directions per tier —
        re-drawn every build/day (pickTwo). Half-day target each.
-       → { directions, target, expiryIso, reason }  (directions [] + reason when
-         there's nothing to build)
+       → { directions, target, expiryIso, labelDate, reason }  (directions [] +
+         reason when there's nothing to build; labelDate = the business day
+         for the dated dashboard names)
 
      planOption2({ businessId, hours, now, onDemand })
        Option 2 — NAIVE full-length FALLBACK. The real Option-2 builder (energy
@@ -69,6 +70,7 @@ import {
   dailyPlaylistExpiryIso,
   ilPartsFromDate,
   nextIl4amIso,
+  datedLabel,
 } from '../../../v7/generation/playlist-length.js';
 import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
 
@@ -132,7 +134,7 @@ function shapeV7Direction(d, name, inst_pref, pop_pref) {
   };
 }
 
-const EMPTY = (reason) => ({ directions: [], target: 0, expiryIso: null, reason });
+const EMPTY = (reason) => ({ directions: [], target: 0, expiryIso: null, labelDate: null, reason });
 
 // ---------- the playlist record (v6 parity + v7 per-track genres) ----------
 //
@@ -186,7 +188,9 @@ export async function insertPlaylistRows(rows) {
 // per-track genre record. v6's function is left untouched.
 const BUILD_STAGGER_MS = 3000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function buildBatch({ ownerId, businessId, bizName, directions, target, expiryIso, origin }) {
+// labelDate: the business day (YYYY-MM-DD) appended to each row's dashboard
+// name (datedLabel) — the Spotify name already carries a date.
+async function buildBatch({ ownerId, businessId, bizName, directions, target, expiryIso, labelDate, origin }) {
   const built = [];
   const failures = [];
   for (let i = 0; i < directions.length; i++) {
@@ -195,7 +199,10 @@ async function buildBatch({ ownerId, businessId, bizName, directions, target, ex
     try {
       const r = await buildOneDailyPlaylist({ origin, ownerId, businessId, direction, target, bizName, expiryIso });
       if (r.skipped) failures.push({ title: r.title, reason: r.reason });
-      else built.push(await attachTrackGenres(r.row));
+      else {
+        r.row.label = datedLabel(r.row.label, labelDate);
+        built.push(await attachTrackGenres(r.row));
+      }
     } catch (err) {
       console.warn(`[v7 daily-builder] "${direction.title_en}" failed:`, err.message);
       failures.push({ title: direction.title_en, reason: err.message });
@@ -206,9 +213,10 @@ async function buildBatch({ ownerId, businessId, bizName, directions, target, ex
 }
 
 // Today's two directions for a tier's "#1" / "#2" names, drawn at RANDOM from
-// that tier's active pool (the energy-directions step makes ≥ 2 per tier, often
-// more). Each build — i.e. each day — re-draws, so every name gets a random
-// direction of the right energy. A pool of 1 fills both names with the same
+// that tier's active pool (the energy-directions step builds a library of
+// up to 30 directions across both tiers, ≥ 2 per tier). Each build — i.e. each
+// day — re-draws, so every name gets a random direction of the right energy,
+// and each playlist is exactly one direction. A pool of 1 fills both names with the same
 // direction: builds run serially and each playlist records its tracks to
 // v6_daily_track_history before the next starts, so the second draws
 // different tracks. The owner always sees two playlists per tier.
@@ -227,8 +235,8 @@ function pickTwo(pool) {
 // playlist to half of the REMAINING opening time + 1.5h instead of half the
 // whole day — the owner presses play on the new set right away.
 export async function planOption1({ businessId, hours, now = new Date(), onDemand = false, fromNow = false }) {
-  // 1. Active v7 directions, ordered by rank so the "first 2" selection below
-  //    is deterministic.
+  // 1. Active v7 directions (the library). Order doesn't matter — the draw
+  //    below is random.
   let dirRows = [];
   try {
     dirRows = await pgrSelect('business_v7_directions',
@@ -273,13 +281,13 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   }
   const target = Math.max(MIN_TARGET_TRACKS, Math.ceil((spanMins / 2 + 90) / AVG_TRACK_MINUTES));
 
-  return { directions, target, expiryIso, reason: null };
+  return { directions, target, expiryIso, labelDate: businessWindowAt(hours, now).isoDate, reason: null };
 }
 
 export async function buildOption1Batch({ ownerId, businessId, bizName, hours, origin, now = new Date() }) {
-  const { directions, target, expiryIso } = await planOption1({ businessId, hours, now });
+  const { directions, target, expiryIso, labelDate } = await planOption1({ businessId, hours, now });
   if (!directions.length) return { built: [], failures: [] };
-  return buildBatch({ ownerId, businessId, bizName, directions, target, expiryIso, origin });
+  return buildBatch({ ownerId, businessId, bizName, directions, target, expiryIso, labelDate, origin });
 }
 
 // -------- Option 2: 2 full-length energy-shifting playlists (NAIVE) --------
@@ -318,11 +326,11 @@ export async function planOption2({ businessId, hours, now = new Date(), onDeman
     popularity_preference: pop_pref,
   });
 
-  return { directions: [mix(1), mix(2)], target, expiryIso, reason: null };
+  return { directions: [mix(1), mix(2)], target, expiryIso, labelDate: businessWindowAt(hours, now).isoDate, reason: null };
 }
 
 export async function buildOption2Batch({ ownerId, businessId, bizName, hours, origin, now = new Date() }) {
-  const { directions, target, expiryIso } = await planOption2({ businessId, hours, now });
+  const { directions, target, expiryIso, labelDate } = await planOption2({ businessId, hours, now });
   if (!directions.length) return { built: [], failures: [] };
-  return buildBatch({ ownerId, businessId, bizName, directions, target, expiryIso, origin });
+  return buildBatch({ ownerId, businessId, bizName, directions, target, expiryIso, labelDate, origin });
 }

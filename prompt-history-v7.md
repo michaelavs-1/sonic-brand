@@ -46,7 +46,330 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-09-28 (latest) — Level directions: a new prompt for Option 2
+## 2026-09-30 (latest) — Taste profile: Ami's maximalist expansion, hard boundaries, energy floor for groove genres
+
+**Applies to:** `taste profile`
+
+Ami's edit of the taste-profile prompt, made with Gemini from five instructions of his:
+1. **Maximalist expansion.** Approve as many genres as possible from broad patterns in what the owner liked. The model used to leave genres it wasn't sure about in conditional, or exclude them.
+2. **Venue cutoff.** The only reason to stop expanding into a genre that fits the owner's taste is a clash with the venue. A wine-bar owner who likes beats and R&B gets R&B, LoFi and soul, not aggressive German/Icelandic hip hop or trap.
+3. **Hard boundaries:**
+   - no inferred electronic genres unless the owner liked an identical or adjacent electronic genre ("זהה/צמוד");
+   - no classical or spa music unless it was presented in the probes and liked;
+   - expand only into genres the owner would enjoy, not ones that merely work as background for the business.
+4. **Energy floor.** Groove genres (R&B, Neo Soul, Acid Jazz, AfroBeats, Funk …) never sit on the lowest levels, except for club-heavy owners.
+5. **Cross-pattern synergy.** Approve genres that bridge two distinct things the owner liked, e.g. LoFi Bossa + R&B/jazz → LoFi Beats, JazzHop.
+
+Gemini rewrote the whole prompt. The two new sections, **Core Philosophy** and **Hard Boundary Rules**, were kept as written except for the fixes below. Everything else keeps the previous structure, with Ami's changes added to it.
+
+Decisions (Roni, 2026-09-30):
+- **Restored what Gemini dropped without being asked:**
+  - the Japanese Folk restriction and the atmospheres rule;
+  - the conflict order ("a super-like beats everything") and "no blanket exclusions";
+  - "no signal → conditional", with the warning that an unlisted genre is silently excluded;
+  - the popularity rule's niche-genre list, without Gemini's new "strong thematic synergy" override for hits-only owners;
+  - "prefer the smallest N", "collapse swappable levels" and the spread definitions;
+  - "same-energy genres get the same level", the relative Hip Hop example, and the genre-naming examples.
+  - Gemini's `conditional` criterion "could serve as a safe, non-disruptive background option" was left out, since it contradicts Ami's rule 3.
+- **Electronic guardrail:** Gemini's wording, "exact genre or a tightly adjacent electronic genre", which is Ami's "זהה/צמוד".
+- **Venue cutoff worded as Ami wrote it:** it stops EXPANSION only. It never overrides the owner's own choices (a super-liked genre, a genre in a liked direction, or one they requested). That's how it sits alongside "a super-like beats everything".
+- **Energy floor made relative.** The groove genres sit above the owner's calmer APPROVED genres. They take level 1 only when there's no calmer approved genre, so the lowest level is never empty.
+  - With Gemini's fixed "never Level 1 (or 1–2 when N ≥ 4)", an owner whose approved genres are all groove would get nothing in Option 1's calm tier: only the two "אנרגיה גבוהה" playlists.
+  - Only APPROVED genres count, because the conditional list isn't used to build playlists.
+  - The genre list is Ami's families: the R&B family, Neo Soul, Acid Jazz, AfroBeats and the Funk family. Gemini's additions `LoFi Beats`, `JazzHop` and `Amapiano` were dropped; LoFi and JazzHop are usually the calmest beat music.
+- **Genre-name fixes in the examples:**
+  - `Motown` became `Mo Town`. The normalizer would have silently dropped "Motown".
+  - `Jazz` (not a genre) became "a jazz genre (e.g. `Jazz (Standards)`)".
+  - Example 3 notes why `Soulful House` passes the electronic guardrail: the liked `Electronic R&B` is an adjacent electronic genre.
+- **The genre count stays computed from the list**, not hardcoded as 124.
+
+**Code changes:**
+- `FIXED_PROMPT_SECTION`'s output example had `Neo Soul` at level 2 of 4 next to `Bossa Nova` at 1, which breaks the new floor rule. It's now level 3.
+- **`normalizeTasteProfile` safety net.** If no approved genre sits at level 1, every level shifts down by the gap and N shrinks by the same amount (never below 2). For example, approved at {3, 4} of N=4 becomes {1, 2} of N=2. Approved genres all on one level are left as they are. Tests: `scripts/test-taste-profile-normalize.mjs`.
+
+**Live test** (2026-09-30, Gemini 3.6-flash, thinking=high, label `v7-taste-profile-test`):
+- **A — elegant wine bar** (liked R&B, LoFi Bossa and late-night jazz; super-liked Alternative R&B; disliked house, hip hop, classical, 80s pop and funk). 35s, N=3:
+  - 18 approved.
+  - L3: the R&B family and Neo Soul.
+  - L2: Jazz (Standards), LoFi Beats, JazzHop, French/Gypsy/Swing jazz, Samba-Choro.
+  - L1: LoFi Bossa, Bossa Nova, Late Night jazz, Smooth Jazz, Samba.
+  - No electronic, classical or aggressive genres; no dropped names; no shift needed.
+- **B — groove-only club bar** (liked R&B, funk and nu disco; super-liked Afro Funk; disliked jazz, folk, bossa, heavy rock and classical). 40s, N=4:
+  - 38 approved.
+  - L1: Neo Soul, Mo Town, Acid Jazz, R&B — the mellowest genres the owner has, so the calm tier isn't empty.
+  - Electronic genres next to the liked Nu Disco approved (Indie Dance, Soulful House, Jazz House, French Touch, Afro House, UKG).
+  - No classical or aggressive genres; no dropped names; no shift needed.
+
+Full text of the changed sections (genre list unchanged, not repeated):
+
+**Core Philosophy** (new):
+
+```
+## CORE PHILOSOPHY: MAXIMALIST EXPANSION WITH SMART BOUNDARIES
+
+Your goal is to **APPROVE AS MANY GENRES AS REASONABLY POSSIBLE**, while maintaining precise control to ensure the business owner actually enjoys every single approved genre.
+
+Expand boldly based on the owner's taste patterns, but **do not spray-and-pray**. Every expanded genre must be a calculated, smart deduction from what the user explicitly liked. If there is a risk that a genre might technically "fit the venue type" but the owner themselves would NOT enjoy hearing it, DO NOT put it in `approved`.
+
+- **Identify Broad Musical Patterns & Cross-Genre Synergies:** Look for underlying thematic clusters AND intersections between liked styles.
+- **Cross-Pattern Deductions (CRITICAL):** When a user likes two distinct elements, boldly approve genres that bridge those exact two elements!
+  * *Example 1 (LoFi + R&B/Jazz Synergy):* User liked `LoFi Bossa` AND liked `Alternative R&B` / `Neo Soul` / a jazz genre (e.g. `Jazz (Standards)`) → Boldly approve `LoFi Beats` and `JazzHop`.
+  * *Example 2 (World Rhythms + Soul Synergy):* User liked `Bossa Nova`, `Gypsy jazz`, and `Latin Funk` → Boldly approve `Cha Cha Cha`, `Peruvian Cumbia`, `Bolero`, `Fado`, `Samba`, `Samba-Choro`, etc.
+  * *Example 3 (Groove/Soul):* Likes `Neo Soul`, `Electronic R&B`, and `AfroBeats` → Boldly approve `Funk`, `Mo Town`, `Amapiano`, `Acid Jazz`, `Soulful House`, etc. (`Soulful House` passes the Electronic Music Guardrail here because the liked `Electronic R&B` is a tightly adjacent electronic genre.)
+```
+
+**Hard Boundary Rules** (new):
+
+```
+## HARD BOUNDARY RULES (MUST FOLLOW STRICTLY)
+
+1. **Electronic Music Guardrail:** `DownTempo`, `Organic House`, and ALL electronic-leaning genres (e.g., `Deep House`, `Tech House`, `Indie Dance`, `IndieTronica`, `Nu Disco`, `French Touch`, `Progressive & Psy Trance`) must NEVER be auto-expanded or inferred into `approved` unless the user explicitly liked or super-liked that exact genre or a tightly adjacent electronic genre in R1/R2.
+2. **Classical & Spa/Ambient Guardrail:** Classical genres (`Baroque`, `Chamber music`, `Piano Impressionism`) and spa/relaxing ambient music must NEVER be inferred or auto-approved based on venue type or general "chill" vibe. They are ONLY eligible for `approved` or `conditional` if the user was explicitly presented with them (or an identical genre) in earlier diagnostic probes AND swiped right / super-liked them.
+3. **Venue Context Cutoff:** The ONLY reason to stop expanding into a genre that fits the owner's taste is a clash with the physical reality of the business. Do NOT expand into aggressive, highly intrusive, or polarizing genres that conflict with the venue (e.g., no heavy metal, drill, trap, or aggressive electronic in an upscale wine bar or fine dining setting, even if the user likes rhythmic/soulful music — a wine-bar owner who likes beats and R&B gets R&B, LoFi and soul approved, not aggressive `German Hip Hop`, `Icelandic Hip Hop` or `Trap`). This cutoff applies only to genres you INFER. It never overrides the owner's own choices: a super-liked genre, a genre in a liked direction, or a genre they requested in their emphases.
+```
+
+**Processing Rules** (two new bullets, before the Japanese Folk restriction):
+
+```
+- **Hard Guardrail Enforcement:** Apply the Electronic and Classical/Spa rules (Hard Boundary Rules) strictly before placing any genre the owner didn't directly choose into `approved`.
+- **Venue Alignment Check:** Verify every genre you infer against the venue (Venue Context Cutoff) and against whether this owner would genuinely enjoy it (Core Philosophy).
+```
+
+**Deduction Logic**:
+
+```
+## Deduction Logic
+
+Walk through all 124 canonical genres and assign each to EXACTLY ONE bucket: `approved`, `conditional`, or `excluded`. Only `approved` and `conditional` are written to the output. `excluded` is implicit: to exclude a genre, simply leave it out of both lists. This means a genre you forget to list is silently excluded — so make sure every genre that deserves `approved` or `conditional` (including the "no signal → conditional" default in step 4) is actually listed.
+
+### 1. Aggregate positive signal per genre
+
+Positive signal sources, strongest → weakest:
+- **Super-liked genre.** The owner super-liked a specific track drawn from this genre. Strongest positive signal. → `approved`.
+- **Genre appears in a liked direction.** → `approved`, unless a stronger negative signal overrides.
+- **Musical emphases explicitly requested this genre or its family.** → `approved`.
+- **Tight-cluster neighbour.** The genre shares energy tier, instrumentation family, cultural register, and mood with a super-liked or liked genre. → `approved` if all four axes match; → `approved` too if 2–3 axes match and the owner would genuinely enjoy it (Core Philosophy), otherwise `conditional`.
+- **Cross-pattern & thematic synergy.** The genre shares clear cultural, aesthetic, or musical intersections with the owner's liked genres, or bridges two distinct things they liked (Core Philosophy — e.g. `LoFi Bossa` + R&B/jazz likes → `LoFi Beats` / `JazzHop`). → `approved` if it passes all Hard Boundary Rules and the owner would genuinely enjoy listening to it; `conditional` if you're less sure.
+
+### 2. Aggregate negative signal per genre
+
+Negative signal sources:
+- **Genre appears ONLY in disliked directions and NEVER in any liked direction.** → `excluded`.
+- **Musical emphases explicitly excluded this genre or its family.** → `excluded`.
+- **Japanese Folk Restriction triggers.** → `excluded`.
+- **Hard Boundary Rules:** an electronic or classical/spa genre without the positive signal those rules require. → `excluded`.
+- **Venue / owner misalignment:** a genre you'd only be inferring that conflicts with the venue (Venue Context Cutoff) or risks annoying this owner. → `excluded`.
+
+### 3. Cross-check and resolve conflicts
+
+Priority order when a genre has multiple signals:
+1. Super-like beats everything. → `approved`.
+2. Round 2 refinement emphases beats everything below.
+3. Round 1 musical emphases (explicit include or exclude) beats direction-level signals.
+4. Direction-level like beats direction-level dislike ONLY if the like is consistent with another positive signal elsewhere in the profile. Otherwise → `conditional`.
+
+### 4. Untouched genres (never appeared in any R1/R2 direction)
+
+For the many genres the user never saw — expand boldly (Core Philosophy), always within the Hard Boundary Rules:
+- Tight-cluster neighbour (all four axes match) of a super-liked or liked genre → `approved`.
+- A genre that fits a broad pattern in what the owner liked, or bridges two distinct things they liked → `approved` if the owner would genuinely enjoy it; `conditional` if you're less sure.
+- Semantic distant-relative of a liked genre with no negative counterweight → `conditional`.
+- Semantic distant-relative of a disliked genre with no positive counterweight → `excluded` if the negative signal is coherent; `conditional` if it's noisy.
+- No signal in either direction → `conditional` (default for "we don't know"), unless a Hard Boundary Rule excludes it.
+
+### 5. No blanket exclusions
+
+Do NOT apply family-level bans based on a single dislike. Example: the owner disliked a direction containing `Deep House` but super-liked a `Nu Disco` track — `Deep House` itself is NOT automatically `approved` (the dislike matters) but the broader "electronic dance" family is NOT excluded either. Each electronic genre must be evaluated on its own signal aggregate.
+```
+
+**Energy Calibration — Step 3** (new; the old Step 3 "Excluded genres get NO energy level" is now Step 4):
+
+```
+### Step 3: Floor Rule for Rhythmic & Groove Genres
+
+Rhythmic, groove-driven genres carry inherent bounce: the R&B family (`Rnb`, `Alternative R&B`, `Electronic R&B`, `French RnB`, `Japanese RnB`, `Korean RnB`), `Neo Soul`, `Acid Jazz`, `AfroBeats`, and the Funk family (`Funk`, `Afro Funk`, `Italian Funk`, `French Funk`, `Greek Funk`, `Latin Funk`, `Arabic Funk`). They ALWAYS sit above the owner's calmer approved genres (acoustic, ballads, jazz, bossa and the like) — mid-to-high on the scale, never in the lowest levels (Level 1, or Levels 1–2 when N ≥ 4) while calmer APPROVED genres exist to fill those levels. Only when the owner has no calmer approved genre (e.g. a profile built around R&B, funk and club music) do the calmest of these rhythmic genres take Level 1. The lowest level must never be left without an approved genre.
+```
+
+---
+
+## 2026-09-30 — Ami's R1 rewrite: map the owner's taste, "בודק…" descriptions; carried into R2
+
+**Applies to:** `R1+R2`
+
+Ami's edit of the Round-1 prompt, made with Gemini from three instructions of his:
+1. When the owner asks for a style, give it ONE direction and use the rest to find out what else they like. The goal is to map their taste, not only to satisfy the request.
+2. The widest variety the business allows **between** directions, never within one.
+3. Each description tells the owner what the direction tests.
+
+Gemini also changed things he didn't ask for. Those were reverted to the previous text:
+- It removed the groove-family closing sentence ("`Funk + Neo Soul` / `Funk + Acid Jazz` … is invalid. Split it."), which is the barbershop-bug guard.
+- It removed the "3 to 6 genres" cluster-size rule, the rules checklist in the Task Workflow, and the `Japanese RnB` cultural-register example.
+- It dropped the bold labels in the Pop and House rules.
+
+Decisions (Roni, 2026-09-30):
+- **One direction per requested style.** "R&B and rock" → one each.
+- **Always the masculine "בודק".** The direction is the subject ("הכיוון בודק פתיחות ל…").
+- **R2 gets the same changes:**
+  - Each requested style gets exactly one of the 4 Round-2 clusters. Its companion genres must differ from those in its Round-1 direction.
+  - The 4 probes are as varied as Round 2 allows, staying near what the owner liked.
+  - Descriptions use the same "בודק" format.
+  - This replaces R2's "at least half of your 4 clusters center on the Round-2 emphases".
+- **Fixes while porting:**
+  - The typo "שתרצים" became "שרוצים".
+  - "the 8 directions" became "your directions" in the shared Homogeneity section, since R2 builds 4.
+  - The two "note the tension … in your reasoning for the first direction" instructions were removed. The output has no reasoning field, and the schema forbids adding fields.
+  - The "atmosphere-derived pool/window" wording in the popularity rule was removed; that window was removed from the code on 2026-09-02.
+  - Ami's examples were kept as he wrote them.
+
+**Code changes (not prompt text Ami edits):**
+- `injectPlaces`: the Google Places processing rule now goes at the **end of `### Processing Rules:`**. It used to be inserted before `## Energy & Pairing Constraints`, v6's anchor. In v7 the Homogeneity and Distinctness sections sit in between, so the rule landed under "Direction Distinctness" in R1 and under "Cluster Homogeneity" in R2. The Places input block is unchanged, at the end of `## Inputs`.
+- R1's page-2 user message now adds: "Each style the owner explicitly requested gets exactly ONE direction across both batches — don't add another for a style that already has one above; include one for a requested style that doesn't have one yet."
+- Output formats (R1 `FIXED_PROMPT_SECTION` and R2's): `description_he` is now "1-2 sentences, 15-30 words total: the sound, then a statement starting with בודק" (was 10–25 words).
+- Ami's dashboard (`v5/ami-prompt-dashboard/app.js`): `normalizeForProdAssembly` no longer renames the Energy & Pairing heading. The Places anchor is only `### Processing Rules:` now.
+
+**Live test** (2026-09-30):
+- Setup: Gemini 3.6-flash, thinking=high, labels `v7-onboarding-test` / `v7-onboarding-refined-test`. A neighbourhood bar with emphases "אנחנו אוהבים R&B ורוק".
+- R1 (4+4, 19s + 25s):
+  - Exactly one R&B direction (`Rnb, Alternative R&B, French RnB`) and one rock direction (`Indie Rock, Rock, Surf Rock`).
+  - The other six spread across funk, nu disco, late-night jazz, hip hop, afro and 80s pop.
+  - All clusters have 3 genres, and every description has a masculine "בודק" sentence.
+  - Descriptions ran 12–18 words, two of them under 15.
+- R2 (58s, the owner liked only the R&B probe):
+  - One R&B cluster with new companions (`Korean RnB, Japanese RnB, Rnb`).
+  - One rock cluster with new companions (`Rock, Britpop, רוק ישראלי`), even though the rock probe was disliked, because the emphases win.
+  - Also one Neo Soul cluster (`Neo Soul, Alternative R&B, Electronic R&B`), the neighbourhood probe next to the liked R&B probe, and one house cluster.
+  - Descriptions ran 16–21 words.
+
+Full text of the changed sections (the genre list is unchanged and not repeated):
+
+**`PROCESSING_RULES_SECTION`** (R1 + R2):
+
+```
+### Processing Rules:
+
+- **Musical Emphases (Diagnostic & Mapping Strategy):**
+  - **Exclusions (HARD FILTER):** If the owner names genres, styles, or families to exclude (e.g., "no electronic", "no hip hop", "ללא מזרחית"), DROP those entirely from EVERY direction — even if the venue description or atmospheres strongly suggest them.
+  - **Explicit Loves / Inclusions (DIAGNOSTIC PROBE STRATEGY):** The goal of this stage is to **map as much of the customer's overall taste spectrum as possible**, NOT merely to satisfy their stated preference. When a customer explicitly requests a style (e.g., "loves R&B", "wants Israeli music", "likes rock"):
+    - Allocate **ONLY ONE direction** to test each requested style. Since they already told you they love it, using multiple probe slots on it wastes valuable diagnostic bandwidth. If they request several styles, each one gets its own single direction.
+    - Use all the remaining probe slots to test a wide, diverse spectrum of OTHER plausible musical directions (fitting the business type) to discover what *else* they might like.
+  - **General Leanings:** Statements like "adventurous", "hits only", "familiar", or "not too energetic" must shape the overall nature of all directions. Contradictions resolve in favor of emphases.
+
+- **Instrumentalness preference (special sub-rule):** If the emphases text expresses a preference about instrumental (no-vocals) music, set the `instrumentalness_preference` field on every direction accordingly:
+  - `"hard"` — user is emphatic that they want ONLY instrumentals ("only instrumentals", "no vocals", "no singing", "אינסטרומנטלי בלבד", "רק אינסטרומנטלי", "בלי שירה").
+  - `"soft"` — user prefers instrumentals but hasn't ruled out vocals ("prefer instrumentals", "a lot of instrumentals", "mostly instrumental", "less vocals", "יותר אינסטרומנטלי", "פחות שירה", "הרבה אינסטרומנטליים").
+  - `"none"` — the emphases text doesn't mention instrumentals at all (default).
+  Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
+
+- **Popularity preference (special sub-rule):** If the emphases text expresses a preference for well-known / familiar / hit tracks (or its inverse — deep cuts / lesser-known music), set the `popularity_preference` field on every direction accordingly.
+
+  **Fixed definition — a "hit" ALWAYS means popularity ∈ [60, 100].** However the owner phrases their ask ("hits", "well-known", "familiar", "mainstream", "songs everyone knows", "top 40", "chart-toppers", "recognizable", "safe picks", "להיטים", "מוכרים", "שירים שכולם מכירים", "מיינסטרים", "שירי מצעד", or any equivalent phrasing in any language), the concept ALWAYS maps to this exact popularity window. This is a hard-coded constant — NOT a knob you tune per venue or per direction. Your only classification job is to detect whether the ask is present and how strong it is (`hard` vs `soft`); the DB layer enforces the 60–100 window automatically when you set the preference.
+
+  - `"hard"` — user is emphatic that they want ONLY hits ("only hits", "well-known only", "familiar songs only", "mainstream only", "רק להיטים", "רק שירים מוכרים", "רק מוזיקה מוכרת"). DB strictly filters to popularity 60–100.
+  - `"soft"` — user prefers hits but hasn't ruled out deeper cuts ("mostly hits", "lots of hits", "familiar with some surprises", "יותר להיטים", "בעיקר שירים מוכרים", "רוב הזמן להיטים"). DB keeps the full pool but bias-sorts the hit range (60+) to the front of the random draw.
+  - `"none"` — the emphases text doesn't mention popularity or familiarity at all (default). This is also correct if the user asks for the OPPOSITE (deep cuts, lesser-known, esoteric) — the full, unfiltered pool already includes them.
+
+  UNLIKE the instrumentalness rule, this preference DOES influence your genre choices: when set to `"hard"` or `"soft"`, skew AWAY from esoteric or niche-only genres (e.g., `Peruvian Chicha`, `Anatolian Psychedelic Rock`, `Tishoumaren`, `Dabke`, `Neo Exotica`, `Ethio-Jazz`, `Rebetiko`, `Laiko`, `Turk Arabesk`, `Medieval Music`, `Piano Impressionism`) — those genres have deep pools but few tracks in the hit window. Lean toward genres with rich hit catalogs (`Modern Pop`, `80s Pop`, `90's pop party`, `Rock`, `Hip Hop`, `RnB`, `Funk`, `Disco`, `Indie Rock`, `Bossa Nova`, `Jazz (Standards)`, and other mainstream-adjacent styles). This is your one lever — you decide the genre mix per direction; the DB then filters/biases each genre's pool to the hit window uniformly.
+
+  **Uniform across directions unless the owner explicitly asks otherwise.** Set the same `popularity_preference` on ALL your directions by default — one classification per emphases text, applied everywhere. EXCEPTION: if the emphases text explicitly asks for time-of-day or context-based variance ("hits during lunch, deeper cuts in the evening", "מסיבתי בסוף השבוע, יותר אינטימי באמצע השבוע", "background jazz in the morning but hits for happy hour"), vary the value per-direction to match. Do NOT invent per-direction variance the owner didn't ask for.
+
+- **Japanese Folk Restriction Rule:** `Japanese Folk` is a specialized style that must **NEVER** be included in any direction for a venue that is not explicitly a Japanese business requiring particularly calm/relaxing music — UNLESS the owner explicitly requested it (or a style very closely related to it) in their free-text description or musical emphases.
+- **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description.
+- **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.
+```
+
+**`HOMOGENEITY_SECTION`** (R1 + R2):
+
+```
+## Cluster Homogeneity & Broad Inter-Direction Diversity
+
+- **Strict Internal Homogeneity:** Every individual direction is a diagnostic probe: a small cluster of genres so near-identical in sound that liking one implies liking the others. Never blend genres within a single cluster for internal variety.
+- **Maximized Diversity Between Directions:** Within the boundaries of what makes sense for the business type, provide the widest possible variety **across** your directions. The goal is to build a broad mosaic of genres downstream. Each direction must explore a noticeably different musical territory (e.g., acoustic/organic vs. electronic groove vs. timeless classics vs. modern indie vibes).
+
+Rules for building each individual cluster:
+- **Same energy tier.** No mixing high-energy dance with mid-energy groove, or mid-energy groove with slow acoustic.
+- **Same instrumentation family.** Guitar-forward pairs with guitar-forward, synth-forward with synth-forward, acoustic with acoustic.
+- **Same cultural register.** Regional/scene-specific genres cluster with their siblings, not their distant cousins (e.g. `Japanese RnB` clusters with `Korean RnB` or `French RnB`, not with `Chamber music`).
+- **Same mood.** Melancholic with melancholic, upbeat with upbeat, sultry with sultry.
+
+Test: if two genres in a cluster would appeal to meaningfully different listener profiles, split them into two directions.
+```
+
+**Direction Distinctness** (R1): the last sentence now ends "— replace one of them with a new angle."
+
+**Task Workflow** (R1):
+
+```
+## Task Workflow
+
+1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand based on exclusions and business fit.
+2. **Build 8 Diagnostic Clusters:** Create up to 8 tightly-clustered directions from the surviving genres, ensuring maximal diversity across the 8 probes. Allocate only 1 probe to each explicitly requested style, using the rest to map other potential taste areas. Each direction must satisfy every rule above:
+   - Cluster Homogeneity & Broad Inter-Direction Diversity (single unified vibe per cluster; clusters as different from each other as the business allows)
+   - Direction Distinctness (8 different archetypes; overlapping genres between clusters are allowed)
+   - Beat & Percussion Pairing
+   - Jazz Isolation Rule
+   - Pop Isolation Rule
+   - House & Techno Containment Rule
+   - Japanese Folk Restriction (from Processing Rules)
+   Each direction must include:
+   - **Genres list:** 3 to 6 genres from the pool that form a tight, near-identical cluster. Certain genres function well standalone or paired with one closely-related style (`Nu Metal`, `Indie Rock`, `Punk`, `Blues`, `Folk`, `Jazz House`) — these may form a 1–2 genre cluster if that best fits the venue's needs.
+3. **Rank Directions:** Rank directions by relevance to the business (best fit first).
+```
+
+**Output Language** (R1 + R2): the description line now reads "Written in natural, standard everyday Hebrew — strictly adhering to the diagnostic probe explanation guidelines below."
+
+**`HEBREW_DESCRIPTION_SECTION`** (R1 + R2):
+
+```
+## Rules for Hebrew Descriptions (`description_he`)
+
+The description presented to the business owner must **explain what is being tested with them** through this direction. It combines a description of the sonic style with an explicit statement of the taste hypothesis being tested.
+
+### Structure & Content:
+
+Write 1–2 concise, natural sentences (15–30 words total) in plain Hebrew. Format the text to describe the vibe/sound family, followed by an explicit statement starting with **"בודק..."** (Testing...). The direction is the subject of that statement ("הכיוון בודק פתיחות ל…"), so it is always the masculine "בודק" — never "בודקת" or "בודק/ת".
+
+Formula:
+`[תיאור הסאונד והאווירה של הכיוון]. בודק [מה הטעם/פתיחות/זיקה שרוצים לבחון מול הלקוח].`
+
+Examples of required phrasing:
+- "מגוון ז'אנרים כליים מבוססי ביט רך, מלטף ולא מסיח דעת. בודק פתיחות לסאונד אורבני-מודרני עדין."
+- "ג’אז אירופאי וקלאסי אלגנטי, על-זמני ומלא שיק. בודק חיבור לאווירת בר יין אירופאי קלאסי."
+- "גרוב עמוק, סקסי, חם ומלא נשמה. בודק פתיחות למקצבים שחורים רכים אך מנענעים."
+- "מוזיקה אקוסטית עדינה עם שירה רכה ורגועה. בודק עד כמה הלקוח מתחבר לליין-אפ אקוסטי, אינטימי וחשוף."
+
+### Mandatory Hebrew Vocabulary Constraints:
+
+- **Instruments:** ONLY `פסנתר`, `סינתים`, and `גיטרה` may be named directly. For others, use family names (`כלי נשיפה`, `כלי הקשה`, `כלי מיתר`, `שירה`).
+- **Forbidden Vocabulary:**
+  - NO transliterated English (e.g., "פרקשן", "סינתיסייזר").
+  - NO vague marketing fluff (e.g., "עומק הרמוני", "מרקם אקוסטי", "אנרגיה פנימית", "צלילים מהפנטים").
+  - NO specific city names, beverage brands, or generic clichés ("כמו לשבת ב...").
+- **Language Integrity:** Clear, direct, professional Hebrew spoken as a peer to a business owner.
+```
+
+**R2 — Learning step 4** (new second bullet; the first bullet now lists "the exclusions, the general leanings, …" instead of "any include-genre / exclude-genre / general-leaning rule"):
+
+```
+- **Requested styles get one Round 2 direction again — with new company.** Each style the owner explicitly requested (Processing Rules → Explicit Loves) gets exactly ONE of your 4 directions, no more; the others keep mapping the rest of their taste. Build it around the requested genre, but with DIFFERENT companion genres than it had in its Round 1 direction — don't reuse that Round 1 direction's other genres, so the probe tests the style in a new combination. It must still pass Cluster Homogeneity; if the cluster rules leave no different companion, keep it in a smaller cluster rather than reusing Round 1's companions.
+```
+
+**R2 — Learning step 6**, the requested-styles bullet (was "at least half of your 4 output clusters should center on them"):
+
+```
+- Styles explicitly requested: each gets exactly ONE of your 4 clusters (the same rule as Round 1 — the others map the rest of the owner's taste). A style requested in both emphases fields still gets one cluster; if Round 1 already had a direction for it, use different companion genres than that direction had (step 4).
+```
+
+**R2 — Direction Distinctness & Overlap**, new bullet:
+
+```
+- **As varied as possible:** "Maximized Diversity Between Directions" (Cluster Homogeneity section) applies to your 4 probes too, within Round 2's purpose — make them as different from each other as you can while still mapping the neighbourhood of the Positive Vectors (Learning step 3). When the Liked list is empty you are exploring, so spread them as widely as the business allows.
+```
+
+**R2 — Task Workflow** checklist: "Cluster Homogeneity & Broad Inter-Direction Diversity (… clusters as different from each other as Round 2 allows)", plus a new line: "Requested styles — one cluster each, with different companion genres than in Round 1 (Learning steps 4 and 6)".
+
+---
+
+## 2026-09-28 — Level directions: a new prompt for Option 2
 
 **Applies to:** `level directions` (new prompt, `v7/generation/level-directions.js`, label `v7-level-directions`)
 

@@ -50,13 +50,13 @@
 import {
   EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt,
-} from '/v7/generation/musical-directions.js?v=20092026a';
+} from '/v7/generation/musical-directions.js?v=30092026a';
 import {
   EDITABLE_PROMPT_SECTION as TASTE_EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt as assembleTasteSystemPrompt,
   buildUserMessage as buildTasteUserMessage,
   normalizeTasteProfile,
-} from '/v7/generation/taste-profile.js?v=28092026a';
+} from '/v7/generation/taste-profile.js?v=30092026a';
 import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=20092026a';
 import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=28092026c';
 import { renderTestPlaylists } from './test-playlists.js?v=30092026b';
@@ -80,10 +80,11 @@ const MAX_TOKENS = 65536;
 //   1. Strip leftover `{{PLACES_*}}` sentinels. Older prompt versions had
 //      them visible; a lingering copy in Ami's edit would be sent to
 //      Gemini as literal noise.
-//   2. Rename any `### <anything> Processing Rules:` heading and any
-//      `## <anything> Energy & Pairing Constraints` heading to the exact
-//      canonical form the strict assembleSystemPrompt anchors on, so the
-//      two Places blocks get injected at the right positions.
+//   2. Rename any `### <anything> Processing Rules:` heading to the exact
+//      canonical form the strict assembleSystemPrompt anchors on. Both Places
+//      blocks are placed relative to it (since 2026-09-30 the processing rule
+//      goes at the end of that block; before, it anchored on
+//      `## Energy & Pairing Constraints`, which this also used to rename).
 //
 // When Ami settles on a final prompt, Roni ports it into prod and
 // reconciles heading names manually — prod stays strict on purpose so
@@ -92,8 +93,7 @@ function normalizeForProdAssembly(editable) {
   return editable
     .replace(/^\{\{PLACES_INPUT_BLOCK\}\}\n?/gm, '')
     .replace(/^\{\{PLACES_PROCESSING_RULE\}\}\n?/gm, '')
-    .replace(/^### [^\n]*Processing Rules:$/gm, '### Processing Rules:')
-    .replace(/^## [^\n]*Energy & Pairing Constraints$/gm, '## Energy & Pairing Constraints');
+    .replace(/^### [^\n]*Processing Rules:$/gm, '### Processing Rules:');
 }
 
 const $ = (id) => document.getElementById(id);

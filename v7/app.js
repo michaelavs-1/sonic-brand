@@ -23,9 +23,9 @@
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=23092026a';
 import { runEmphasesStep } from '/v7/emphases.js?v=23092026a';
 import { runHoursSelection } from '/v7/hours-selector.js?v=29092026a';
-import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=23092026a';
-import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=24092026a';
-import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=24092026a';
+import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=30092026a';
+import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=30092026a';
+import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=30092026a';
 // derivePopularityWindow was removed 2026-09-02 — atmospheres no longer
 // derive a popularity window. Atmosphere strings still enter the prompt
 // as context (see buildUserMessage in musical-directions.js), but

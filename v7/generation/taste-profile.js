@@ -21,6 +21,15 @@
 //   - The R1/R2-classified instrumentalness_preference and
 //     popularity_preference, carried through unchanged.
 //
+// Ami's rewrite (2026-09-30, see prompt-history-v7.md): approve as many
+// genres as the owner would genuinely enjoy (maximalist expansion + cross-
+// pattern "bridge" genres), with hard boundaries — no inferred electronic or
+// classical/spa genres, and no expanding into genres that clash with the
+// venue (the cutoff stops EXPANSION only, never the owner's own choices).
+// Groove genres (R&B, funk, soul…) sit above the owner's calmer genres on the
+// energy scale; normalizeTasteProfile makes sure the calmest approved genre
+// is always level 1, so Option 1's calm tier can't end up empty.
+//
 // Conditional bucket is KEPT AS DATA ONLY for now — downstream playlist
 // builder ignores it in v7's initial cut. We keep the model computing it
 // because (a) the signal it captures is real, (b) tuning "conditional" is
@@ -56,6 +65,24 @@ const MAX_TOKENS = 65536;
 
 const TASTE_PROFILE_INTRO = `You classify a user's music taste for a public-facing-business playlist tool. The user has completed a diagnostic swipe deck of up to 12 tightly-clustered "musical direction" probes (Round 1 + optional Round 2). You will receive the probes plus the user's per-direction decisions (like / dislike) and their super-liked genres. Your job is to extrapolate that sparse signal to a full-catalog taste profile: for each of the ${GENRES.length} canonical genres, decide whether it belongs in the user's approved list, a conditional list, or neither. You only output the approved and conditional lists — every genre you leave out of both is treated as excluded. Then partition the approved and conditional genres into N energy levels (2–6, dynamic per user based on the SPREAD of their taste) so downstream playlist builders can slot each genre into the right operational context.`;
 
+const CORE_PHILOSOPHY_SECTION = `## CORE PHILOSOPHY: MAXIMALIST EXPANSION WITH SMART BOUNDARIES
+
+Your goal is to **APPROVE AS MANY GENRES AS REASONABLY POSSIBLE**, while maintaining precise control to ensure the business owner actually enjoys every single approved genre.
+
+Expand boldly based on the owner's taste patterns, but **do not spray-and-pray**. Every expanded genre must be a calculated, smart deduction from what the user explicitly liked. If there is a risk that a genre might technically "fit the venue type" but the owner themselves would NOT enjoy hearing it, DO NOT put it in \`approved\`.
+
+- **Identify Broad Musical Patterns & Cross-Genre Synergies:** Look for underlying thematic clusters AND intersections between liked styles.
+- **Cross-Pattern Deductions (CRITICAL):** When a user likes two distinct elements, boldly approve genres that bridge those exact two elements!
+  * *Example 1 (LoFi + R&B/Jazz Synergy):* User liked \`LoFi Bossa\` AND liked \`Alternative R&B\` / \`Neo Soul\` / a jazz genre (e.g. \`Jazz (Standards)\`) → Boldly approve \`LoFi Beats\` and \`JazzHop\`.
+  * *Example 2 (World Rhythms + Soul Synergy):* User liked \`Bossa Nova\`, \`Gypsy jazz\`, and \`Latin Funk\` → Boldly approve \`Cha Cha Cha\`, \`Peruvian Cumbia\`, \`Bolero\`, \`Fado\`, \`Samba\`, \`Samba-Choro\`, etc.
+  * *Example 3 (Groove/Soul):* Likes \`Neo Soul\`, \`Electronic R&B\`, and \`AfroBeats\` → Boldly approve \`Funk\`, \`Mo Town\`, \`Amapiano\`, \`Acid Jazz\`, \`Soulful House\`, etc. (\`Soulful House\` passes the Electronic Music Guardrail here because the liked \`Electronic R&B\` is a tightly adjacent electronic genre.)`;
+
+const HARD_BOUNDARY_RULES_SECTION = `## HARD BOUNDARY RULES (MUST FOLLOW STRICTLY)
+
+1. **Electronic Music Guardrail:** \`DownTempo\`, \`Organic House\`, and ALL electronic-leaning genres (e.g., \`Deep House\`, \`Tech House\`, \`Indie Dance\`, \`IndieTronica\`, \`Nu Disco\`, \`French Touch\`, \`Progressive & Psy Trance\`) must NEVER be auto-expanded or inferred into \`approved\` unless the user explicitly liked or super-liked that exact genre or a tightly adjacent electronic genre in R1/R2.
+2. **Classical & Spa/Ambient Guardrail:** Classical genres (\`Baroque\`, \`Chamber music\`, \`Piano Impressionism\`) and spa/relaxing ambient music must NEVER be inferred or auto-approved based on venue type or general "chill" vibe. They are ONLY eligible for \`approved\` or \`conditional\` if the user was explicitly presented with them (or an identical genre) in earlier diagnostic probes AND swiped right / super-liked them.
+3. **Venue Context Cutoff:** The ONLY reason to stop expanding into a genre that fits the owner's taste is a clash with the physical reality of the business. Do NOT expand into aggressive, highly intrusive, or polarizing genres that conflict with the venue (e.g., no heavy metal, drill, trap, or aggressive electronic in an upscale wine bar or fine dining setting, even if the user likes rhythmic/soulful music — a wine-bar owner who likes beats and R&B gets R&B, LoFi and soul approved, not aggressive \`German Hip Hop\`, \`Icelandic Hip Hop\` or \`Trap\`). This cutoff applies only to genres you INFER. It never overrides the owner's own choices: a super-liked genre, a genre in a liked direction, or a genre they requested in their emphases.`;
+
 const TASTE_PROFILE_INPUTS_SECTION = `## Inputs
 
 You will receive:
@@ -79,6 +106,8 @@ const PROCESSING_RULES_SECTION = `### Processing Rules:
 - **Round 2 refinement emphases (when present, HIGHEST priority):** Written after the user saw actual tracks — knows what they wanted more or less of. When it contradicts anything else (Round 1 emphases, atmospheres, direction-level likes/dislikes), IT WINS.
 - **Instrumentalness preference (carry-through, do NOT re-classify):** Already set in R1/R2 and threaded into the input. It does NOT change your genre bucketing at this stage — downstream filters the track pool at query time. Just carry the value into the output verbatim.
 - **Popularity preference (carry-through, do NOT re-classify):** Already set in R1/R2 and threaded into the input. When \`"hard"\` or \`"soft"\`, it DOES shape bucketing: esoteric / niche-only genres (e.g. \`Peruvian Chicha\`, \`Anatolian Psychedelic Rock\`, \`Tishoumaren\`, \`Dabke\`, \`Neo Exotica\`, \`Ethio-Jazz\`, \`Rebetiko\`, \`Laiko\`, \`Turk Arabesk\`, \`Medieval Music\`, \`Piano Impressionism\`) go to \`conditional\` at most — unless a direct like or super-like on that specific genre puts them in \`approved\`. When \`"none"\`: no effect on bucketing. Carry the value into the output verbatim regardless.
+- **Hard Guardrail Enforcement:** Apply the Electronic and Classical/Spa rules (Hard Boundary Rules) strictly before placing any genre the owner didn't directly choose into \`approved\`.
+- **Venue Alignment Check:** Verify every genre you infer against the venue (Venue Context Cutoff) and against whether this owner would genuinely enjoy it (Core Philosophy).
 - **Japanese Folk Restriction:** Leave \`Japanese Folk\` out of both lists (excluded) UNLESS the venue is explicitly a Japanese business needing particularly calm/relaxing music OR the owner explicitly requested it in emphases.
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts, prioritize the description and note the tension in \`reasoning_en\`.`;
 
@@ -92,7 +121,8 @@ Positive signal sources, strongest → weakest:
 - **Super-liked genre.** The owner super-liked a specific track drawn from this genre. Strongest positive signal. → \`approved\`.
 - **Genre appears in a liked direction.** → \`approved\`, unless a stronger negative signal overrides.
 - **Musical emphases explicitly requested this genre or its family.** → \`approved\`.
-- **Tight-cluster neighbour.** The genre shares energy tier, instrumentation family, cultural register, and mood with a super-liked or liked genre. → \`approved\` if all four axes match; → \`conditional\` if 2–3 axes match.
+- **Tight-cluster neighbour.** The genre shares energy tier, instrumentation family, cultural register, and mood with a super-liked or liked genre. → \`approved\` if all four axes match; → \`approved\` too if 2–3 axes match and the owner would genuinely enjoy it (Core Philosophy), otherwise \`conditional\`.
+- **Cross-pattern & thematic synergy.** The genre shares clear cultural, aesthetic, or musical intersections with the owner's liked genres, or bridges two distinct things they liked (Core Philosophy — e.g. \`LoFi Bossa\` + R&B/jazz likes → \`LoFi Beats\` / \`JazzHop\`). → \`approved\` if it passes all Hard Boundary Rules and the owner would genuinely enjoy listening to it; \`conditional\` if you're less sure.
 
 ### 2. Aggregate negative signal per genre
 
@@ -100,6 +130,8 @@ Negative signal sources:
 - **Genre appears ONLY in disliked directions and NEVER in any liked direction.** → \`excluded\`.
 - **Musical emphases explicitly excluded this genre or its family.** → \`excluded\`.
 - **Japanese Folk Restriction triggers.** → \`excluded\`.
+- **Hard Boundary Rules:** an electronic or classical/spa genre without the positive signal those rules require. → \`excluded\`.
+- **Venue / owner misalignment:** a genre you'd only be inferring that conflicts with the venue (Venue Context Cutoff) or risks annoying this owner. → \`excluded\`.
 
 ### 3. Cross-check and resolve conflicts
 
@@ -111,12 +143,12 @@ Priority order when a genre has multiple signals:
 
 ### 4. Untouched genres (never appeared in any R1/R2 direction)
 
-For the many genres the user never saw:
-- Tight-cluster neighbour (all four axes match) of a super-liked genre → \`approved\`.
-- Tight-cluster neighbour of a liked (non-super) genre → \`conditional\` (default) or \`approved\` (if multiple liked directions independently point at it).
+For the many genres the user never saw — expand boldly (Core Philosophy), always within the Hard Boundary Rules:
+- Tight-cluster neighbour (all four axes match) of a super-liked or liked genre → \`approved\`.
+- A genre that fits a broad pattern in what the owner liked, or bridges two distinct things they liked → \`approved\` if the owner would genuinely enjoy it; \`conditional\` if you're less sure.
 - Semantic distant-relative of a liked genre with no negative counterweight → \`conditional\`.
 - Semantic distant-relative of a disliked genre with no positive counterweight → \`excluded\` if the negative signal is coherent; \`conditional\` if it's noisy.
-- No signal in either direction → \`conditional\` (default for "we don't know").
+- No signal in either direction → \`conditional\` (default for "we don't know"), unless a Hard Boundary Rule excludes it.
 
 ### 5. No blanket exclusions
 
@@ -148,7 +180,11 @@ Rules:
   - User A likes acoustic chill + hip hop. Hip Hop is their ceiling → \`Hip Hop\` gets level \`N\`.
   - User B likes hip hop + house + dubstep. Hip Hop is mid-range for them → \`Hip Hop\` gets level 3 (out of 5 or 6).
 
-### Step 3: Excluded genres get NO energy level
+### Step 3: Floor Rule for Rhythmic & Groove Genres
+
+Rhythmic, groove-driven genres carry inherent bounce: the R&B family (\`Rnb\`, \`Alternative R&B\`, \`Electronic R&B\`, \`French RnB\`, \`Japanese RnB\`, \`Korean RnB\`), \`Neo Soul\`, \`Acid Jazz\`, \`AfroBeats\`, and the Funk family (\`Funk\`, \`Afro Funk\`, \`Italian Funk\`, \`French Funk\`, \`Greek Funk\`, \`Latin Funk\`, \`Arabic Funk\`). They ALWAYS sit above the owner's calmer approved genres (acoustic, ballads, jazz, bossa and the like) — mid-to-high on the scale, never in the lowest levels (Level 1, or Levels 1–2 when N ≥ 4) while calmer APPROVED genres exist to fill those levels. Only when the owner has no calmer approved genre (e.g. a profile built around R&B, funk and club music) do the calmest of these rhythmic genres take Level 1. The lowest level must never be left without an approved genre.
+
+### Step 4: Excluded genres get NO energy level
 
 Excluded genres are not in the output at all, so they carry no level.`;
 
@@ -172,6 +208,8 @@ Examples of RIGHT:
 // Composed editable prompt.
 export const EDITABLE_PROMPT_SECTION = [
   TASTE_PROFILE_INTRO,
+  CORE_PHILOSOPHY_SECTION,
+  HARD_BOUNDARY_RULES_SECTION,
   GENRE_UNIVERSE_SECTION,
   TASTE_PROFILE_INPUTS_SECTION,
   PROCESSING_RULES_SECTION,
@@ -189,7 +227,7 @@ Normal case:
   "energy_levels_total": 4,
   "approved_genres": [
     {"genre": "Hip Hop",   "energy_level": 4},
-    {"genre": "Neo Soul",  "energy_level": 2},
+    {"genre": "Neo Soul",  "energy_level": 3},
     {"genre": "Bossa Nova","energy_level": 1}
     // ... one entry per approved genre
   ],
@@ -240,11 +278,11 @@ export const FIXED_PROMPT_SECTION = [
 
 // No Places injection at this stage. Google Places is venue context, and
 // the venue context was already baked into R1/R2 when the user swiped on
-// their probes. Reusing it here to shape "which genres does this user
-// like" would mix venue-appropriateness signal into a user-taste
-// extrapolation — the two are orthogonal and should stay so. Places
-// belongs in R1/R2 (already there) and in the eventual downstream
-// playlist builder, not in this stage.
+// their probes. Since 2026-09-30 (Ami) the venue does cut INFERRED genres
+// here (Venue Context Cutoff) — from the description + atmospheres already
+// in the user message, which is enough for that; the owner's own choices
+// are never cut. Places belongs in R1/R2 (already there) and in the
+// eventual downstream playlist builder, not in this stage.
 export function assembleSystemPrompt(editable) {
   return editable + '\n\n' + FIXED_PROMPT_SECTION;
 }
@@ -344,6 +382,7 @@ function clampEnergyLevel(level, total) {
 // - Genre strings not in the shared Genre Universe (case-normalised first).
 // - Duplicates across buckets (approved wins over conditional).
 // - Approved/conditional entries missing a valid energy_level.
+// Then shifts the levels down if no approved genre sits at level 1 (see below).
 // `excluded_genres` is then COMPUTED as every canonical genre not in
 // approved or conditional — the model is told not to output it (any
 // excluded list it sends anyway is ignored), so the three buckets always
@@ -380,6 +419,18 @@ export function normalizeTasteProfile(parsed) {
     seen.add(genre);
   }
   const excludedList = GENRES.filter((g) => !seen.has(g));
+
+  // Safety net for the energy floor rule (2026-09-30): the calmest APPROVED
+  // genre must sit at level 1 — otherwise Option 1's calm tier (levels ≤ N/2)
+  // can come out empty. Close the gap by shifting every level down, keeping
+  // N ≥ 2 (approved genres that all share one level can't be split either
+  // way, so that case is left as it is).
+  const minApproved = approved.length ? Math.min(...approved.map((e) => e.energy_level)) : 1;
+  const shift = Math.min(minApproved - 1, energyLevelsTotal - 2);
+  if (shift > 0) {
+    energyLevelsTotal -= shift;
+    for (const e of [...approved, ...conditional]) e.energy_level = Math.max(1, e.energy_level - shift);
+  }
 
   return {
     energy_levels_total: energyLevelsTotal,

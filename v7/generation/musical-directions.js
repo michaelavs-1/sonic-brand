@@ -19,13 +19,12 @@
 //     can fork v6/preview.js with minimal changes. `bpm_range` was removed
 //     2026-09-23 — v7 no longer clusters or filters by tempo.
 //   - Same provider switch via ai-provider.js
-//   - Same Places injection anchors (### Processing Rules: / ## Energy &
-//     Pairing Constraints) — v7 keeps both headings in place
+//   - Same Places blocks as v6, placed around `### Processing Rules:` (see
+//     injectPlaces — the processing rule goes at the end of that block)
 //
 // Rules kept from v6 (acoustic-compatibility, not diversity — still valid):
 //   - Pop Isolation Rule (v6 §5, verbatim)
 //   - House & Techno Containment Rule (v6 §6, verbatim)
-//   - Musical Emphases handling (verbatim)
 //   - Instrumentalness preference classification (verbatim)
 //   - Popularity preference classification (verbatim)
 //   - Japanese Folk Restriction (verbatim)
@@ -44,6 +43,13 @@
 //   - Jazz Isolation Rule — simplified. Ethio-Jazz, Acid Jazz, Jazz House
 //     are named exceptions with no explicit "can blend with Funk/R&B"
 //     permission (that was v6's leak).
+//   - Musical Emphases (Ami, 2026-09-30) — a requested style gets ONE
+//     direction (one per style); the rest map the owner's other tastes.
+//     Exclusions stay a hard filter. (Was: at least half the directions on
+//     the requested styles.)
+//   - Hebrew descriptions (Ami, 2026-09-30) — the sound, then a statement
+//     starting with "בודק" saying what the probe tests; shown to owners on
+//     the swipe card. (Was: sound + when to play it.)
 //
 // Rules DROPPED from v6:
 //   - Multi-Cultural & Cross-Regional Fusion (§3) — contradicts homogeneity
@@ -58,6 +64,8 @@
 //     / mood — tight enough that liking one implies liking the rest). Tempo
 //     was dropped 2026-09-23 (bpm_range removal).
 //   - Direction Distinctness (8 different archetypes; overlap allowed)
+//   - Maximized Diversity Between Directions (Ami, 2026-09-30) — the widest
+//     variety across directions the business allows; never within one
 //   - Title format simplified — "Clear Stylistic Identity" per Ami's brief
 //   - Hebrew description reframed for a single-vibe cluster (not a "blend")
 //
@@ -91,34 +99,43 @@ You will receive:
 
 export const PROCESSING_RULES_SECTION = `### Processing Rules:
 
-- **Musical Emphases (highest priority signal):** When the owner supplied musical emphases, treat them as the strongest input — above description, atmospheres, and Google context. If they name genres or families to include, at least half your directions should center on those. If they name genres or families to exclude, DROP those entirely from every direction — even if the description or atmosphere would otherwise suggest them. General leanings ("adventurous", "hits only", "familiar", "not too energetic") must shape every direction, not just some. Contradictions between emphases and description resolve in favor of emphases; note the tension briefly in the first direction's reasoning if useful.
+- **Musical Emphases (Diagnostic & Mapping Strategy):**
+  - **Exclusions (HARD FILTER):** If the owner names genres, styles, or families to exclude (e.g., "no electronic", "no hip hop", "ללא מזרחית"), DROP those entirely from EVERY direction — even if the venue description or atmospheres strongly suggest them.
+  - **Explicit Loves / Inclusions (DIAGNOSTIC PROBE STRATEGY):** The goal of this stage is to **map as much of the customer's overall taste spectrum as possible**, NOT merely to satisfy their stated preference. When a customer explicitly requests a style (e.g., "loves R&B", "wants Israeli music", "likes rock"):
+    - Allocate **ONLY ONE direction** to test each requested style. Since they already told you they love it, using multiple probe slots on it wastes valuable diagnostic bandwidth. If they request several styles, each one gets its own single direction.
+    - Use all the remaining probe slots to test a wide, diverse spectrum of OTHER plausible musical directions (fitting the business type) to discover what *else* they might like.
+  - **General Leanings:** Statements like "adventurous", "hits only", "familiar", or "not too energetic" must shape the overall nature of all directions. Contradictions resolve in favor of emphases.
+
 - **Instrumentalness preference (special sub-rule):** If the emphases text expresses a preference about instrumental (no-vocals) music, set the \`instrumentalness_preference\` field on every direction accordingly:
   - \`"hard"\` — user is emphatic that they want ONLY instrumentals ("only instrumentals", "no vocals", "no singing", "אינסטרומנטלי בלבד", "רק אינסטרומנטלי", "בלי שירה").
   - \`"soft"\` — user prefers instrumentals but hasn't ruled out vocals ("prefer instrumentals", "a lot of instrumentals", "mostly instrumental", "less vocals", "יותר אינסטרומנטלי", "פחות שירה", "הרבה אינסטרומנטליים").
   - \`"none"\` — the emphases text doesn't mention instrumentals at all (default).
   Do **NOT** change your genre choices because of this preference. Keep picking genres purely on the venue's overall vibe. The DB layer applies a strict filter (hard) or a soft bias-sort (soft) on the track pool downstream — that's what actually delivers instrumentals to the user. Your only job here is to correctly classify the preference strength.
+
 - **Popularity preference (special sub-rule):** If the emphases text expresses a preference for well-known / familiar / hit tracks (or its inverse — deep cuts / lesser-known music), set the \`popularity_preference\` field on every direction accordingly.
 
   **Fixed definition — a "hit" ALWAYS means popularity ∈ [60, 100].** However the owner phrases their ask ("hits", "well-known", "familiar", "mainstream", "songs everyone knows", "top 40", "chart-toppers", "recognizable", "safe picks", "להיטים", "מוכרים", "שירים שכולם מכירים", "מיינסטרים", "שירי מצעד", or any equivalent phrasing in any language), the concept ALWAYS maps to this exact popularity window. This is a hard-coded constant — NOT a knob you tune per venue or per direction. Your only classification job is to detect whether the ask is present and how strong it is (\`hard\` vs \`soft\`); the DB layer enforces the 60–100 window automatically when you set the preference.
 
   - \`"hard"\` — user is emphatic that they want ONLY hits ("only hits", "well-known only", "familiar songs only", "mainstream only", "רק להיטים", "רק שירים מוכרים", "רק מוזיקה מוכרת"). DB strictly filters to popularity 60–100.
-  - \`"soft"\` — user prefers hits but hasn't ruled out deeper cuts ("mostly hits", "lots of hits", "familiar with some surprises", "יותר להיטים", "בעיקר שירים מוכרים", "רוב הזמן להיטים"). DB keeps the atmosphere-derived pool wide but bias-sorts the hit range (60+) to the front of the random draw.
-  - \`"none"\` — the emphases text doesn't mention popularity or familiarity at all (default). This is also correct if the user asks for the OPPOSITE (deep cuts, lesser-known, esoteric) — that's what the atmosphere-derived popularity window already delivers when unmodified.
+  - \`"soft"\` — user prefers hits but hasn't ruled out deeper cuts ("mostly hits", "lots of hits", "familiar with some surprises", "יותר להיטים", "בעיקר שירים מוכרים", "רוב הזמן להיטים"). DB keeps the full pool but bias-sorts the hit range (60+) to the front of the random draw.
+  - \`"none"\` — the emphases text doesn't mention popularity or familiarity at all (default). This is also correct if the user asks for the OPPOSITE (deep cuts, lesser-known, esoteric) — the full, unfiltered pool already includes them.
 
   UNLIKE the instrumentalness rule, this preference DOES influence your genre choices: when set to \`"hard"\` or \`"soft"\`, skew AWAY from esoteric or niche-only genres (e.g., \`Peruvian Chicha\`, \`Anatolian Psychedelic Rock\`, \`Tishoumaren\`, \`Dabke\`, \`Neo Exotica\`, \`Ethio-Jazz\`, \`Rebetiko\`, \`Laiko\`, \`Turk Arabesk\`, \`Medieval Music\`, \`Piano Impressionism\`) — those genres have deep pools but few tracks in the hit window. Lean toward genres with rich hit catalogs (\`Modern Pop\`, \`80s Pop\`, \`90's pop party\`, \`Rock\`, \`Hip Hop\`, \`RnB\`, \`Funk\`, \`Disco\`, \`Indie Rock\`, \`Bossa Nova\`, \`Jazz (Standards)\`, and other mainstream-adjacent styles). This is your one lever — you decide the genre mix per direction; the DB then filters/biases each genre's pool to the hit window uniformly.
 
   **Uniform across directions unless the owner explicitly asks otherwise.** Set the same \`popularity_preference\` on ALL your directions by default — one classification per emphases text, applied everywhere. EXCEPTION: if the emphases text explicitly asks for time-of-day or context-based variance ("hits during lunch, deeper cuts in the evening", "מסיבתי בסוף השבוע, יותר אינטימי באמצע השבוע", "background jazz in the morning but hits for happy hour"), vary the value per-direction to match. Do NOT invent per-direction variance the owner didn't ask for.
+
 - **Japanese Folk Restriction Rule:** \`Japanese Folk\` is a specialized style that must **NEVER** be included in any direction for a venue that is not explicitly a Japanese business requiring particularly calm/relaxing music — UNLESS the owner explicitly requested it (or a style very closely related to it) in their free-text description or musical emphases.
-- **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description, but explicitly note this tension in your reasoning for the first direction.
+- **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts them, prioritize the description.
 - **Business Name:** Ignore generic or conflicting names. If evocative (e.g., "Speakeasy Below", "Sunrise Café"), let it steer the direction.`;
 
 // ---------- v7's core new sections ----------
 
-export const HOMOGENEITY_SECTION = `## Cluster Homogeneity (Diagnostic Probe Design)
+export const HOMOGENEITY_SECTION = `## Cluster Homogeneity & Broad Inter-Direction Diversity
 
-Every direction is a diagnostic probe: a small cluster of genres so near-identical in sound that liking one implies liking the others. This is different from a curated "cohesive playlist" — clusters are tight, not blended for variety within.
+- **Strict Internal Homogeneity:** Every individual direction is a diagnostic probe: a small cluster of genres so near-identical in sound that liking one implies liking the others. Never blend genres within a single cluster for internal variety.
+- **Maximized Diversity Between Directions:** Within the boundaries of what makes sense for the business type, provide the widest possible variety **across** your directions. The goal is to build a broad mosaic of genres downstream. Each direction must explore a noticeably different musical territory (e.g., acoustic/organic vs. electronic groove vs. timeless classics vs. modern indie vibes).
 
-Rules for building a cluster:
+Rules for building each individual cluster:
 - **Same energy tier.** No mixing high-energy dance with mid-energy groove, or mid-energy groove with slow acoustic.
 - **Same instrumentation family.** Guitar-forward pairs with guitar-forward, synth-forward with synth-forward, acoustic with acoustic.
 - **Same cultural register.** Regional/scene-specific genres cluster with their siblings, not their distant cousins (e.g. \`Japanese RnB\` clusters with \`Korean RnB\` or \`French RnB\`, not with \`Chamber music\`).
@@ -128,7 +145,7 @@ Test: if two genres in a cluster would appeal to meaningfully different listener
 
 export const DISTINCTNESS_SECTION = `## Direction Distinctness
 
-The 8 clusters must represent distinctly different musical archetypes. Any two clusters should differ on at least two of: energy tier, instrumentation family, cultural register, mood. If two of your clusters test the same taste vector you've wasted a probe slot — replace one of them.
+The 8 clusters must represent distinctly different musical archetypes. Any two clusters should differ on at least two of: energy tier, instrumentation family, cultural register, mood. If two of your clusters test the same taste vector you've wasted a probe slot — replace one of them with a new angle.
 
 **Overlapping genres across clusters are allowed.** If a genre legitimately sits at the intersection of two archetypes (e.g. \`Bossa Nova\` in both a "late-night jazz" cluster and a "sultry acoustic" cluster), it may appear in both. When the owner likes two clusters that share a genre, the overlap becomes a stronger genre-level taste signal downstream — a feature, not a duplicate.`;
 
@@ -181,9 +198,9 @@ export const ENERGY_PAIRING_SECTION = [
 
 const ROUND1_TASK_WORKFLOW = `## Task Workflow
 
-1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand.
-2. **Build 8 Diagnostic Clusters:** Create up to 8 tightly-clustered directions from the surviving genres. Each direction must satisfy every rule above:
-   - Cluster Homogeneity (single unified vibe per cluster)
+1. **Filter Genre Universe:** Permanently eliminate irrelevant genres for this venue/brand based on exclusions and business fit.
+2. **Build 8 Diagnostic Clusters:** Create up to 8 tightly-clustered directions from the surviving genres, ensuring maximal diversity across the 8 probes. Allocate only 1 probe to each explicitly requested style, using the rest to map other potential taste areas. Each direction must satisfy every rule above:
+   - Cluster Homogeneity & Broad Inter-Direction Diversity (single unified vibe per cluster; clusters as different from each other as the business allows)
    - Direction Distinctness (8 different archetypes; overlapping genres between clusters are allowed)
    - Beat & Percussion Pairing
    - Jazz Isolation Rule
@@ -192,12 +209,12 @@ const ROUND1_TASK_WORKFLOW = `## Task Workflow
    - Japanese Folk Restriction (from Processing Rules)
    Each direction must include:
    - **Genres list:** 3 to 6 genres from the pool that form a tight, near-identical cluster. Certain genres function well standalone or paired with one closely-related style (\`Nu Metal\`, \`Indie Rock\`, \`Punk\`, \`Blues\`, \`Folk\`, \`Jazz House\`) — these may form a 1–2 genre cluster if that best fits the venue's needs.
-3. **Rank Directions:** Rank directions by fit to the business (best fit first).`;
+3. **Rank Directions:** Rank directions by relevance to the business (best fit first).`;
 
 export const OUTPUT_LANGUAGE_SECTION = `## Output Language & Formatting
 
 - **Titles (\`title_en\`):** Written in English — see the "Rules for English Titles" section below.
-- **Descriptions (\`description_he\`):** Written in natural, standard everyday Hebrew.
+- **Descriptions (\`description_he\`):** Written in natural, standard everyday Hebrew — strictly adhering to the diagnostic probe explanation guidelines below.
 - **Genre Names:** Keep genre names strictly as listed in the Genre Universe.`;
 
 export const TITLE_RULES_SECTION = `## Rules for English Titles (\`title_en\`)
@@ -214,22 +231,22 @@ Examples of valid titles:
 - "Middle Eastern Café Blend"
 - "Nu Metal & Post-Punk Edge"`;
 
-export const HEBREW_DESCRIPTION_SECTION = `## Rules for Hebrew Descriptions (description_he)
+export const HEBREW_DESCRIPTION_SECTION = `## Rules for Hebrew Descriptions (\`description_he\`)
 
-The description must capture the unified vibe of the cluster and how it plays in the venue. Since the cluster is tightly homogeneous, describe the single sonic identity it represents — not a "blend of genres". Explain to the business owner what the sound feels like, its direct effect on the business, and how best to use it.
+The description presented to the business owner must **explain what is being tested with them** through this direction. It combines a description of the sonic style with an explicit statement of the taste hypothesis being tested.
 
-### Dynamic Structure & Content:
+### Structure & Content:
 
-Write 1–2 concise, impactful sentences (10–25 words total) in plain, natural everyday Hebrew. Cover two elements:
+Write 1–2 concise, natural sentences (15–30 words total) in plain Hebrew. Format the text to describe the vibe/sound family, followed by an explicit statement starting with **"בודק..."** (Testing...). The direction is the subject of that statement ("הכיוון בודק פתיחות ל…"), so it is always the masculine "בודק" — never "בודקת" or "בודק/ת".
 
-1. **Unified Sonic Identity & Atmosphere Effect:** Describe the single sound the cluster generates and how that atmosphere influences customer experience or venue dynamics.
-2. **Operational Best Use (How/When to play it):** Provide a concrete recommendation for when or how the owner should use this direction in their workflow.
+Formula:
+\`[תיאור הסאונד והאווירה של הכיוון]. בודק [מה הטעם/פתיחות/זיקה שרוצים לבחון מול הלקוח].\`
 
-Examples of tone and utility:
-
-- "סאונד נשמה קלילי עם מקצבים אקוסטיים — מושלם לכוס יין בשעות השקיעה ומשרה אווירה נינוחה."
-- "פופ קצבי ונגיש ששומר על אנרגיה שמחה וזורמת, יגרום ללקוחות להישאר בחנות בכיף."
-- "מקצבים אלקטרוניים עדינים עם נגיעה סקסית, בדיוק לרגעים שבהם הבר מתמלא והתנועה במקום מתחילה לעלות."
+Examples of required phrasing:
+- "מגוון ז'אנרים כליים מבוססי ביט רך, מלטף ולא מסיח דעת. בודק פתיחות לסאונד אורבני-מודרני עדין."
+- "ג’אז אירופאי וקלאסי אלגנטי, על-זמני ומלא שיק. בודק חיבור לאווירת בר יין אירופאי קלאסי."
+- "גרוב עמוק, סקסי, חם ומלא נשמה. בודק פתיחות למקצבים שחורים רכים אך מנענעים."
+- "מוזיקה אקוסטית עדינה עם שירה רכה ורגועה. בודק עד כמה הלקוח מתחבר לליין-אפ אקוסטי, אינטימי וחשוף."
 
 ### Mandatory Hebrew Vocabulary Constraints:
 
@@ -238,7 +255,7 @@ Examples of tone and utility:
   - NO transliterated English (e.g., "פרקשן", "סינתיסייזר").
   - NO vague marketing fluff (e.g., "עומק הרמוני", "מרקם אקוסטי", "אנרגיה פנימית", "צלילים מהפנטים").
   - NO specific city names, beverage brands, or generic clichés ("כמו לשבת ב...").
-- **Language Integrity:** Standard, dictionary Hebrew spoken as a peer to another business owner.`;
+- **Language Integrity:** Clear, direct, professional Hebrew spoken as a peer to a business owner.`;
 
 // Composed editable prompt — Ami's dashboard would import this if we hook up
 // a v7 prompt-tuning dashboard later.
@@ -267,7 +284,7 @@ Normal case:
       "rank": 1,
       "title_en": "English title, 3-6 words (see Rules for English Titles)",
       "genres": ["...", "...", "..."],
-      "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
+      "description_he": "Hebrew description, 1-2 sentences, 15-30 words total: the sound, then a statement starting with בודק (see Rules for Hebrew Descriptions)",
       "instrumentalness_preference": "none",
       "popularity_preference": "none"
     }
@@ -324,11 +341,14 @@ export const FIXED_PROMPT_SECTION = [
 
 // ---------- Places injection ----------
 //
-// Same anchors and injected content as v6. Two anchors:
-//   - `### Processing Rules:` — Places input block inserted just before it,
-//      landing at the end of `## Inputs`.
-//   - `## Energy & Pairing Constraints` — Places processing rule inserted
-//      just before it, landing at the end of `### Processing Rules:`.
+// Same injected content as v6, both blocks placed relative to
+// `### Processing Rules:`:
+//   - the Places input block just before it, landing at the end of `## Inputs`;
+//   - the Places processing rule at the END of the Processing Rules block,
+//     just before the next heading. (Until 2026-09-30 it went before
+//     `## Energy & Pairing Constraints`, v6's anchor — but in v7 the
+//     Homogeneity and Distinctness sections sit in between, so the rule landed
+//     under "Direction Distinctness" in R1 and "Cluster Homogeneity" in R2.)
 
 const PLACES_INPUT_BLOCK = `- Optionally: Google Places context — factual metadata about the venue, pulled from Google Maps if the business was matched. Format:
 
@@ -349,19 +369,16 @@ export function injectPlaces(editable) {
   let out = editable;
   const inputsAnchor = '\n\n### Processing Rules:';
   const inputsIdx = out.indexOf(inputsAnchor);
-  if (inputsIdx >= 0) {
-    out = out.slice(0, inputsIdx) + '\n' + PLACES_INPUT_BLOCK + out.slice(inputsIdx);
-  } else {
-    console.warn('[v7 musical-directions] `### Processing Rules:` anchor missing — Places input block NOT injected');
+  if (inputsIdx < 0) {
+    console.warn('[v7 musical-directions] `### Processing Rules:` anchor missing — Places blocks NOT injected');
+    return out;
   }
-  const rulesAnchor = '\n\n## Energy & Pairing Constraints';
-  const rulesIdx = out.indexOf(rulesAnchor);
-  if (rulesIdx >= 0) {
-    out = out.slice(0, rulesIdx) + '\n' + PLACES_PROCESSING_RULE + out.slice(rulesIdx);
-  } else {
-    console.warn('[v7 musical-directions] `## Energy & Pairing Constraints` anchor missing — Places processing rule NOT injected');
-  }
-  return out;
+  out = out.slice(0, inputsIdx) + '\n' + PLACES_INPUT_BLOCK + out.slice(inputsIdx);
+  // End of the Processing Rules block = the next heading after it (or the end).
+  const rulesStart = out.indexOf(inputsAnchor) + inputsAnchor.length;
+  const next = out.slice(rulesStart).search(/\n\n#{1,3} /);
+  const rulesEnd = next >= 0 ? rulesStart + next : out.length;
+  return out.slice(0, rulesEnd) + '\n' + PLACES_PROCESSING_RULE + out.slice(rulesEnd);
 }
 
 export function assembleSystemPrompt(editable) {
@@ -416,7 +433,7 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, plac
     const priorSummary = Array.isArray(priorDirections) && priorDirections.length
       ? `\n\nALREADY CHOSEN — do not test the same taste vectors:\n${priorDirections.map(summarizeDirection).join('\n')}`
       : '';
-    return base + priorSummary + `\n\nTASK VARIANT: Return 4 additional diagnostic clusters that meaningfully broaden the probe set beyond the 4 above. Cover different energy tiers, instrumentation families, or cultural registers. Overlapping genres between the two batches are allowed (per Direction Distinctness), but each new cluster must test a distinctly different taste vector from the first 4. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
+    return base + priorSummary + `\n\nTASK VARIANT: Return 4 additional diagnostic clusters that meaningfully broaden the probe set beyond the 4 above. Cover different energy tiers, instrumentation families, or cultural registers. Overlapping genres between the two batches are allowed (per Direction Distinctness), but each new cluster must test a distinctly different taste vector from the first 4. Each style the owner explicitly requested gets exactly ONE direction across both batches — don't add another for a style that already has one above; include one for a requested style that doesn't have one yet. Follow the same schema, but with exactly 4 items in "directions" instead of 8.`;
   }
   return base;
 }

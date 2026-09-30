@@ -10,6 +10,10 @@
 //     Processing Rules, Cluster Homogeneity, Energy & Pairing Constraints,
 //     Output Language, Title rules, Hebrew Description rules, When-Not-To-
 //     Return), so edits Ami makes to R1 flow into R2 automatically.
+//   - Ami's 2026-09-30 R1 changes apply here too (Roni): each requested style
+//     gets one Round 2 cluster, with different companion genres than its
+//     Round 1 direction (Learning steps 4 and 6); the 4 probes are as varied
+//     as Round 2 allows; descriptions use the "בודק…" format.
 //   - R1's round-specific sections (intro, inputs, distinctness, task
 //     workflow, output format) are re-authored for Round 2 but keep R1's
 //     concrete parameters (3–6 genres, the standalone-genre list, 3–6-word
@@ -90,7 +94,8 @@ Round 1 told you roughly where the owner's taste lives; Round 2 probes find its 
 - Adjacency lives BETWEEN a probe and a Positive Vector — never inside a probe. Every probe you build from the pool must still pass Cluster Homogeneity on its own.
 
 ### 4. Honor Musical Emphases even in Round 2
-- The Musical Emphases text from Round 1 still applies with its FULL priority — including any include-genre / exclude-genre / general-leaning rule, AND the Instrumentalness preference classification, AND the Popularity preference classification. If Round 1's likes contradict the Musical Emphases (rare), the Musical Emphases still win.
+- The Musical Emphases text from Round 1 still applies with its FULL priority — the exclusions, the general leanings, the Instrumentalness preference classification, AND the Popularity preference classification. If Round 1's likes contradict the Musical Emphases (rare), the Musical Emphases still win.
+- **Requested styles get one Round 2 direction again — with new company.** Each style the owner explicitly requested (Processing Rules → Explicit Loves) gets exactly ONE of your 4 directions, no more; the others keep mapping the rest of their taste. Build it around the requested genre, but with DIFFERENT companion genres than it had in its Round 1 direction — don't reuse that Round 1 direction's other genres, so the probe tests the style in a new combination. It must still pass Cluster Homogeneity; if the cluster rules leave no different companion, keep it in a smaller cluster rather than reusing Round 1's companions.
 - Set every direction's \`instrumentalness_preference\` to the same value you would emit for Round 1 given the same emphases text (consistent across all 4 directions).
 - Set every direction's \`popularity_preference\` the same way — same rule applies (uniform across the 4 directions unless the emphases text explicitly asked for per-direction variance).
 
@@ -103,7 +108,7 @@ If the Liked list is empty:
 
 ### 6. Round 2 refinement emphases (highest priority when present)
 When the owner supplied Round 2 refinement emphases, treat it as the STRONGEST signal available — above everything else, including the initial Round-1 Musical Emphases, the atmospheres, the super-liked genres, and the like/dislike buckets. It was written after they saw actual tracks and knew what they wanted more of or less of. When it contradicts any other signal, IT WINS.
-- Genres or families explicitly requested: at least half of your 4 output clusters should center on them.
+- Styles explicitly requested: each gets exactly ONE of your 4 clusters (the same rule as Round 1 — the others map the rest of the owner's taste). A style requested in both emphases fields still gets one cluster; if Round 1 already had a direction for it, use different companion genres than that direction had (step 4).
 - Genres or families explicitly rejected: DROP them from every cluster, even if a Liked or super-liked genre would suggest them.
 - General leanings ("more upbeat", "less electronic", "make them more surprising"): must shape every one of the 4 clusters, not just some.
 - If empty or missing, fall back to steps 1–5 above.`;
@@ -114,6 +119,7 @@ Round 1 required its 8 clusters to differ on at least two of the four axes. Roun
 
 - **Between your 4 Round 2 probes:** each must test a different taste vector — any two probes must differ on at least ONE of energy tier, instrumentation family, cultural register, mood. When the Liked list is empty (you are exploring, not refining), use Round 1's stricter rule: differ on at least TWO axes.
 - **Probe mix when there are likes:** spend at most ONE probe per Positive Vector on a tight-cluster re-confirmation; use the rest on adjacent archetypes (Learning step 3). Four re-confirmations of the same liked probe waste the round.
+- **As varied as possible:** "Maximized Diversity Between Directions" (Cluster Homogeneity section) applies to your 4 probes too, within Round 2's purpose — make them as different from each other as you can while still mapping the neighbourhood of the Positive Vectors (Learning step 3). When the Liked list is empty you are exploring, so spread them as widely as the business allows.
 - **Vs. Round 1 liked probes:** a Round 2 probe may share genres with a liked probe and be recognizably derived from it, but must not repeat it — at least half of its genres must be genres the owner wasn't already probed on in Round 1.
 - **Vs. Round 1 disliked probes:** never rebuild a disliked probe's archetype (same energy tier + instrumentation family + cultural register + mood — that is exactly what the owner rejected). Sharing an individual genre with a disliked probe is fine only when that genre survived the ban in Learning step 2.
 - **Overlapping genres between your Round 2 probes are allowed**, same as Round 1: if a genre legitimately sits inside two of your new archetypes, ship it in both — the overlap becomes a stronger genre-level taste signal downstream.`;
@@ -122,8 +128,9 @@ const REFINED_TASK_WORKFLOW = `## Task Workflow (Round 2)
 
 1. Run the Learning & Processing Logic above to produce your Round 2 Working Pool.
 2. Generate exactly 4 new diagnostic clusters from the Working Pool. Every cluster must satisfy every rule from the shared sections imported above:
-   - Cluster Homogeneity (single unified vibe per cluster — energy / instrumentation / cultural register / mood)
+   - Cluster Homogeneity & Broad Inter-Direction Diversity (single unified vibe per cluster — energy / instrumentation / cultural register / mood; clusters as different from each other as Round 2 allows)
    - Direction Distinctness & Overlap (Round 2) — 4 different taste vectors; overlapping genres allowed
+   - Requested styles — one cluster each, with different companion genres than in Round 1 (Learning steps 4 and 6)
    - Beat & Percussion Pairing
    - Jazz Isolation Rule
    - Pop Isolation Rule
@@ -147,7 +154,7 @@ Normal case:
       "rank": 1,
       "title_en": "English title, 3-6 words (see Rules for English Titles)",
       "genres": ["...", "...", "..."],
-      "description_he": "Hebrew description, 1-2 sentences, 10-25 words total (see Rules for Hebrew Descriptions)",
+      "description_he": "Hebrew description, 1-2 sentences, 15-30 words total: the sound, then a statement starting with בודק (see Rules for Hebrew Descriptions)",
       "instrumentalness_preference": "none",
       "popularity_preference": "none"
     }

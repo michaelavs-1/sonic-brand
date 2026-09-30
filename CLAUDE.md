@@ -490,6 +490,11 @@ v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoi
 - **v6 directions were curated blends.** Each picked direction became the seed for a real playlist post-signup. Multi-Cultural Fusion and Cross-Regional blends were actively encouraged within a direction. Rules like Jazz Isolation and House Containment framed pairings as "can blend with X" — an appropriate framing for the diverse-playlist world.
 - **v7 directions are diagnostic PROBES.** Each is a small cluster of near-identical genres (same energy tier / instrumentation family / cultural register / mood — 4 axes; no tempo axis after 2026-09-23). Liking or disliking one representative track flags the whole cluster as one taste vector. Downstream, the picked directions DISSOLVE into a flat liked-genres list — playlists are built off that list, NOT per-direction. Overlapping genres across two liked directions become a stronger genre-level signal, not a duplicate.
 - **Rules rewritten for the shift.** `BEAT_PERCUSSION_RULE` was rewritten as a "Groove-Family Disambiguation" that explicitly splits RnB / Funk / Neo Soul / Hip Hop / Trap-Drill into five disjoint tight-cluster families (v6's version listed those first four in a single example set, which the model read as a single-cluster license — barbershop-bug root cause). `JAZZ_ISOLATION_RULE` was simplified to remove the explicit "Ethio-Jazz and Acid Jazz can blend with Afro/Funk/R&B styles" clause. `MULTI_CULTURAL_RULE` (v6 §3) and `EQUAL_GENRE_WEIGHT_RULE` (v6 §4) were dropped entirely. New sections `HOMOGENEITY_SECTION` and `DISTINCTNESS_SECTION` codify the tight-cluster / 8-distinct-archetypes design.
+- **Ami's R1 rewrite (2026-09-30), carried into R2.** Details in `prompt-history-v7.md`.
+  - **Requested styles:** each style the owner asks for gets ONE direction, and the rest map what else they like. In R2 it gets one of the 4 clusters again, with different companion genres than its R1 direction.
+  - **Variety:** the widest variety the business allows *between* directions, never within one.
+  - **Descriptions:** `description_he` is the sound, then a sentence starting with "בודק…" (always masculine: the direction is the subject), 15–30 words. Owners see it on the swipe card.
+  - **Google Places rule:** it now sits at the end of `### Processing Rules:` (`injectPlaces`). Until then it landed under Direction Distinctness in R1 and under Homogeneity in R2.
 
 ### The three v7 prompt stages
 
@@ -552,19 +557,31 @@ Output shape (after `normalizeTasteProfile` — the model itself does NOT emit `
 }
 ```
 
-Bucketing rules (in the prompt):
-- **approved** — appears in liked direction OR super-liked genre OR all-4-axes tight-cluster neighbour of one OR explicitly requested in emphases.
-- **conditional** — 2–3 axis neighbour of a liked genre; OR mixed signals; OR untouched but plausibly adjacent. **DATA ONLY in v7's initial cut** — first playlist builder ignores this bucket. Kept because the signal is real and the model is already reasoning over the full catalog.
+Bucketing rules (in the prompt). Since 2026-09-30 the prompt approves **as many genres as the owner would genuinely enjoy** (Ami's "maximalist expansion"; history in `prompt-history-v7.md`):
+- **approved** — any of:
+  - a genre in a liked direction, a super-liked genre, or one requested in emphases;
+  - a tight-cluster neighbour of one (all 4 axes, or 2–3 axes if the owner would enjoy it);
+  - a "cross-pattern" genre that bridges two things the owner liked (e.g. LoFi Bossa + R&B/jazz → LoFi Beats, JazzHop).
+- **Hard boundaries on inferred genres:**
+  - electronic genres only if the owner liked an identical or adjacent electronic genre;
+  - classical / spa only if presented in the probes and liked;
+  - never expand into genres that clash with the venue (the Venue Context Cutoff stops EXPANSION only — the owner's own choices are never cut).
+- **conditional** — a less-certain neighbour or bridge; OR mixed signals; OR untouched with no signal. **DATA ONLY in v7's initial cut** — first playlist builder ignores this bucket. Kept because the signal is real and the model is already reasoning over the full catalog.
 - **excluded** — appears only in disliked directions with no positive counterweight; OR explicitly banned in emphases; OR Japanese Folk restriction triggers. The model expresses this by LEAVING THE GENRE OUT of both lists (since 2026-09-24 — saves ~500 output tokens per onboarding vs. having it re-list ~70 genres).
 
 Energy calibration:
 - `energy_levels_total` is DYNAMIC per user (2..6). Narrow spread of taste → N=2. Very wide spread (chamber music AND dubstep both in the profile) → N=6. Prefer the smallest N that meaningfully distinguishes operational contexts.
 - Each approved/conditional genre gets an `energy_level` 1..N. **RELATIVE to the user's own range**, not absolute. Hip Hop is level N for a mostly-chill user; level 3 for a rave user who also picked Dubstep. Same-energy genres get the same level.
 - Excluded genres get no level.
+- **Groove floor (2026-09-30):** the R&B family, Neo Soul, Acid Jazz, AfroBeats and the Funk family sit above the owner's calmer APPROVED genres. They take level 1 only when there's no calmer approved genre, so the lowest level is never empty.
+  - **Safety net:** if the model still leaves level 1 without an approved genre, `normalizeTasteProfile` shifts every level down and shrinks N (never below 2). This keeps Option 1's calm tier from coming out empty.
+  - Tests: `node --test scripts/test-taste-profile-normalize.mjs`.
 
 Hard schema invariant: every one of the 124 canonical genres must land in EXACTLY ONE bucket. `normalizeTasteProfile` in `v7/generation/taste-profile.js` guarantees this by construction — `excluded_genres` = every canonical genre not in approved or conditional (any `excluded_genres` the model sends anyway is ignored); approved wins over conditional on duplicates; case drift is canonicalised via a lowercase→canonical map; invented genres (e.g. "Slow Funk") are dropped; energy levels clamped to `[1..N]`.
 
-**No Places injection at this stage.** Google Places is venue context; the taste profile is a property of the USER, not the venue. Places was already baked into R1/R2 when the model built the probes the user swiped on. Reusing Places here would mix venue-appropriateness signal into a user-taste extrapolation.
+**No Places injection at this stage.** Google Places was already baked into R1/R2 when the model built the probes the user swiped on.
+- The taste profile was originally designed as a property of the USER only.
+- Since 2026-09-30, the venue does cut INFERRED genres (Ami's Venue Context Cutoff), using the description + atmospheres already in the user message.
 
 ### Prompt stack
 
@@ -791,8 +808,9 @@ sonic-brand/
 │       │                                      Runs once after R1/R2 resolve, before signup. Output:
 │       │                                      approved/conditional/excluded + energy_levels_total +
 │       │                                      per-genre energy_level + inst_pref/pop_pref carry-through.
-│       │                                      label='v7-taste-profile'. NO Places injection (venue
-│       │                                      context is a property of the venue, not the user's taste).
+│       │                                      label='v7-taste-profile'. NO Places injection (the venue only
+│       │                                      cuts inferred genres, via the description; 2026-09-30).
+│       │                                      Maximalist expansion + hard boundaries + groove floor.
 │       ├── level-directions.js             ← Option-2 per-energy-level direction libraries from approved_genres.
 │       │                                      label='v7-level-directions'. No forced pairings; rotated daily
 │       │                                      (pickLevelDirections in timeline-assembler.js) (2026-09-28).
@@ -1013,6 +1031,7 @@ sonic-brand/
 │   │                                          2026-09-24. Same attachTrackGenres as live builds. Dry run; --apply writes.
 │   ├── test-energy-timeline.mjs             ← Offline tests (node --test) for the Option-2 timeline model, assembler, build window.
 │   ├── test-opening-hours.mjs               ← Offline tests (node --test) for shared/opening-hours.js.
+│   ├── test-taste-profile-normalize.mjs     ← Offline tests (node --test) for normalizeTasteProfile (level shift, names).
 │   ├── test-v7-signup-passwords.mjs         ← v7 passwords: check-email + signup password rules vs `vercel dev`. Self-cleaning.
 │   ├── set-v7-passwords.mjs                 ← One-off: shared password for v7 owners created before --before. Dry run;
 │   │                                          --confirm applies.
@@ -2232,9 +2251,9 @@ In the 2026-09-23 R1 patch, Ami proposed a broader rewrite. Five specific items 
 - **Prioritizing User Preferences in Direction Ordering** — composition is objective; ordering is subjective. Preferred → slot 1 or 2.
 - **Afro Label Disambiguation Rule** — `Afro Funk` / `Afro House` / `AfroBeats` are three different taste vectors that share only the "Afro" prefix.
 - **Organic House & DownTempo Isolation** — don't pair Organic House / DownTempo with driving House.
-- **Hebrew description reframing** as explicit probe language (`בודק פתיחות ל…` / `בודק חיבור ל…`).
+- ~~**Hebrew description reframing** as explicit probe language (`בודק פתיחות ל…` / `בודק חיבור ל…`).~~ ADOPTED 2026-09-30 (Ami's R1 rewrite).
 
-Ami separately said he'd apply his own fix for the barbershop bug (Funk + Neo Soul + Acid Jazz cluster) after that session; his output may supersede or complement the current `BEAT_PERCUSSION_RULE` groove-family disambiguation. Check with Ami before treating the current v7 R1 as settled.
+Ami separately said he'd apply his own fix for the barbershop bug (Funk + Neo Soul + Acid Jazz cluster) after that session; his output may supersede or complement the current `BEAT_PERCUSSION_RULE` groove-family disambiguation. Check with Ami before treating the current v7 R1 as settled. (His 2026-09-30 rewrite didn't touch it. The Gemini edit he made it with had dropped the "Funk + Neo Soul / Funk + Acid Jazz is invalid" sentence, and it was restored.)
 
 ### v5 dead-code cleanup
 

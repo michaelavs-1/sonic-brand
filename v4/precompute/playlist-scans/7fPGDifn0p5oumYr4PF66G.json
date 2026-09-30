@@ -1,0 +1,997 @@
+{
+  "playlist_id": "7fPGDifn0p5oumYr4PF66G",
+  "generated_at": "2026-09-28T16:03:04.758Z",
+  "total_tracks": 40,
+  "completed": 40,
+  "summary": {
+    "ok": 36,
+    "not_found": 0,
+    "terminal": 4
+  },
+  "results": [
+    {
+      "spotify_id": "6qVodemcQoATdMCO5eUAlo",
+      "name": "Consider Me",
+      "artist": "Jennifer Lara",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y29uc2lkZXItbWUtamVubmlmZXItbGFyYQ==",
+          "key": "G",
+          "mode": "minor",
+          "camelot": "6A",
+          "tempo": 86,
+          "duration": "2:05",
+          "popularity": 19,
+          "energy": 48,
+          "danceability": 52,
+          "happiness": 76,
+          "acousticness": 39,
+          "instrumentalness": 0,
+          "liveness": 39,
+          "speechiness": 7,
+          "loudness": "-9 dB"
+        },
+        "ms": 875
+      }
+    },
+    {
+      "spotify_id": "2KK2onSHlW85fOpGW6zgeI",
+      "name": "La rosée si feuilles songes",
+      "artist": "Alain Péters",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bGEtcm9zZS1zaS1mZXVpbGxlcy1zb25nZXMtYWxhaW4tcHRlcnM=",
+          "key": "F",
+          "mode": "major",
+          "camelot": "7B",
+          "tempo": 145,
+          "duration": "4:21",
+          "popularity": 22,
+          "energy": 43,
+          "danceability": 70,
+          "happiness": 86,
+          "acousticness": 32,
+          "instrumentalness": 0,
+          "liveness": 7,
+          "speechiness": 44,
+          "loudness": "-11 dB"
+        },
+        "ms": 58124
+      }
+    },
+    {
+      "spotify_id": "1g48tzXlUwDpIKXBaW9xSL",
+      "name": "La Dôtu Lado",
+      "artist": "Coladera",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bGEtZHR1LWxhZG8tY29sYWRlcmE=",
+          "key": "F#",
+          "mode": "minor",
+          "camelot": "11A",
+          "tempo": 170,
+          "duration": "4:30",
+          "popularity": 29,
+          "energy": 51,
+          "danceability": 51,
+          "happiness": 88,
+          "acousticness": 77,
+          "instrumentalness": 0,
+          "liveness": 14,
+          "speechiness": 5,
+          "loudness": "-12 dB"
+        },
+        "ms": 37911
+      }
+    },
+    {
+      "spotify_id": "5I9XM0IJROUKnK2bCNUlyY",
+      "name": "Maria das Mercedes",
+      "artist": "Djavan",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bWFyaWEtZGFzLW1lcmNlZGVzLWRqYXZhbg==",
+          "key": "F#",
+          "mode": "major",
+          "camelot": "2B",
+          "tempo": 89,
+          "duration": "2:53",
+          "popularity": 39,
+          "energy": 52,
+          "danceability": 69,
+          "happiness": 88,
+          "acousticness": 19,
+          "instrumentalness": 0,
+          "liveness": 10,
+          "speechiness": 4,
+          "loudness": "-16 dB"
+        },
+        "ms": 104328
+      }
+    },
+    {
+      "spotify_id": "5kq12oy2YdyQByS6qhy9mf",
+      "name": "Lolita",
+      "artist": "Docteur Nico, l'African Fiesta",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bG9saXRhLWRyLW5pY28ta3dhbXktdGFidS1sZXktcm9jaGVyZWF1",
+          "key": "F",
+          "mode": "minor",
+          "camelot": "4A",
+          "tempo": 113,
+          "duration": "2:30",
+          "popularity": 20,
+          "energy": 38,
+          "danceability": 81,
+          "happiness": 83,
+          "acousticness": 70,
+          "instrumentalness": 0,
+          "liveness": 12,
+          "speechiness": 4,
+          "loudness": "-7 dB"
+        },
+        "ms": 88681
+      }
+    },
+    {
+      "spotify_id": "0wrx7YMUJXIcThebT8XDz5",
+      "name": "A Rã",
+      "artist": "João Donato",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "YS1yLWpvby1kb25hdG8=",
+          "key": "A#",
+          "mode": "minor",
+          "camelot": "3A",
+          "tempo": 99,
+          "duration": "2:32",
+          "popularity": 37,
+          "energy": 80,
+          "danceability": 71,
+          "happiness": 76,
+          "acousticness": 79,
+          "instrumentalness": 2,
+          "liveness": 9,
+          "speechiness": 7,
+          "loudness": "-10 dB"
+        },
+        "ms": 821
+      }
+    },
+    {
+      "spotify_id": "5tAlRH7BaNFlTmBJkEv0D1",
+      "name": "Victoria",
+      "artist": "Arturo \"Zambo\" Cavero, Oscar Avilés",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dmljdG9yaWEtYXJ0dXJvLXphbWJvLWNhdmVyby1vc2Nhci1hdmlscw==",
+          "key": "A",
+          "mode": "minor",
+          "camelot": "8A",
+          "tempo": 150,
+          "duration": "2:53",
+          "popularity": 5,
+          "energy": 36,
+          "danceability": 76,
+          "happiness": 78,
+          "acousticness": 41,
+          "instrumentalness": 0,
+          "liveness": 19,
+          "speechiness": 12,
+          "loudness": "-13 dB"
+        },
+        "ms": 793284
+      }
+    },
+    {
+      "spotify_id": "7MR0KbokEoTaphCQd1SdM9",
+      "name": "Se Acabó y Punto",
+      "artist": "Arturo \"Zambo\" Cavero, Oscar Avilés",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "c2UtYWNhYi15LXB1bnRvLWFydHVyby16YW1iby1jYXZlcm8tb3NjYXItYXZpbHM=",
+          "key": "G#",
+          "mode": "minor",
+          "camelot": "1A",
+          "tempo": 135,
+          "duration": "2:26",
+          "popularity": 10,
+          "energy": 68,
+          "danceability": 72,
+          "happiness": 75,
+          "acousticness": 72,
+          "instrumentalness": 0,
+          "liveness": 12,
+          "speechiness": 5,
+          "loudness": "-6 dB"
+        },
+        "ms": 42838
+      }
+    },
+    {
+      "spotify_id": "4wOUGJiRF8hsUnqlWTlcMf",
+      "name": "Olga",
+      "artist": "Curro Carrera, Oscar Avilés",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "b2xnYS1jdXJyby1jYXJyZXJhLW9zY2FyLWF2aWxz",
+          "key": "F#",
+          "mode": "minor",
+          "camelot": "11A",
+          "tempo": 121,
+          "duration": "2:53",
+          "popularity": 7,
+          "energy": 56,
+          "danceability": 81,
+          "happiness": 53,
+          "acousticness": 78,
+          "instrumentalness": 0,
+          "liveness": 7,
+          "speechiness": 5,
+          "loudness": "-5 dB"
+        },
+        "ms": 745943
+      }
+    },
+    {
+      "spotify_id": "1wBSiWWqFCSkgn0CzXW7Pm",
+      "name": "Huye de Mí",
+      "artist": "Los Kipus, Eva Ayllón",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "aHV5ZS1kZS1tLWxvcy1raXB1cy1ldmEtYXlsbG4=",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 141,
+          "duration": "3:04",
+          "popularity": 39,
+          "energy": 49,
+          "danceability": 73,
+          "happiness": 80,
+          "acousticness": 64,
+          "instrumentalness": 0,
+          "liveness": 18,
+          "speechiness": 4,
+          "loudness": "-9 dB"
+        },
+        "ms": 271357
+      }
+    },
+    {
+      "spotify_id": "2dTu1e5HwEJCJKOTD4o4cC",
+      "name": "Spanish Eyes",
+      "artist": "Elvis Presley",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "c3BhbmlzaC1leWVzLWVsdmlzLXByZXNsZXk=",
+          "key": "G",
+          "mode": "major",
+          "camelot": "9B",
+          "tempo": 125,
+          "duration": "2:24",
+          "popularity": 24,
+          "energy": 45,
+          "danceability": 57,
+          "happiness": 68,
+          "acousticness": 60,
+          "instrumentalness": 0,
+          "liveness": 13,
+          "speechiness": 3,
+          "loudness": "-10 dB"
+        },
+        "ms": 288028
+      }
+    },
+    {
+      "spotify_id": "7b0OSzKP95nfc9bMNVc2s2",
+      "name": "Funny How Time Slips Away",
+      "artist": "Elvis Presley",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZnVubnktaG93LXRpbWUtc2xpcHMtYXdheS1lbHZpcy1wcmVzbGV5",
+          "key": "F",
+          "mode": "major",
+          "camelot": "7B",
+          "tempo": 97,
+          "duration": "4:21",
+          "popularity": 20,
+          "energy": 42,
+          "danceability": 38,
+          "happiness": 56,
+          "acousticness": 62,
+          "instrumentalness": 6,
+          "liveness": 31,
+          "speechiness": 3,
+          "loudness": "-12 dB"
+        },
+        "ms": 41646
+      }
+    },
+    {
+      "spotify_id": "2zvnbKscMYJ6aVOXoi8Run",
+      "name": "Pledging My Love",
+      "artist": "Elvis Presley",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "cGxlZGdpbmctbXktbG92ZS1lbHZpcy1wcmVzbGV5",
+          "key": "G",
+          "mode": "major",
+          "camelot": "9B",
+          "tempo": 69,
+          "duration": "2:51",
+          "popularity": 30,
+          "energy": 42,
+          "danceability": 40,
+          "happiness": 76,
+          "acousticness": 84,
+          "instrumentalness": 2,
+          "liveness": 18,
+          "speechiness": 3,
+          "loudness": "-13 dB"
+        },
+        "ms": 61408
+      }
+    },
+    {
+      "spotify_id": "3t5mtqSFMeH2gFI4gIxLVz",
+      "name": "Nena Na Na - Remastered",
+      "artist": "José Feliciano",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bmVuYS1uYS1uYS1yZW1hc3RlcmVkLWpvcy1mZWxpY2lhbm8=",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 174,
+          "duration": "2:32",
+          "popularity": 17,
+          "energy": 37,
+          "danceability": 40,
+          "happiness": 91,
+          "acousticness": 78,
+          "instrumentalness": 0,
+          "liveness": 10,
+          "speechiness": 6,
+          "loudness": "-17 dB"
+        },
+        "ms": 83880
+      }
+    },
+    {
+      "spotify_id": "3Bop3i4KZCZqdLBRxbNuOH",
+      "name": "Until It's Time For You To Go - Take 5",
+      "artist": "Elvis Presley",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "dW50aWwtaXRzLXRpbWUtZm9yLXlvdS10by1nby10YWtlLTUtZWx2aXMtcHJlc2xleQ==",
+          "key": "D",
+          "mode": "major",
+          "camelot": "10B",
+          "tempo": 123,
+          "duration": "4:21",
+          "popularity": 23,
+          "energy": 28,
+          "danceability": 38,
+          "happiness": 23,
+          "acousticness": 77,
+          "instrumentalness": 86,
+          "liveness": 14,
+          "speechiness": 3,
+          "loudness": "-15 dB"
+        },
+        "ms": 61060
+      }
+    },
+    {
+      "spotify_id": "5jkd3e1qgmsTWJm3NvQ7X4",
+      "name": "Cry Me A River",
+      "artist": "Ella Fitzgerald",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y3J5LW1lLWEtcml2ZXItZWxsYS1maXR6Z2VyYWxk",
+          "key": "G#",
+          "mode": "minor",
+          "camelot": "1A",
+          "tempo": 133,
+          "duration": "4:17",
+          "popularity": 50,
+          "energy": 15,
+          "danceability": 44,
+          "happiness": 35,
+          "acousticness": 96,
+          "instrumentalness": 0,
+          "liveness": 10,
+          "speechiness": 4,
+          "loudness": "-13 dB"
+        },
+        "ms": 839
+      }
+    },
+    {
+      "spotify_id": "7nxkNNVzWpuoBHSBoeKoYJ",
+      "name": "El Corazon Es Un Gitano",
+      "artist": "Nicola Di Bari",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZWwtY29yYXpvbi1lcy11bi1naXRhbm8tbmljb2xhLWRpLWJhcmk=",
+          "key": "D",
+          "mode": "major",
+          "camelot": "10B",
+          "tempo": 104,
+          "duration": "3:18",
+          "popularity": 55,
+          "energy": 42,
+          "danceability": 54,
+          "happiness": 71,
+          "acousticness": 83,
+          "instrumentalness": 0,
+          "liveness": 25,
+          "speechiness": 3,
+          "loudness": "-14 dB"
+        },
+        "ms": 57877
+      }
+    },
+    {
+      "spotify_id": "5zgfb0T6OJQ6sTd4uGgsSU",
+      "name": "Como Violetas",
+      "artist": "Nicola Di Bari",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y29tby12aW9sZXRhcy1uaWNvbGEtZGktYmFyaQ==",
+          "key": "Bb",
+          "mode": "major",
+          "camelot": "6B",
+          "tempo": 84,
+          "duration": "3:08",
+          "popularity": 49,
+          "energy": 33,
+          "danceability": 34,
+          "happiness": 44,
+          "acousticness": 71,
+          "instrumentalness": 21,
+          "liveness": 14,
+          "speechiness": 4,
+          "loudness": "-14 dB"
+        },
+        "ms": 80924
+      }
+    },
+    {
+      "spotify_id": "2ABi5uaGDEo4PeFefuCKJZ",
+      "name": "Mar y Cielo (with Los Panchos)",
+      "artist": "José Luis Rodríguez, Los Panchos",
+      "result": {
+        "kind": "terminal",
+        "reason": "200 error payload retries exhausted",
+        "status": 200,
+        "body": "{\"error\":\"Failed to pull track data\"}",
+        "ms": 1453421
+      }
+    },
+    {
+      "spotify_id": "0dzBSz1xarfH4c4nNsqNJd",
+      "name": "Toda Una Vida (with Los Panchos)",
+      "artist": "Oswaldo Farrés, José Luis Rodríguez, Los Panchos",
+      "result": {
+        "kind": "terminal",
+        "reason": "200 error payload retries exhausted",
+        "status": 200,
+        "body": "{\"error\":\"Failed to pull track data\"}",
+        "ms": 1408796
+      }
+    },
+    {
+      "spotify_id": "0hQmc5ELFCepjVaObrp9YW",
+      "name": "Ti femm' la",
+      "artist": "Hervé Imare",
+      "result": {
+        "kind": "terminal",
+        "reason": "200 error payload retries exhausted",
+        "status": 200,
+        "body": "{\"error\":\"Failed to pull track data\"}",
+        "ms": 1408284
+      }
+    },
+    {
+      "spotify_id": "3Tn8Rj2zr1XNan1qsoY9oW",
+      "name": "Estrella De Poetas A Chabuca Granda",
+      "artist": "Tania Libertad",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZXN0cmVsbGEtZGUtcG9ldGFzLWEtY2hhYnVjYS1ncmFuZGEtdGFuaWEtbGliZXJ0YWQ=",
+          "key": "Ab",
+          "mode": "major",
+          "camelot": "4B",
+          "tempo": 140,
+          "duration": "3:10",
+          "popularity": 2,
+          "energy": 27,
+          "danceability": 58,
+          "happiness": 68,
+          "acousticness": 94,
+          "instrumentalness": 0,
+          "liveness": 17,
+          "speechiness": 4,
+          "loudness": "-13 dB"
+        },
+        "ms": 420862
+      }
+    },
+    {
+      "spotify_id": "3TRpkiWuPgGcpeHsp5QWUM",
+      "name": "Escarcha",
+      "artist": "Toña La Negra, María Victoria, Olga Guillot, Maria Luisa Landin",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZXNjYXJjaGEtdG9hLWxhLW5lZ3Jh",
+          "key": "F",
+          "mode": "major",
+          "camelot": "7B",
+          "tempo": 131,
+          "duration": "2:06",
+          "popularity": 0,
+          "energy": 54,
+          "danceability": 84,
+          "happiness": 84,
+          "acousticness": 85,
+          "instrumentalness": 0,
+          "liveness": 7,
+          "speechiness": 3,
+          "loudness": "-6 dB"
+        },
+        "ms": 1018
+      }
+    },
+    {
+      "spotify_id": "4wJNcICQAv1ZNj8tkoMJab",
+      "name": "Yo no soy esa",
+      "artist": "Mari Trini",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "eW8tbm8tc295LWVzYS1tYXJpLXRyaW5p",
+          "key": "D",
+          "mode": "minor",
+          "camelot": "7A",
+          "tempo": 121,
+          "duration": "2:33",
+          "popularity": 59,
+          "energy": 63,
+          "danceability": 58,
+          "happiness": 73,
+          "acousticness": 7,
+          "instrumentalness": 0,
+          "liveness": 37,
+          "speechiness": 3,
+          "loudness": "-5 dB"
+        },
+        "ms": 1408472
+      }
+    },
+    {
+      "spotify_id": "2KuP2WnaXV7hiHn9KLq27E",
+      "name": "Porque Yo Te Amo",
+      "artist": "Sandro",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "cG9ycXVlLXlvLXRlLWFtby1zYW5kcm8=",
+          "key": "E",
+          "mode": "minor",
+          "camelot": "9A",
+          "tempo": 81,
+          "duration": "3:33",
+          "popularity": 57,
+          "energy": 42,
+          "danceability": 37,
+          "happiness": 55,
+          "acousticness": 75,
+          "instrumentalness": 0,
+          "liveness": 20,
+          "speechiness": 5,
+          "loudness": "-10 dB"
+        },
+        "ms": 398876
+      }
+    },
+    {
+      "spotify_id": "7pgcrqpuddvaNeH6f1tC1B",
+      "name": "Sigamos Pecando",
+      "artist": "Javier Solís",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "c2lnYW1vcy1wZWNhbmRvLXZlcnNpbi10cm8tamF2aWVyLXNvbHM=",
+          "key": "C",
+          "mode": "minor",
+          "camelot": "5A",
+          "tempo": 104,
+          "duration": "2:54",
+          "popularity": 40,
+          "energy": 57,
+          "danceability": 79,
+          "happiness": 50,
+          "acousticness": 50,
+          "instrumentalness": 0,
+          "liveness": 14,
+          "speechiness": 3,
+          "loudness": "-7 dB"
+        },
+        "ms": 850
+      }
+    },
+    {
+      "spotify_id": "6lut7SxYcC6GhMepmqUaSN",
+      "name": "Je me suis fait tout petit",
+      "artist": "Georges Brassens",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "amUtbWUtc3Vpcy1mYWl0LXRvdXQtcGV0aXQtZ2Vvcmdlcy1icmFzc2Vucw==",
+          "key": "B",
+          "mode": "minor",
+          "camelot": "10A",
+          "tempo": 125,
+          "duration": "3:55",
+          "popularity": 49,
+          "energy": 15,
+          "danceability": 67,
+          "happiness": 51,
+          "acousticness": 76,
+          "instrumentalness": 0,
+          "liveness": 12,
+          "speechiness": 10,
+          "loudness": "-14 dB"
+        },
+        "ms": 797
+      }
+    },
+    {
+      "spotify_id": "0eXqWCXs8LsJQw6LFTr8aO",
+      "name": "Ma môme",
+      "artist": "Jean Ferrat",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bWEtbW1lLWplYW4tZmVycmF0",
+          "key": "G",
+          "mode": "minor",
+          "camelot": "6A",
+          "tempo": 95,
+          "duration": "1:58",
+          "popularity": 45,
+          "energy": 48,
+          "danceability": 49,
+          "happiness": 47,
+          "acousticness": 60,
+          "instrumentalness": 0,
+          "liveness": 13,
+          "speechiness": 4,
+          "loudness": "-8 dB"
+        },
+        "ms": 65418
+      }
+    },
+    {
+      "spotify_id": "4zIeRcsaho6lZuaXEYR1y3",
+      "name": "Easier Said Than Done",
+      "artist": "Thee Sacred Souls",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZWFzaWVyLXNhaWQtdGhhbi1kb25lLXRoZWUtc2FjcmVkLXNvdWxz",
+          "key": "Bb",
+          "mode": "major",
+          "camelot": "6B",
+          "tempo": 84,
+          "duration": "2:55",
+          "popularity": 71,
+          "energy": 40,
+          "danceability": 55,
+          "happiness": 56,
+          "acousticness": 67,
+          "instrumentalness": 0,
+          "liveness": 13,
+          "speechiness": 2,
+          "loudness": "-10 dB"
+        },
+        "ms": 851
+      }
+    },
+    {
+      "spotify_id": "0LWhcj0hd4a4Y5oO2GRpyG",
+      "name": "Il suffirait de presque rien",
+      "artist": "Serge Reggiani",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "aWwtc3VmZmlyYWl0LWRlLXByZXNxdWUtcmllbi1zZXJnZS1yZWdnaWFuaQ==",
+          "key": "F",
+          "mode": "major",
+          "camelot": "7B",
+          "tempo": 118,
+          "duration": "2:26",
+          "popularity": 51,
+          "energy": 48,
+          "danceability": 56,
+          "happiness": 68,
+          "acousticness": 42,
+          "instrumentalness": 0,
+          "liveness": 32,
+          "speechiness": 4,
+          "loudness": "-11 dB"
+        },
+        "ms": 93057
+      }
+    },
+    {
+      "spotify_id": "36onsYXsK4jWN00mENtaB4",
+      "name": "C'est la vie Lily",
+      "artist": "Joe Dassin",
+      "result": {
+        "kind": "terminal",
+        "reason": "200 error payload retries exhausted",
+        "status": 200,
+        "body": "{\"error\":\"Failed to pull track data\"}",
+        "ms": 1409311
+      }
+    },
+    {
+      "spotify_id": "0hoLCfOWVVxtgkkvydWMyk",
+      "name": "Louise",
+      "artist": "Thomas Fersen",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bG91aXNlLXRob21hcy1mZXJzZW4=",
+          "key": "F",
+          "mode": "minor",
+          "camelot": "4A",
+          "tempo": 53,
+          "duration": "2:20",
+          "popularity": 36,
+          "energy": 27,
+          "danceability": 57,
+          "happiness": 58,
+          "acousticness": 79,
+          "instrumentalness": 0,
+          "liveness": 18,
+          "speechiness": 8,
+          "loudness": "-11 dB"
+        },
+        "ms": 402131
+      }
+    },
+    {
+      "spotify_id": "4pGW4uRfOMn2q7Wr49LX1f",
+      "name": "J'entends, J'entends",
+      "artist": "Jean Ferrat",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "amVudGVuZHMtamVudGVuZHMtamVhbi1mZXJyYXQ=",
+          "key": "A",
+          "mode": "major",
+          "camelot": "11B",
+          "tempo": 129,
+          "duration": "2:48",
+          "popularity": 34,
+          "energy": 50,
+          "danceability": 45,
+          "happiness": 31,
+          "acousticness": 86,
+          "instrumentalness": 0,
+          "liveness": 17,
+          "speechiness": 3,
+          "loudness": "-7 dB"
+        },
+        "ms": 22497
+      }
+    },
+    {
+      "spotify_id": "2ZMQDim8dMaZyxdMh1u78J",
+      "name": "Ronsard 58",
+      "artist": "Michèle Arnaud",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "cm9uc2FyZC01OC1taWNobGUtYXJuYXVk",
+          "key": "Ab",
+          "mode": "major",
+          "camelot": "4B",
+          "tempo": 141,
+          "duration": "1:45",
+          "popularity": 25,
+          "energy": 27,
+          "danceability": 69,
+          "happiness": 80,
+          "acousticness": 26,
+          "instrumentalness": 0,
+          "liveness": 8,
+          "speechiness": 13,
+          "loudness": "-12 dB"
+        },
+        "ms": 20812
+      }
+    },
+    {
+      "spotify_id": "1ul9ZfkWWeAjA3HiRwK4Op",
+      "name": "Nathalie - Remasterisé en 2011",
+      "artist": "Gilbert Bécaud",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bmF0aGFsaWUtcmVtYXN0ZXJpcy1lbi0yMDExLWdpbGJlcnQtYmNhdWQ=",
+          "key": "A",
+          "mode": "minor",
+          "camelot": "8A",
+          "tempo": 135,
+          "duration": "4:05",
+          "popularity": 55,
+          "energy": 63,
+          "danceability": 42,
+          "happiness": 81,
+          "acousticness": 75,
+          "instrumentalness": 0,
+          "liveness": 59,
+          "speechiness": 8,
+          "loudness": "-7 dB"
+        },
+        "ms": 42512
+      }
+    },
+    {
+      "spotify_id": "6m0s4XFYpE1h63NaP6hBA9",
+      "name": "Elle était si jolie",
+      "artist": "Alain Barrière",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "ZWxsZS10YWl0LXNpLWpvbGllLWFsYWluLWJhcnJpcmU=",
+          "key": "F",
+          "mode": "minor",
+          "camelot": "4A",
+          "tempo": 102,
+          "duration": "2:55",
+          "popularity": 49,
+          "energy": 39,
+          "danceability": 42,
+          "happiness": 20,
+          "acousticness": 82,
+          "instrumentalness": 0,
+          "liveness": 10,
+          "speechiness": 3,
+          "loudness": "-9 dB"
+        },
+        "ms": 821
+      }
+    },
+    {
+      "spotify_id": "424pAzPdudT3fTKxxgD8pr",
+      "name": "Maria Elena",
+      "artist": "Cesária Evora",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bWFyaWEtZWxlbmEtY2VzcmlhLWV2b3Jh",
+          "key": "Eb",
+          "mode": "major",
+          "camelot": "5B",
+          "tempo": 97,
+          "duration": "3:29",
+          "popularity": 42,
+          "energy": 48,
+          "danceability": 57,
+          "happiness": 52,
+          "acousticness": 60,
+          "instrumentalness": 0,
+          "liveness": 14,
+          "speechiness": 3,
+          "loudness": "-9 dB"
+        },
+        "ms": 718
+      }
+    },
+    {
+      "spotify_id": "7ECBe552bX855OWcLWInIB",
+      "name": "Cuando Sali de Cuba",
+      "artist": "Guillermo Portabales",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "Y3VhbmRvLXNhbC1kZS1jdWJhLWd1aWxsZXJtby1wb3J0YWJhbGVz",
+          "key": "C",
+          "mode": "major",
+          "camelot": "8B",
+          "tempo": 99,
+          "duration": "2:51",
+          "popularity": 16,
+          "energy": 30,
+          "danceability": 70,
+          "happiness": 79,
+          "acousticness": 62,
+          "instrumentalness": 0,
+          "liveness": 9,
+          "speechiness": 5,
+          "loudness": "-12 dB"
+        },
+        "ms": 274485
+      }
+    },
+    {
+      "spotify_id": "3UNfU0eZuTQFbsvmaOiJPH",
+      "name": "Quero Esquecer Você",
+      "artist": "Los Sebosos Postizos",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "cXVlcm8tZXNxdWVjZXItdm9jLWxvcy1zZWJvc29zLXBvc3Rpem9z",
+          "key": "G",
+          "mode": "major",
+          "camelot": "9B",
+          "tempo": 157,
+          "duration": "2:27",
+          "popularity": 52,
+          "energy": 53,
+          "danceability": 45,
+          "happiness": 48,
+          "acousticness": 53,
+          "instrumentalness": 0,
+          "liveness": 20,
+          "speechiness": 6,
+          "loudness": "-10 dB"
+        },
+        "ms": 47323
+      }
+    },
+    {
+      "spotify_id": "2yrTxyOExhBax6EvIEYB6z",
+      "name": "Moça",
+      "artist": "Mari Froes",
+      "result": {
+        "kind": "ok",
+        "data": {
+          "id": "bW9hLW1hcmktZnJvZXM=",
+          "key": "B",
+          "mode": "minor",
+          "camelot": "10A",
+          "tempo": 150,
+          "duration": "5:02",
+          "popularity": 61,
+          "energy": 41,
+          "danceability": 67,
+          "happiness": 50,
+          "acousticness": 71,
+          "instrumentalness": 0,
+          "liveness": 16,
+          "speechiness": 4,
+          "loudness": "-9 dB"
+        },
+        "ms": 44253
+      }
+    }
+  ]
+}

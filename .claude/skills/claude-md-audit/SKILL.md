@@ -1,6 +1,6 @@
 ---
 name: claude-md-audit
-description: Scan recent Claude Code session transcripts for changes not yet reflected in CLAUDE.md and produce a punch list of updates. Use when a session (or a run of recent sessions) made substantial code / architecture / config changes and you want to keep the project's AI context doc fresh. Triggers include "/claude-md-audit", "audit claude.md", "check if claude.md needs updates", "refresh claude.md".
+description: Scan recent Claude Code session transcripts for changes not yet reflected in CLAUDE.md, produce a punch list of updates, and apply all of them. Use when a session (or a run of recent sessions) made substantial code / architecture / config changes and you want to keep the project's AI context doc fresh. Triggers include "/claude-md-audit", "audit claude.md", "check if claude.md needs updates", "refresh claude.md".
 ---
 
 # CLAUDE.md audit
@@ -50,12 +50,12 @@ You are auditing `CLAUDE.md` against everything the user has actually built in C
    - Data-model table list missing tables that now exist (query Supabase or check migration files under `v5/precompute/migrations/`).
    - Feature flows described using old field names / step numbers (e.g. onboarding step count grew).
 
-4. **Categorize the punch list** into three buckets and present to the user:
+4. **Categorize the punch list** into three buckets:
    - **CRITICAL** (wrong-in-place — following the doc would mislead)
    - **IMPORTANT** (missing recent architectural additions — a fresh session wouldn't know these exist)
    - **MINOR** (cleanup — stale file references, resolved known-issues, etc.)
 
-5. **Do NOT auto-edit.** Present the punch list first with A / B / C options ("apply all", "critical only", "let me pick"). Wait for approval. Then batch-edit `CLAUDE.md` using `Edit` calls (never `Write` — the file is too big for a full rewrite).
+5. **Apply every item — all three buckets.** Don't ask which ones to apply: the user wants the full list applied on every audit. Edit `CLAUDE.md` with `Edit` calls (never `Write` — the file is too big for a full rewrite), in the same turn as the punch list.
 
 ## Rules
 
@@ -64,11 +64,11 @@ You are auditing `CLAUDE.md` against everything the user has actually built in C
 - If the punch list is empty, say so plainly. Don't invent updates for the sake of doing work.
 - When adding new sections, prefer inserting near thematically-related content over appending to the bottom.
 - Keep the section-heading style consistent with existing sections (`###` inside `##`, prose-heavy, code blocks for concrete examples).
-- If the doc's structure needs meaningful reorganization (not just individual-section updates), flag it in the punch list but don't do the reorg without explicit approval — that's a bigger conversation.
+- If the doc's structure needs meaningful reorganization (not just individual-section updates), flag it in the punch list but don't do the reorg without explicit approval — that's a bigger conversation. This is the one exception to "apply every item".
 
 ## Output shape
 
 Every audit ends with:
 - The punch list (numbered, categorized as above)
-- The A/B/C selector question
-- If the user approves, the batch of edits, with a one-line summary of each at the end
+- The edits, all applied, with a one-line summary of each
+- Any reorganization you flagged but didn't do

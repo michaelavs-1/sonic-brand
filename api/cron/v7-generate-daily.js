@@ -61,6 +61,7 @@ import {
 } from '../../v7/generation/playlist-length.js';
 import { businessWindowAt } from '../../v7/generation/energy-timeline.js';
 import { sendAlert } from '../_alert.js';
+import { markCronRunning } from '../_cron-running.js';
 
 // ---- Redis (alert dedup) — copied verbatim from the v6 cron ----
 async function redisPipeline(commands) {
@@ -277,6 +278,10 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
+  // "Running" flag for the whole tick — Ami's test playlists
+  // (api/v7/ami/test-playlist.js) wait until it's cleared.
+  const cronFlag = await markCronRunning('v7-daily');
+
   const t0    = Date.now();
   const now   = new Date();
   const ilNow = ilPartsFromDate(now);
@@ -302,6 +307,7 @@ export default async function handler(req, res) {
         `Usually points at Supabase being down or an RLS/schema issue on the businesses table. Check Vercel Function logs.`,
       ].join('\n'),
     }).catch((err) => console.warn('[cron v7 daily-gen] top-level alert send threw:', err?.message));
+    await cronFlag.release();
     return res.status(500).json({ error: e.message });
   }
 
@@ -426,5 +432,6 @@ export default async function handler(req, res) {
     tookMs:      Date.now() - t0,
   };
   console.log(`[cron v7 daily-gen] considered=${summary.considered} built=${summary.built} builtBiz=${summary.builtBiz} skippedBiz=${summary.skippedBiz} alerted=${summary.alerted} tookMs=${summary.tookMs}`);
+  await cronFlag.release();
   return res.status(200).json(summary);
 }

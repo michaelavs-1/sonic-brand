@@ -22,6 +22,7 @@
 
 import { waitNodes, setWaitText } from '/v7/wait-dots.js?v=28092026a';
 import { PASSWORD_RULES_TEXT, passwordProblem } from '/shared/password-rules.js?v=28092026a';
+import { invoiceEmailFor } from '/shared/invoice-email.js?v=29092026a';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_BAR_MS = 2000; // let the "dissolving" bar breathe even when the call is already resolved
@@ -308,6 +309,10 @@ function runHypPaymentStep({ email, businessName, onboardingSessionId, paidCheck
     const priceEl = el('p', { class: 'subtitle', style: 'margin-bottom:6px' }, PRICE_TAIL);
     const envEl = el('p', { class: 'hint', style: 'margin:0 0 10px;color:var(--accent)' }, 'מסוף בדיקות · אין חיוב אמיתי');
     envEl.hidden = true;
+    // Where Hyp sends the invoice — the account email without any "+tag"
+    // (Hyp mangles "+"; see shared/invoice-email.js).
+    const invoiceEl = el('p', { class: 'hint', style: 'margin:0 0 12px' },
+      'החשבונית תישלח אל ', el('span', { dir: 'ltr' }, invoiceEmailFor(email)));
 
     const field = (label, attrs, hint = null) => {
       const input = el('input', { class: 'input-text', type: 'text', ...attrs });
@@ -319,7 +324,8 @@ function runHypPaymentStep({ email, businessName, onboardingSessionId, paidCheck
     const bizName = field('שם העסק (לא חובה)', { autocomplete: 'organization' },
       el('p', { class: 'hint', style: 'margin:6px 0 0;text-align:start' }, 'אם תמלאו, החשבונית תונפק על שם העסק'));
     const taxId = field('ח.פ / ע.מ (לא חובה)', { inputmode: 'numeric', autocomplete: 'off' });
-    const coupon = field('קוד קופון (לא חובה)', { autocomplete: 'off' });
+    const couponStatus = el('p', { class: 'hint', style: 'margin:6px 0 0;text-align:start;min-height:16px' }, '');
+    const coupon = field('קוד קופון (לא חובה)', { autocomplete: 'off' }, couponStatus);
     coupon.wrap.hidden = true;   // shown only while coupons are on (server switch)
     const fields = [name, address, bizName, taxId, coupon];
 
@@ -377,8 +383,57 @@ function runHypPaymentStep({ email, businessName, onboardingSessionId, paidCheck
       coupon:              coupon.wrap.hidden ? '' : coupon.input.value.trim(),
     });
 
+    // Coupon feedback under the field: animated dots while it's checked, then
+    // ✓ (with the first-month price) or ✗. Checked a moment after typing
+    // stops, and again when the field is left.
+    let couponSeq = 0;
+    let couponChecked = '';
+    const showCoupon = (text, color = '') => {
+      couponStatus.style.color = color;
+      setWaitText(couponStatus, text);
+    };
+    const couponInvalid = () => showCoupon('✗ קוד הקופון לא תקף', '#ff9b8a');
+    const checkCoupon = async () => {
+      const code = coupon.input.value.trim().toUpperCase();
+      if (code === couponChecked) return;
+      couponChecked = code;
+      const seq = ++couponSeq;
+      if (!code) { showCoupon(''); return; }
+      showCoupon('בודקים את הקופון…');
+      let d = null;
+      try {
+        const r = await fetch(`/api/v7/payment/checkout?coupon=${encodeURIComponent(code)}`);
+        d = r.ok ? await r.json() : null;
+      } catch { d = null; }
+      if (seq !== couponSeq) return;
+      if (d?.couponValid) {
+        showCoupon(`✓ הקופון הופעל: ${d.percentOff}% הנחה בחודש הראשון (${ils(d.amountFirst)} במקום ${ils(d.amountMonthly)})`,
+          'var(--teal-soft)');
+      } else if (d) {
+        couponInvalid();
+      } else {
+        couponChecked = '';   // let the next attempt re-check
+        showCoupon('לא הצלחנו לבדוק את הקופון', '#ff9b8a');
+      }
+    };
+    let couponTimer = null;
+    coupon.input.addEventListener('input', () => {
+      clearTimeout(couponTimer);
+      couponTimer = setTimeout(checkCoupon, NAME_SETTLE_MS);
+    });
+    coupon.input.addEventListener('change', () => {
+      clearTimeout(couponTimer);
+      checkCoupon();
+    });
+
+    // One sign at a time: a request fired before the previous one answered
+    // wouldn't know this page's checkoutId yet and would open a second
+    // checkout row. Queued calls re-read the form, so a burst collapses.
+    let signChain = Promise.resolve();
+    const sign = (opts) => (signChain = signChain.then(() => signNow(opts)).catch(() => {}));
+
     // (Re)sign with the current details and load Hyp's card form under them.
-    const sign = async ({ force = false, note = '' } = {}) => {
+    const signNow = async ({ force = false, note = '' } = {}) => {
       if (finished) return;
       const form = readForm();
       if (!form.name) { showPlaceholder('מלאו שם מלא כדי להמשיך לפרטי הכרטיס'); return; }
@@ -405,8 +460,7 @@ function runHypPaymentStep({ email, businessName, onboardingSessionId, paidCheck
         // Never leave a card form signed with stale details on screen.
         if (status === 400) {
           showPlaceholder('תקנו את הפרטים למעלה כדי להמשיך');
-          msg.textContent = data.error === 'invalid_coupon' ? 'קוד הקופון לא תקף'
-            : HEBREW_RE.test(data.error || '') ? data.error : 'בדקו את הפרטים';
+          msg.textContent = HEBREW_RE.test(data.error || '') ? data.error : 'בדקו את הפרטים';
         } else {
           showPlaceholder('לא הצלחנו לטעון את טופס התשלום', true);
           msg.textContent = HEBREW_RE.test(data.error || '') ? data.error
@@ -418,6 +472,9 @@ function runHypPaymentStep({ email, businessName, onboardingSessionId, paidCheck
 
       checkoutId = data.checkoutId;
       signedKey = key;
+      // An unknown coupon doesn't block anything — the page is signed at full
+      // price; keep the ✗ under the field in sync.
+      if (data.couponRejected) couponInvalid();
       priceEl.textContent = data.coupon
         ? `חודש ראשון ${ils(data.amountFirst)} (קופון ${data.coupon.code}, ${data.coupon.percentOff}% הנחה), ואחר כך ${ils(data.amountMonthly)} לחודש`
         : `${ils(data.amountMonthly)} לחודש · ${PRICE_TAIL}`;
@@ -472,6 +529,7 @@ function runHypPaymentStep({ email, businessName, onboardingSessionId, paidCheck
       el('h1', {}, 'כמעט שם — מנוי רובין'),
       priceEl,
       envEl,
+      invoiceEl,
       name.wrap,
       address.wrap,
       bizName.wrap,

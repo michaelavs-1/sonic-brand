@@ -105,6 +105,9 @@
     "api/v7/account/generate-daily.js": {
       "maxDuration": 300
     },
+    "api/v7/ami/test-playlist.js": {
+      "maxDuration": 60
+    },
     "api/cron/generate-daily.js": {
       "maxDuration": 300
     },

@@ -5,12 +5,12 @@
 
 ## ⚠️ READ FIRST — VERSION LANDSCAPE
 
-The codebase contains multiple parallel "versions" that coexist. **v7 is the current active version** — it's what the user is iterating on. Since 2026-09-28 the site root (`/`) serves **v7** (once deployed — see the rewrite note under Live URLs); v6 is still reachable at `/v6` but has no accounts. Others are kept but see the notes:
+The codebase contains multiple parallel "versions" that coexist. **v7 is the current active version** — it's what the user is iterating on. Since 2026-09-28 the site root (`/`) serves **v7** (deployed — see the rewrite note under Live URLs); v6 is still reachable at `/v6` but has no accounts. Others are kept but see the notes:
 
 | Version | State | Where |
 |---|---|---|
 | v6 | **Reachable at `/v6` only — the root moved to v7 on 2026-09-28 — and NO v6 accounts exist** (all deleted 2026-09-24); its daily cron is hard-disabled. Signups at `/v6` would still create v6 accounts, which get no daily playlists. Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. | `v6/`, `api/v6/` |
-| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 124-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built but **switched off since 2026-09-28**, so the step is currently the old placeholder (see "Payment (Hyp)" in § V7 ARCHITECTURE). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
+| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 124-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built and switched on per environment by `V7_PAYMENTS_ENABLED` — on in Development, **off in Production** (the step there is the old placeholder) (see "Payment (Hyp)" in § V7 ARCHITECTURE). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
 | v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anthropic`, `anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend still runs standalone. `v5/ami-prompt-dashboard/` lives here but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
 | v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
 | v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). | `v3/`, `v2/` |
@@ -656,16 +656,21 @@ Option 1 is planned by **`api/v7/account/_daily-builder.js`** `planOption1` (Opt
 
 - **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (R1 + R2 swipe decks) / `result.js` (registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → R1 swipe → (R2 if <3 picks) → registration → payment (Hyp; the placeholder screen while `PAYMENTS_ENABLED = false`) → taste-profile bar → `/v7/account`.
 - **Account** (`v7/account/`): `index.html` + `app.js` (delivery-mode gate, energy-directions build) + `direction-chat.js` (dormant for v7 — reads empty `business_directions`). The Home tab's special-events chat ("צריכים משהו אחר היום?") is a collapsible dropdown, closed by default (same `.hours-toggle` pattern as the Profile sections, since 2026-09-24); the saved events list ("פלייליסטים אחרים") stays visible.
+- **Opening-hours rule (2026-09-29).** A day's closing time must be after its opening time, except a close after midnight, allowed up to 06:00 (20:00–02:00 is fine, 15:00–14:00 isn't). A day is also capped at 20 hours (so 06:30–06:00 is refused), and open = close is refused. Without the rule, an overnight window swallows the next morning: `businessWindowAt` keeps treating it as the previous business day. One source, **`shared/opening-hours.js`** (`dayHoursProblem` / `hoursProblems` / `hoursProblem`), used in three places:
+  - the hours editor (`v7/hours-selector.js`): the problem is shown under the days with red time fields, and "המשך" / Profile "שמור" stay disabled while it's there;
+  - `api/v7/account/update-hours.js`: 400 `bad_hours` with the Hebrew text;
+  - `api/v7/account/signup.js`: 400 `bad_hours`, checked before anything is created, so a paid checkout stays unclaimed.
+  v6's editor and endpoints don't have the rule. Tests: `node --test scripts/test-opening-hours.mjs`.
 - **No inline playlist rename in v7 (kept this way for now; may change).** v6's Home-tab inline rename (click a playlist title → edit) and the per-playlist edit / trash icons are NOT available in v7. This wasn't a deliberate product decision — it fell out of the build: the code was copied from v6 and is still in `v7/account/app.js` (`enterRenameMode`, `editDirectionFromCard`, `openTrashDirectionModal`), but every one of those controls only renders when the row has a `direction_id` (`canRename = !!p.directionId …`, `if (p.directionId)`), and v7 rows always insert `direction_id: null` (FK to v6's `business_directions`). Roni has chosen to keep it off for now. Reviving it would need a v7 path that edits `business_v7_directions` instead of calling v6's `apply-direction-change` — and a decision on how a rename interacts with the fixed "אנרגיה גבוהה/רגועה #N" names.
-- **⚠️ Real payments are SWITCHED OFF (2026-09-28):** `PAYMENTS_ENABLED = false` in `api/v7/payment/_hyp.js`. Tax invoices must come from the company's own invoicing system (not Hyp's — the Hyp portal shows invoicing as a separate sign-up), and that isn't connected yet; Roni is sorting it out with the people who manage invoicing at the company. While off: the payment step shows the OLD placeholder screen (`runPlaceholderPaymentStep` in `v7/result.js` — all fields optional, resolves with `''`), `GET /api/v7/payment/checkout` returns `{paymentsEnabled:false}`, POST returns 503, and signup requires no checkout (`paid_at` = signup time, as before Hyp). Everything below is intact — flip the switch to restore. Open design point for when it comes back: Hyp-managed monthly charges send no notification, so an external invoicing system can't be triggered per charge — either it integrates with Hyp directly, or we move monthly billing to our side (saved card token + our own monthly `action=soft` charge + invoice API call), which would also bring coupons back without `TashFirstPayment`.
-- **Payment (Hyp, built 2026-09-27).** The payment step (`runPaymentStep` in `v7/result.js`) is Hyp Pay's hosted page (pay.hyp.co.il, formerly YaadPay — docs https://developers.hyp.co.il/pay; append `.md` to any page for raw Markdown, and use curl — WebFetch truncates the big reference pages) in an iframe. Product: **₪200/month, charged automatically by Hyp until cancelled** — a Hyp-managed recurring agreement (הוראת קבע: `HK=True&freq=1&Tash=999&OnlyOnApprove=True`); price is `MONTHLY_PRICE_ILS` in `api/v7/payment/_hyp.js` — but the **test terminal charges ₪10/month** (`TEST_TERMINAL_PRICE_ILS`, temporary, per Hyp's ~10 ILS test-amount advice; `monthlyPriceIls(env)` picks it). **Coupons** discount the FIRST month only (`TashFirstPayment`), percent-based, from `payment_coupons`. **Tax invoice** emailed by Hyp (`SendHesh=True`; invoicing is on by default, doc type קבלה/חשבונית מס; no company number — the law requires one only above ₪5,000). No installments. Flow:
-  0. **Everything is on ONE page** (since 2026-09-28): our billing form on top, Hyp's card form (iframe) right under it in a collapsible **"פרטי תשלום"** section (`.pay-toggle`, closed at first, opens by itself the first time the card form loads). Hyp needs the details inside the signed request, so the card form loads 0.7s after the name is typed (`NAME_SETTLE_MS`) and is **re-signed + reloaded on every detail change** (`change` event; a reload clears card digits already typed — owners fill top-down). Re-signs pass the page's `checkoutId`, and the endpoint updates that row while it's pending (same `Order`) instead of inserting; a failed/paid row gets a new one. **Coupons are OFF** (`COUPONS_ENABLED = false` in `checkout.js`): Hyp's server returns 500 after charging whenever a recurring page carries `TashFirstPayment` (every number format; the discounted first charge does go through) — reported to Hyp 2026-09-28. While off, the coupon field is hidden (the GET returns `couponsEnabled`) and any coupon is ignored.
-  1. The screen shows the price (`GET /api/v7/payment/checkout` → `{amountMonthly, couponsEnabled, env}`) + our own billing form: **שם מלא** (required — sent as `ClientName`, the cardholder), **כתובת** (optional → `street` + `EZ.customer_address`), **שם העסק** (optional — when filled the invoice is made out to it, via `EZ.customer_name`), **ח.פ / ע.מ** (optional, digits → `EZ.customer_crn`), and the coupon. Hyp's page uses **template 6 (`tmp=6`) — card fields only** (card, expiry, CVV, cardholder ID). `EZ.customer_name` / `EZ.customer_address` are NOT in Hyp's docs: they're fields of Hyp's invoicing service (Hyp Invoice, formerly EZcount) passed through like the documented `EZ.customer_crn` — confirm on a real test invoice. "המשך לתשלום" → `POST /api/v7/payment/checkout` validates billing + coupon (400 with a Hebrew message / `invalid_coupon`), inserts a pending `payment_checkouts` row (incl. `billing`), and signs the page with Hyp (`APISign`/`What=SIGN`; `Order` = the row's `order_no`). Amounts come only from the server and are covered by Hyp's signature.
+- **⚠️ Real payments are switched on PER ENVIRONMENT by `V7_PAYMENTS_ENABLED=true`** (read as `PAYMENTS_ENABLED` in `api/v7/payment/_hyp.js`; since 2026-09-29 — before that a hard-coded constant, off 2026-09-28). ON in Development (Roni is finishing payments in `vercel dev` against the **production** terminal), OFF in Production until it's set there, so deploying unrelated work can't switch payments on. While off: the payment step shows the OLD placeholder screen (`runPlaceholderPaymentStep` in `v7/result.js` — all fields optional, resolves with `''`), `GET /api/v7/payment/checkout` returns `{paymentsEnabled:false}`, POST returns 503, and signup requires no checkout (`paid_at` = signup time, as before Hyp). **Invoices** come from Hyp's own invoicing module (Hyp Invoice / EZcount: `SendHesh=True` → emailed to `email`), issued in the name of the business that owns the terminal — confirmed 2026-09-29 by the company's integration guide for another project. The module must be active on the terminal (on the test terminal it isn't — the portal shows "הרשמה למערכת החשבוניות" — which is why no test invoice ever arrived). That guide also copies every invoice to the company's bookkeeping inbox via `EZ.cc_emails` (not sent by us yet — the address comes from Dan). **Testing on the production terminal charges real cards** (the Hyp test card is declined there): each successful test is a real charge at the monthly price (₪200 — but in Development `V7_PRICE_OVERRIDE_ILS=2` makes it ₪2, and ₪1 for the first month with TEST50 while coupons are on) + a real standing order — cancel both (same-day `CancelTrans` before 22:00 IL costs no fee; the agreement via `scripts/_hyp-hk-status.mjs`).
+- **Payment (Hyp, built 2026-09-27).** The payment step (`runPaymentStep` in `v7/result.js`) is Hyp Pay's hosted page (pay.hyp.co.il, formerly YaadPay — docs https://developers.hyp.co.il/pay; append `.md` to any page for raw Markdown, and use curl — WebFetch truncates the big reference pages) in an iframe. Product: **₪200/month, charged automatically by Hyp until cancelled** — a Hyp-managed recurring agreement (הוראת קבע: `HK=True&freq=1&Tash=999&OnlyOnApprove=True`); price is `MONTHLY_PRICE_ILS` in `api/v7/payment/_hyp.js` — but the **test terminal charges ₪10/month** (`TEST_TERMINAL_PRICE_ILS`, temporary, per Hyp's ~10 ILS test-amount advice; `monthlyPriceIls(env)` picks it). **Coupons** discount the FIRST month only (`TashFirstPayment`), percent-based, from `payment_coupons`. **Tax invoice** emailed by Hyp (`SendHesh=True`) — but only when Hyp's invoicing module is active on the terminal (see the ⚠️ bullet above; it is NOT on by default — the test terminal never sent one). The terminal's default document (portal → חשבוניות דיגיטליות → הגדרת מסמך ברירת מחדל) should be קבלה / חשבונית מס. No company number — the law requires one only above ₪5,000). No installments. Flow:
+  0. **Everything is on ONE page** (since 2026-09-28): our billing form on top, Hyp's card form (iframe) right under it in a collapsible **"פרטי תשלום"** section (`.pay-toggle`, closed at first, opens by itself the first time the card form loads). Hyp needs the details inside the signed request, so the card form loads 0.7s after the name is typed (`NAME_SETTLE_MS`) and is **re-signed + reloaded on every detail change** (`change` event; a reload clears card digits already typed — owners fill top-down). Re-signs pass the page's `checkoutId`, and the endpoint updates that row while it's pending (same `Order`) instead of inserting; a failed/paid row gets a new one. **Coupons are off by default** (`V7_COUPONS_ENABLED` — see ENVIRONMENT VARIABLES; a code constant before 2026-09-29): on the TEST terminal Hyp's server returned 500 after charging whenever a recurring page carried `TashFirstPayment` (every number format; the discounted first charge did go through) — reported to Hyp 2026-09-28, **reproduced on the production terminal 2026-09-29** (order 6: the ₪1 first charge went through and Hyp created the invoice, then crashed before emailing it or redirecting back). The exact request/response prepared for Hyp support is in `hyp-support/tashfirstpayment-request-response.json` (the folder is gitignored and local only — it holds emails + terminal numbers). While off, the coupon field is hidden (the GET returns `couponsEnabled`) and any coupon is ignored. While on, the field checks the code inline (`GET /api/v7/payment/checkout?coupon=` → animated dots, then ✓ with the first-month price or ✗). Card-form loads (`sign` in `runHypPaymentStep`) run one at a time, so a burst of edits can't open a second checkout row. SIGN also sends `sendemail=True` (Hyp's payment confirmation, as in the company's working setup). **Hyp drops "+" from stored email addresses** (sent `roni.mark%2Btestb%40gmail.com`, stored `roni.marktestb@gmail.com` — a different, possibly stranger's, mailbox that the standing order would keep for every monthly invoice), so Hyp gets the account email **without its "+tag"** (`invoiceEmailFor` in `shared/invoice-email.js`, used by `_hyp.js` and shown on the payment screen as "החשבונית תישלח אל …"); the checkout row keeps the full address in `email` and the sent one in `billing.invoiceEmail`.
+  1. The screen shows the price (`GET /api/v7/payment/checkout` → `{amountMonthly, couponsEnabled, env}`) + our own billing form: **שם מלא** (required — sent as `ClientName`, the cardholder), **כתובת** (optional → `street` + `EZ.customer_address`), **שם העסק** (optional — when filled the invoice is made out to it, via `EZ.customer_name`), **ח.פ / ע.מ** (optional, digits → `EZ.customer_crn`), and the coupon. Hyp's page uses **template 6 (`tmp=6`) — card fields only** (card, expiry, CVV, cardholder ID). `EZ.customer_name` / `EZ.customer_address` are NOT in Hyp's docs: they're fields of Hyp's invoicing service (Hyp Invoice, formerly EZcount) passed through like the documented `EZ.customer_crn` — confirm on a real test invoice. "המשך לתשלום" → `POST /api/v7/payment/checkout` validates billing (400 with a Hebrew message) and the coupon — **an unknown coupon never blocks the payment**: the page is signed at full price and the response carries `couponRejected: true` (the screen keeps its ✗ under the field) — inserts a pending `payment_checkouts` row (incl. `billing`), and signs the page with Hyp (`APISign`/`What=SIGN`; `Order` = the row's `order_no`). Amounts come only from the server and are covered by Hyp's signature.
   2. The iframe loads Hyp's page. On success Hyp redirects the iframe to the **"successful transaction" URL configured in each terminal's Hyp portal** (הגדרות → API-דף תשלום ו → הפנייה לאחר עסקה → עסקה שהצליחה → לינק מותאם אישית) = `<host>/api/v7/payment/return`. There is no per-request return URL, and **Hyp sends no server-to-server notification** — this redirect is the only signal.
   3. `api/v7/payment/return.js` forwards the raw query string, byte for byte, to Hyp's `What=VERIFY` (Hyp's Hebrew fields can be windows-1255 — never decode + re-encode), marks the row `paid` (storing `Id`, `HKId`, `ACode`, the raw query), and returns a tiny page that `postMessage`s the parent (same origin). The parent also polls `GET /api/v7/payment/status?id=` every 3s, so a lost message never strands the owner. Idempotent on reload.
   4. `runPaymentStep` resolves with the paid checkout id → `state.paidCheckoutId` → signup payload `checkoutId`. Signup **requires** a paid checkout (402 otherwise), claims it (`business_id`), and stamps `businesses.paid_at` from it; once claimed only the same email may reuse it (409) — the resend path re-posts it. Internal test callers (`x-sonic-internal`) may omit `checkoutId`, so the walkthrough scripts still work.
   5. A paid-but-unclaimed checkout id is kept in localStorage (`rubin-v7-paid-checkout`), so going back or refreshing mid-funnel never charges twice; cleared after a successful signup.
-  - **Terminals:** `HYP_ENV` = `test` (default) | `production` selects `HYP_TEST_*` or `HYP_PROD_*` (see ENVIRONMENT VARIABLES). Each checkout row records its `hyp_env` + `masof` and is verified against that terminal. Test card: `5253360311315452`, 12/29, CVV 493, ID 890108558. 3DS / Apple Pay / bit work only on production terminals. The portal toggle "אימות על ידי חתימה בעמודי התשלום" must be on.
+  - **Terminals:** `HYP_ENV` = `test` (default) | `production` selects `HYP_TEST_*` or `HYP_PROD_*` (see ENVIRONMENT VARIABLES). Each checkout row records its `hyp_env` + `masof` and is verified against that terminal. Test card: `5253360311315452`, 12/29, CVV 493, ID 890108558. 3DS / Apple Pay / bit work only on production terminals. The portal toggle "אימות על ידי חתימה בעמודי התשלום" must be on (Hyp's docs put it under הגדרות → דף תשלום ו-API → אימות; it wasn't visible on the production terminal's menu on 2026-09-29 — if it's off, the card is charged but VERIFY fails and our page shows "התשלום לא אושר"). On the production terminal, the portal setting **"מניעת עסקאות כפולות"** may decline a repeat test with the same card and amount soon after the first.
   - **Same-origin requirement:** the return page is framed by our page, and `vercel.json` sets `X-Frame-Options: SAMEORIGIN` globally — the portal's return URL host must be the host the owner is on (robin-music.com vs sonic-brand.vercel.app matters in production).
   - **Credentials check:** `node scripts/_hyp-sign-probe.mjs` signs a page with the current terminal and prints its URL (CCode 902 = wrong PassP). Nothing is charged or written.
   - **Cancelling agreements by hand:** `node scripts/_hyp-hk-status.mjs <HKId> ...` terminates (`--resume` resumes) on the `HYP_ENV` terminal via `action=HKStatus`. Agreement numbers: `payment_checkouts.hyp_hk_id`, or the Hyp portal's standing-order list (which has no delete button). There's no API to list a terminal's agreements — never guess HKIds.
@@ -802,6 +807,10 @@ sonic-brand/
 │                                              does NOT touch v7. Both prompts + Ami's dashboard route here.
 │                                              SERVER-REACHABLE — bare imports only, no ?v= query.
 ├── shared/                                 ← Cross-version source of truth.
+│   ├── invoice-email.js                    ← invoiceEmailFor: the address Hyp gets (the "+tag" dropped — Hyp mangles "+").
+│   │                                          Browser (payment screen) + server (_hyp.js).
+│   ├── opening-hours.js                    ← v7 opening-hours rule (browser + server): hoursProblem / dayHoursProblem.
+│   │                                          Closing after opening, or after midnight by 06:00; ≤ 20h a day.
 │   ├── password-rules.js                   ← v7 password rule (browser + server): passwordProblem, PASSWORD_RULES_TEXT.
 │   │                                          Mirrors the Supabase Auth password settings.
 │   └── genre-universe.js                   ← THE canonical genre list. Exports GENRES (array, 124 entries),
@@ -819,6 +828,8 @@ sonic-brand/
 │   │                                          (swipe simulation → `/v7/generation/taste-profile.js`), and
 │   │                                          step 4 shows the Option-1 / Option-2 directions built from the
 │   │                                          profile (`playlist-directions.js`; each option's prompt editable).
+│   │                                          Since 2026-09-30, Option-1 energy test playlists per direction
+│   │                                          (`test-playlists.js` → api/v7/ami/test-playlist.js).
 │   └── generation/musical-directions.js    ← Still consumed by legacy v5/app.js standalone UI. No longer
 │                                              read by Ami's dashboard. Header comments + `MODEL='claude…'`
 │                                              constant are dead code from the pre-ai-provider era.
@@ -827,13 +838,20 @@ sonic-brand/
 │   ├── precompute/                         ← Batch worker for track analysis (fills track_analyses)
 │   │   ├── v5-rpc-functions.sql            ← CREATE OR REPLACE for v5_anchor_tracks, v5_direction_tracks,
 │   │   │                                      v6_direction_tracks_recent (all now accept p_inst_pref)
-│   │   └── migrations/                     ← Dated SQL migrations (run in Supabase SQL Editor)
+│   │   ├── migrations/                     ← Dated SQL migrations (run in Supabase SQL Editor)
+│   │   ├── genre-status.mjs                ← Read-only per-genre report: OK tracks, orphans, and whether each genre is
+│   │   │                                      in shared/genre-universe.js (~2 min). Used after digesting new genres.
+│   │   ├── playlist-scan.mjs               ← RapidAPI analysis of whole playlists → playlist-scans/<id>.json
+│   │   │                                      (no Supabase). See § COMMON TASKS → Precompute.
+│   │   └── playlist-scans/                 ← playlist-scan.mjs results (2026-09-28 scans kept here).
 │   └── ...                                 ← v4 UI (mostly superseded by v6)
 ├── v3/, v2/                                ← Historical
 ├── michael-v4-snapshot/                    ← Gitignored. Snapshot of Michael's v4 fork. UI reference for v6.
 ├── api/
 │   ├── _alert.js                           ← Resend REST helper. Reads SUPABASE_AUTH. Callers MUST await it
 │   │                                          before res.end() — see "Alerts via Resend" mechanism.
+│   ├── _cron-running.js                    ← Redis "cron running" flags set by both crons for their whole tick;
+│   │                                          read by api/v7/ami/test-playlist.js so Ami's builds wait. Fail-open.
 │   ├── alert-probe.js                      ← Diagnostic endpoint (CRON_SECRET-gated). GET reports whether
 │   │                                          SUPABASE_AUTH is visible in the running function process;
 │   │                                          POST does a live Resend send via the shared sendAlert helper.
@@ -870,12 +888,15 @@ sonic-brand/
 │   │       │                                  soft-delete added 2026-09-05 so un-super-liking preserves engagement history
 │   │       └── log-playlist-open.js        ← Append one business_playlist_opens row per dashboard "▶ פתח" click
 │   ├── v7/
+│   │   ├── ami/test-playlist.js            ← Ami's energy test playlists (50 random / 50 in an energy range) on
+│   │   │                                      Rubin's account; waits for the crons. See § AMI'S DASHBOARD.
 │   │   ├── anchor-tracks.js                ← v7 swipe-deck anchors → v7_anchor_tracks RPC (cheap playlist-sampling
 │   │   │                                      pick, no BPM; anon key). Same origin guard + `anchor-tracks` rate bucket
 │   │   │                                      as v5's. Needs migration 2026-09-24-v7-anchor-tracks.sql.
 │   │   ├── payment/                        ← Hyp Pay subscription checkout (migration 2026-09-27-v7-payments.sql).
 │   │   │   ├── _hyp.js                     ← Terminal config (HYP_ENV), price, SIGN + VERIFY calls, response parser.
-│   │   │   ├── checkout.js                 ← GET price / POST: coupon → pending payment_checkouts row → signed page URL.
+│   │   │   ├── checkout.js                 ← GET price (+ `?coupon=` inline coupon check) / POST: coupon → pending
+│   │   │   │                                  payment_checkouts row → signed page URL.
 │   │   │   ├── return.js                   ← Hyp's success redirect (set in the portal): VERIFY → mark paid → postMessage.
 │   │   │   └── status.js                   ← Checkout status for the payment screen's poll ({status, claimed}).
 │   │   └── account/
@@ -978,6 +999,8 @@ sonic-brand/
 │   │                                          Kept in sync with /api/internal/* endpoint shape.
 │   └── playlist-opens-delta.md             ← Focused delta doc for the 2026-08-30 addition of business_playlist_opens
 │                                             tracking + the new fields on /api/internal/business.
+├── hyp-support/                            ← Gitignored, local only. Request/response logs prepared for Hyp support
+│                                              (contain emails + terminal numbers).
 ├── internal-dashboard/                     ← Gitignored. Local placeholder dashboard for eyeballing
 │                                             /api/internal/* responses against `vercel dev`.
 │                                             Michael's real dashboard lives in his own repo.
@@ -989,6 +1012,7 @@ sonic-brand/
 │   ├── _v7-backfill-track-genres.mjs        ← Fill business_playlists.track_genres for v7 playlists built before
 │   │                                          2026-09-24. Same attachTrackGenres as live builds. Dry run; --apply writes.
 │   ├── test-energy-timeline.mjs             ← Offline tests (node --test) for the Option-2 timeline model, assembler, build window.
+│   ├── test-opening-hours.mjs               ← Offline tests (node --test) for shared/opening-hours.js.
 │   ├── test-v7-signup-passwords.mjs         ← v7 passwords: check-email + signup password rules vs `vercel dev`. Self-cleaning.
 │   ├── set-v7-passwords.mjs                 ← One-off: shared password for v7 owners created before --before. Dry run;
 │   │                                          --confirm applies.
@@ -1356,7 +1380,8 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 - `/api/v7/account/generate-daily` (`v7-generate-daily`) — 12/hour, plus a per-business build lock and the 2/day replace cap
 - `/api/v7/account/save-energy-directions` (`save-energy-directions`), `/api/v7/account/save-level-directions` (`save-level-directions`), `/api/v7/account/save-taste-profile` (`save-taste-profile`) — 20/min
 - `/api/v7/account/check-email` (`v7-check-email`) — 20 per 10 min (it reveals whether an email is registered)
-- `/api/v7/payment/checkout` (`v7-checkout`) — 30/min; `/api/v7/payment/status` (`v7-payment-status`) — 120/min; `/api/v7/payment/return` (`v7-payment-return`) — 60/min
+- `/api/v7/payment/checkout` (`v7-checkout`) — 30/min; its coupon check `GET ?coupon=` (`v7-coupon-check`) — 30/min; `/api/v7/payment/status` (`v7-payment-status`) — 120/min; `/api/v7/payment/return` (`v7-payment-return`) — 60/min
+- `/api/v7/ami/test-playlist` POST (`ami-test-playlist`) — 40/hour; its GET cron-status check (`ami-test-playlist-status`) — 120/min
 
 **Behavior notes:**
 - Keyed by client IP (via `x-forwarded-for` first-hop, `x-real-ip`, or
@@ -1692,7 +1717,7 @@ Everything the account dashboard reads lives here:
 - `business_v7_directions` — Option-1 energy-tiered directions: a library of up to 30 per business (populated at mode selection via `save-energy-directions.js`, which replaces the whole set and keeps at most 30; `rank` is bookkeeping only — the daily draw is random). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_tier (text CHECK IN ('high','low')), rank (int), title_en (text), genres (jsonb — [string], canonical), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active. Only Option 1 uses this; Option 2 uses `business_v7_level_directions` (below).
 - `business_v7_level_directions` — Option-2 per-energy-level direction libraries (migration `2026-09-28-v7-level-directions.sql`). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_level (int CHECK 1..6), rank (int — rotation order within the level), title_en (text, internal), genres (jsonb — canonical, all approved at that level), profile_key (text — `levelProfileKey` of the taste profile it was built from), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active; owner-scoped RLS SELECT. Written by `save-level-directions.js` (replace-all) and `scripts/_v7-regenerate-level-directions.mjs`; separate from Option 1's table, so switching types never touches it. See "Option 2: level directions" in § V7 ARCHITECTURE.
 - **v7 `business_playlists` rows insert `direction_id: null`** — that column is an FK to v6's `business_directions`; a `business_v7_directions` id would violate it (the two are different tables). See the v7 daily runtime mechanism in § V7 ARCHITECTURE.
-- **`payment_checkouts`** (migration `2026-09-27-v7-payments.sql`) — one row per Hyp payment attempt from the v7 payment step. { id (uuid PK — the client's handle), order_no (bigserial, sent to Hyp as `Order`), hyp_env ('test'|'production'), masof, email, business_name, onboarding_session_id, coupon_code (FK → payment_coupons), percent_off, amount_first, amount_monthly, status ('pending'|'paid'|'failed'), hyp_trans_id (Hyp `Id`), hyp_hk_id (Hyp `HKId` — the recurring agreement, needed to cancel), hyp_acode, hyp_ccode, hyp_amount, return_query (raw redirect query, audit), paid_at, business_id (FK → businesses ON DELETE SET NULL — set when signup claims it), **billing** (jsonb `{name, address, invoiceBusinessName, taxId}` — what the payment screen sent Hyp for the invoice; migration `2026-09-28-v7-payment-billing.sql`), created_at, updated_at }. RLS on, no policies (server-only). A paid row with `business_id` null = paid but never signed up.
+- **`payment_checkouts`** (migration `2026-09-27-v7-payments.sql`) — one row per Hyp payment attempt from the v7 payment step. { id (uuid PK — the client's handle), order_no (bigserial, sent to Hyp as `Order`), hyp_env ('test'|'production'), masof, email, business_name, onboarding_session_id, coupon_code (FK → payment_coupons), percent_off, amount_first, amount_monthly, status ('pending'|'paid'|'failed'), hyp_trans_id (Hyp `Id`), hyp_hk_id (Hyp `HKId` — the recurring agreement, needed to cancel), hyp_acode, hyp_ccode, hyp_amount, return_query (raw redirect query, audit), paid_at, business_id (FK → businesses ON DELETE SET NULL — set when signup claims it), **billing** (jsonb `{name, address, invoiceBusinessName, taxId, invoiceEmail}` — what the payment screen sent Hyp for the invoice; `invoiceEmail` = the address actually sent to Hyp, with any "+tag" dropped (`shared/invoice-email.js`); migration `2026-09-28-v7-payment-billing.sql`), created_at, updated_at }. RLS on, no policies (server-only). A paid row with `business_id` null = paid but never signed up.
 - **`payment_coupons`** — { code (PK, uppercase), percent_off (1..100, first month only), active, note, created_at }. Seeded with `TEST50` (50%) for testing — deactivate before real customers: `UPDATE payment_coupons SET active = false WHERE code = 'TEST50';`. RLS on, no policies.
 - **`business_playlists.track_genres`** (jsonb, added 2026-09-24, migration `2026-09-24-v7-track-genres.sql`) — v7's per-track genre record, next to `track_ids`: `{ "<spotify_id>": ["Bossa Nova"], ... }` = which of the playlist's OWN genres each track belongs to in the catalog (canonical names; two entries when a track is tagged with two of them; `[]` if the catalog no longer ties it to any). NULL for v6 rows. Written at build time by `attachTrackGenres` in `api/v7/account/_daily-builder.js` (cron and on-demand builds) via the server-only **`v7_track_genres(p_spotify_ids, p_genres)`** RPC (`playlist_tracks` → `playlist_genres`). Best-effort: a failed lookup never blocks the build, and `insertPlaylistRows` retries without the column if it's missing, so the playlist record itself is never lost. Rows built before the column existed: `scripts/_v7-backfill-track-genres.mjs` (dry run; `--apply` writes).
 
@@ -1874,6 +1899,38 @@ returns a taste profile with approved genres:
 - A new step-3 run clears both options' results (the edited prompts stay) and
   hides step 4 until it succeeds.
 
+**Energy test playlists (added 2026-09-30).** Ami is examining whether the
+per-track `track_analyses.energy` (0–100) is worth using in the daily
+playlists. Under an Option 1 result (not Option 2), each direction has two
+buttons (`v5/ami-prompt-dashboard/test-playlists.js`):
+- **🎲 50 שירים אקראיים** — 50 random tracks from the direction's genres, drawn
+  like an Option-1 daily playlist (`v6_direction_tracks_recent`, bpm 0–300,
+  the step-3 profile's instrumental / popularity preferences, no 7-day history).
+- **⚡ לפי אנרגיה** — a modal with a two-handle 0–100 range slider and a create
+  button. The draw uses the same pool, limited to tracks whose energy is in the
+  range (`v7_energy_tracks` RPC, migration `2026-09-30-v7-energy-tracks.sql`).
+  - While a playlist builds, the slider and button are disabled and the button
+    shows a spinner. Afterwards an open button appears (newest on top) and they
+    can be used again.
+  - Fewer than 50 matches → a playlist of however many there are, with a
+    message. Zero → a message and no playlist.
+  - Each direction keeps its own modal state while the modal is closed.
+- Both show the playlist's actual energy (min–max, average) after it's built.
+- **Server:** `api/v7/ami/test-playlist.js` builds on Rubin's Spotify account
+  through the usual proxy and writes a `created_playlists` row with no business
+  and a 3-day expiry, so the expire cron deletes it.
+  - Site-only, rate-limited 40/hour per IP (`ami-test-playlist`).
+  - Errors: 503 `spotify-paused`, 501 `needs-migration` (the RPC is missing).
+- **Crons go first.** Both crons set a Redis "running" flag for their whole tick
+  (`api/_cron-running.js`: `cron:running:v7-daily` / `cron:running:expire`,
+  330s TTL). While one is set, the POST answers 409 `cron-running` without
+  touching Spotify. The dashboard then shows why and moves the build to the back
+  of the line, re-checking every 20s with the cheap GET (`ami-test-playlist-status`,
+  120/min).
+  - Ami's builds also run one at a time.
+  - A cron that starts while one of Ami's builds is running isn't held back
+    (a build takes ~5–10s).
+
 The dashboard's prompt assembly runs through a **lenient wrapper**
 `normalizeForProdAssembly` in `v5/ami-prompt-dashboard/app.js` (added 2026-08-30)
 before calling the prod `assembleSystemPrompt` helper. It widens the Google
@@ -1929,7 +1986,10 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 | `CRON_SECRET` | `api/cron/expire-playlists.js`, `api/cron/v7-generate-daily.js` (+ the unscheduled `generate-daily.js`) auth check | Vercel Cron sets `Authorization: Bearer <secret>` header. Also gates the v7 walkthrough scripts' manual cron trigger. |
 | `V6_ACCOUNT_REDIRECT_URL` | `api/v6/account/signup.js accountRedirectUrl` | Optional pin. When unset, magic-link redirect derives from request host (validated against `isAllowedHost`). |
 | `V7_ACCOUNT_REDIRECT_URL` | `api/v7/account/signup.js accountRedirectUrl` | Optional pin for where the v7 signup email's magic link lands. When unset (the normal case), it's `<request host>/v7/account`, host checked against `isAllowedHost`. |
-| `HYP_ENV` | `api/v7/payment/_hyp.js` | `test` (default when unset) or `production` — which Hyp terminal takes v7 payments. Any other value throws. |
+| `V7_PAYMENTS_ENABLED` | `api/v7/payment/_hyp.js` (`PAYMENTS_ENABLED`) → checkout, signup, the payment screen | `true` = real Hyp payments in v7 onboarding; anything else / unset = the placeholder payment screen and no payment required. Set per Vercel environment (Development on since 2026-09-29; Production off until payments are ready). |
+| `V7_COUPONS_ENABLED` | `api/v7/payment/checkout.js` | `true` = first-month coupons on (coupon field shown, `TashFirstPayment` sent). Off by default — on the test terminal Hyp crashed after charging whenever `TashFirstPayment` was sent. Development only for now (2026-09-29, re-testing on the production terminal). |
+| `V7_PRICE_OVERRIDE_ILS` | `api/v7/payment/_hyp.js` `monthlyPriceIls` | Dev-only monthly price (≥ 1) replacing the real one on ANY terminal, for real-card tests on the production terminal. Ignored whenever `VERCEL_ENV=production`. Set to `2` in Development on 2026-09-29 (with TEST50 → ₪1 first month). Never set it in Production. |
+| `HYP_ENV` | `api/v7/payment/_hyp.js` | `test` (default when unset) or `production` — which Hyp terminal takes v7 payments. Any other value throws. **No comment on the same line in `.env.local`** — our scripts read everything after `=` as the value, and a copy of `production # …` into Vercel broke it once. |
 | `HYP_TEST_MASOF` / `HYP_TEST_API_KEY` / `HYP_TEST_PASSP` | same | Hyp **test** terminal: terminal number (10 digits), API key (`KEY`), API password (`PassP`). `KEY` + `PassP` are in the terminal's Hyp portal → הגדרות → API-דף תשלום ו → אימות. |
 | `HYP_PROD_MASOF` / `HYP_PROD_API_KEY` / `HYP_PROD_PASSP` | same | Hyp **production** terminal. Only needed where `HYP_ENV=production`. |
 | `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json`. The *automated cron* is off (ami-cron-tick killed 2026-08-13) but the CLI batch worker `node v4/precompute/batch.mjs` is still run manually to digest new genres as Ami adds them. Key rotated 2026-08-25 after a paid-tier upgrade — the old key kept returning provider-side errors on the higher tier; new key resolved it. Rotated again 2026-09-24 when the plan went back from Ultra to Pro (same lesson: a tier change → a new key). Track analysis only runs locally (the batch worker on Roni's machine reads the key from `.env.local`); nothing in the cloud runs it on a schedule. Regen a key at RapidAPI dashboard → your app → security. |
@@ -2077,15 +2137,40 @@ node scripts/benchmark-directions.mjs --out=benchmark-results/run.json
 - `--no-storm-abort` — bypasses the 8-of-10 rolling-window terminal-failure abort. Pair with `--max-error-retries=0` when you know upstream is patchy and you don't care about quota — the batch churns through everything, marking failures for a later `--retry-errors` sweep. HTML-gateway abort and cap abort still fire (those are hard "impossible to proceed" signals).
 - Genre-name suffix on every outcome log line (added 2026-08-31) — batch startup bulk-loads `playlist_tracks` + `playlist_genres` for the run's toAnalyze set and appends the track's genres to each `ok` / `not_found` / `WARN terminal` line, so you can diagnose "which genre is storming" without grepping cross-tables.
 
+Older knobs still in use:
+- `--concurrency=N` — worker count, default 3, refused above 8 (`MAX_CONCURRENCY`). Higher concurrency has made runs SLOWER, because RapidAPI degrades under load.
+- `--retry-errors` — re-analyses tracks at `status='error'`; without it batch treats them as done and skips them.
+
+`batch.mjs` always runs the plan in `v4/precompute/state/dry-run.json`, written by one of the dry-run planners (no RapidAPI calls, no writes). **Re-run a planner before every batch** — rerunning batch alone re-reads the last plan (on 2026-09-25 that gave "to analyze this run: 0").
+
+`v4/precompute/dry-run-fill.mjs` — plans new playlists from Data Box Tab 2 (needs `vercel dev`):
+- `--target-playlists=N|max` — fill each genre up to N playlists (default 5), or `max` = every playlist the sheet lists for it.
+- `--genres="a,b,c"` — only these genres (case-insensitive).
+- New entries are emitted round-robin (every genre's next playlist, then the next), so an early abort still leaves each genre some coverage.
+
 `v4/precompute/dry-run-orphans.mjs` gained:
 - `--exclude-genres="a,b,c"` — drops orphans whose playlist is tagged to any of the listed genres. Use when a specific genre's playlists are causing upstream storms and you want to keep filling everything else without touching the DB (they stay orphans, no blacklist).
 - `--include-genres="a,b,c"` (added 2026-09-26) — the inverse: keeps ONLY orphans whose playlist is tagged to one of the listed genres. Use it to scan newly added genres first (e.g. the first playlists of each new genre, then the rest). If both flags are passed, `--exclude-genres` is ignored.
+- `--include-errors` — also queues tracks currently at `status='error'`. Pair with `batch.mjs --retry-errors`, or batch skips them.
 
 Typical fail-fast recovery run:
 ```powershell
 node v4/precompute/dry-run-orphans.mjs --exclude-genres="samba-choro"
 node v4/precompute/batch.mjs --max-rapidapi-calls=1000000 --max-error-retries=0 --no-storm-abort
 ```
+
+**Digesting newly added genres** (the workflow used for the 8 genres added 2026-09-26). Run each line in Roni's own terminal — these take hours:
+```powershell
+# 1. First 2 playlists per new genre, fail-fast
+node v4/precompute/dry-run-fill.mjs --target-playlists=2 --genres="genre a,genre b"; node v4/precompute/batch.mjs --max-rapidapi-calls=50000 --max-error-retries=0 --no-storm-abort
+# 2. Every other playlist of those genres
+node v4/precompute/dry-run-fill.mjs --target-playlists=max --genres="genre a,genre b"; node v4/precompute/batch.mjs --max-rapidapi-calls=50000 --max-error-retries=0 --no-storm-abort
+# 3. Retry the errors from 1-2 with the full 6-step ladder (add --include-genres="..." to scope it)
+node v4/precompute/dry-run-orphans.mjs --include-errors; node v4/precompute/batch.mjs --max-rapidapi-calls=50000 --retry-errors --no-storm-abort
+```
+Then count OK tracks per genre with `node v4/precompute/genre-status.mjs` (read-only, ~2 min), and add the genres that digested well to `shared/genre-universe.js` (see § PROMPT EDITING PROTOCOL).
+
+**One-off playlist analysis to JSON: `v4/precompute/playlist-scan.mjs`** (2026-09-28; was `tmp-playlist-scan.mjs` at the repo root until 2026-09-30). It runs every track of the playlists in its hard-coded `PLAYLIST_IDS` through RapidAPI and writes `v4/precompute/playlist-scans/<id>.json`. Nothing is read from or written to Supabase. It uses the full 6-step retry ladder with 3 workers and saves after each track. Needs `vercel dev` on :3000 plus `TRACK_ANALYSIS_RAPIDAPI_KEY` + `INTERNAL_API_KEY` in `.env.local`. Edit `PLAYLIST_IDS`, then run `node v4/precompute/playlist-scan.mjs`. **Running (or importing) it starts spending RapidAPI calls and overwrites that playlist's JSON.**
 
 ---
 

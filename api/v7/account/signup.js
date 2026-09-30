@@ -63,7 +63,8 @@
                (429 with a friendly message when Supabase's per-user email
                 interval hasn't passed yet; 409 code 'already_registered';
                 400 code 'bad_password' when it breaks shared/password-rules.js,
-                'weak_password' when Supabase refuses it (leaked).
+                'weak_password' when Supabase refuses it (leaked);
+                400 code 'bad_hours' when the hours break shared/opening-hours.js.
                 business_id is included once the business exists, so the
                 client's retry can pass it as resendFor.)
 
@@ -82,6 +83,7 @@ import {
   createUser, setPassword, deleteUser,
 } from './_auth-users.js';
 import { passwordProblem } from '../../../shared/password-rules.js';
+import { hoursProblem } from '../../../shared/opening-hours.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -295,6 +297,11 @@ export default async function handler(req, res) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({ error: 'valid email required' });
     }
+    // Opening hours — the hours step already refuses invalid ones
+    // (shared/opening-hours.js); this catches stale pages / crafted requests
+    // before anything is created, so a paid checkout stays unclaimed.
+    const hoursErr = hours && typeof hours === 'object' ? hoursProblem(hours) : null;
+    if (hoursErr) return res.status(400).json({ error: hoursErr, code: 'bad_hours' });
     // Password — chosen on the registration screen. Internal test callers
     // (walkthrough scripts) may omit it; they mint their own session.
     if (password != null || !isInternalCaller(req)) {

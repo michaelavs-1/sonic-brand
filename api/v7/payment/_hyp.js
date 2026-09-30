@@ -13,22 +13,26 @@
    The subscription is Hyp-managed (הוראת קבע): HK=True, freq=1 (monthly),
    Tash=999 (until cancelled), OnlyOnApprove=True. Amount is the monthly price;
    a first-month coupon becomes TashFirstPayment. SendHesh=True emails a tax
-   invoice (invoicing is on by default on Hyp terminals).
+   invoice, issued in the terminal owner's name — only if Hyp's invoicing
+   module (Hyp Invoice / EZcount) is active on the terminal.
 
    Credentials never leave the server. HYP_ENV picks the terminal:
      'test' (default) → HYP_TEST_MASOF / HYP_TEST_API_KEY / HYP_TEST_PASSP
      'production'     → HYP_PROD_MASOF / HYP_PROD_API_KEY / HYP_PROD_PASSP
 */
 
+import { invoiceEmailFor } from '../../../shared/invoice-email.js';
+
 const HYP_BASE = 'https://pay.hyp.co.il/p/';
 const HYP_TIMEOUT_MS = 15000;
 
-// Master switch for real payments in v7 onboarding. OFF since 2026-09-28:
-// invoicing has to come from the company's own invoicing system, which isn't
-// connected yet. While off, the payment step shows the old placeholder
-// screen, signup doesn't require a paid checkout, and checkout refuses to
-// sign pages. Everything Hyp-related stays in place — flip to true to restore.
-export const PAYMENTS_ENABLED = false;
+// Master switch for real payments in v7 onboarding, per environment:
+// V7_PAYMENTS_ENABLED=true turns them on (set in Development while payments
+// are being finished; Production stays off until it's set there, so a deploy
+// of unrelated work can't switch payments on by accident). While off, the
+// payment step shows the old placeholder screen, signup doesn't require a
+// paid checkout, and checkout refuses to sign pages.
+export const PAYMENTS_ENABLED = String(process.env.V7_PAYMENTS_ENABLED || '').trim().toLowerCase() === 'true';
 
 // The subscription price (ILS, the final card amount incl. VAT).
 export const MONTHLY_PRICE_ILS = 200;
@@ -37,7 +41,18 @@ export const MONTHLY_PRICE_ILS = 200;
 // charges MONTHLY_PRICE_ILS.
 const TEST_TERMINAL_PRICE_ILS = 10;
 
+// Dev-only price for real-card tests on the production terminal:
+// V7_PRICE_OVERRIDE_ILS (≥ 1, e.g. 2) replaces the price on any terminal —
+// but never in a Vercel production deployment (VERCEL_ENV=production).
+function priceOverrideIls() {
+  if (process.env.VERCEL_ENV === 'production') return null;
+  const n = Number(process.env.V7_PRICE_OVERRIDE_ILS);
+  return Number.isFinite(n) && n >= 1 ? n : null;
+}
+
 export function monthlyPriceIls(env = hypEnv()) {
+  const override = priceOverrideIls();
+  if (override) return override;
   return env === 'production' ? MONTHLY_PRICE_ILS : TEST_TERMINAL_PRICE_ILS;
 }
 
@@ -144,7 +159,8 @@ export async function signPaymentPage({
     tmp:        '6',
     ClientName: billing.name,
     street:     billing.address || undefined,
-    email,
+    // Without its "+tag" — Hyp drops the "+" itself (see shared/invoice-email.js).
+    email:      invoiceEmailFor(email),
     // Tax invoice by email, made out to ClientName by default. A business name
     // replaces it via EZ.customer_name, and the address goes on the invoice
     // via EZ.customer_address: fields of Hyp's invoicing service (Hyp Invoice,
@@ -152,6 +168,9 @@ export async function signPaymentPage({
     // Those two are NOT in Hyp's docs — check the emailed test invoice.
     SendHesh: 'True',
     heshDesc: 'מנוי חודשי לרובין',
+    // Hyp's payment-confirmation email to the customer — sent alongside
+    // SendHesh in the company's working Hyp setup (its integration guide).
+    sendemail: 'True',
     'EZ.customer_name':    billing.invoiceBusinessName || undefined,
     'EZ.customer_address': billing.address || undefined,
     'EZ.customer_crn':     billing.taxId || undefined,

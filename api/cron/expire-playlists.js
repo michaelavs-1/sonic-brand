@@ -35,6 +35,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { pgrSelect, pgrPatch } from '../v5/supabase-client.js';
 import { expirePlaylistNow } from '../v6/account/_expire-playlist.js';
 import { sendAlert } from '../_alert.js';
+import { markCronRunning } from '../_cron-running.js';
 
 // Prefer the stable prod alias over the deployment-specific VERCEL_URL. The
 // deployment URL is subject to Vercel Deployment Protection and would return
@@ -86,6 +87,10 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'unauthorized' });
   }
 
+  // "Running" flag for the whole tick — Ami's test playlists
+  // (api/v7/ami/test-playlist.js) wait until it's cleared.
+  const cronFlag = await markCronRunning('expire');
+
   const t0 = Date.now();
   const nowIso = new Date().toISOString();
 
@@ -114,6 +119,7 @@ export default async function handler(req, res) {
     );
   } catch (e) {
     console.error('[cron expire] fetch expired rows failed:', e.message);
+    await cronFlag.release();
     return res.status(500).json({ error: e.message });
   }
 
@@ -243,5 +249,6 @@ export default async function handler(req, res) {
   }
 
   console.log(`[cron expire] done in ${Date.now() - t0}ms: ${results.succeeded} ok / ${results.failed} failed`);
+  await cronFlag.release();
   return res.status(200).json({ ok: true, elapsed_ms: Date.now() - t0, ...results });
 }

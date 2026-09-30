@@ -1,4 +1,6 @@
-// One-off: fetch every track in a Spotify playlist and run each through
+// v4/precompute/playlist-scan.mjs
+//
+// Fetch every track in a Spotify playlist and run each through
 // RapidAPI's track-analysis endpoint. Writes results to JSON. Does NOT touch
 // Supabase — no reads from track_analyses, no writes anywhere.
 //
@@ -9,13 +11,15 @@
 //   1) vercel dev running on :3000 (needed for /api/v4/spotify to fetch the playlist)
 //   2) .env.local with TRACK_ANALYSIS_RAPIDAPI_KEY + INTERNAL_API_KEY
 //
-// Run:
-//   node tmp-playlist-scan.mjs
+// Edit PLAYLIST_IDS below, then run:
+//   node v4/precompute/playlist-scan.mjs
 //
-// Output: tmp-playlist-<playlistId>-analysis.json in the project root.
+// Output: v4/precompute/playlist-scans/<playlistId>.json (rewritten every 10
+// tracks, so a Ctrl-C keeps what's done).
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const PLAYLIST_IDS = [
   '29SaYsxL1o4Teehwm80M9J',
@@ -24,11 +28,14 @@ const PLAYLIST_IDS = [
 const CONCURRENCY = 3;
 const RAPIDAPI_HOST = 'track-analysis.p.rapidapi.com';
 const DEV_BASE = process.env.DEV_BASE || 'http://localhost:3000';
-const outPathFor = (playlistId) => path.join('d:/Projects/algorithm/sonic-brand', `tmp-playlist-${playlistId}-analysis.json`);
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(HERE, '../..');
+const OUT_DIR = path.join(HERE, 'playlist-scans');
+const outPathFor = (playlistId) => path.join(OUT_DIR, `${playlistId}.json`);
 
 // --- Load .env.local ---
 (function loadDotEnv() {
-  const p = 'd:/Projects/algorithm/sonic-brand/.env.local';
+  const p = path.join(ROOT, '.env.local');
   if (!fs.existsSync(p)) return;
   for (const line of fs.readFileSync(p, 'utf-8').split(/\r?\n/)) {
     const m = line.match(/^([A-Z_][A-Z0-9_]*)\s*=\s*(.+)$/);
@@ -175,6 +182,7 @@ async function callTrackAnalysis(spotifyId) {
 // --- Scan one playlist ---
 async function scanPlaylist(playlistId) {
   const OUT_PATH = outPathFor(playlistId);
+  fs.mkdirSync(OUT_DIR, { recursive: true });
   console.log(`\n=== Playlist ${playlistId} ===`);
   console.log(`Fetching tracks…`);
   const tracks = await fetchPlaylistTrackIds(playlistId);

@@ -17,6 +17,12 @@
 //
 // Defaults (when no `prechecked` supplied): everyone 10:00-22:00, Friday
 // broken off to 10:00-14:00, Saturday closed.
+//
+// Invalid hours (closing before opening unless it's after midnight and by
+// 06:00, or a day over 20h — rules in shared/opening-hours.js) are shown under
+// the days, and getProblem() reports them so the caller blocks continue/save.
+
+import { dayHoursProblem, hoursProblem, hoursProblems } from '/shared/opening-hours.js?v=29092026a';
 
 const DAYS = [
   { idx: 0, long: 'ראשון' },
@@ -166,8 +172,9 @@ export function mountHoursEditor(container, { prechecked = null, onChange = null
   const state = prechecked ? fromPersisted(prechecked) : defaultState();
 
   const dayList = el('div', { class: 'day-list' });
+  const problemsEl = el('div', { class: 'closed-summary warn', style: 'margin-bottom:6px' });
   const closedSummary = el('div', { class: 'closed-summary' });
-  container.replaceChildren(dayList, closedSummary);
+  container.replaceChildren(dayList, problemsEl, closedSummary);
 
   function propagateMasterEdit(field, value) {
     state.master[field] = value;
@@ -216,6 +223,9 @@ export function mountHoursEditor(container, { prechecked = null, onChange = null
         if (d.override) d.close = v; else propagateMasterEdit('close', v);
         render();
       });
+      if (!d.closed && dayHoursProblem(d.open, d.close)) {
+        for (const b of [openBlock, closeBlock]) b.style.borderColor = '#ff9b8a';
+      }
       const timesCell = el('div', { class: 'times-cell' },
         openBlock,
         el('span', { class: 'times-arrow' }, '→'),
@@ -228,7 +238,14 @@ export function mountHoursEditor(container, { prechecked = null, onChange = null
     });
 
     renderClosedSummary();
-    if (onChange) onChange({ allClosed: state.days.every((d) => d.closed) });
+    const problems = hoursProblems(collectHours(state).hours);
+    problemsEl.hidden = problems.length === 0;
+    problemsEl.replaceChildren(...problems.map((p) => el('div', {}, p.text)));
+    if (onChange) onChange({ allClosed: state.days.every((d) => d.closed), problem: getProblem() });
+  }
+
+  function getProblem() {
+    return hoursProblem(collectHours(state).hours);
   }
 
   function renderClosedSummary() {
@@ -251,6 +268,7 @@ export function mountHoursEditor(container, { prechecked = null, onChange = null
   return {
     getPayload: () => collectHours(state),
     isAllClosed: () => state.days.every((d) => d.closed),
+    getProblem,
   };
 }
 
@@ -270,12 +288,12 @@ export async function runHoursSelection({ prechecked = null } = {}) {
 
   const editor = mountHoursEditor(editorHost, {
     prechecked,
-    onChange: ({ allClosed }) => { submitBtn.disabled = allClosed; },
+    onChange: ({ allClosed, problem }) => { submitBtn.disabled = allClosed || !!problem; },
   });
 
   return new Promise((resolve) => {
     submitBtn.addEventListener('click', () => {
-      if (editor.isAllClosed()) return;
+      if (editor.isAllClosed() || editor.getProblem()) return;
       submitBtn.disabled = true;
       submitBtn.replaceChildren(
         el('span', { class: 'sb-spinner', 'aria-label': 'טוען' }),

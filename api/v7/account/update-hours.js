@@ -13,6 +13,9 @@
    or has none yet but is on Option 2 (→ defaults). An hours change never
    asks "replace today's playlists?" — it applies from the next build.
 
+   Hours must pass shared/opening-hours.js (closing after opening, or after
+   midnight by 06:00; ≤ 20h a day) — else 400 with the Hebrew problem text.
+
    Request:  { businessId, hours, longestMinutes? }
    Response: { ok: true, timeline } | { error }   (timeline null if none applies)
 */
@@ -23,6 +26,7 @@ import { setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
 import { reconcileTimeline, timelinesEqual } from '../../../v7/generation/energy-timeline.js';
 import { verifyUser, readSettings, auditSetting } from './_settings-helpers.js';
+import { hoursProblem } from '../../../shared/opening-hours.js';
 
 export default async function handler(req, res) {
   setCors(req, res);
@@ -40,6 +44,8 @@ export default async function handler(req, res) {
     if (!businessId || !hours || typeof hours !== 'object') {
       return res.status(400).json({ error: 'businessId and hours required' });
     }
+    const problem = hoursProblem(hours);
+    if (problem) return res.status(400).json({ error: problem, code: 'bad_hours' });
     try { await requireBusinessOwner(businessId, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
 

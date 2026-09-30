@@ -42,6 +42,10 @@
 // result and status, so Ami can switch back and forth (and one option can
 // keep generating while he looks at the other). Production's FIXED section,
 // user message and normalizer — see playlist-directions.js.
+//
+// Energy test playlists (added 2026-09-30) — under an Option 1 result, each
+// direction gets a "50 random tracks" button and an energy-range modal that
+// build real test playlists on Rubin's Spotify account — see test-playlists.js.
 
 import {
   EDITABLE_PROMPT_SECTION,
@@ -55,6 +59,7 @@ import {
 } from '/v7/generation/taste-profile.js?v=28092026a';
 import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=20092026a';
 import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=28092026c';
+import { renderTestPlaylists } from './test-playlists.js?v=30092026b';
 
 // Match v6 production. Gemini 3.6-flash's hard output-token cap is 65536;
 // values above that are silently clamped by Google. Under thinkingLevel
@@ -131,6 +136,7 @@ const els = {
   playlistUsageLine:     $('playlistUsageLine'),
   playlistOutputText:    $('playlistOutputText'),
   copyPlaylistResultBtn: $('copyPlaylistResultBtn'),
+  testPlaylistsHost:     $('testPlaylistsHost'),
 };
 
 // Last successful step-1 run: the directions (ranks renumbered 1..n, as
@@ -146,8 +152,9 @@ const superLiked = new Map();
 // inputs it came from. Step 4 builds directions from this.
 let tasteRun = null;
 // Step 4: the selected daily playlist type, and per option its last result
-// ({ text, usage, elapsed } or null), status line [text, kind] and
-// in-flight flag.
+// ({ text, usage, elapsed, testsEl? } or null — testsEl = Option 1's test-
+// playlist section, kept so builds in flight survive repaints), status line
+// [text, kind] and in-flight flag.
 let playlistOption = 'option1';
 const playlistState = {
   option1: { result: null, status: ['', ''], busy: false },
@@ -695,6 +702,7 @@ function paintPlaylistStep() {
   }));
   els.playlistOutputText.textContent = st.result.text;
   els.playlistUsageLine.textContent = formatUsage(st.result.usage, st.result.elapsed);
+  els.testPlaylistsHost.replaceChildren(...(st.result.testsEl ? [st.result.testsEl] : []));
   els.playlistResultsCard.style.display = '';
 }
 
@@ -730,6 +738,7 @@ async function onGeneratePlaylistDirections() {
     }
     const text = option === 'option1' ? formatOption1(run.profile, r) : formatOption2(run.profile, r);
     st.result = { text, usage: r.usage, elapsed: r.elapsed };
+    if (option === 'option1') st.result.testsEl = renderTestPlaylists({ directions: r.directions, profile: run.profile });
     setPlaylistStatus(option, `הוחזרו ${r.directions.length} כיוונים בזמן ${(r.elapsed / 1000).toFixed(1)} שניות`, 'ok');
   } catch (err) {
     if (run === tasteRun) setPlaylistStatus(option, `שגיאה: ${err.message || 'לא ידוע'}`, 'err');

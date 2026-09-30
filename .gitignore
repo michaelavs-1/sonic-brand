@@ -31,3 +31,6 @@ api/spotify.js
 api/databox.js
 api/new/openai.js
 api/new/databox.js
+
+# Hyp support material (request/response logs — contain emails + terminal numbers)
+hyp-support/

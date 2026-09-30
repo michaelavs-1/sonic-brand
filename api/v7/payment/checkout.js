@@ -6,12 +6,16 @@
      GET  → { paymentsEnabled: true, amountMonthly, couponsEnabled, env }
           | { paymentsEnabled: false }   (PAYMENTS_ENABLED in _hyp.js is off —
                                           the screen shows the placeholder; POST → 503)
+     GET ?coupon=CODE → { couponValid, code?, percentOff?, amountFirst?, amountMonthly? }
+                        (the payment screen's inline coupon check)
 
      POST { email, businessName?, coupon?, onboardingSessionId?, checkoutId?,
             billing: { name, address?, invoiceBusinessName?, taxId? } }
      →    { checkoutId, paymentUrl, amountFirst, amountMonthly,
-            coupon: { code, percentOff } | null, env: 'test' | 'production' }
-     | 400 { error: 'invalid_coupon' | <Hebrew billing message> | 'valid email required' }
+            coupon: { code, percentOff } | null,
+            couponRejected,   // a code was sent but isn't a valid coupon → full price
+            env: 'test' | 'production' }
+     | 400 { error: <Hebrew billing message> | 'valid email required' }
 
    businessName is the onboarding name (Hyp reports only). billing is the
    payment screen's form: name = the cardholder (required); the invoice is
@@ -32,12 +36,15 @@ import { pgrSelect, pgrInsert, pgrPatch } from '../../v5/supabase-client.js';
 import { requireSite, setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
 import { PAYMENTS_ENABLED, monthlyPriceIls, hypConfig, hypEnv, signPaymentPage } from './_hyp.js';
+import { invoiceEmailFor } from '../../../shared/invoice-email.js';
 
-// First-month coupons are OFF: Hyp's server returns a 500 after charging the
-// card whenever a recurring payment page carries TashFirstPayment (every
-// number format — reported to Hyp 2026-09-28). While off, the coupon field is
-// hidden and any coupon sent is ignored. Turn back on once Hyp fixes it.
-const COUPONS_ENABLED = false;
+// First-month coupons, per environment: V7_COUPONS_ENABLED=true turns them on.
+// Off by default: on the TEST terminal Hyp's server returned a 500 after
+// charging the card whenever a recurring page carried TashFirstPayment (every
+// number format — reported to Hyp 2026-09-28); being re-tested on the
+// production terminal in dev. While off, the coupon field is hidden and any
+// coupon sent is ignored.
+const COUPONS_ENABLED = String(process.env.V7_COUPONS_ENABLED || '').trim().toLowerCase() === 'true';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -55,6 +62,8 @@ function cleanBilling(raw) {
   if (billing.taxId && !/^\d{5,12}$/.test(billing.taxId)) return { error: 'מספר ח.פ / ע.מ לא תקין' };
   return { billing };
 }
+
+const firstMonthAmount = (monthly, percentOff) => Math.round(monthly * (100 - percentOff)) / 100;
 
 async function findCoupon(code) {
   const rows = await pgrSelect('payment_coupons',
@@ -79,6 +88,24 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method === 'GET') {
     if (!PAYMENTS_ENABLED) return res.status(200).json({ paymentsEnabled: false });
+    // Coupon check for the payment screen's inline ✓/✗ (rate-limited against guessing).
+    const couponCode = String(req.query?.coupon || '').trim().toUpperCase();
+    if (couponCode) {
+      if (!COUPONS_ENABLED) return res.status(200).json({ couponValid: false });
+      if (!await guard(req, res, 'v7-coupon-check', 30, 60)) return;
+      try {
+        const row = await findCoupon(couponCode);
+        if (!row) return res.status(200).json({ couponValid: false });
+        const amountMonthly = monthlyPriceIls();
+        return res.status(200).json({
+          couponValid: true, code: row.code, percentOff: row.percent_off,
+          amountMonthly, amountFirst: firstMonthAmount(amountMonthly, row.percent_off),
+        });
+      } catch (e) {
+        console.error('[v7 checkout] coupon check failed:', e.message);
+        return res.status(500).json({ error: 'Server error' });
+      }
+    }
     try {
       return res.status(200).json({
         paymentsEnabled: true, amountMonthly: monthlyPriceIls(), couponsEnabled: COUPONS_ENABLED, env: hypEnv(),
@@ -100,12 +127,12 @@ export default async function handler(req, res) {
     const { billing, error: billingError } = cleanBilling(req.body?.billing);
     if (billingError) return res.status(400).json({ error: billingError });
 
+    // An unknown coupon never blocks the payment: the page is signed at full
+    // price and the response says so (the screen shows ✗ next to the code).
     let couponRow = null;
     const code = COUPONS_ENABLED ? String(coupon || '').trim().toUpperCase() : '';
-    if (code) {
-      couponRow = await findCoupon(code);
-      if (!couponRow) return res.status(400).json({ error: 'invalid_coupon' });
-    }
+    if (code) couponRow = await findCoupon(code);
+    const couponRejected = !!code && !couponRow;
 
     let cfg;
     try { cfg = hypConfig(); }
@@ -115,16 +142,16 @@ export default async function handler(req, res) {
     }
 
     const amountMonthly = monthlyPriceIls(cfg.env);
-    const amountFirst = couponRow
-      ? Math.round(amountMonthly * (100 - couponRow.percent_off)) / 100
-      : amountMonthly;
+    const amountFirst = couponRow ? firstMonthAmount(amountMonthly, couponRow.percent_off) : amountMonthly;
     const details = {
       business_name:  bizName || null,
       coupon_code:    couponRow?.code || null,
       percent_off:    couponRow?.percent_off ?? null,
       amount_first:   amountFirst,
       amount_monthly: amountMonthly,
-      billing,
+      // invoiceEmail = the address Hyp actually gets (the "+tag" dropped — see
+      // shared/invoice-email.js); the row's `email` stays the account address.
+      billing:        { ...billing, invoiceEmail: invoiceEmailFor(cleanEmail) },
     };
 
     let checkout = await findPendingCheckout(checkoutId, cleanEmail, cfg.env);
@@ -169,6 +196,7 @@ export default async function handler(req, res) {
       amountFirst,
       amountMonthly,
       coupon:        couponRow ? { code: couponRow.code, percentOff: couponRow.percent_off } : null,
+      couponRejected,
       env:           cfg.env,
     });
   } catch (err) {

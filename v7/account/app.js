@@ -56,7 +56,7 @@ import {
   reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf, levelOf, fmtHM,
 } from '../generation/energy-timeline.js?v=24092026a';
 import { TimelineEditor, energyColor } from './energy-timeline-editor.js?v=24092026a';
-import { mountHoursEditor } from '../hours-selector.js?v=23092026a';
+import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
 import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=23092026a';
 import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=28092026a';
 import { generateEnergyDirections } from '../generation/energy-directions.js?v=28092026b';
@@ -1613,7 +1613,7 @@ function isHoursDirty() {
 function updateSaveHoursButton() {
   const btn = $('saveHours');
   if (!btn || !hoursEditor) return;
-  const valid = !hoursEditor.isAllClosed();
+  const valid = !hoursEditor.isAllClosed() && !hoursEditor.getProblem();
   btn.disabled = !(isHoursDirty() && valid);
 }
 
@@ -1640,6 +1640,8 @@ async function saveHours() {
     msg.textContent = 'סמנו לפחות יום פתוח אחד';
     return;
   }
+  // Invalid hours are shown inside the editor (shared/opening-hours.js).
+  if (hoursEditor.getProblem()) return;
   const { hours, longestMinutes } = hoursEditor.getPayload();
 
   btn.disabled = true;
@@ -1673,7 +1675,8 @@ async function saveHours() {
   } catch (e) {
     console.error('saveHours:', e);
     msg.style.color = '#ff9b8a';
-    msg.textContent = 'שגיאה בשמירה — נסו שוב';
+    // The server's hours check answers in Hebrew — show it as is.
+    msg.textContent = /[\u0590-\u05FF]/.test(e?.message || '') ? e.message : 'שגיאה בשמירה — נסו שוב';
   } finally {
     btn.textContent = origLabel;
     updateSaveHoursButton();

@@ -1,9 +1,19 @@
-// Genre status with ORDERED pagination + self-verification.
-// Fixes the drift the unordered dry-run-orphans has been showing.
+// v4/precompute/genre-status.mjs
+//
+// Per-genre digest report: for every genre in playlist_genres, how many of its
+// tracks are analysed OK, how many are orphans (not in track_analyses yet),
+// and whether the genre is in shared/genre-universe.js. Also lists genre-list
+// entries with no playlists in the DB. Use it after digesting new genres to
+// decide which ones go into the genre list. Read-only.
+//
+// Ordered pagination + self-verification (unordered pagination drifted in
+// dry-run-orphans).
+//
+// Run: node v4/precompute/genre-status.mjs
 
 import fs from 'node:fs';
 
-const envText = fs.readFileSync('d:/Projects/algorithm/sonic-brand/.env.local', 'utf8');
+const envText = fs.readFileSync(new URL('../../.env.local', import.meta.url), 'utf8');
 for (const line of envText.split(/\r?\n/)) {
   const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
   if (m) process.env[m[1]] = m[2].trim();
@@ -68,7 +78,7 @@ const [pgRows, ptRows, taRows, promptGenres, pgCount, ptCount, taCount] = await 
   pagedOrdered('playlist_genres?select=playlist_id,genre', 'playlist_id'),
   pagedOrdered('playlist_tracks?select=playlist_id,spotify_id', 'spotify_id'),
   pagedOrdered('track_analyses?select=spotify_id,status', 'spotify_id'),
-  import('./v6/generation/genre-list.js').then(m => new Set(m.GENRES.map(g => g.toLowerCase()))),
+  import('../../shared/genre-universe.js').then(m => new Set(m.GENRES.map(g => g.toLowerCase()))),
   exactCount('playlist_genres'),
   exactCount('playlist_tracks'),
   exactCount('track_analyses'),

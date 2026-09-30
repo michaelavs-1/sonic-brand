@@ -470,6 +470,239 @@
       padding: 6px 10px;
     }
 
+    .status-line.warn {
+      color: var(--warn-text);
+    }
+
+    /* Step 4, Option 1 — test playlists per direction (test-playlists.js) */
+    .tp-box {
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+    }
+
+    button.btn-sm,
+    a.btn-sm {
+      padding: 8px 14px;
+      font-size: 12.5px;
+      border-radius: 10px;
+    }
+
+    a.btn {
+      display: inline-block;
+      font-family: inherit;
+      font-weight: 700;
+      text-decoration: none;
+      background: var(--bg-2);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+    }
+
+    a.btn:hover {
+      background: var(--card);
+    }
+
+    .tp-row {
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+
+    .tp-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .tp-actions {
+      margin-top: 0;
+    }
+
+    .tp-title {
+      font-weight: 700;
+      font-size: 14px;
+    }
+
+    .tp-tier {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 999px;
+      padding: 2px 8px;
+    }
+
+    .tp-tier.high {
+      background: rgba(245, 197, 24, .15);
+      color: var(--warn-text);
+    }
+
+    .tp-tier.low {
+      background: rgba(34, 211, 238, .12);
+      color: #67e8f9;
+    }
+
+    .tp-genres {
+      color: var(--muted);
+      font-size: 12.5px;
+      margin-top: 4px;
+      direction: ltr;
+      text-align: right;
+    }
+
+    .tp-created {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .tp-created-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    .tp-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 50;
+    }
+
+    .tp-backdrop[hidden] {
+      display: none;
+    }
+
+    .tp-modal {
+      position: relative;
+      width: 100%;
+      max-width: 520px;
+      max-height: calc(100vh - 32px);
+      overflow-y: auto;
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border-2);
+      border-radius: var(--r-lg);
+      padding: 20px 22px;
+    }
+
+    .tp-close {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .tp-modal .card-title {
+      padding-left: 28px;
+    }
+
+    .tp-range-label {
+      margin: 16px 0 8px;
+      font-size: 13.5px;
+    }
+
+    /* Two range inputs on one track: only their thumbs take the pointer. */
+    .erange {
+      position: relative;
+      height: 28px;
+    }
+
+    .erange-track,
+    .erange-fill {
+      position: absolute;
+      top: 50%;
+      height: 6px;
+      transform: translateY(-50%);
+      border-radius: 3px;
+    }
+
+    .erange-track {
+      left: 0;
+      right: 0;
+      background: var(--border-2);
+    }
+
+    .erange-fill {
+      background: var(--accent);
+    }
+
+    .erange input[type=range] {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 28px;
+      margin: 0;
+      background: none;
+      pointer-events: none;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    .erange input[type=range]::-webkit-slider-runnable-track {
+      background: none;
+      height: 28px;
+    }
+
+    .erange input[type=range]::-moz-range-track {
+      background: none;
+    }
+
+    .erange input[type=range]::-webkit-slider-thumb {
+      pointer-events: auto;
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      margin-top: 4px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid var(--accent);
+      cursor: pointer;
+    }
+
+    .erange input[type=range]::-moz-range-thumb {
+      pointer-events: auto;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid var(--accent);
+      cursor: pointer;
+    }
+
+    .erange input[type=range]:disabled::-webkit-slider-thumb {
+      cursor: not-allowed;
+      border-color: var(--muted);
+    }
+
+    .erange input[type=range]:disabled::-moz-range-thumb {
+      cursor: not-allowed;
+      border-color: var(--muted);
+    }
+
+    .erange-scale {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 11.5px;
+      margin: 4px 0 8px;
+    }
+
+
     @media (max-width: 600px) {
       body {
         padding: 16px 12px 64px;
@@ -630,10 +863,12 @@
       <div class="btn-row">
         <button class="btn btn-yellow" id="copyPlaylistResultBtn" type="button">📋 העתק את התוצאה</button>
       </div>
+      <!-- Option 1 only: test playlists per direction (test-playlists.js) -->
+      <div id="testPlaylistsHost"></div>
     </div>
   </div>
 
-  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=28092026f"></script>
+  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=30092026b"></script>
 </body>
 
 </html>

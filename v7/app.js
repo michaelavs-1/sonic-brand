@@ -21,7 +21,7 @@
 // re-entered.
 
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=23092026a';
-import { runEmphasesStep } from '/v7/emphases.js?v=23092026a';
+import { runEmphasesStep } from '/v7/emphases.js?v=03102026a';
 import { runHoursSelection } from '/v7/hours-selector.js?v=29092026a';
 import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=30092026a';
 import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=30092026a';
@@ -309,7 +309,7 @@ function abortable(promise, signal) {
 // Errors surface in the small #dictMsg line below the textarea. Successful
 // transcription appends to the textarea and clears #dictMsg — the appearing
 // text is confirmation enough.
-const MIC_ICON  = '<svg id="dictIco" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
+const MIC_ICON = '<svg id="dictIco" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>';
 const STOP_ICON = '<svg id="dictIco" viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
 const DOTS_ICON = '<span class="mic-dots" aria-hidden="true"><span></span><span></span><span></span></span>';
 
@@ -674,7 +674,7 @@ function showDirectionsLoading() {
   h.textContent = 'רובין מתאים לכם מוזיקה';
   const sub = document.createElement('p');
   sub.className = 'subtitle';
-  sub.textContent = 'רובין יציג לכם אפשרויות לכיוונים מוזיקליים לעסק באמצעות שירים. כל כיוון שתאהבו יהיה בסיס לפלייליסט יומי';
+  sub.textContent = 'רובין יבדוק איתכם כמה סגנונות כדי לבנות את פרופיל הסאונד שלכם - לפיו תקבלו פלייליסטים יומיים ייחודיים';
   const wrap = document.createElement('div');
   wrap.className = 'preview-load-column';
   wrap.innerHTML =
@@ -1102,10 +1102,10 @@ async function goToStep(start) {
         // paid checkout id. No account is created until the taste profile is
         // ready (A7).
         state.paidCheckoutId = await abortable(runPaymentStep({
-          email:               state.email,
-          businessName:        state.bizName,
+          email: state.email,
+          businessName: state.bizName,
           onboardingSessionId: state.onboardingSessionId,
-          paidCheckoutId:      state.paidCheckoutId,
+          paidCheckoutId: state.paidCheckoutId,
         }), signal);
 
         // A7 — progress bar → signup → "check your email". Behind the bar,

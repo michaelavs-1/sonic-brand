@@ -105,6 +105,18 @@
     "api/v7/account/generate-daily.js": {
       "maxDuration": 300
     },
+    "api/v7/account/event-chat.js": {
+      "maxDuration": 60
+    },
+    "api/v7/account/event-playlist.js": {
+      "maxDuration": 120
+    },
+    "api/v7/account/save-event.js": {
+      "maxDuration": 15
+    },
+    "api/v7/account/delete-event.js": {
+      "maxDuration": 15
+    },
     "api/v7/ami/test-playlist.js": {
       "maxDuration": 60
     },

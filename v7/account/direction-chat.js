@@ -1,4 +1,7 @@
-// v6/account/direction-chat.js — direction-edit chat on the profile tab.
+// v6/account/direction-chat.js — direction-edit chat. In v7 it sits in the
+// Home tab's "חידודים מוזיקליים" card (moved from the Profile tab on
+// 2026-10-03) and is still dormant: it reads v6's business_directions, which
+// v7 businesses don't have.
 //
 // Owns:
 //   - The row of clickable direction cards above the chat (renderDirectionCards).
@@ -10,8 +13,8 @@
 //
 // Exposes `mountDirectionChat({ supabase, getBusiness })` which the account
 // app.js calls once the dashboard has loaded. The chat lazy-loads its
-// transcript + directions the first time the profile tab is opened, so
-// nothing hits the network until the user switches to the Profile tab.
+// transcript + directions the first time its card is opened, so nothing
+// hits the network before that.
 
 import { WAIT_DOTS_HTML, waitNodes } from '../wait-dots.js?v=28092026a';
 
@@ -107,7 +110,7 @@ export function mountDirectionChat(opts) {
   });
 }
 
-// Called by the account app when the user switches to the Profile tab.
+// Called by the account app when the owner opens the chat's card.
 // Idempotent — the first call kicks off the boot promise; subsequent
 // calls piggyback on the same promise.
 export function openDirectionChat() {

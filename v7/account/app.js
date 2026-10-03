@@ -51,14 +51,13 @@ function clearNeedsNewPassword() {
 }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeTargetForToday, ilPartsFromDate, datedLabel } from '../generation/playlist-length.js?v=28092026a';
+import { computeTargetForToday, ilPartsFromDate, datedLabel, prevIl4amIso, nextIl4amIso } from '../generation/playlist-length.js?v=03102026a';
 import {
   reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf, levelOf, fmtHM,
 } from '../generation/energy-timeline.js?v=24092026a';
 import { TimelineEditor, energyColor } from './energy-timeline-editor.js?v=24092026a';
 import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
-import { EVENT_CHAT_SYSTEM_PROMPT } from '../generation/event-chat-prompt.js?v=23092026a';
-import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=28092026a';
+import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=03102026a';
 import { generateEnergyDirections } from '../generation/energy-directions.js?v=28092026b';
 import { generateLevelDirections } from '../generation/level-directions.js?v=28092026a';
 import { pickLevelDirections, levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
@@ -98,12 +97,12 @@ let meta = {};
 // where the data comes from.
 const state = { dashboard: null };
 
-// Chat state for the special-events panel. `messages` is the visible
+// Chat state for the special-playlists panel. `messages` is the visible
 // transcript; `proposed` is the last confirming-state summary Gemini
 // offered.
 //
-// As of 2026-08-30 every message is also persisted server-side via
-// /api/v6/account/event-chat (see business_event_chats table). The
+// Every message is also persisted server-side via /api/v7/account/event-chat
+// (business_event_chats table; the prompt lives on the server). The
 // client's visible transcript is still cleared on hard refresh and on
 // a successful finalize — SESSION_START_AT_ISO gates BOTH what the
 // client shows AND what the server includes in Gemini's context, so
@@ -116,7 +115,7 @@ const state = { dashboard: null };
 let SESSION_START_AT_ISO = new Date().toISOString();
 const chatState = {
   messages: [],        // [{ role: 'user' | 'assistant', text: string }]
-  proposed: null,      // { name_he, description_he } | null
+  proposed: null,      // { name_he, description_he, genre_source } | null
   busy: false,     // true while a Gemini round trip is in flight
 };
 
@@ -527,9 +526,9 @@ async function enterDashboardInner() {
   // for 15 min after a mode change so it can't race this build.
   if (pickedModeNow && !hasPlaylistsForToday()) runGenerateDaily();
 
-  // Mount the direction-edit chat module (idempotent). It doesn't hit
-  // the network until the user opens the Profile tab — see openDirectionChat
-  // in switchTab below.
+  // Mount the direction-edit chat module (idempotent). It doesn't hit the
+  // network until the owner opens the Home tab's "חידודים מוזיקליים" card —
+  // see the directionsToggle listener below.
   mountDirectionChat({ supabase: sb, getBusiness: () => business });
 
   // Background expansion of any onboarding playlists that are still at
@@ -1249,12 +1248,23 @@ function switchTab(tab) {
   document.querySelectorAll('.nav button[data-tab]').forEach((b) => {
     b.classList.toggle('active', b.dataset.tab === tab);
   });
-  if (tab === 'Profile') {
-    renderProfileTab();
-    // Kick off the direction-edit chat's boot (transcript + directions
-    // load). Idempotent — first call fetches, later calls are no-ops.
-    openDirectionChat();
-  }
+  if (tab === 'Profile') renderProfileTab();
+}
+
+// The "חידודים מוזיקליים" chat lives on the Home tab (moved from Profile,
+// 2026-10-03). Its transcript + directions load the first time the card is
+// opened — openDirectionChat is idempotent.
+$('directionsToggle')?.addEventListener('click', () => { openDirectionChat(); });
+
+// Open the "חידודים מוזיקליים" card on the Home tab (used by the per-playlist
+// edit icon — which v7 rows never show, since they carry no direction_id).
+function openDirectionsSection() {
+  switchTab('Home');
+  const toggle = $('directionsToggle');
+  toggle?.setAttribute('aria-expanded', 'true');
+  $('directionsBody')?.classList.remove('hide');
+  toggle?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  openDirectionChat();
 }
 
 function renderProfileTab() {
@@ -1288,10 +1298,9 @@ function renderProfileTab() {
   $('nextPassword').value = '';
   $('passwordMsg').textContent = '';
 
-  // Reset every collapsible section (hours + directions) to closed on
-  // each tab open. The hours editor above stays mounted so its dirty-
-  // tracking + save-state are ready the moment the owner expands. The
-  // directions chat is populated lazily by openDirectionChat() elsewhere.
+  // Reset every collapsible Profile section to closed on each tab open.
+  // The hours editor above stays mounted so its dirty-tracking + save-state
+  // are ready the moment the owner expands.
   document.querySelectorAll('#tabProfile .hours-toggle').forEach((toggle) => {
     const body = document.getElementById(toggle.getAttribute('aria-controls'));
     toggle.setAttribute('aria-expanded', 'false');
@@ -2028,10 +2037,10 @@ function enterRenameMode(labelEl, playlist) {
     //    entry in state.dashboard.playlists (same object reference), so
     //    a spurious re-render from anywhere else keeps the new label.
     playlist.label = newName;
-    // 3) Profile-tab direction cards: patch in place so if the owner
-    //    switches tabs during the ~200ms save it already reflects the
-    //    change. No-op when direction-chat's state.directions is empty
-    //    (tab never opened) — a first-open reload will pick it up.
+    // 3) "חידודים מוזיקליים" direction cards: patch in place so they
+    //    already reflect the change. No-op when direction-chat's
+    //    state.directions is empty (card never opened) — a first-open
+    //    reload will pick it up.
     patchDirectionOptimistic(playlist.directionId, { title_en: newName });
 
     // ---- background persist ----
@@ -2083,12 +2092,12 @@ function enterRenameMode(labelEl, playlist) {
   });
 }
 
-// Edit icon on a playlist row → jump to the Profile tab and prime the
-// direction-edit chat with the corresponding direction selected. The
+// Edit icon on a playlist row → open the "חידודים מוזיקליים" card and prime
+// the direction-edit chat with the corresponding direction selected. The
 // chat itself fires the "מה תרצו לשנות בכיוון X?" synthetic prompt.
 async function editDirectionFromCard(directionId) {
   if (!directionId) return;
-  switchTab('Profile');
+  openDirectionsSection();
   try { await selectDirectionInChat(directionId); }
   catch (e) { console.warn('editDirectionFromCard failed:', e); }
 }
@@ -2507,7 +2516,25 @@ function cssEscape(s) {
   return (window.CSS && CSS.escape) ? CSS.escape(String(s)) : String(s).replace(/[^\w-]/g, '\\$&');
 }
 
-// ---------- special events ----------
+// ---------- special playlists (v7, 2026-10-03) ----------
+// "Tell us which special playlist you need right now": the chat's
+// "הכן פלייליסט" saves a card (business_events) and its playlist is built at
+// once — the card's button shows a spinner, then "▶ פתח". A card lives only
+// for its day (04:00 → 04:00 IL): the playlist expires at the next 04:00
+// (ledger + expire cron) and the card is hidden from then on (the row stays
+// as history). At most 2 per day — api/v7/account/save-event.js enforces it
+// and the chat is told the count.
+//
+// Build state per card, kept outside the DOM so a re-render (another card
+// saved or deleted, the 04:00 refresh) never drops a spinner:
+//   'building' → disabled button with a spinner (trash disabled too)
+//   'failed'   → "נסו שוב"
+// A card whose playlist is live shows "▶ פתח" whatever its state.
+const eventBuilds = new Map();      // eventId → 'building' | 'failed'
+const RESUME_BUILD_WINDOW_MS = 3 * 60 * 1000;   // a playlist-less card this young is probably still building
+const EVENT_BUILD_LOCK_MS    = 190 * 1000;      // a little past event-playlist.js's build lock
+let eventsDayTimer = null;
+
 // Look up an event's live (unexpired) playlist by cross-referencing the
 // event's id against bmeta().playlists[i].eventId. Shares the expiry gate
 // with daily playlists via playlistIsLive.
@@ -2515,16 +2542,34 @@ function activePlaylistForEvent(eventId) {
   return (bmeta().playlists || []).find((p) => p && p.eventId === eventId && playlistIsLive(p)) || null;
 }
 
+// Cards of the current special-playlists day (created since the last 04:00 IL).
+function todaysEvents() {
+  const dayStart = Date.parse(prevIl4amIso());
+  return (bmeta().events || []).filter((ev) => Date.parse(ev.created_at) >= dayStart);
+}
+
 function renderEvents() {
   const wrap = $('eventsWrap');
   wrap.innerHTML = '';
-  const events = bmeta().events || [];
-  // Hide the whole "פלייליסטים אחרים" section when there are no events —
+  const events = todaysEvents();
+  // Hide the whole "פלייליסטים אחרים" section when there are no cards —
   // otherwise the user sees a titled but empty box between the daily
   // playlists section and the chat section.
   const box = $('specialBox');
   if (box) box.classList.toggle('hide', events.length === 0);
+  // At 04:00 today's cards go; an open page re-renders itself then.
+  clearTimeout(eventsDayTimer);
+  eventsDayTimer = setTimeout(renderEvents, Math.max(1000, Date.parse(nextIl4amIso()) - Date.now() + 1000));
   for (const ev of events) {
+    const live = activePlaylistForEvent(ev.id);
+    // After a refresh mid-build the in-memory state is gone: a very young
+    // card without a playlist is treated as still building.
+    if (!live && !eventBuilds.has(ev.id) && Date.now() - Date.parse(ev.created_at) < RESUME_BUILD_WINDOW_MS) {
+      eventBuilds.set(ev.id, 'building');
+      waitForEventPlaylist(ev, Date.parse(ev.created_at));
+    }
+    const building = !live && eventBuilds.get(ev.id) === 'building';
+
     const row = document.createElement('div');
     row.className = 'slot';
 
@@ -2572,13 +2617,11 @@ function renderEvents() {
       '<path d="M10 11v6"/>' +
       '<path d="M14 11v6"/>' +
       '</svg>';
-    delBtn.addEventListener('click', () => openTrashEventModal(ev.id, delBtn));
+    delBtn.disabled = building;
+    delBtn.addEventListener('click', () => openTrashEventModal(ev.id));
     row.append(delBtn);
 
-    const live = activePlaylistForEvent(ev.id);
     if (live) {
-      // Playlist is still within its 24h window — offer to open it, no
-      // create button. The button reappears once the playlist expires.
       const openA = document.createElement('a');
       openA.className = 'btn';
       openA.style.textDecoration = 'none';
@@ -2588,99 +2631,117 @@ function renderEvents() {
       openA.textContent = '▶ פתח';
       openA.addEventListener('click', () => logPlaylistOpen(live.id, 'home-event'));
       row.append(openA);
+    } else if (building) {
+      const busyBtn = document.createElement('button');
+      busyBtn.className = 'btn';
+      busyBtn.disabled = true;
+      busyBtn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>בונים' + WAIT_DOTS_HTML;
+      row.append(busyBtn);
     } else {
-      const makeBtn = document.createElement('button');
-      makeBtn.className = 'btn';
-      makeBtn.textContent = 'צרו פלייליסט';
-      makeBtn.addEventListener('click', () => createEventPlaylist(ev, makeBtn));
-      row.append(makeBtn);
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'btn';
+      retryBtn.textContent = 'נסו שוב';
+      retryBtn.addEventListener('click', () => buildEventPlaylist(ev));
+      row.append(retryBtn);
     }
 
     wrap.append(row);
   }
 }
 
-async function createEventPlaylist(ev, btn) {
-  const orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>בונים' + WAIT_DOTS_HTML;
+// Builds the card's playlist (api/v7/account/event-playlist.js). Called right
+// after the chat saves the card, and by "נסו שוב". No auto-open — the button
+// turns into "▶ פתח".
+async function buildEventPlaylist(ev) {
+  if (eventBuilds.get(ev.id) === 'building') return;
+  eventBuilds.set(ev.id, 'building');
+  renderEvents();
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
-    const r = await fetch('/api/v6/account/event-playlist', {
+    const r = await fetch('/api/v7/account/event-playlist', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({
-        businessId: business.id,
-        eventId: ev.id,
-        eventName: ev.name,
-        description: ev.description,
-        bizName: business.name || '',
-      }),
+      body: JSON.stringify({ businessId: business.id, eventId: ev.id }),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.ok) {
-      throw new Error(data?.error || `שגיאה ${r.status}`);
+    if (r.status === 409 && data?.code === 'building') {
+      waitForEventPlaylist(ev, Date.now());
+      return;
     }
-    // The endpoint INSERTed the row into business_playlists. Refresh the
-    // dashboard mirror so renderPlaylists picks it up and activePlaylist
-    // ForEvent finds the new row for the event card.
+    if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+    eventBuilds.delete(ev.id);
     await loadDashboardData(business.id);
     renderPlaylists();
     renderEvents();
     toast('הפלייליסט מוכן ✓');
-    window.open(data.playlist.url, '_blank');
   } catch (err) {
     console.error('event-playlist failed:', err);
+    if (eventBuilds.has(ev.id)) eventBuilds.set(ev.id, 'failed');
+    renderEvents();
     toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
-    btn.disabled = false;
-    btn.innerHTML = orig;
   }
 }
 
-// Trash icon on an event card → open the confirmation modal. Mirrors the
-// direction-trash pattern (see openTrashDirectionModal above): stage the
-// pending event id + the specific trash button so confirmTrashEventRemove
-// can spin it, then flip the modal open. Replaces the native `confirm()`
-// prompt this used to fire so the UX matches the rest of v6.
-let pendingTrashEventId  = null;
-let pendingTrashEventBtn = null;
-function openTrashEventModal(id, btn) {
+// Another build of this card is running (a refresh mid-build, a second tab):
+// watch the table — no rate limit, unlike the endpoint — until its playlist
+// lands. Past the server's build lock, try building again ourselves.
+async function waitForEventPlaylist(ev, since) {
+  await new Promise((r) => setTimeout(r, 10000));
+  if (eventBuilds.get(ev.id) !== 'building') return;            // card deleted meanwhile
+  await loadDashboardData(business.id);
+  if (activePlaylistForEvent(ev.id) || !todaysEvents().some((e) => e.id === ev.id)) {
+    eventBuilds.delete(ev.id);
+    renderPlaylists();
+    renderEvents();
+    return;
+  }
+  if (Date.now() - since > EVENT_BUILD_LOCK_MS) {
+    eventBuilds.delete(ev.id);
+    buildEventPlaylist(ev);
+    return;
+  }
+  waitForEventPlaylist(ev, since);
+}
+
+// Trash icon on a card → confirmation modal → the card goes at once and the
+// server deletes its Spotify playlist too (right away, or after the crons
+// when one is running — api/v7/account/delete-event.js). Disabled while the
+// card is building.
+let pendingTrashEventId = null;
+function openTrashEventModal(id) {
   if (!id) return;
-  pendingTrashEventId  = id;
-  pendingTrashEventBtn = btn || null;
+  pendingTrashEventId = id;
   const confirmBtn = $('trashEventRemove');
   if (confirmBtn) { confirmBtn.disabled = false; confirmBtn.textContent = 'כן, למחוק'; }
   $('trashEventModal')?.classList.remove('hide');
 }
 
 function closeTrashEventModal() {
-  pendingTrashEventId  = null;
-  pendingTrashEventBtn = null;
+  pendingTrashEventId = null;
   $('trashEventModal')?.classList.add('hide');
 }
 
 async function confirmTrashEventRemove() {
-  const id  = pendingTrashEventId;
-  const btn = pendingTrashEventBtn;
+  const id = pendingTrashEventId;
   if (!id) return;
-  // Close the modal immediately — same rationale as the direction trash
-  // flow (see confirmTrashDirectionRemove). The delete round-trip takes a
-  // couple of seconds; owner shouldn't be locked staring at a modal.
   closeTrashEventModal();
 
-  const origHtml = btn?.innerHTML;
-  if (btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="sb-spinner" style="width:16px;height:16px;display:block"></span>';
-  }
+  // Remove the card first (Roni, 2026-10-03); put it back if the server fails.
+  const removed = (bmeta().events || []).find((e) => e.id === id);
+  eventBuilds.delete(id);
+  state.dashboard = {
+    ...(state.dashboard || {}),
+    events: (bmeta().events || []).filter((e) => e.id !== id),
+  };
+  renderEvents();
   try {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
-    const r = await fetch('/api/v6/account/delete-event', {
+    const r = await fetch('/api/v7/account/delete-event', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2690,17 +2751,19 @@ async function confirmTrashEventRemove() {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok || !data.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
-    // Trim locally so we don't need a round-trip for the next render.
-    // renderEvents() rebuilds the whole list so the button state resets
-    // naturally — no need to restore origHtml on the success path.
+    // The server set its playlist's expires_at to now; mirror that.
     state.dashboard = {
       ...(state.dashboard || {}),
-      events: (bmeta().events || []).filter((e) => e.id !== id),
+      playlists: (bmeta().playlists || []).filter((p) => p.eventId !== id),
     };
-    renderEvents();
   } catch (e) {
     console.error('deleteEvent failed:', e);
-    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
+    if (removed && !(bmeta().events || []).some((x) => x.id === id)) {
+      const events = [...(bmeta().events || []), removed]
+        .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+      state.dashboard = { ...(state.dashboard || {}), events };
+      renderEvents();
+    }
     toast(String(e.message || 'שגיאה במחיקה'));
   }
 }
@@ -2711,17 +2774,14 @@ $('trashEventModal')?.addEventListener('click', (e) => {
   if (e.target?.id === 'trashEventModal') closeTrashEventModal();
 });
 
-// ---------- events chat ----------
-// Replaces the old textarea + "שמור אירוע" button. The user chats with
-// Gemini until Gemini's reply carries state="confirming" + a `proposed`
-// summary; a "צור פלייליסט" button then appears inline in that reply
-// bubble. Clicking it runs the same upsert-event → event-playlist chain
-// the old handler ran, so the card that lands in #eventsWrap and its
-// downstream generate-daily behavior are identical to before.
+// ---------- special-playlists chat ----------
+// The owner chats with Gemini (api/v7/account/event-chat.js — prompt, today's
+// date and the daily count live on the server) until a reply carries
+// state="confirming" + a `proposed` brief; a "הכן פלייליסט" button then
+// appears in that bubble. Clicking it saves the card (save-event) and builds
+// its playlist straight away (buildEventPlaylist).
 
-const GEMINI_MODEL = 'gemini-3.6-flash';
-const GEMINI_THINKING_LEVEL = 'low';
-const CHAT_MAX_TOKENS = 2000;
+const CHAT_PLACEHOLDER = 'לדוגמה: הערב יש לנו מסיבת יום הולדת - פופ שמח וקליל...';
 
 function scrollChatToBottom() {
   const box = $('chatMessages');
@@ -2748,11 +2808,8 @@ function renderBubble(role, text, { thinking = false } = {}) {
 }
 
 // Called after Gemini replies with state="confirming". Adds an inline
-// "הכן פלייליסט" button inside the given bubble. Clicking it hands
-// Gemini's distilled summary off as a business_events row — internally
-// still just an upsert, but the user-facing verb is "prepare" to pair
-// naturally with the card's later "צרו פלייליסט" (create) button. Two
-// stages: prepare → create. If the user isn't ready yet they keep
+// "הכן פלייליסט" button inside the given bubble: it saves the card and
+// starts building the playlist. If the user isn't ready yet they keep
 // typing in the chat input, so no explicit dismiss button is needed.
 function appendConfirmActions(bubble) {
   const row = document.createElement('div');
@@ -2768,7 +2825,7 @@ function appendConfirmActions(bubble) {
   scrollChatToBottom();
 }
 
-// One turn against /api/v6/account/event-chat — the server-side wrapper
+// One turn against /api/v7/account/event-chat — the server-side wrapper
 // that persists both messages to business_event_chats and calls Gemini.
 // Returns the parsed reply shape { reply_he, state, proposed? }, or
 // throws on transport failure.
@@ -2776,7 +2833,7 @@ async function callChatModel(userMessage) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session?.access_token) throw new Error('לא מחוברים');
 
-  const r = await fetch('/api/v6/account/event-chat', {
+  const r = await fetch('/api/v7/account/event-chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -2830,11 +2887,12 @@ async function sendChatMessage() {
       chatState.proposed = {
         name_he: String(reply.proposed.name_he).trim().slice(0, 40),
         description_he: String(reply.proposed.description_he).trim(),
+        genre_source: reply.proposed.genre_source === 'daily' ? 'daily' : 'event',
       };
       appendConfirmActions(thinking);
     } else {
       // Any other reply (gathering / off_topic / malformed proposed):
-      // clear stale proposed so an old "צור פלייליסט" click can't fire
+      // clear stale proposed so an old "הכן פלייליסט" click can't fire
       // on a description the user has since revised.
       chatState.proposed = null;
     }
@@ -2852,21 +2910,18 @@ async function sendChatMessage() {
   }
 }
 
-// Runs when the user clicks "שמור אירוע" inside a confirming reply.
-// Semantics match the old textarea + "שמור אירוע" button exactly:
-//   - POST /api/v6/account/upsert-event with Gemini's distilled summary
-//   - Splice the returned row into state; renderEvents shows the new card
-//     with its own "צרו פלייליסט" button.
-// The actual Spotify playlist is built later, when the user clicks that
-// card button — createEventPlaylist handles that leg. Two separate steps,
-// no coupling between them, and no cold-plan issue at chat-finalize time
-// because we don't call v5_direction_tracks here at all.
+// "הכן פלייליסט" inside a confirming reply:
+//   - POST /api/v7/account/save-event with Gemini's brief (409 'daily_cap'
+//     once 2 were made today — its Hebrew message goes to the toast);
+//   - splice the row into state and start buildEventPlaylist, which draws
+//     the card with its spinner right away;
+//   - reset the chat for the next one.
 async function finalizeAndSaveEvent(goBtn) {
   if (!chatState.proposed) {
     toast('חסר תיאור — כתבו עוד קצת');
     return;
   }
-  const { name_he: name, description_he: description } = chatState.proposed;
+  const { name_he: name, description_he: description, genre_source } = chatState.proposed;
   goBtn.disabled = true;
   const origHtml = goBtn.innerHTML;
   goBtn.innerHTML = '<span class="sb-spinner" style="width:14px;height:14px;vertical-align:-2px;margin-inline-end:6px"></span>מכינים' + WAIT_DOTS_HTML;
@@ -2875,7 +2930,7 @@ async function finalizeAndSaveEvent(goBtn) {
     const { data: { session } } = await sb.auth.getSession();
     if (!session?.access_token) throw new Error('לא מחוברים');
 
-    const upsertRes = await fetch('/api/v6/account/upsert-event', {
+    const saveRes = await fetch('/api/v7/account/save-event', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2883,30 +2938,25 @@ async function finalizeAndSaveEvent(goBtn) {
       },
       body: JSON.stringify({
         businessId: business.id,
-        event:      { name, description },
+        event:      { name, description, genre_source },
         // Server backfills business_event_chats.event_id on every row
         // from this chat session so the admin API can surface "here's
         // the conversation that produced event X".
         sessionStartAt: SESSION_START_AT_ISO,
       }),
     });
-    const upsertData = await upsertRes.json().catch(() => ({}));
-    if (!upsertRes.ok || !upsertData.ok || !upsertData.event) {
-      throw new Error(upsertData?.error || `שגיאה ${upsertRes.status}`);
+    const saveData = await saveRes.json().catch(() => ({}));
+    if (!saveRes.ok || !saveData.ok || !saveData.event) {
+      throw new Error(saveData?.error || `שגיאה ${saveRes.status}`);
     }
-    const ev = upsertData.event;
+    const ev = saveData.event;
 
-    // Splice into local state so the card appears immediately with its
-    // "צרו פלייליסט" action — same as the old textarea-based save.
-    const events = [...(bmeta().events || []), ev];
-    state.dashboard = { ...(state.dashboard || {}), events };
-    renderEvents();
-    toast('מוכן ✓');
+    state.dashboard = { ...(state.dashboard || {}), events: [...(bmeta().events || []), ev] };
+    buildEventPlaylist(ev);
 
-    // Reset the chat for the next event. Restore the textarea to its
-    // initial multi-row + placeholder state so the next event begins fresh.
-    // Bump SESSION_START_AT_ISO so the next chat starts with no context
-    // from the just-finalized session — mirrors what a hard refresh does.
+    // Reset the chat for the next one. Restore the textarea to its initial
+    // multi-row + placeholder state. Bump SESSION_START_AT_ISO so the next
+    // chat starts with no context from this session — like a hard refresh.
     chatState.messages = [];
     chatState.proposed = null;
     SESSION_START_AT_ISO = new Date().toISOString();
@@ -2914,7 +2964,7 @@ async function finalizeAndSaveEvent(goBtn) {
     const ci = $('chatInput');
     ci.rows = 3;
     ci.classList.remove('compact');
-    ci.setAttribute('placeholder', 'לדוגמה: ערב סטנדאפ בכל יום שלישי — קלילה, לא רועשת מדי...');
+    ci.setAttribute('placeholder', CHAT_PLACEHOLDER);
   } catch (err) {
     console.error('finalizeAndSaveEvent failed:', err);
     goBtn.disabled = false;

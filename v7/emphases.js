@@ -9,13 +9,13 @@
 // The brand block is cloned from mainCardTemplateHtml (captured in app.js
 // when the flow starts) so the rotating SVG animation is preserved.
 
-const HEADING_SUBTITLE = 'רובין כבר יודע מה יעשה טוב לעסק, אבל תנו לו דגשים. ' +
-  'ספרו לו אם יש סגנונות שאתם מאוד אוהבים - ודברים שאתם פשוט לא סובלים';
+const HEADING_SUBTITLE = 'רובין כבר מתחיל להבין מה יעשה טוב לעסק - עכשיו מגיע הטעם האישי שלכם. ' +
+  'ספרו לו אם יש סגנונות שאתם מאוד אוהבים ודברים שאתם פשוט לא סובלים.';
 
 const FIELD_LABEL = 'דגשים מוזיקליים';
 
 const FIELD_PLACEHOLDER =
-  'ממש לא מוזיקה אלקטרונית / כמה שיותר אר אן בי / רק אינסטרומנטלי / להיטים בלבד…';
+  'ממש לא מוזיקה אלקטרונית / כמה שיותר אר אן בי / רק אינסטרומנטלי / עדיפות לשירים מוכרים…';
 
 // Extract a fresh copy of the brand block from the mainCard snapshot. We
 // clone rather than move so navigating back to step 1 still finds its

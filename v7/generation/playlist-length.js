@@ -197,6 +197,24 @@ export function nextIl4amIso({ now = new Date() } = {}) {
   return ilWallClockToUtc({ year, month, day, hour: 4, minute: 0 }).toISOString();
 }
 
+// The most recent 04:00 Asia/Jerusalem at or before `now` — the start of the
+// "special playlists day" (v7, 2026-10-03): an event card is shown only if it
+// was created at or after this instant, and the 2-per-day cap counts events
+// since it. Computed on the IL wall clock (not nextIl4amIso − 24h), so it stays
+// right on DST-change days.
+export function prevIl4amIso({ now = new Date() } = {}) {
+  const il = ilPartsFromDate(now);
+  let year = il.year, month = il.month, day = il.day;
+  if (il.hour * 60 + il.minute < 4 * 60) {
+    // Before 04:00 IL → the day started at 04:00 yesterday.
+    const prev = new Date(Date.UTC(year, month - 1, day - 1));
+    year  = prev.getUTCFullYear();
+    month = prev.getUTCMonth() + 1;
+    day   = prev.getUTCDate();
+  }
+  return ilWallClockToUtc({ year, month, day, hour: 4, minute: 0 }).toISOString();
+}
+
 // Returns the UTC ISO string for "closing time + 2h" in IL local time, for
 // the calendar day at IL now. Returns null when today is closed or hours
 // are missing (caller falls back to 24h TTL).

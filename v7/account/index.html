@@ -329,6 +329,7 @@
       text-decoration: none;
       transition: color .15s;
     }
+
     .no-account-link:hover {
       color: var(--accent);
     }
@@ -1894,19 +1895,29 @@
       align-items: center;
       animation: name-actions-in .15s ease;
     }
+
     .name-actions .name-save {
       width: auto;
       padding: 8px 18px;
       font-size: 13px;
       margin: 0;
     }
+
     .name-actions .name-cancel {
       padding: 6px 12px;
       font-size: 13px;
     }
+
     @keyframes name-actions-in {
-      from { opacity: 0; transform: translateY(-2px); }
-      to   { opacity: 1; transform: none; }
+      from {
+        opacity: 0;
+        transform: translateY(-2px);
+      }
+
+      to {
+        opacity: 1;
+        transform: none;
+      }
     }
 
     /* ---------- collapsible section (hours) ---------- */
@@ -2427,6 +2438,7 @@
     .s-label {
       display: inline;
     }
+
     .s-label.editable {
       cursor: text;
       padding: 1px 5px;
@@ -2434,16 +2446,19 @@
       border-radius: 5px;
       transition: background .15s, box-shadow .15s;
     }
+
     .s-label.editable:hover {
       background: rgba(255, 255, 255, .07);
       box-shadow: inset 0 -1px 0 rgba(240, 167, 63, .35);
     }
+
     .s-label-edit {
       display: inline-flex;
       align-items: center;
       gap: 6px;
       vertical-align: middle;
     }
+
     .s-label-edit input {
       background: var(--card-2);
       border: 1px solid var(--accent);
@@ -2457,6 +2472,7 @@
       min-width: 120px;
       max-width: 320px;
     }
+
     .s-label-edit-btn {
       width: 26px;
       height: 26px;
@@ -2471,19 +2487,28 @@
       padding: 0;
       transition: color .15s, border-color .15s, background .15s, transform .06s;
     }
+
     .s-label-edit-btn:hover:not(:disabled) {
       transform: translateY(-1px);
     }
+
     .s-label-edit-btn:disabled {
       opacity: .55;
       cursor: default;
       transform: none;
     }
-    .s-label-edit-btn svg { width: 14px; height: 14px; display: block; }
+
+    .s-label-edit-btn svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+    }
+
     .s-label-edit-save:hover:not(:disabled) {
       color: var(--teal-soft);
       border-color: var(--teal-soft);
     }
+
     .s-label-edit-cancel:hover:not(:disabled) {
       color: var(--danger);
       border-color: var(--danger);
@@ -2498,10 +2523,12 @@
       .slot--renaming .slot-icon {
         display: none;
       }
+
       .slot--renaming .s-label-edit {
         display: flex;
         width: 100%;
       }
+
       .slot--renaming .s-label-edit input {
         flex: 1;
         min-width: 0;
@@ -2588,13 +2615,6 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-    }
-
-    /* Direction-chat's message box is its own component but reuses the
-       .chat-messages / .chat-bubble styles from the event chat. Only add
-       overrides here, not duplicates. */
-    .dir-chat-box #dirChatMessages {
-      max-height: 360px;
     }
 
     /* Inline direction-selector chip inside a chat prompt (e.g. "which
@@ -3118,16 +3138,27 @@
                       verified) -->
     <div style="margin-top:34px">
       <form id="loginForm" novalidate>
-        <input class="input ltr" id="email" type="email" name="email" placeholder="האימייל שלכם"
-          autocomplete="username" inputmode="email">
+        <input class="input ltr" id="email" type="email" name="email" placeholder="האימייל שלכם" autocomplete="username"
+          inputmode="email">
         <div class="pw-wrap login-gap">
           <input class="input ltr" id="password" type="password" name="password" placeholder="סיסמה"
             autocomplete="current-password">
-          <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+          <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24"
+              fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              aria-hidden="true">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path
+                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+              <line x1="1" y1="1" x2="23" y2="23" />
+            </svg></button>
         </div>
         <button class="btn sec" id="loginBtn" type="submit">
           <span class="btn-label">כניסה</span>
-          <span class="sb-spinner hide" id="loginSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+          <span class="sb-spinner hide" id="loginSpinner"
+            style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
         </button>
         <button class="btn-ghost forgot-link" id="forgotLink" type="button">שכחתי סיסמה</button>
         <a href="/v7?start=1" class="no-account-link">אין לי חשבון עדיין</a>
@@ -3137,7 +3168,8 @@
           inputmode="email">
         <button class="btn sec" id="forgotSend" type="submit">
           <span class="btn-label">שלחו לי קישור</span>
-          <span class="sb-spinner hide" id="forgotSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+          <span class="sb-spinner hide" id="forgotSpinner"
+            style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
         </button>
         <button class="btn-ghost forgot-link" type="button" data-login-back>חזרה לכניסה</button>
       </form>
@@ -3145,7 +3177,8 @@
         <p id="linkText" style="margin:0 0 14px;font-size:15px"></p>
         <button class="btn sec" id="linkSend" type="button">
           <span class="btn-label" id="linkLabel">שלחו לי קישור חדש</span>
-          <span class="sb-spinner hide" id="linkSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+          <span class="sb-spinner hide" id="linkSpinner"
+            style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
         </button>
         <button class="btn-ghost forgot-link" type="button" data-login-back>חזרה לכניסה</button>
       </div>
@@ -3164,14 +3197,24 @@
     <form id="newPasswordForm" novalidate style="margin-top:28px">
       <input type="email" id="newPasswordUser" autocomplete="username" hidden>
       <div class="pw-wrap">
-        <input class="input ltr" id="newPassword" type="password" placeholder="סיסמה חדשה"
-          autocomplete="new-password">
-        <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+        <input class="input ltr" id="newPassword" type="password" placeholder="סיסמה חדשה" autocomplete="new-password">
+        <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            aria-hidden="true">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path
+              d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+            <line x1="1" y1="1" x2="23" y2="23" />
+          </svg></button>
       </div>
       <p class="muted pw-hint">לפחות 8 תווים, כולל אות גדולה ואות קטנה באנגלית ומספר</p>
       <button class="btn sec" id="newPasswordSave" type="submit">
         <span class="btn-label">שמרו והיכנסו</span>
-        <span class="sb-spinner hide" id="newPasswordSpinner" style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
+        <span class="sb-spinner hide" id="newPasswordSpinner"
+          style="margin-inline-start:8px;width:15px;height:15px;border-width:2px"></span>
       </button>
       <p class="muted" id="newPasswordMsg" style="text-align:center;margin-top:14px"></p>
     </form>
@@ -3228,11 +3271,38 @@
         <div id="eventsWrap"></div>
       </div>
 
-      <!-- Special-events chat — collapsible, same pattern as the Profile tab's
-           "כיוונים מוזיקליים" (.hours-toggle / .hours-body, wired once at load
-           by the generic toggle handler in app.js). Starts closed. The saved
-           events list above ("פלייליסטים אחרים") stays visible — it holds the
-           "▶ פתח" buttons owners use during an event. -->
+      <!-- "חידודים מוזיקליים" chat — moved here from the Profile tab on
+          2026-10-03, in a dropdown card identical to the special-playlists
+          chat below (.hours-toggle / .hours-body, wired once at load by the
+          generic toggle handler in app.js; starts closed). Populated by
+          direction-chat.js, which loads the first time the card is opened —
+          still dormant for v7 (it reads v6's empty business_directions). -->
+      <div class="box">
+        <div class="hours-section" style="margin:0">
+          <button type="button" class="hours-toggle" id="directionsToggle" aria-expanded="false" aria-controls="directionsBody">
+            <h2 style="margin:0"><span class="h-ico">🎚️</span>חידודים מוזיקליים</h2>
+            <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <div class="hours-body hide" id="directionsBody">
+            <p class="muted sub" style="margin:6px 0 12px">מרגישים שיש חידוד חשוב או משהו שבא לכם להוסיף? כתבו לצ'אט.</p>
+            <div id="dirCards" class="dir-cards"></div>
+            <div id="dirChatMessages" class="chat-messages" aria-live="polite"></div>
+            <textarea class="input" id="dirChatInput" rows="3" maxlength="500"
+              placeholder="בלי ספרדית / יותר מקצבים שחורים / לאט יותר באופן כללי"></textarea>
+            <button class="btn" id="dirChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2L22 12H17V22H7V12H2Z" />
+              </svg></button>
+            <p class="muted" id="dirChatMsg" style="text-align:center;margin-top:8px"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Special-playlists chat — collapsible, same pattern as the
+          "חידודים מוזיקליים" card above. Starts closed. Today's cards above
+          ("פלייליסטים אחרים") stay visible — they hold the "▶ פתח" buttons. -->
       <div class="box">
         <div class="hours-section" style="margin:0">
           <button type="button" class="hours-toggle" id="eventsToggle" aria-expanded="false" aria-controls="eventsBody">
@@ -3243,11 +3313,11 @@
             </svg>
           </button>
           <div class="hours-body hide" id="eventsBody">
-            <p class="muted sub" id="eventsIntro" style="margin:6px 0 12px">יש לעסק שלכם אירועים מיוחדים שבהם תצטרכו מוזיקה אחרת לגמרי? ספרו לצ׳אט
-              איזה פלייליסט אתם צריכים והוא יעזור לכם לגבש אותו.</p>
+            <p class="muted sub" id="eventsIntro" style="margin:6px 0 12px">יש לעסק שלכם אירוע מיוחד שבו תצטרכו מוזיקה
+              אחרת לגמרי? ספרו לצ׳אט איזה פלייליסט אתם צריכים והוא יעזור לכם לגבש אותו.</p>
             <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
             <textarea class="input" id="chatInput" rows="3" maxlength="500"
-              placeholder="לדוגמה: ערב סטנדאפ בכל יום שלישי — קלילה, לא רועשת מדי..."></textarea>
+              placeholder="לדוגמה: הערב יש לנו מסיבת יום הולדת - פופ שמח וקליל..."></textarea>
             <button class="btn" id="chatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 2L22 12H17V22H7V12H2Z" />
               </svg></button>
@@ -3314,7 +3384,8 @@
            #timelineModal; the button carries a mini preview of today's curve).
            Populated + wired by renderDeliverySection() in app.js. -->
       <div class="hours-section">
-        <button type="button" class="hours-toggle" id="deliveryToggle" aria-expanded="false" aria-controls="deliveryBody">
+        <button type="button" class="hours-toggle" id="deliveryToggle" aria-expanded="false"
+          aria-controls="deliveryBody">
           <h2 style="margin:0"><span class="h-ico">🎵</span>סוג פלייליסטים יומיים</h2>
           <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3341,42 +3412,12 @@
         </div>
       </div>
 
-      <!-- Direction-edit chat: cards of current active directions above
-           a chat transcript + input. Card click biases the chat toward
-           that direction; the chat can also address a direction by name.
-           Everything below the toggle is populated by v6/account/direction-chat.js.
-           Collapsible in the same pattern as the hours section — reuses
-           .hours-toggle / .hours-body class names (misnomer, but the
-           behavior + styling is generic). -->
-      <div class="hours-section">
-        <button type="button" class="hours-toggle" id="directionsToggle" aria-expanded="false" aria-controls="directionsBody">
-          <h2 style="margin:0"><span class="h-ico">🎚️</span>כיוונים מוזיקליים</h2>
-          <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </button>
-        <div class="hours-body hide" id="directionsBody">
-          <p class="muted sub" style="margin:6px 0 12px">רוצים לשנות משהו בכיוונים? להוסיף, להסיר, או לחדד אחד? לחצו על כיוון
-            או פשוט כתבו לצ׳אט.</p>
-          <div id="dirCards" class="dir-cards"></div>
-          <div class="box dir-chat-box">
-            <div id="dirChatMessages" class="chat-messages" aria-live="polite"></div>
-            <textarea class="input" id="dirChatInput" rows="3" maxlength="500"
-              placeholder="לדוגמה: אני רוצה כיוון חדש של רוק אנרגטי / אני אוהב את הכיוון הזה אבל רוצה להוריד את כל הבוסה נובה ..."></textarea>
-            <button class="btn" id="dirChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 2L22 12H17V22H7V12H2Z" />
-              </svg></button>
-            <p class="muted" id="dirChatMsg" style="text-align:center;margin-top:8px"></p>
-          </div>
-        </div>
-      </div>
-
       <!-- Password change. Same collapsible pattern as the sections above.
            The current password is checked (signInWithPassword) before the
            new one is saved — see savePassword in app.js. -->
       <div class="hours-section">
-        <button type="button" class="hours-toggle" id="passwordToggle" aria-expanded="false" aria-controls="passwordBody">
+        <button type="button" class="hours-toggle" id="passwordToggle" aria-expanded="false"
+          aria-controls="passwordBody">
           <h2 style="margin:0"><span class="h-ico">🔒</span>סיסמה</h2>
           <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
             stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -3390,14 +3431,34 @@
               <label class="flabel" for="currentPassword">סיסמה נוכחית</label>
               <div class="pw-wrap">
                 <input class="input ltr" id="currentPassword" type="password" autocomplete="current-password">
-                <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+                <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path
+                      d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg></button>
               </div>
             </div>
             <div class="frow">
               <label class="flabel" for="nextPassword">סיסמה חדשה</label>
               <div class="pw-wrap">
                 <input class="input ltr" id="nextPassword" type="password" autocomplete="new-password">
-                <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button>
+                <button class="pw-toggle" type="button" aria-label="הצגת הסיסמה"><svg class="eye" viewBox="0 0 24 24"
+                    fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    aria-hidden="true">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg><svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path
+                      d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg></button>
               </div>
               <p class="muted pw-hint">לפחות 8 תווים, כולל אות גדולה ואות קטנה באנגלית ומספר</p>
             </div>
@@ -3418,7 +3479,8 @@
   </div>
 
   <div class="screen center hide" id="loading" style="justify-content:center">
-    <div class="muted">טוען<span class="wait-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></div>
+    <div class="muted">טוען<span class="wait-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+    </div>
   </div>
 
   <!-- Direction-edit preview modal. Shown when the chat proposes an edit
@@ -3505,9 +3567,13 @@
         </button>
       </div>
       <div class="v7-mode-err hide" id="v7ModeErr">משהו השתבש. נסו שוב.</div>
-      <div class="v7-mode-building hide" id="v7ModeBuilding" style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">
-        <span class="sb-spinner" style="width:16px;height:16px;vertical-align:-3px;margin-inline-end:8px"></span>מכינים את הכיוונים המוזיקליים שלכם<span class="wait-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
-        <div style="margin-top:6px">עלול לארוך עד דקה וחצי, נא לא לסגור את החלון<span class="wait-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></div>
+      <div class="v7-mode-building hide" id="v7ModeBuilding"
+        style="text-align:center;margin-top:14px;font-size:13px;color:var(--muted)">
+        <span class="sb-spinner" style="width:16px;height:16px;vertical-align:-3px;margin-inline-end:8px"></span>מכינים
+        את הכיוונים המוזיקליים שלכם<span class="wait-dots"
+          aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
+        <div style="margin-top:6px">עלול לארוך עד דקה וחצי, נא לא לסגור את החלון<span class="wait-dots"
+            aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></div>
       </div>
     </div>
   </div>
@@ -3523,7 +3589,8 @@
     <div class="dp-modal tl-modal">
       <div class="tl-step" id="tlStepEdit">
         <h3 id="tlTitle">ציר האנרגיה היומי</h3>
-        <p class="tl-desc">גררו את הנקודות כדי לקבוע מתי המוזיקה אנרגטית ומתי רגועה לאורך היום: למעלה = אנרגטי, למטה = רגוע.</p>
+        <p class="tl-desc">גררו את הנקודות כדי לקבוע מתי המוזיקה אנרגטית ומתי רגועה לאורך היום: למעלה = אנרגטי, למטה =
+          רגוע.</p>
         <div class="tl-tabs hide" id="tlTabs" role="tablist"></div>
         <div id="tlEditor"></div>
         <p class="tl-empty hide" id="tlEmpty">עדיין לא הוגדרו שעות פתיחה. הגדירו אותן בלשונית הפרופיל ונסו שוב.</p>
@@ -3545,7 +3612,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=29092026a"></script>
+  <script type="module" src="/v7/account/app.js?v=03102026b"></script>
 </body>
 
 </html>

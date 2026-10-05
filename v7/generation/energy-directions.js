@@ -11,7 +11,10 @@
 // own energy scale (N = energy_levels_total) is split at its midpoint (N/2):
 //   - HIGH tier = approved genres whose energy_level > N/2.
 //   - LOW tier  = approved genres whose energy_level <= N/2.
-// Every direction sits wholly inside one tier. Each direction is a curated,
+// Every direction sits wholly inside one tier, and contains every requested
+// genre of its tier (taste profile's requested_genres — super-liked or asked
+// for in the emphases, 2026-10-05; overrides the coherence rules). Each
+// direction is a curated,
 // internally coherent blend (v6 onboarding style: 4–6 genres, v6's energy /
 // jazz / pop / house pairing rules, cross-cultural blends encouraged), and
 // the directions in the library sound different from one another. Genres
@@ -40,6 +43,7 @@
 
 import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION, GENRES, GENRE_SET } from '../../shared/genre-universe.js';
+import { tierOfLevel, requestedByTier, withRequested } from './option1-draw.js';
 export { GENRE_UNIVERSE_SECTION };
 
 // Gemini counts thinking tokens against the output cap. A 30-direction
@@ -66,6 +70,7 @@ You will receive:
 - Optionally: Free-text description of the business (any language).
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
 - Optionally: **Musical emphases** — free-text preferences the owner typed during onboarding.
+- Optionally: **Requested genres** — approved genres the owner explicitly asked for (they super-liked a track from them or named them in their emphases). They are marked "(requested)" in the approved list; see Requested Genres.
 - Optionally: **Venue context** — a short block describing the physical venue (name / type / summary). Use it only to lightly inform how genres are combined for venue-appropriateness; it does NOT add or remove genres.
 
 You will NOT receive conditional or excluded genres. Do not ask for them, do not infer them, do not reintroduce them. Build directions strictly from the approved genres given.`;
@@ -90,6 +95,15 @@ Every approved genre lands in exactly one tier based on its \`energy_level\`. Ex
 ### 3. Every direction sits inside one tier — never mix tiers
 
 A HIGH direction contains only HIGH-tier genres; a LOW direction contains only LOW-tier genres. NEVER place a high-energy genre in a low direction or a low-energy genre in a high direction. The whole point of the split is that each daily playlist has a coherent energy register — mixing tiers breaks that. A genre placed in the wrong tier will be silently dropped from its direction downstream.`;
+
+const REQUESTED_GENRES_SECTION = `## Requested Genres
+
+The owner explicitly asked for some genres: they super-liked a track from them, or named them in their emphases. These are marked "(requested)" in the approved list.
+
+- **Every direction of a tier contains every requested genre of that tier.** If \`Rnb\` is a requested HIGH-tier genre, every HIGH direction includes \`Rnb\`; the LOW directions are not affected. The owner hears each requested genre in every playlist of its energy, every day.
+- **This overrides every rule in "Coherence Inside Each Direction" below** (beat/percussion pairing, Jazz isolation, Pop isolation, House & Techno containment, the genre-count target). Build the rest of each direction to sit as well as possible with the requested genres.
+- **Vary what surrounds them.** The requested genres are shared by all of a tier's directions, so the library's variety comes from the other genres: give each direction a different combination of the tier's remaining genres.
+- A tier whose approved genres are all requested gets a single direction made of exactly those genres.`;
 
 const LIBRARY_SECTION = `## Library Size & Diversity
 
@@ -117,7 +131,7 @@ const LIBRARY_SECTION = `## Library Size & Diversity
 // Non-Overlap rule — overlap is allowed here).
 const COHERENCE_SECTION = `## Coherence Inside Each Direction
 
-A direction is played as one continuous playlist, so everything inside it must belong together. These rules decide which genres may share a direction.
+A direction is played as one continuous playlist, so everything inside it must belong together. These rules decide which genres may share a direction. Requested genres are the one exception (see Requested Genres): they go into every direction of their tier regardless of these rules.
 
 ### 7. Absolute Energy & Dynamic Cohesion (Zero Tolerance for Mismatches)
 
@@ -179,6 +193,7 @@ export const EDITABLE_PROMPT_SECTION = [
   GENRE_UNIVERSE_SECTION,
   ENERGY_DIRECTIONS_INPUTS_SECTION,
   TIER_SPLIT_RULES_SECTION,
+  REQUESTED_GENRES_SECTION,
   LIBRARY_SECTION,
   COHERENCE_SECTION,
   TITLES_SECTION,
@@ -209,7 +224,8 @@ Hard invariants:
 - Every genre in every direction must be one of the approved genres provided in the input.
 - Every genre string must be VERBATIM from the Genre Universe.
 - HIGH directions contain only HIGH-tier genres; LOW directions contain only LOW-tier genres.
-- At least 2 directions for each tier that has any approved genres.
+- Every direction contains every requested genre of its tier.
+- At least 2 directions for each tier that has any approved genres (1 when every approved genre of the tier is requested).
 - No two directions have the same set of genres.
 - At most 30 directions in total.
 
@@ -239,13 +255,13 @@ const SYSTEM_PROMPT = assembleSystemPrompt(EDITABLE_PROMPT_SECTION);
 
 // ---------- Helpers ----------
 
-const tierOfLevel = (level, n) => (level > n / 2 ? 'high' : 'low');
-
 // Approved genres grouped by tier (split computed here, same rule the prompt
 // states), so the model doesn't have to do the midpoint arithmetic itself.
-function formatApprovedGenres(approved, n) {
+// Requested genres are marked "(requested)".
+function formatApprovedGenres(approved, n, requestedGenres) {
   if (!Array.isArray(approved) || !approved.length) return '(none)';
-  const line = (e) => `- ${e.genre} (energy level ${e.energy_level})`;
+  const requested = new Set((Array.isArray(requestedGenres) ? requestedGenres : []).map((g) => String(g).toLowerCase()));
+  const line = (e) => `- ${e.genre} (energy level ${e.energy_level})${requested.has(String(e.genre).toLowerCase()) ? ' (requested)' : ''}`;
   const high = approved.filter((e) => tierOfLevel(Number(e.energy_level), n) === 'high');
   const low  = approved.filter((e) => tierOfLevel(Number(e.energy_level), n) === 'low');
   return `### HIGH tier (energy level > ${n / 2})\n${high.map(line).join('\n') || '(none)'}`
@@ -267,7 +283,7 @@ function formatPlaceBlock(place) {
 
 export function buildUserMessage({
   bizName, bizDesc, atmospheres, musicalEmphases, place,
-  approvedGenres, energyLevelsTotal,
+  approvedGenres, energyLevelsTotal, requestedGenres = [],
 }) {
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
   const descLine = (bizDesc && String(bizDesc).trim()) ? String(bizDesc).trim() : 'none';
@@ -281,11 +297,16 @@ export function buildUserMessage({
     base += `\nMusical emphases: ${musicalEmphases.trim()}`;
   }
 
-  base += `\n\n## Approved genres (the ONLY genres in play)\n${formatApprovedGenres(approvedGenres, energyLevelsTotal)}`;
+  base += `\n\n## Approved genres (the ONLY genres in play)\n${formatApprovedGenres(approvedGenres, energyLevelsTotal, requestedGenres)}`;
+  const req = requestedByTier(requestedGenres, approvedGenres, energyLevelsTotal);
+  if (req.high.length || req.low.length) {
+    base += `\n\n## Requested genres (in EVERY direction of their tier)\nHIGH tier: ${req.high.join(', ') || '(none)'}\nLOW tier: ${req.low.join(', ') || '(none)'}`;
+  }
   base += formatPlaceBlock(place);
 
   return base
-    + `\n\nBuild a library of as many directions as make sense, up to 30, from these approved genres: each direction a coherent blend inside a single tier, the directions diverse from one another, at least 2 per tier that has approved genres.`;
+    + `\n\nBuild a library of as many directions as make sense, up to 30, from these approved genres: each direction a coherent blend inside a single tier, the directions diverse from one another, at least 2 per tier that has approved genres`
+    + (req.high.length || req.low.length ? `, every requested genre in every direction of its tier.` : '.');
 }
 
 // ---------- Validation & normalization ----------
@@ -308,9 +329,10 @@ function canonicalize(genreString) {
 // - Directions left with zero valid genres.
 // - A direction whose tier + genre set repeats an earlier one.
 // - Everything past MAX_DIRECTIONS (30).
-// Emits console.warns (never hard-errors) for dropped genres, a tier with
-// fewer than 2 directions.
-export function normalizeEnergyDirections(parsed, approvedGenres, n) {
+// Adds any requested genre of the direction's tier the model left out (the
+// "in every direction of its tier" rule). Emits console.warns (never
+// hard-errors) for dropped genres, a tier with fewer than 2 directions.
+export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGenres = []) {
   if (!parsed || typeof parsed !== 'object') return null;
 
   const tierOfGenre = new Map();
@@ -319,11 +341,17 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n) {
     const level = Number(e?.energy_level);
     if (g && Number.isFinite(level)) tierOfGenre.set(g, tierOfLevel(level, n));
   }
+  const requested = { high: [], low: [] };
+  for (const g of (Array.isArray(requestedGenres) ? requestedGenres : []).map(canonicalize)) {
+    const t = g && tierOfGenre.get(g);
+    if (t && !requested[t].includes(g)) requested[t].push(g);
+  }
 
   const rawDirections = Array.isArray(parsed.directions) ? parsed.directions : [];
   const directions = [];
   const seenSets = new Set();
   const dropped = [];
+  let added = 0;
 
   for (const d of rawDirections) {
     if (directions.length >= MAX_DIRECTIONS) break;
@@ -342,6 +370,9 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n) {
       seen.add(genre);
     }
     if (!genres.length) continue;
+    const full = withRequested(genres, requested[tier]);
+    added += full.length - genres.length;
+    genres.splice(0, genres.length, ...full);
 
     const setKey = `${tier}|${[...genres].sort().join('|')}`;
     if (seenSets.has(setKey)) continue;
@@ -356,6 +387,9 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n) {
 
   if (dropped.length) {
     console.warn('[v7 energy-directions] dropped genres that are not approved for that tier:', dropped.join(', '));
+  }
+  if (added) {
+    console.warn(`[v7 energy-directions] added ${added} requested genre(s) the model left out of a direction of their tier`);
   }
   // Only warn for tiers that produced at least one direction — a completely
   // empty tier just means the user had no approved genres in that half.
@@ -414,9 +448,10 @@ export async function generateEnergyDirections({
   if (!Number.isFinite(energyLevelsTotal)) energyLevelsTotal = 4;
   energyLevelsTotal = Math.max(2, Math.min(6, Math.round(energyLevelsTotal)));
 
+  const requestedGenres = Array.isArray(tasteProfile.requested_genres) ? tasteProfile.requested_genres : [];
   const userMessage = buildUserMessage({
     bizName, bizDesc, atmospheres, musicalEmphases, place,
-    approvedGenres, energyLevelsTotal,
+    approvedGenres, energyLevelsTotal, requestedGenres,
   });
 
   let parsed;
@@ -437,7 +472,7 @@ export async function generateEnergyDirections({
     };
   }
 
-  const normalized = normalizeEnergyDirections(parsed, approvedGenres, energyLevelsTotal);
+  const normalized = normalizeEnergyDirections(parsed, approvedGenres, energyLevelsTotal, requestedGenres);
   if (!normalized) {
     return { error: 'matcher_error', reasoning_en: 'energy directions could not be parsed' };
   }

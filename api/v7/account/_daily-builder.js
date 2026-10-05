@@ -17,8 +17,9 @@
        Option 1 — energy-tiered directions. Reads the business's active
        business_v7_directions rows (persisted at mode selection), splits by
        energy_tier, and fills the 4 fixed names ("אנרגיה גבוהה #1/#2",
-       "אנרגיה רגועה #1/#2") with a random pick of 2 directions per tier —
-       re-drawn every build/day (pickTwo). Half-day target each.
+       "אנרגיה רגועה #1/#2") with 2 directions per tier — the first random,
+       the second the least like it, re-drawn every build/day (pickTierPair).
+       The tier's requested genres go into both. Half-day target each.
        → { directions, target, expiryIso, labelDate, reason }  (directions [] +
          reason when there's nothing to build; labelDate = the business day
          for the dated dashboard names)
@@ -73,31 +74,45 @@ import {
   datedLabel,
 } from '../../../v7/generation/playlist-length.js';
 import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
+import { pickTierPair, requestedByTier, withRequested } from '../../../v7/generation/option1-draw.js';
 
 const PREF_SET = new Set(['none', 'soft', 'hard']);
 const normPref = (v) => (PREF_SET.has(v) ? v : 'none');
 
 // Read the taste profile once: carry-through inst/pop prefs (used by both
-// options) + the approved genre pool (used by Option 2). Missing profile or a
-// read error degrades to unfiltered defaults rather than throwing — the cron
-// already gated on the profile's presence, so this is belt-and-suspenders.
+// options), the approved genre pool (used by Option 2), and the requested
+// genres + energy scale (Option 1 puts each requested genre in every playlist
+// of its tier). Missing profile or a read error degrades to unfiltered
+// defaults rather than throwing — the cron already gated on the profile's
+// presence, so this is belt-and-suspenders. If requested_genres isn't there
+// yet (migration 2026-10-05-v7-requested-genres.sql not run), it's read
+// without it.
+const PROFILE_COLUMNS = 'approved_genres,instrumentalness_preference,popularity_preference,energy_levels_total';
 async function readProfilePrefs(businessId) {
+  const none = { inst_pref: 'none', pop_pref: 'none', approvedGenres: [], requestedGenres: [], energyLevelsTotal: null };
+  const read = (select) => pgrSelect('business_taste_profiles',
+    { business_id: `eq.${businessId}` }, { select, useService: true, limit: 1 });
   try {
-    const rows = await pgrSelect('business_taste_profiles',
-      { business_id: `eq.${businessId}` },
-      { select: 'approved_genres,instrumentalness_preference,popularity_preference',
-        useService: true, limit: 1 },
-    );
+    let rows;
+    try {
+      rows = await read(`${PROFILE_COLUMNS},requested_genres`);
+    } catch (e) {
+      if (!/requested_genres/.test(e.message || '')) throw e;
+      console.error('[v7 daily-builder] business_taste_profiles.requested_genres missing — run migration 2026-10-05-v7-requested-genres.sql.');
+      rows = await read(PROFILE_COLUMNS);
+    }
     const tp = rows?.[0];
-    if (!tp) return { inst_pref: 'none', pop_pref: 'none', approvedGenres: [] };
+    if (!tp) return none;
     return {
       inst_pref: normPref(tp.instrumentalness_preference),
       pop_pref:  normPref(tp.popularity_preference),
       approvedGenres: Array.isArray(tp.approved_genres) ? tp.approved_genres : [],
+      requestedGenres: Array.isArray(tp.requested_genres) ? tp.requested_genres : [],
+      energyLevelsTotal: Number(tp.energy_levels_total) || null,
     };
   } catch (e) {
     console.warn(`[v7 daily-builder] taste profile read failed for biz=${businessId}:`, e.message);
-    return { inst_pref: 'none', pop_pref: 'none', approvedGenres: [] };
+    return none;
   }
 }
 
@@ -212,23 +227,6 @@ async function buildBatch({ ownerId, businessId, bizName, directions, target, ex
   return { built, failures };
 }
 
-// Today's two directions for a tier's "#1" / "#2" names, drawn at RANDOM from
-// that tier's active pool (the energy-directions step builds a library of
-// up to 30 directions across both tiers, ≥ 2 per tier). Each build — i.e. each
-// day — re-draws, so every name gets a random direction of the right energy,
-// and each playlist is exactly one direction. A pool of 1 fills both names with the same
-// direction: builds run serially and each playlist records its tracks to
-// v6_daily_track_history before the next starts, so the second draws
-// different tracks. The owner always sees two playlists per tier.
-function pickTwo(pool) {
-  if (!pool.length) return [];
-  if (pool.length === 1) return [pool[0], pool[0]];
-  const a = Math.floor(Math.random() * pool.length);
-  let b = Math.floor(Math.random() * (pool.length - 1));
-  if (b >= a) b += 1;
-  return [pool[a], pool[b]];
-}
-
 // -------- Option 1: 2 high + 2 low energy directions (4 playlists/day) --------
 
 // fromNow (the Profile tab's "replace today's playlists now"): size each
@@ -253,21 +251,27 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   const highTier = dirRows.filter((d) => d.energy_tier === 'high');
   const lowTier  = dirRows.filter((d) => d.energy_tier === 'low');
 
-  // 2. Carry-through prefs from the taste profile.
-  const { inst_pref, pop_pref } = await readProfilePrefs(businessId);
+  // 2. Carry-through prefs + requested genres from the taste profile.
+  const { inst_pref, pop_pref, approvedGenres, requestedGenres, energyLevelsTotal } = await readProfilePrefs(businessId);
+  const requested = energyLevelsTotal
+    ? requestedByTier(requestedGenres, approvedGenres, energyLevelsTotal)
+    : { high: [], low: [] };
 
   // 3. Fill the 4 fixed names — "אנרגיה גבוהה #1/#2", "אנרגיה רגועה #1/#2" —
-  //    with a random pick of 2 directions per tier (pickTwo). No mixing between
-  //    tiers. The TRACKS inside each direction also rotate day to day
-  //    (fetchTracksWithHistory's random draw + 7-day cross-day dedup).
-  const high = pickTwo(highTier);
-  const low  = pickTwo(lowTier);
+  //    with 2 directions per tier: the first at random, the second the one
+  //    least like it (pickTierPair, v7/generation/option1-draw.js). No mixing
+  //    between tiers. Every requested genre of the tier goes into both
+  //    playlists (withRequested — the library already has them; this covers
+  //    libraries built before the rule). The TRACKS inside each direction also
+  //    rotate day to day (fetchTracksWithHistory's random draw + 7-day dedup).
+  const high = pickTierPair(highTier);
+  const low  = pickTierPair(lowTier);
   if (!high.length && !low.length) return EMPTY('no-directions');
 
-  const directions = [
-    ...high.map((d, i) => shapeV7Direction(d, tierPlaylistName('high', i + 1), inst_pref, pop_pref)),
-    ...low.map((d, i)  => shapeV7Direction(d, tierPlaylistName('low',  i + 1), inst_pref, pop_pref)),
-  ];
+  const shape = (tier) => (d, i) => shapeV7Direction(
+    { ...d, genres: withRequested(d.genres, requested[tier]) },
+    tierPlaylistName(tier, i + 1), inst_pref, pop_pref);
+  const directions = [...high.map(shape('high')), ...low.map(shape('low'))];
 
   // 4. Per-playlist length (Roni's spec, 2026-09-24): HALF the day's opening
   //    time + 1.5 hours IN TOTAL — no additional buffer on top (so NOT

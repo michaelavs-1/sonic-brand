@@ -58,7 +58,7 @@ import {
 import { TimelineEditor, energyColor } from './energy-timeline-editor.js?v=24092026a';
 import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
 import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=03102026a';
-import { generateEnergyDirections } from '../generation/energy-directions.js?v=28092026b';
+import { generateEnergyDirections } from '../generation/energy-directions.js?v=05102026a';
 import { generateLevelDirections } from '../generation/level-directions.js?v=28092026a';
 import { pickLevelDirections, levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
 import { setWaitText, WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
@@ -552,8 +552,7 @@ async function logTasteForTesting() {
   if (!DEBUG_TASTE_LOG || !business) return;
   try {
     const [tpRes, setRes, dirRes, lvlRes] = await Promise.all([
-      sb.from('business_taste_profiles')
-        .select('energy_levels_total,approved_genres,conditional_genres,excluded_genres,instrumentalness_preference,popularity_preference,reasoning_en')
+      sb.from('business_taste_profiles').select('*')   // '*': requested_genres only exists after the 2026-10-05 migration
         .eq('business_id', business.id).maybeSingle(),
       sb.from('business_v7_settings').select('delivery_mode,timeline').eq('business_id', business.id).maybeSingle(),
       sb.from('business_v7_directions').select('energy_tier,rank,title_en,genres')
@@ -579,6 +578,7 @@ async function logTasteForTesting() {
       const byLevel = {};
       for (const g of tp.approved_genres || []) (byLevel[`L${g.energy_level}`] ||= []).push(g.genre);
       for (let L = N; L >= 1; L--) console.log(`  L${L}: ${(byLevel[`L${L}`] || []).join(', ') || '— (no genres at this level)'}`);
+      console.log(`Requested genres (super-liked or asked for in the emphases — Option 1 puts each in every playlist of its tier): ${(tp.requested_genres || []).map(withLevel).join(', ') || (Array.isArray(tp.requested_genres) ? 'none' : 'not recorded (signed up before 2026-10-05)')}`);
       if ((tp.conditional_genres || []).length) {
         console.groupCollapsed(`Conditional genres (${tp.conditional_genres.length}) — stored, NOT used for playlists`);
         console.table(tp.conditional_genres.map((g) => ({ level: `L${g.energy_level}`, genre: g.genre, note: g.note_en })));
@@ -591,7 +591,7 @@ async function logTasteForTesting() {
     console.log(`Daily playlist type: ${mode === 'option1' ? 'Option 1 — 4 playlists (2 high + 2 low energy)' : mode === 'option2' ? 'Option 2 — 2 mixes following the energy timeline' : 'not chosen yet'}`);
     const dirs = dirRes.data || [];
     if (dirs.length) {
-      console.log('Option 1 directions (each day 2 are drawn at random per tier):');
+      console.log('Option 1 directions (each day 2 per tier: one at random, then the one least like it):');
       console.table(dirs.map((d) => ({ tier: d.energy_tier, rank: d.rank, title: d.title_en, genres: (d.genres || []).map(withLevel).join(', ') })));
     }
     const tl = setRes.data?.timeline;
@@ -1026,8 +1026,11 @@ const ENERGY_BUILD_WAIT_NOTE = 'עלול לארוך עד דקה וחצי, נא �
 
 async function buildEnergyDirections() {
   try {
+    // '*' rather than a column list: requested_genres (the genres that go into
+    // every direction of their tier) is read when the column exists, and the
+    // read still works before migration 2026-10-05-v7-requested-genres.sql.
     const { data: tp } = await sb.from('business_taste_profiles')
-      .select('approved_genres,energy_levels_total')
+      .select('*')
       .eq('business_id', business.id)
       .maybeSingle();
     if (!tp?.approved_genres?.length) {

@@ -46,6 +46,27 @@ test('a profile that already starts at level 1 is unchanged', () => {
   assert.deepEqual(levels(p.approved_genres), { 'Bossa Nova': 1, 'Neo Soul': 3, 'Hip Hop': 4 });
 });
 
+test('requested genres: emphases + super-liked, all forced into approved', () => {
+  const p = normalizeTasteProfile({
+    energy_levels_total: 4,
+    approved_genres: [{ genre: 'Bossa Nova', energy_level: 1 }, { genre: 'Funk', energy_level: 4 }],
+    conditional_genres: [{ genre: 'Rnb', energy_level: 3, note_en: 'x' }],
+    requested_genres: ['rnb', 'Samba', 'Not A Genre'],
+  }, { superLikedGenres: ['Funk', 'Neo Soul'] });
+  assert.deepEqual(p.requested_genres, ['Rnb', 'Samba', 'Funk', 'Neo Soul']);
+  // Rnb moved out of conditional with its level; Samba / Neo Soul (in neither
+  // list) added at the middle of the scale; Funk was already approved.
+  assert.deepEqual(levels(p.approved_genres), { 'Bossa Nova': 1, Funk: 4, Rnb: 3, Samba: 2, 'Neo Soul': 2 });
+  assert.deepEqual(p.conditional_genres, []);
+  assert.ok(!p.excluded_genres.includes('Samba'));
+  assert.equal(p.excluded_genres.length, GENRES.length - 5);
+});
+
+test('no requested genres → an empty list', () => {
+  const p = normalizeTasteProfile({ energy_levels_total: 2, approved_genres: [{ genre: 'Funk', energy_level: 1 }] });
+  assert.deepEqual(p.requested_genres, []);
+});
+
 test('non-canonical names are dropped ("Motown"), canonical ones kept ("Mo Town")', () => {
   const p = normalizeTasteProfile({
     energy_levels_total: 2,

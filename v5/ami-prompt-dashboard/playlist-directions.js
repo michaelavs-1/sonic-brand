@@ -28,6 +28,7 @@ import {
   approvedByLevel,
 } from '../../v7/generation/level-directions.js';
 import { pickLevelDirections } from '../../v7/generation/timeline-assembler.js';
+import { tierOfLevel, pickTierPair, requestedByTier, withRequested } from '../../v7/generation/option1-draw.js';
 
 const MAX_TOKENS = 65536;
 const ROTATION_DAYS = 4;
@@ -36,7 +37,8 @@ export const EXPLANATION_HE = {
   option1: [
     'אפשרות 1 — 4 פלייליסטים ביום: 2 באנרגיה גבוהה ו־2 באנרגיה רגועה.',
     'הז\'אנרים המאושרים בפרופיל הטעם מתחלקים לשתי קבוצות לפי אמצע סולם האנרגיה של בעל העסק: הרמות בחצי העליון = "גבוהה", השאר = "רגועה". המודל בונה מכל קבוצה ספרייה של כיוונים (עד 30 בסך הכול).',
-    'בכל יום נבחרים באקראי 2 כיוונים מכל קבוצה, וכל פלייליסט בנוי מכיוון אחד בלבד: שירים אקראיים מהז\'אנרים של הכיוון; שירים שהעסק שמע ב־7 הימים האחרונים נכנסים רק כשאין מספיק חדשים. אורך כל פלייליסט: חצי משעות הפתיחה של אותו יום + שעה וחצי.',
+    'בכל יום נבחרים 2 כיוונים מכל קבוצה: הראשון באקראי, והשני הכיוון שהכי שונה ממנו (הכי מעט ז\'אנרים משותפים). כל פלייליסט בנוי מכיוון אחד בלבד: שירים אקראיים מהז\'אנרים של הכיוון; שירים שהעסק שמע ב־7 הימים האחרונים נכנסים רק כשאין מספיק חדשים. אורך כל פלייליסט: חצי משעות הפתיחה של אותו יום + שעה וחצי.',
+    'ז\'אנר שנתבקש מפורשות (סופר לייק או הדגשים המוזיקליים) נמצא בכל כיוון של הקבוצה שלו, ולכן בשני הפלייליסטים של אותה אנרגיה בכל יום. הכלל הזה גובר על כללי ההתאמה בין ז\'אנרים.',
     'שמות הכיוונים באנגלית פנימיים בלבד.',
   ],
   option2: [
@@ -48,8 +50,6 @@ export const EXPLANATION_HE = {
 
 // Production's editable prompt per option — what Ami's editors start from.
 export const DEFAULT_EDITABLE = { option1: ENERGY_EDITABLE, option2: LEVEL_EDITABLE };
-
-const tierOfLevel = (level, n) => (level > n / 2 ? 'high' : 'low');
 
 // editable = the option's EDITABLE prompt section (Ami's edited text);
 // defaults to production's.
@@ -65,8 +65,9 @@ export async function generateForOption(option, { profile, inputs, label, editab
   const system = option === 'option1'
     ? assembleEnergySystemPrompt(editable.trimEnd())
     : assembleLevelSystemPrompt(editable.trimEnd());
+  const requestedGenres = profile.requested_genres || [];
   const userMessage = option === 'option1'
-    ? buildEnergyUserMessage({ ...common, approvedGenres: approved, energyLevelsTotal: N })
+    ? buildEnergyUserMessage({ ...common, approvedGenres: approved, energyLevelsTotal: N, requestedGenres })
     : buildLevelUserMessage({ ...common, approved: approvedByLevel(approved, N), energyLevelsTotal: N });
 
   const { text, usage, elapsed } = await callModel({ system, userMessage, maxTokens: MAX_TOKENS, cache: false, label });
@@ -80,7 +81,7 @@ export async function generateForOption(option, { profile, inputs, label, editab
     return { ok: false, error: `המודל החזיר שגיאה: ${parsed.error}`, rawText: `ERROR: ${parsed.error}\nReasoning: ${parsed.reasoning_en || '(none)'}`, usage, elapsed };
   }
   const normalized = option === 'option1'
-    ? normalizeEnergyDirections(parsed, approved, N)
+    ? normalizeEnergyDirections(parsed, approved, N, requestedGenres)
     : normalizeLevelDirections(parsed, approved, N);
   const directions = normalized?.directions || [];
   if (!directions.length) return { ok: false, error: 'לא חזרו כיוונים תקינים', rawText: text, usage, elapsed };
@@ -108,12 +109,14 @@ const levelOfGenre = (profile) => new Map(profile.approved_genres.map((e) => [e.
 export function formatOption1(profile, { directions, dropped }) {
   const N = profile.energy_levels_total;
   const lvl = levelOfGenre(profile);
+  const requested = requestedByTier(profile.requested_genres, profile.approved_genres, N);
   const lines = [];
   for (const tier of ['high', 'low']) {
     const tierGenres = profile.approved_genres.filter((e) => tierOfLevel(e.energy_level, N) === tier);
     const levels = [...new Set(tierGenres.map((e) => e.energy_level))].sort((a, b) => b - a);
     const dirs = directions.filter((d) => d.energy_tier === tier);
     lines.push(`${tier === 'high' ? 'HIGH' : 'LOW'} tier (${tier === 'high' ? 'אנרגיה גבוהה' : 'אנרגיה רגועה'}) — levels ${levels.join(', ') || '—'} of ${N}, ${tierGenres.length} approved genres → ${dirs.length} directions`);
+    if (requested[tier].length) lines.push(`  Requested — in every direction of this tier: ${requested[tier].join(', ')}`);
     dirs.forEach((d, i) => {
       lines.push(`  ${i + 1}. ${d.title_en}`);
       lines.push(`     ${d.genres.map((g) => `${g} (L${lvl.get(g) ?? '?'})`).join(', ')}`);
@@ -125,18 +128,13 @@ export function formatOption1(profile, { directions, dropped }) {
   }
   if (dropped.length) lines.push(`DROPPED — not approved for that tier (${dropped.length}): ${dropped.join(', ')}`, '');
 
-  // One example day, drawn the way planOption1's pickTwo draws.
-  const pickTwo = (pool) => {
-    if (pool.length <= 1) return [pool[0], pool[0]].filter(Boolean);
-    const a = Math.floor(Math.random() * pool.length);
-    let b = Math.floor(Math.random() * (pool.length - 1));
-    if (b >= a) b += 1;
-    return [pool[a], pool[b]];
-  };
-  lines.push('Example day (a random draw — a new one every day):');
+  // One example day, drawn exactly the way planOption1 draws (pickTierPair:
+  // the first at random, the second the least like it), with the tier's
+  // requested genres in both playlists.
+  lines.push('Example day (a new draw every day: the first at random, the second the one least like it):');
   for (const tier of ['high', 'low']) {
-    pickTwo(directions.filter((d) => d.energy_tier === tier)).forEach((d, i) => {
-      lines.push(`  ${tier === 'high' ? 'אנרגיה גבוהה' : 'אנרגיה רגועה'} #${i + 1} → ${d.title_en}`);
+    pickTierPair(directions.filter((d) => d.energy_tier === tier)).forEach((d, i) => {
+      lines.push(`  ${tier === 'high' ? 'אנרגיה גבוהה' : 'אנרגיה רגועה'} #${i + 1} → ${d.title_en}: ${withRequested(d.genres, requested[tier]).join(', ')}`);
     });
   }
   return lines.join('\n');

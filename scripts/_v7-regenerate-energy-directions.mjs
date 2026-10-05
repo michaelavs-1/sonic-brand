@@ -5,6 +5,8 @@
  * business_v7_directions set — what re-picking Option 1 in the Profile tab
  * does, for every Option-1 business at once. Written for the 2026-09-28
  * switch from 4–7 tight clusters to a library of up to 30 v6-style blends.
+ * Also for the 2026-10-05 requested-genres rule (each requested genre in every
+ * direction of its tier): run scripts/_v7-backfill-requested-genres.mjs first.
  *
  * Same inputs as the dashboard's buildEnergyDirections (taste profile,
  * business name / description / emphases, onboarding atmospheres from the
@@ -90,10 +92,12 @@ console.log(`${businesses.length} v7 Option-1 business(es)${confirm ? '' : ' —
 
 let replaced = 0, kept = 0;
 for (const b of businesses) {
-  const [tp] = await sel('business_taste_profiles', { business_id: `eq.${b.id}` }, 'approved_genres,energy_levels_total');
+  // '*' so requested_genres comes along once its migration (2026-10-05) has run.
+  const [tp] = await sel('business_taste_profiles', { business_id: `eq.${b.id}` }, '*');
   const old = await sel('business_v7_directions', { business_id: `eq.${b.id}` }, 'energy_tier,rank,title_en,genres,active');
   const approved = tp?.approved_genres || [];
-  console.log(`— ${b.id.slice(0, 8)} "${b.name}": ${approved.length} approved genres (N=${tp?.energy_levels_total ?? '?'}), current directions ${old.length} (${tierCounts(old)})`);
+  const requested = Array.isArray(tp?.requested_genres) ? tp.requested_genres.join(', ') || 'none' : 'not recorded';
+  console.log(`— ${b.id.slice(0, 8)} "${b.name}": ${approved.length} approved genres (N=${tp?.energy_levels_total ?? '?'}), requested: ${requested}, current directions ${old.length} (${tierCounts(old)})`);
   if (!confirm) continue;
   if (!approved.length) { console.log('  skipped: no taste profile / approved genres'); kept++; continue; }
 

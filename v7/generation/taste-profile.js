@@ -42,6 +42,8 @@
 //       approved_genres: [{ genre, energy_level }, ...],
 //       conditional_genres: [{ genre, energy_level, note_en }, ...],
 //       excluded_genres: [string, ...],
+//       requested_genres: [string, ...],   // super-liked + asked for in the
+//                                          // emphases; always approved
 //       instrumentalness_preference: 'none' | 'soft' | 'hard',
 //       popularity_preference:       'none' | 'soft' | 'hard',
 //       reasoning_en: string,
@@ -100,6 +102,10 @@ You will receive:
   - DISLIKED (ranks): the direction indices the user swiped left on.
 - **SUPER-LIKED GENRES:** a deduped list of specific GENRES (not directions) the user super-liked at least one track from. Each entry is a single genre string from the Genre Universe. Super-liking is a sharper signal than merely liking a direction — the user reacted to a specific track drawn from that exact genre, so it carries extra positive weight.`;
 
+// Which genres count as "requested" (2026-10-05). Its own constant so
+// scripts/_v7-backfill-requested-genres.mjs reads emphases with the same rule.
+export const REQUESTED_GENRES_RULE = `- **Requested genres:** List in \`requested_genres\` every genre the owner explicitly asked for in their Musical emphases or Round 2 refinement emphases — named, or referred to unmistakably, in any language (e.g. "אר אנד בי" → \`Rnb\`). Use the exact genre the owner meant: a request for R&B is \`Rnb\`, not \`French RnB\` or \`Alternative R&B\`. If they used a broad family word that covers several genres (e.g. "jazz", "ג'אז"), list only the one genre whose name matches that word most directly (e.g. \`Jazz (Standards)\`). Never list a genre the owner asked to avoid, a general leaning ("calm", "only hits"), or a genre you inferred. Do not list super-liked genres here — they are added automatically. Every requested genre MUST also be in \`approved_genres\`, with its energy level, whatever the other rules say: the owner asked for it, and their daily playlists will always include it.`;
+
 const PROCESSING_RULES_SECTION = `### Processing Rules:
 
 - **Musical Emphases (highest priority):** Treat the emphases text as the strongest signal — above description, atmospheres, and Google context. Genres or families the owner named to INCLUDE: bias toward \`approved\`. Genres or families they named to EXCLUDE: leave them out of both lists (excluded) even if they appear in a liked direction. General leanings ("adventurous", "hits only", "familiar", "not too energetic") shape the whole profile, not just some genres.
@@ -109,7 +115,8 @@ const PROCESSING_RULES_SECTION = `### Processing Rules:
 - **Hard Guardrail Enforcement:** Apply the Electronic and Classical/Spa rules (Hard Boundary Rules) strictly before placing any genre the owner didn't directly choose into \`approved\`.
 - **Venue Alignment Check:** Verify every genre you infer against the venue (Venue Context Cutoff) and against whether this owner would genuinely enjoy it (Core Philosophy).
 - **Japanese Folk Restriction:** Leave \`Japanese Folk\` out of both lists (excluded) UNLESS the venue is explicitly a Japanese business needing particularly calm/relaxing music OR the owner explicitly requested it in emphases.
-- **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts, prioritize the description and note the tension in \`reasoning_en\`.`;
+- **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts, prioritize the description and note the tension in \`reasoning_en\`.
+${REQUESTED_GENRES_RULE}`;
 
 const DEDUCTION_LOGIC_SECTION = `## Deduction Logic
 
@@ -235,6 +242,7 @@ Normal case:
     {"genre": "Trap",       "energy_level": 4, "note_en": "Adjacent to Hip Hop but user's dislikes lean cleaner-produced — hold in reserve."}
     // ... one entry per conditional genre; note_en is one short English sentence
   ],
+  "requested_genres": ["Neo Soul"],
   "instrumentalness_preference": "none",
   "popularity_preference": "none",
   "reasoning_en": "One paragraph explaining the overall taste profile, key positive/negative signals, and the energy calibration decision — why N=4 in this case, what the spread looks like."
@@ -245,6 +253,7 @@ Field contracts:
 - \`approved_genres\`: array of \`{genre, energy_level}\`. \`energy_level\` is an integer 1..N.
 - \`conditional_genres\`: array of \`{genre, energy_level, note_en}\`. \`energy_level\` is an integer 1..N. \`note_en\` is one short English sentence explaining why the genre is conditional (for developer audit — this bucket is data-only, not used by the initial playlist build).
 - Do NOT output an \`excluded_genres\` field. Every canonical genre missing from both lists above is excluded automatically.
+- \`requested_genres\`: array of genre strings — the genres the owner explicitly asked for in their Musical emphases or Round 2 refinement emphases (see Processing Rules). \`[]\` when they asked for none. Super-liked genres are added downstream; don't repeat them here.
 - \`instrumentalness_preference\`: carried through verbatim from R1/R2 (\`"none"\` | \`"soft"\` | \`"hard"\`).
 - \`popularity_preference\`: carried through verbatim from R1/R2 (\`"none"\` | \`"soft"\` | \`"hard"\`).
 - \`reasoning_en\`: one paragraph in English for developer audit.
@@ -253,6 +262,7 @@ Hard invariants:
 - No genre may appear in both \`approved_genres\` and \`conditional_genres\`, or twice in the same list.
 - Every genre string must be VERBATIM from the Genre Universe.
 - Every approved/conditional genre has an \`energy_level\` between 1 and \`energy_levels_total\`.
+- Every genre in \`requested_genres\` is also in \`approved_genres\`.
 
 Error case (return instead of a profile):
 {"error": "<code>", "reasoning_en": "one short English sentence"}`;
@@ -378,16 +388,48 @@ function clampEnergyLevel(level, total) {
   return int;
 }
 
+// Canonical, deduped genre names from any list of strings (unknown names
+// dropped). Exported for scripts/_v7-backfill-requested-genres.mjs.
+export function canonicalGenreList(list) {
+  const out = [];
+  for (const g of Array.isArray(list) ? list : []) {
+    const c = canonicalize(g);
+    if (c && !out.includes(c)) out.push(c);
+  }
+  return out;
+}
+
+// Requested genres (2026-10-05) are always approved — the owner asked for
+// them, and Option 1 puts each one in every playlist of its energy tier. One
+// the model left in conditional moves to approved with its level there; one it
+// left out of both lists is added at the middle of the scale. Mutates
+// `approved` / `conditional`; returns the genres it had to add or move.
+// Exported for scripts/_v7-backfill-requested-genres.mjs.
+export function forceRequestedIntoApproved(approved, conditional, requested, energyLevelsTotal) {
+  const forced = [];
+  for (const genre of requested) {
+    if (approved.some((e) => e.genre === genre)) continue;
+    const i = conditional.findIndex((e) => e.genre === genre);
+    const level = i >= 0 ? conditional[i].energy_level : Math.ceil(energyLevelsTotal / 2);
+    if (i >= 0) conditional.splice(i, 1);
+    approved.push({ genre, energy_level: level });
+    forced.push(genre);
+  }
+  return forced;
+}
+
 // Coerce a raw model response into a well-formed profile. Drops:
 // - Genre strings not in the shared Genre Universe (case-normalised first).
 // - Duplicates across buckets (approved wins over conditional).
 // - Approved/conditional entries missing a valid energy_level.
+// `requested_genres` = the model's emphases-derived list + `superLikedGenres`
+// (the swipe deck's, passed in by the caller), each forced into approved.
 // Then shifts the levels down if no approved genre sits at level 1 (see below).
 // `excluded_genres` is then COMPUTED as every canonical genre not in
 // approved or conditional — the model is told not to output it (any
 // excluded list it sends anyway is ignored), so the three buckets always
 // partition every canonical genre.
-export function normalizeTasteProfile(parsed) {
+export function normalizeTasteProfile(parsed, { superLikedGenres = [] } = {}) {
   if (!parsed || typeof parsed !== 'object') return null;
 
   let energyLevelsTotal = Number(parsed.energy_levels_total);
@@ -418,7 +460,16 @@ export function normalizeTasteProfile(parsed) {
     conditional.push({ genre, energy_level: level, note_en: note });
     seen.add(genre);
   }
-  const excludedList = GENRES.filter((g) => !seen.has(g));
+
+  const requested = canonicalGenreList([
+    ...(Array.isArray(parsed.requested_genres) ? parsed.requested_genres : []),
+    ...(Array.isArray(superLikedGenres) ? superLikedGenres : []),
+  ]);
+  const forced = forceRequestedIntoApproved(approved, conditional, requested, energyLevelsTotal);
+  if (forced.length) console.warn('[v7 taste-profile] requested genres the model had not approved — approved now:', forced.join(', '));
+
+  const listed = new Set([...approved, ...conditional].map((e) => e.genre));
+  const excludedList = GENRES.filter((g) => !listed.has(g));
 
   // Safety net for the energy floor rule (2026-09-30): the calmest APPROVED
   // genre must sit at level 1 — otherwise Option 1's calm tier (levels ≤ N/2)
@@ -437,6 +488,7 @@ export function normalizeTasteProfile(parsed) {
     approved_genres:     approved,
     conditional_genres:  conditional,
     excluded_genres:     excludedList,
+    requested_genres:    requested,
     instrumentalness_preference: normalizePref(parsed.instrumentalness_preference),
     popularity_preference:       normalizePref(parsed.popularity_preference),
     reasoning_en: typeof parsed.reasoning_en === 'string' ? parsed.reasoning_en : '',
@@ -499,7 +551,7 @@ export async function generateTasteProfile({
     };
   }
 
-  const profile = normalizeTasteProfile(parsed);
+  const profile = normalizeTasteProfile(parsed, { superLikedGenres });
   if (!profile) {
     return { error: 'matcher_error', reasoning_en: 'taste profile could not be parsed' };
   }

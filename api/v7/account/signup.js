@@ -54,6 +54,8 @@
      atmospheres?, place?,
      hours?, longestMinutes?,
      superLikedTracks?: [spotify_id],
+     superLikedGenres?: [genre],         // the swipe deck's super-liked genres
+     round2Emphases?,                    // the Round 2 refinement text
      onboardingSessionId?,
      skipEmail?,                         // test scripts only — honored ONLY with
                                          // a valid x-sonic-internal header
@@ -76,7 +78,7 @@ import { timingSafeEqual } from 'node:crypto';
 import { pgrSelect, pgrUpsert, pgrPatch } from '../../v5/supabase-client.js';
 import { requireSite, isAllowedHost, setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
-import { tasteProfileRow, isUsableTasteProfile } from './_taste-profile.js';
+import { tasteProfileRow, upsertTasteProfileRow, isUsableTasteProfile } from './_taste-profile.js';
 import { PAYMENTS_ENABLED } from '../payment/_hyp.js';
 import {
   adminHeaders, findUserByEmail, businessIdsOf, isVerified,
@@ -284,6 +286,8 @@ export default async function handler(req, res) {
       hours,
       longestMinutes,
       superLikedTracks,
+      superLikedGenres,
+      round2Emphases,
       onboardingSessionId,
       tasteProfile,
       genreTally,
@@ -366,9 +370,9 @@ export default async function handler(req, res) {
     // Taste profile — saved BEFORE the email goes out, so the owner's first
     // click on the magic link lands on an account that can already build.
     // Fatal: without it the account is useless (and a retry is idempotent).
-    await pgrUpsert('business_taste_profiles',
-      tasteProfileRow(businessId, tasteProfile, genreTally),
-      { onConflict: 'business_id' });
+    // The super-liked genres + Round 2 text are kept with it (2026-10-05).
+    await upsertTasteProfileRow(tasteProfileRow(businessId, tasteProfile, genreTally,
+      { superLikedGenres, round2Emphases: String(round2Emphases || '') }));
 
     // Gemini spend back-fill — the onboarding Gemini calls (v7-onboarding,
     // v7-onboarding-refined, v7-taste-profile) were logged with

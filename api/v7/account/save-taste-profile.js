@@ -25,8 +25,8 @@
    Response: { ok: true } | { error }
 */
 
-import { pgrUpsert, pgrPatch } from '../../v5/supabase-client.js';
-import { tasteProfileRow } from './_taste-profile.js';
+import { pgrPatch } from '../../v5/supabase-client.js';
+import { tasteProfileRow, upsertTasteProfileRow } from './_taste-profile.js';
 import { requireBusinessOwner } from '../../v6/account/_require-business-owner.js';
 import { setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
@@ -66,9 +66,7 @@ export default async function handler(req, res) {
     try { await requireBusinessOwner(business_id, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
 
-    const row = tasteProfileRow(business_id, profile, genreTally);
-
-    await pgrUpsert('business_taste_profiles', row, { onConflict: 'business_id' });
+    await upsertTasteProfileRow(tasteProfileRow(business_id, profile, genreTally));
 
     // Re-run the onboarding gemini backfill to catch the v7-taste-profile
     // log row, which may have landed after signup's backfill. Idempotent:

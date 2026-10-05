@@ -46,7 +46,59 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-03 (latest) — Special playlists: v7's own event chat + playlist classifier
+## 2026-10-05 (latest) — Requested genres: always approved, in every Option-1 playlist of their tier
+
+**Applies to:** `taste profile` + `energy directions`
+
+Ami's request (via Roni). If the owner super-liked a genre or asked for it in the musical emphases, that genre must be in every daily playlist of the energy it was assigned to. Decisions:
+- "asked for" = super-liked genres + genres named in the emphases (Round 1 and Round 2 text);
+- exact genre ("R&B" is `Rnb`, not `French RnB`);
+- every requested genre fits in, overriding the pairing rules;
+- one the profile didn't approve is forced into approved;
+- Option 1 only.
+
+Separately, the daily draw (code, not a prompt) now picks the second playlist of a tier as the direction least like the first (`pickTierPair` in `v7/generation/option1-draw.js`).
+
+### Taste profile
+
+New exported constant, appended as the last bullet of `PROCESSING_RULES_SECTION` (editable):
+
+```
+- **Requested genres:** List in `requested_genres` every genre the owner explicitly asked for in their Musical emphases or Round 2 refinement emphases — named, or referred to unmistakably, in any language (e.g. "אר אנד בי" → `Rnb`). Use the exact genre the owner meant: a request for R&B is `Rnb`, not `French RnB` or `Alternative R&B`. If they used a broad family word that covers several genres (e.g. "jazz", "ג'אז"), list only the one genre whose name matches that word most directly (e.g. `Jazz (Standards)`). Never list a genre the owner asked to avoid, a general leaning ("calm", "only hits"), or a genre you inferred. Do not list super-liked genres here — they are added automatically. Every requested genre MUST also be in `approved_genres`, with its energy level, whatever the other rules say: the owner asked for it, and their daily playlists will always include it.
+```
+
+`FIXED_PROMPT_SECTION` (output schema):
+- the example gains `"requested_genres": ["Neo Soul"],` after `conditional_genres`;
+- new field contract: ``- `requested_genres`: array of genre strings — the genres the owner explicitly asked for in their Musical emphases or Round 2 refinement emphases (see Processing Rules). `[]` when they asked for none. Super-liked genres are added downstream; don't repeat them here.``;
+- new hard invariant: ``- Every genre in `requested_genres` is also in `approved_genres`.``
+
+Code (`normalizeTasteProfile(parsed, { superLikedGenres })`): `requested_genres` = the model's list + the swipe deck's super-liked genres, canonical and deduped. Each one is forced into approved: out of conditional with its level there, or at `ceil(N/2)` if the model left it out of both lists. This runs before the level-1 safety shift and before `excluded_genres` is computed.
+
+### Energy directions (Option 1)
+
+New section `REQUESTED_GENRES_SECTION` (editable), between Energy Tiers and Library Size & Diversity:
+
+```
+## Requested Genres
+
+The owner explicitly asked for some genres: they super-liked a track from them, or named them in their emphases. These are marked "(requested)" in the approved list.
+
+- **Every direction of a tier contains every requested genre of that tier.** If `Rnb` is a requested HIGH-tier genre, every HIGH direction includes `Rnb`; the LOW directions are not affected. The owner hears each requested genre in every playlist of its energy, every day.
+- **This overrides every rule in "Coherence Inside Each Direction" below** (beat/percussion pairing, Jazz isolation, Pop isolation, House & Techno containment, the genre-count target). Build the rest of each direction to sit as well as possible with the requested genres.
+- **Vary what surrounds them.** The requested genres are shared by all of a tier's directions, so the library's variety comes from the other genres: give each direction a different combination of the tier's remaining genres.
+- A tier whose approved genres are all requested gets a single direction made of exactly those genres.
+```
+
+Other edits:
+- **Inputs section,** new bullet: ``- Optionally: **Requested genres** — approved genres the owner explicitly asked for (they super-liked a track from them or named them in their emphases). They are marked "(requested)" in the approved list; see Requested Genres.``
+- **Coherence section,** its intro gains: "Requested genres are the one exception (see Requested Genres): they go into every direction of their tier regardless of these rules."
+- **`FIXED_PROMPT_SECTION` hard invariants:** gains ``- Every direction contains every requested genre of its tier.``, and the per-tier minimum becomes "At least 2 directions for each tier that has any approved genres (1 when every approved genre of the tier is requested)."
+- **User message:** requested genres are marked `(requested)` in the approved list. When there are any, a `## Requested genres (in EVERY direction of their tier)` block lists them per tier, and the closing line adds "every requested genre in every direction of its tier".
+- **Normalizer** (`normalizeEnergyDirections(parsed, approved, n, requestedGenres)`): adds any requested genre of the direction's tier that the model left out.
+
+---
+
+## 2026-10-03 — Special playlists: v7's own event chat + playlist classifier
 
 **Applies to:** `event chat` + `event playlist`
 

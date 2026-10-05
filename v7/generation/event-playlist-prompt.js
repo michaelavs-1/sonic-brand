@@ -10,8 +10,9 @@
 //     not part of the day-to-day cohesion the daily directions keep.
 //   - Instrumental / popularity preferences start from the taste profile and
 //     change only when the brief asks for it.
-//   - TEMPORARY: tempo (bpm_range) still sets the energy. To be replaced by
-//     energy once Ami's energy tests (his dashboard's test playlists) conclude.
+//   - TEMPORARY: tempo (bpm_range) still sets the energy. Ami's energy ranges
+//     (2026-10-05) cover the daily playlists only; whether and how they apply
+//     to special playlists is still open (Roni) — see CLAUDE.md.
 //
 // Server-reachable — bare imports only. Prompt edits go in prompt-history-v7.md.
 

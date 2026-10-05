@@ -73,6 +73,26 @@ export function pgrSelect(table, filters = {}, { select = '*', order, limit, use
     return pgrRequest('GET', table, { query, useService });
 }
 
+// SELECT every matching row, page by page. PostgREST hands back at most 1,000
+// rows per request on this project (the API's max-rows setting), so a plain
+// pgrSelect on a bigger table silently stops at 1,000. `order` must be a
+// unique key (e.g. the primary key) so pages don't overlap or skip rows.
+// Pages until an empty page, so it works whatever max-rows is set to.
+export async function pgrSelectAll(table, filters = {}, { select = '*', order, useService = false, pageSize = 1000 } = {}) {
+    if (!order) throw new Error('pgrSelectAll needs an order (a unique key) to page reliably');
+    const out = [];
+    for (let offset = 0; ;) {
+        const page = await pgrRequest('GET', table, {
+            query: { select, ...filters, order, limit: String(pageSize), offset: String(offset) },
+            useService,
+        });
+        if (!Array.isArray(page) || !page.length) break;
+        out.push(...page);
+        offset += page.length;
+    }
+    return out;
+}
+
 // SELECT WHERE col IN (...). Splits into ?col=in.(a,b,c). Caller may need to
 // chunk for very large value lists (URL length limits) — we chunk at 200.
 export async function pgrSelectIn(table, col, values, { select = '*', useService = false } = {}) {

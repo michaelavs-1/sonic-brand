@@ -174,6 +174,10 @@ async function main() {
     const existing = await pgrSelect('playlist_genres', {}, { select: 'playlist_id,genre,position_in_genre', limit: 10000 });
     const existingByGenre = new Map();
     for (const r of existing) {
+        // "manual:<genre>" playlists (Track cleanup's genre editor — see
+        // api/v4/_track-genres.js) aren't sheet playlists: don't let one count
+        // toward a genre's playlist target.
+        if (String(r.playlist_id).startsWith('manual:')) continue;
         if (!existingByGenre.has(r.genre)) existingByGenre.set(r.genre, new Set());
         existingByGenre.get(r.genre).add(r.playlist_id);
     }

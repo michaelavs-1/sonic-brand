@@ -27,11 +27,12 @@
 
 import {
     pgrSelect,
-    pgrSelectIn,
+    pgrSelectAll,
     pgrUpsert,
     pgrDelete,
     pgrRpc,
 } from './supabase-client.js';
+import { isManualPlaylist } from './_track-genres.js';
 
 import {
     computeBiztypeGenresFromSheet,
@@ -279,15 +280,27 @@ export default async function handler(req, res) {
         const [tab1, tab2] = await Promise.all([fetchTab1(req), fetchTab2(req)]);
 
         // ---- 2. Load DB state --------------------------------------------------
-        const [dbBiztypeGenres, dbPlaylistGenres, existingScanJobs] = await Promise.all([
-            pgrSelect('biztype_genres', {}, {
+        // pgrSelectAll, not pgrSelect: a plain select stops at 1,000 rows, and
+        // playlist_genres passed that (1,032 on 2026-10-05) — the scan then never
+        // saw the rest, so links Ami removed from the sheet stayed in the DB.
+        const [dbBiztypeGenres, allDbPlaylistGenres, existingScanJobs] = await Promise.all([
+            pgrSelectAll('biztype_genres', {}, {
                 select: 'business_type,genre,column_letter,position_in_column',
+                order:  'business_type.asc,genre.asc',
             }),
-            pgrSelect('playlist_genres', {}, {
+            pgrSelectAll('playlist_genres', {}, {
                 select: 'playlist_id,genre,position_in_genre',
+                order:  'playlist_id.asc,genre.asc',
             }),
-            pgrSelect('scan_jobs', {}, { select: 'playlist_id,status,tracks_total,priority' }),
+            pgrSelectAll('scan_jobs', {}, {
+                select: 'playlist_id,status,tracks_total,priority',
+                order:  'playlist_id.asc',
+            }),
         ]);
+        // "Manual" playlists (manual:<genre>) hold the genres Ami added to
+        // single tracks in Track cleanup — they're not in the sheet, so they
+        // must never be diffed, deleted or cascaded here (see _track-genres.js).
+        const dbPlaylistGenres = allDbPlaylistGenres.filter((r) => !isManualPlaylist(r.playlist_id));
 
         // ---- 3a. Compute the canonical sheet-side rows for both tabs. -------
         const sheetBiztypeRows  = computeBiztypeGenresFromSheet(tab1);
@@ -431,11 +444,18 @@ export default async function handler(req, res) {
         const stoppedJobsResumed = stoppedAlive.map((j) => j.playlist_id);
 
         // ---- 4c. Split plgAdded into "already-known" vs. "truly-new" ----------
+        // "Known" = has at least one playlist_tracks row. One limit-1 lookup per
+        // playlist (10 at a time): fetching every track of up to 200 playlists in
+        // one request hit the 1,000-row cap, so playlists past it looked new and
+        // were queued for a rescan.
         const addedPlaylistIds = [...new Set(plgAdded.map((r) => r.playlist_id))];
-        const knownPlaylistTrackRows = addedPlaylistIds.length
-            ? await pgrSelectIn('playlist_tracks', 'playlist_id', addedPlaylistIds, { select: 'playlist_id' })
-            : [];
-        const knownPlaylistIds = new Set(knownPlaylistTrackRows.map((r) => r.playlist_id));
+        const knownPlaylistIds = new Set();
+        for (let i = 0; i < addedPlaylistIds.length; i += 10) {
+            await Promise.all(addedPlaylistIds.slice(i, i + 10).map(async (pid) => {
+                const rows = await pgrSelect('playlist_tracks', { playlist_id: `eq.${pid}` }, { select: 'playlist_id', limit: 1 });
+                if (rows?.length) knownPlaylistIds.add(pid);
+            }));
+        }
         // Rows we deleted in the orphan pass are no longer queued, even though
         // they were in existingScanJobs. If Ami removed and re-added the same
         // playlist in one scan session, we want to re-enqueue it fresh.

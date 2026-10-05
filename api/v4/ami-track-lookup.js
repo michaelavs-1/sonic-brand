@@ -6,7 +6,7 @@
    Spotify (via the existing /api/v4/spotify get_track action), and reports
    whether the track is present in playlist_tracks and/or track_analyses.
    Used by the dashboard's "Track cleanup" input to populate the pre-delete
-   confirmation card.
+   confirmation card and the genre editor (/api/v4/ami-track-genres).
 
    Accepted input shapes:
      - Bare 22-char track ID           7DtbrNlYifGnJc7HY0fS9i
@@ -30,7 +30,9 @@
    dashboard's downstream delete/undo/re-lookup calls use the right key.
 */
 
-import { pgrSelect, pgrSelectIn } from './supabase-client.js';
+import { pgrSelect } from './supabase-client.js';
+import { loadTrackGenres, isManualPlaylist } from './_track-genres.js';
+import { GENRES } from '../../shared/genre-universe.js';
 
 // Spotify's mobile share button (iOS + Android) hands out short links like
 // https://open.spotify.com/s/{shortcode}. The shortcode is NOT a 22-char
@@ -132,22 +134,15 @@ export default async function handler(req, res) {
 
         const canonicalId = spotifyData?.id || spotifyId;
 
-        const [playlistTrackRows, analysisRows] = await Promise.all([
-            pgrSelect('playlist_tracks', { spotify_id: `eq.${canonicalId}` }, { select: 'playlist_id' }),
+        // Genres this track is associated with = distinct genres of every
+        // playlist it appears in (via playlist_genres), including "manual"
+        // placements made with the genre editor (see ./_track-genres.js).
+        const [trackGenres, analysisRows] = await Promise.all([
+            loadTrackGenres(canonicalId),
             pgrSelect('track_analyses', { spotify_id: `eq.${canonicalId}` }, { select: '*', limit: 1 }),
         ]);
         const analysis = (analysisRows || [])[0] || null;
-
-        const playlistIds = Array.from(new Set((playlistTrackRows || []).map((r) => r.playlist_id))).sort();
-
-        // Genres this track is associated with = distinct genres of every
-        // playlist it appears in (via playlist_genres). Chunked in pgrSelectIn
-        // so a very-popular track's playlist list doesn't blow the URL limit.
-        let genres = [];
-        if (playlistIds.length) {
-            const genreRows = await pgrSelectIn('playlist_genres', 'playlist_id', playlistIds, { select: 'genre' });
-            genres = Array.from(new Set((genreRows || []).map((r) => r.genre))).sort();
-        }
+        const playlistIds = [...trackGenres.genresByPlaylist.keys()].sort();
 
         return res.status(200).json({
             spotifyId:       canonicalId,
@@ -156,9 +151,17 @@ export default async function handler(req, res) {
             artists:         (spotifyData?.artists || []).map((a) => a.name),
             inPlaylistCount: playlistIds.length,
             playlistIds,
-            genres,
+            // Per playlist: its genres, and whether it's a manual placement.
+            playlists:       playlistIds.map((id) => ({
+                id, genres: trackGenres.genresByPlaylist.get(id) || [], manual: isManualPlaylist(id),
+            })),
+            genres:          trackGenres.genres,
             hasAnalysis:     analysis !== null,
             analysis,
+            // For the genre editor: genres can only be ADDED to a track with a
+            // usable analysis (the playlist builders skip the rest).
+            canAddGenres:    analysis?.status === 'ok',
+            allGenres:       GENRES.map((g) => ({ value: g.toLowerCase(), label: g })),
         });
     } catch (err) {
         return res.status(500).json({ error: err.message || 'Server error' });

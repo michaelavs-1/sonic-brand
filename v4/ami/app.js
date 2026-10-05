@@ -701,17 +701,24 @@ let currentTrack = null;
 // Populated after a successful delete → the Undo button reads this. Cleared
 // on next search OR after Undo. Not persisted anywhere (page refresh loses it).
 let deletedTrackForUndo = null;
+// Genre editor (Ami, 2026-10-05 — /api/v4/ami-track-genres): the genres the
+// track will be saved with (lowercase; starts as its current genres), and the
+// last saved genre change, for its Undo button. A new search clears both.
+let genreDraft = null;
+let lastGenreEdit = null;
 
 trackLookupBtn.addEventListener('click', () => runTrackLookup());
 trackLookupInput.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') runTrackLookup();
 });
 
-async function runTrackLookup() {
+// keepGenreUndo: the refresh after a genre save keeps that save's Undo.
+async function runTrackLookup({ keepGenreUndo = false } = {}) {
     const input = trackLookupInput.value.trim();
     if (!input) return;
     // A new search invalidates any pending Undo — per spec.
     deletedTrackForUndo = null;
+    if (!keepGenreUndo) lastGenreEdit = null;
 
     trackLookupBtn.disabled = true;
     trackLookupBtn.innerHTML = '<span class="btn-spinner"></span>Searching...';
@@ -724,9 +731,11 @@ async function runTrackLookup() {
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
         currentTrack = data;
+        genreDraft = new Set(data.genres || []);
         renderTrackLookupResult({ mode: 'found', track: data });
     } catch (err) {
         currentTrack = null;
+        genreDraft = null;
         renderTrackLookupResult({ mode: 'error', message: err.message });
     } finally {
         trackLookupBtn.disabled = false;
@@ -814,17 +823,22 @@ function renderTrackLookupResult({ mode, track, message }) {
         : '';
 
     const genres = Array.isArray(t.genres) ? t.genres : [];
-    const playlistIds = Array.isArray(t.playlistIds) ? t.playlistIds : [];
-    const genresHtml = (mode === 'found' && genres.length)
-        ? `<div class="track-meta track-genres">
-               <span class="track-meta-label">Genres:</span>
-               ${genres.map((g) => `<span class="track-badge">${escapeHtml(g)}</span>`).join('')}
-           </div>`
+    const playlists = Array.isArray(t.playlists)
+        ? t.playlists
+        : (Array.isArray(t.playlistIds) ? t.playlistIds : []).map((id) => ({ id, genres: [], manual: false }));
+    // The genre editor replaces the old read-only genre badges; it's filled by
+    // renderGenreEditor() below so editing doesn't redraw the whole card.
+    const genresHtml = (mode === 'found' && (genres.length || t.canAddGenres))
+        ? `<div class="genre-editor" id="genreEditor"></div>`
         : '';
-    const playlistsHtml = (mode === 'found' && playlistIds.length)
+    // Manual placements (genres added in the editor) live in DB-only
+    // playlists — shown as a badge, not a Spotify link.
+    const playlistsHtml = (mode === 'found' && playlists.length)
         ? `<div class="track-meta track-playlists">
                <span class="track-meta-label">Playlists:</span>
-               ${playlistIds.map((id) => `<a class="track-badge track-playlist-link" href="https://open.spotify.com/playlist/${encodeURIComponent(id)}" target="_blank" rel="noopener noreferrer">${escapeHtml(id)}</a>`).join('')}
+               ${playlists.map((p) => p.manual
+                   ? `<span class="track-badge manual" title="Added in the genre editor — not a Spotify playlist">manual · ${escapeHtml(p.genres.join(', '))}</span>`
+                   : `<a class="track-badge track-playlist-link" href="https://open.spotify.com/playlist/${encodeURIComponent(p.id)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.id)}</a>`).join('')}
            </div>`
         : '';
 
@@ -853,6 +867,101 @@ function renderTrackLookupResult({ mode, track, message }) {
     const undoBtn   = trackLookupResult.querySelector('.track-undo-btn');
     if (deleteBtn) deleteBtn.addEventListener('click', runTrackDelete);
     if (undoBtn)   undoBtn.addEventListener('click',   runTrackUndo);
+    if (mode === 'found') renderGenreEditor();
+}
+
+// Genre editor: a chip per genre (× takes it out, ↺ puts it back), a picker to
+// add any canonical genre (only for tracks with a usable analysis), Save and
+// Undo. Nothing changes in the DB until Save.
+function renderGenreEditor() {
+    const box = $('genreEditor');
+    const t = currentTrack;
+    if (!box || !t || !genreDraft) return;
+    const current = new Set(t.genres || []);
+    const labelOf = new Map((t.allGenres || []).map((g) => [g.value, g.label]));
+    const shown = [...new Set([...current, ...genreDraft])].sort();
+    const chips = shown.map((g) => {
+        const state = !genreDraft.has(g) ? 'removed' : (current.has(g) ? '' : 'added');
+        return `<span class="genre-chip ${state}">${escapeHtml(labelOf.get(g) || g)}` +
+            `<button class="genre-chip-x" data-genre="${escapeAttr(g)}" title="${state === 'removed' ? 'Keep this genre' : 'Remove this genre'}">${state === 'removed' ? '↺' : '×'}</button></span>`;
+    }).join('');
+    const options = (t.allGenres || []).filter((g) => !shown.includes(g.value))
+        .map((g) => `<option value="${escapeAttr(g.value)}">${escapeHtml(g.label)}</option>`).join('');
+    const changed = shown.some((g) => current.has(g) !== genreDraft.has(g));
+    const canUndo = lastGenreEdit && lastGenreEdit.spotifyId === t.spotifyId;
+
+    box.innerHTML = `
+        <div class="track-meta track-genres">
+            <span class="track-meta-label">Genres:</span>
+            ${chips || '<span class="track-badge">none</span>'}
+            ${t.canAddGenres ? `<select class="genre-add-select"><option value="">+ Add genre…</option>${options}</select>` : ''}
+        </div>
+        <div class="genre-edit-actions">
+            <button class="genre-save-btn" ${changed ? '' : 'disabled'}>Save genres</button>
+            <button class="genre-undo-btn" ${canUndo ? '' : 'disabled'}>Undo genre change</button>
+        </div>
+        <div class="genre-edit-hint">
+            Removing a genre takes the track out of that genre's playlists. Added genres are stored as
+            manual placements, which sheet scans leave alone.${t.canAddGenres ? '' : ' This track has no usable analysis, so genres can only be removed.'}
+        </div>`;
+
+    box.querySelectorAll('.genre-chip-x').forEach((btn) => btn.addEventListener('click', () => {
+        const g = btn.dataset.genre;
+        if (genreDraft.has(g)) genreDraft.delete(g); else genreDraft.add(g);
+        renderGenreEditor();
+    }));
+    const select = box.querySelector('.genre-add-select');
+    if (select) select.addEventListener('change', () => {
+        if (select.value) genreDraft.add(select.value);
+        renderGenreEditor();
+    });
+    box.querySelector('.genre-save-btn').addEventListener('click', runGenreSave);
+    box.querySelector('.genre-undo-btn').addEventListener('click', runGenreUndo);
+}
+
+async function runGenreSave() {
+    const t = currentTrack;
+    if (!t || !genreDraft) return;
+    const btn = $('genreEditor')?.querySelector('.genre-save-btn');
+    if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
+    try {
+        const r = await fetch('/api/v4/ami-track-genres', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ action: 'set', spotifyId: t.spotifyId, genres: [...genreDraft], title: t.title, artists: t.artists }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        if (!data.unchanged) {
+            lastGenreEdit = { editId: data.editId, spotifyId: t.spotifyId };
+            showBanner(`Saved genres for "${t.title}": ${(data.genres || []).join(', ') || 'none'}.`, 'success');
+        }
+        await runTrackLookup({ keepGenreUndo: true });
+    } catch (err) {
+        showBanner(`Saving genres failed: ${err.message}`);
+        if (btn) { btn.disabled = false; btn.innerText = 'Save genres'; }
+    }
+}
+
+async function runGenreUndo() {
+    if (!lastGenreEdit) return;
+    const btn = $('genreEditor')?.querySelector('.genre-undo-btn');
+    if (btn) { btn.disabled = true; btn.innerText = 'Undoing...'; }
+    try {
+        const r = await fetch('/api/v4/ami-track-genres', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ action: 'undo', editId: lastGenreEdit.editId }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        lastGenreEdit = null;
+        showBanner(`Genre change undone: ${(data.genres || []).join(', ') || 'no genres'}.`, 'success');
+        await runTrackLookup();
+    } catch (err) {
+        showBanner(`Undo failed: ${err.message}`);
+        if (btn) { btn.disabled = false; btn.innerText = 'Undo genre change'; }
+    }
 }
 
 // Full track_analyses row from api/v4/ami-track-lookup.js: typed audio-feature

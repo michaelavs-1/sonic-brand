@@ -280,7 +280,7 @@ The Home tab's chat makes a one-off playlist for something happening **today**. 
   - **Tracks:** `v5_direction_tracks` random draw, ~223 like v6 (`closedDayTargetTracks`), floor 5. It leaves out every track in the business's live playlists today (daily + special).
   - **Spotify and rows:** playlist on Rubin "<business> · <name> · dd.mm.yyyy" (IL date), `created_playlists` ledger, and a `business_playlists` row (`event_id`, ico 🎪, `track_genres`).
   - **Concurrency:** one build per event at a time (`acquireBuildLock('event:<id>')` → 409 `building`). The client then watches the table and retries once the lock has lapsed. An event that already has a live playlist returns it.
-  - **⚠️ TEMPORARY: tempo (`bpm_range`) stands in for energy. Replace it with energy once Ami's energy tests (his dashboard's test playlists) conclude.**
+  - **⚠️ TEMPORARY: tempo (`bpm_range`) stands in for energy.** On 2026-10-05 Ami set energy ranges (`track_analyses.energy`) for the DAILY playlists: Option 1 high 50–80 / calm 20–50, Option 2 by level 20–50 / 30–60 / 40–70 / 50–80. **Special playlists were left on tempo on purpose for now (Roni). Still to decide whether and how those ranges apply here.**
 - **Trash** (`delete-event.js`). Disabled while the card is building.
   - The card goes at once in the client, and comes back if the call fails.
   - The server archives the row into `deleted_events`, deletes it, and sets the playlist's `business_playlists.expires_at = now`.
@@ -565,6 +565,8 @@ sonic-brand/
 │   │   │                                      (all typed audio-feature columns, since 2026-09-01)
 │   │   ├── ami-track-delete.js             ← Archive a track's rows into `deleted_tracks` then remove live rows
 │   │   ├── ami-track-restore.js            ← One-shot restore from the `deleted_tracks` archive
+│   │   ├── ami-track-genres.js             ← Track cleanup's genre editor: set a track's genres / undo (2026-10-05)
+│   │   ├── _track-genres.js                ← Genre-edit logic: plan, "manual:<genre>" placements, undo restore
 │   │   ├── ami-playlist-lookup.js          ← Sibling of ami-track-lookup for playlist IDs. Handles mobile-share
 │   │   │                                      short links (open.spotify.com/s/…) via HTTP redirect-follow.
 │   │   │                                      Reports playlist_genres row count, distinct genres, and
@@ -629,6 +631,7 @@ sonic-brand/
 │   ├── test-taste-profile-normalize.mjs     ← Offline tests (node --test) for normalizeTasteProfile (level shift, names,
 │   │                                          requested genres).
 │   ├── test-option1-draw.mjs                ← Offline tests (node --test) for Option 1's daily draw + requested genres.
+│   ├── test-track-genre-plan.mjs            ← Offline tests (node --test) for the Track cleanup genre editor's planner.
 │   ├── test-il-4am.mjs                      ← Offline tests (node --test) for prevIl4amIso / nextIl4amIso (special-playlists day).
 │   ├── test-v7-signup-passwords.mjs         ← v7 passwords: check-email + signup password rules vs `vercel dev`. Self-cleaning.
 │   ├── set-v7-passwords.mjs                 ← One-off: shared password for v7 owners created before --before. Dry run;
@@ -1089,7 +1092,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 **Reference / catalog (populated by Ami's scans + precompute):**
 - `atmospheres` — { name, ranges, row_in_sheet }. Populated by Ami's scan endpoint.
 - `biztype_genres` — { business_type, genre, column_letter, position_in_column }. Ami's other scan.
-- `playlist_genres` — playlist_id ↔ genre + position_in_genre.
+- `playlist_genres` — playlist_id ↔ genre + position_in_genre. Genres stored lowercase. Rows with `playlist_id = 'manual:<genre>'` (null position) are Track cleanup's manual placements, not Spotify playlists (2026-10-05, see § AMI'S DASHBOARD).
 - `playlist_tracks` — playlist_id ↔ spotify_id + position.
 - `track_analyses` — spotify_id + typed audio-feature columns (tempo, popularity, energy, `instrumentalness`, valence, etc.) + raw_analysis jsonb.
 
@@ -1126,6 +1129,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 
 **Archive tables (owner + Ami actions):**
 - `deleted_tracks` — archive keyed by `spotify_id`. Snapshot of the track's `playlist_tracks` rows + its `track_analyses` row before deletion. Written by `api/v4/ami-track-delete.js` (Ami's cleanup flow); consumed and dropped by `api/v4/ami-track-restore.js`. RLS on with no anon-read policy (dashboard hits go through service_role).
+- `track_genre_edits` — log of Track cleanup genre-editor changes: { id bigserial, spotify_id, title, artist, before_genres, after_genres, before_rows, after_rows (the track's `playlist_tracks` rows), edited_at, undone_at }. Written by `api/v4/ami-track-genres.js` before each change; undo restores `before_rows`. Added 2026-10-05 (migration `2026-10-05-track-genre-edits.sql`). Same RLS posture as `deleted_tracks`.
 - `deleted_playlists` — archive keyed by `playlist_id`. Columns: { playlist_id (PK), name, owner, playlist_genres_rows (jsonb), playlist_tracks_rows (jsonb), deleted_at }. Written by `api/v4/ami-playlist-delete.js`; consumed and dropped by `api/v4/ami-playlist-restore.js`. Added 2026-08-30 (migration `2026-08-25-deleted-playlists.sql`). Same RLS posture as `deleted_tracks`. **Does not archive `track_analyses`** — that cache is shared with any other playlist the tracks live in and is expensive to rebuild via RapidAPI.
 - `deleted_events` — archive keyed by `id` (same as the original `business_events.id`). Columns: { id (PK, uuid), business_id, name, description, original_created_at, deleted_at }. Written by `api/v6/account/delete-event.js` and `api/v7/account/delete-event.js` (owner-triggered, from the Home tab's event trash icon). No restore endpoint — the events chat flow is delete + re-chat by design (see Special event playlists section), so the archive is admin-visibility only, not a rollback mechanism. Added 2026-09-05 (migration `2026-09-05-owner-change-history.sql`). Same RLS posture as the other archives.
 
@@ -1225,6 +1229,12 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
 - `ami-status.js`, `ami-logs.js` — poll scan progress
 - `ami-toggle-*.js` — manage skip flags
 - **Track cleanup** (`ami-track-lookup.js` / `-delete.js` / `-restore.js`) — reversible removal of one track. Lookup parses bare id / URL / URI / mobile-share short link and reports playlist_tracks state PLUS the track's full `track_analyses` row (all typed audio-feature columns — tempo, popularity, energy, instrumentalness, valence, danceability, acousticness, etc. — added 2026-09-01 so Ami can eyeball why a specific track ended up somewhere it shouldn't have). Delete archives the track's rows into `deleted_tracks` before removing them. Restore replays the archive and drops the archive row.
+- **Track genre editor** (Ami, 2026-10-05 — `ami-track-genres.js`, logic in `api/v4/_track-genres.js`). Inside Track cleanup, Ami takes a track out of some of its genres and puts it into others; Save applies the change, Undo reverses the last one.
+  - **How genres are stored.** A track is in a genre because it sits in a playlist tagged with that genre. Removing a genre drops the track from those playlists. A playlist with two genres (8 of 1,024 on 2026-10-05) is dropped too, and the genre the track keeps comes back through a manual placement.
+  - **Manual placements.** Adding a genre puts the track in that genre's **manual playlist**, `playlist_id = 'manual:<genre>'`. It exists only in our DB, is tagged in `playlist_genres`, and every track RPC reads it like any other playlist. Genres can only be added to a track with a usable analysis.
+  - **Kept across scans.** `ami-scan.js` and `dry-run-fill.mjs` skip manual playlists, so placements survive sheet scans and don't count toward a genre's playlist target.
+  - **Log and undo.** Every change is logged in `track_genre_edits` (migration `2026-10-05-track-genre-edits.sql`) before it's applied; undo restores the "before" rows.
+  - Tests: `node --test scripts/test-track-genre-plan.mjs`.
 - **Playlist cleanup** (`ami-playlist-lookup.js` / `-delete.js` / `-restore.js`, added 2026-08-30) — the playlist equivalent. Lookup uses the same input parsing (bare id / URL / URI / mobile-share link resolved via redirect-follow) and reports playlist_genres row count + distinct genres + track_analyses coverage of the playlist's tracks. Delete archives every `playlist_genres` + `playlist_tracks` row for that `playlist_id` into `deleted_playlists`, then removes the live rows. **Critically does NOT touch `track_analyses`** — those audio-features rows are shared with any other playlist those tracks live in, and are expensive to rebuild via RapidAPI. If Ami wants a track's cache gone too, she uses the track-cleanup flow one-at-a-time. Restore replays the archive and drops the archive row for a re-deletable state.
 - `ami-cron-tick.js` — **cron schedule REMOVED from `vercel.json` on 2026-08-13**. Endpoint file kept so the batch worker can be revived, but no longer runs hourly. Was the driver for the RapidAPI-based track analysis pipeline; when we stopped needing it, keeping the hourly tick just consumed function invocations and served no purpose. Re-add `{"path": "/api/v4/ami-cron-tick", "schedule": "* * * * *"}` to `vercel.json crons` to bring it back.
 - `ami-sync-usage.js`, `ami-reorder.js` — housekeeping

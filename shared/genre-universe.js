@@ -143,6 +143,9 @@ export const GENRES = [
   'Uplifting & Vocal Trance',
   'Dubstep',
   'Grime & Drill',
+  // Israeli genres: a "hit" here is popularity 45+, not 60+. A new Israeli
+  // genre must also go into the SQL function hit_popularity_floor
+  // (v5/precompute/migrations/2026-10-11-israeli-hit-floor.sql).
   'בלדות ישראליות',
   'פופ מזרחית',
   'מזרחית ישנה',

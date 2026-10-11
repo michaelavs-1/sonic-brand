@@ -23,7 +23,7 @@
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=23092026a';
 import { runEmphasesStep } from '/v7/emphases.js?v=03102026a';
 import { runHoursSelection } from '/v7/hours-selector.js?v=29092026a';
-import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=30092026a';
+import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=11102026a';
 import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=30092026a';
 import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=05102026a';
 // derivePopularityWindow was removed 2026-09-02 — atmospheres no longer
@@ -32,8 +32,8 @@ import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=05102026
 // popularity screening is now controlled entirely by Gemini's per-direction
 // `popularity_preference` classification (see the "Popularity preference"
 // sub-rule in PROCESSING_RULES_SECTION). Track pools default to [0, 100]
-// unless popularity_preference='hard' overrides to [60, 100] or 'soft'
-// biases the ORDER BY toward hits.
+// unless popularity_preference='hard' overrides to [60, 100] ([45, 100] for
+// Israeli genres) or 'soft' biases the ORDER BY toward hits.
 import {
   runDirectionPreviewFlow,
   runRefinedDirectionPreviewFlow,
@@ -51,7 +51,7 @@ import {
   runRegistrationStep,
   runPaymentStep,
   runTasteProfileBar,
-} from '/v7/result.js?v=29092026c';
+} from '/v7/result.js?v=06102026a';
 import { WAIT_DOTS_HTML } from '/v7/wait-dots.js?v=28092026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole

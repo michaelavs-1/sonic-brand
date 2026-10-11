@@ -24,7 +24,10 @@
        history + business_playlists INSERT, with direction_id:null for the FK).
 
    Skip reasons a v7 business can hit (per hour):
-     - no-mode              (business_v7_settings.delivery_mode null — owner
+     - subscription-ended   (the owner cancelled and the paid month is over —
+                             businesses.subscription_ends_at, see
+                             api/v7/account/_subscription.js) — SILENT
+     - no-mode             (business_v7_settings.delivery_mode null — owner
                              hasn't cleared the first-login mode gate) — SILENT
      - bad-mode             (delivery_mode is some non-option1/2 value — should
                              be impossible given the CHECK constraint) — SILENT
@@ -62,6 +65,8 @@ import {
 import { businessWindowAt } from '../../v7/generation/energy-timeline.js';
 import { sendAlert } from '../_alert.js';
 import { markCronRunning } from '../_cron-running.js';
+import { endedSubscriptionIds } from '../v7/account/_subscription.js';
+import { logDailyBuilds, BUILD_LEAD_MINUTES } from '../v7/account/_build-log.js';
 
 // ---- Redis (alert dedup) — copied verbatim from the v6 cron ----
 async function redisPipeline(commands) {
@@ -106,7 +111,7 @@ function resolveSpotifyBase() {
 }
 const SPOTIFY_BASE = resolveSpotifyBase();
 
-const LEAD_MINUTES = 120;
+const LEAD_MINUTES = BUILD_LEAD_MINUTES;   // shared with the dashboard's status line (_build-log.js)
 
 // After the owner picks a daily-playlist type in the first-login gate, the
 // dashboard immediately builds today's set via /api/v7/account/generate-daily.
@@ -317,7 +322,7 @@ export default async function handler(req, res) {
   const INTER_BUSINESS_MS = 5000;
   const busSleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const SKIP_REASONS_NO_SPOTIFY = new Set([
-    'no-mode', 'bad-mode', 'mode-just-set', 'no-taste-profile', 'no-hours', 'closed-today',
+    'subscription-ended', 'no-mode','bad-mode', 'mode-just-set', 'no-taste-profile', 'no-hours', 'closed-today',
     'past-close', 'already-built-today', 'too-early', 'bad-hours',
   ]);
   function consumedSpotifyBudget(result) {
@@ -325,12 +330,17 @@ export default async function handler(req, res) {
     if (result.skipped && SKIP_REASONS_NO_SPOTIFY.has(result.skipped)) return false;
     return true;
   }
+  const ended = await endedSubscriptionIds(now);
   const results = [];
   for (let i = 0; i < businesses.length; i++) {
     if (i > 0 && consumedSpotifyBudget(results[i - 1])) {
       await busSleep(INTER_BUSINESS_MS);
     }
     const b = businesses[i];
+    if (ended.has(b.id)) {
+      results.push({ id: b.id, skipped: 'subscription-ended' });
+      continue;
+    }
     try {
       const r = await processBusiness({ business: b, now, ilNow, origin });
       results.push(r);
@@ -339,6 +349,28 @@ export default async function handler(req, res) {
       results.push({ id: b.id, skipped: 'outer-throw', error: e.message });
     }
   }
+
+  // Build log (v7_daily_build_log) — every result except the routine skips,
+  // so the dashboard can tell "not yet" from "failed" and the owner's
+  // "דווחו" report can say why. Best-effort.
+  const ROUTINE_SKIPS = new Set([
+    'subscription-ended', 'no-mode', 'bad-mode', 'mode-just-set', 'closed-today',
+    'past-close', 'already-built-today', 'too-early',
+  ]);
+  await logDailyBuilds(results
+    .filter((r) => !(r.skipped && ROUTINE_SKIPS.has(r.skipped)))
+    .map((r) => ({
+      business_id: r.id,
+      il_date:     ilNow.isoDate,
+      source:      'cron',
+      outcome:     r.skipped
+        || (r.built > 0 ? (r.failures ? 'partial' : 'built')
+          : r.failures > 0 ? 'zero-built'
+          : r.mode === 'option2' ? 'no-genres' : 'no-directions'),
+      built:       r.built || 0,
+      failed:      r.failures || 0,
+      detail:      r.error || (r.failureDetails ? JSON.stringify(r.failureDetails) : null),
+    })));
 
   // Opportunistic prune of v6_daily_track_history (shared with v6 — the v7
   // batch records into the same table via buildDailyBatch). Non-fatal.

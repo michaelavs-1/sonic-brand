@@ -117,6 +117,12 @@
     "api/v7/account/delete-event.js": {
       "maxDuration": 15
     },
+    "api/v7/account/subscription.js": {
+      "maxDuration": 30
+    },
+    "api/v7/account/daily-status.js": {
+      "maxDuration": 30
+    },
     "api/v7/ami/test-playlist.js": {
       "maxDuration": 60
     },

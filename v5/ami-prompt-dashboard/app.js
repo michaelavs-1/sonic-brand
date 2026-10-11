@@ -50,7 +50,7 @@
 import {
   EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt,
-} from '/v7/generation/musical-directions.js?v=30092026a';
+} from '/v7/generation/musical-directions.js?v=11102026a';
 import {
   EDITABLE_PROMPT_SECTION as TASTE_EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt as assembleTasteSystemPrompt,

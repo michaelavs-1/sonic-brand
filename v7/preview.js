@@ -182,8 +182,9 @@ async function fetchAnchorTracks(specs) {
     // Gemini-assigned instrumentalness_preference — the SQL RPC applies
     // the matching WHERE filter (hard) or ORDER BY bias (soft).
     inst_pref: s.inst_pref || 'none',
-    // Per-spec popularity_preference. 'hard' requires popularity 60-100;
-    // 'soft' biases hits first via ORDER BY. The sole popularity control.
+    // Per-spec popularity_preference. 'hard' requires popularity 60-100
+    // (45-100 for Israeli genres); 'soft' biases hits first via ORDER BY.
+    // The sole popularity control.
     pop_pref:  s.pop_pref  || 'none',
   }));
   const attempt = async () => {

@@ -51,7 +51,7 @@ if (!fs.existsSync(STATE_DIR)) fs.mkdirSync(STATE_DIR, { recursive: true });
     }
 })();
 
-const { pgrSelect, pgrSelectIn } = await import('../../api/v4/supabase-client.js');
+const { pgrSelectAll, pgrSelectIn } = await import('../../api/v4/supabase-client.js');
 
 const BASE     = process.env.DEV_BASE || 'http://localhost:3000';
 const OUT_PATH = path.join(STATE_DIR, 'dry-run.json');
@@ -171,7 +171,10 @@ async function main() {
 
     // 2. Existing playlist_genres → set per genre
     console.log('Fetching existing playlist_genres from Supabase...');
-    const existing = await pgrSelect('playlist_genres', {}, { select: 'playlist_id,genre,position_in_genre', limit: 10000 });
+    // pgrSelectAll, not pgrSelect: PostgREST returns at most 1,000 rows per
+    // request here, and playlist_genres passed that. Rows past 1,000 looked
+    // missing, so their playlists were planned (and re-fetched) again.
+    const existing = await pgrSelectAll('playlist_genres', {}, { select: 'playlist_id,genre,position_in_genre', order: 'playlist_id.asc,genre.asc' });
     const existingByGenre = new Map();
     for (const r of existing) {
         // "manual:<genre>" playlists (Track cleanup's genre editor — see

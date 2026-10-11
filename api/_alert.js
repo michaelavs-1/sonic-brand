@@ -41,9 +41,12 @@ let warnedMissing = false;
  *                                dev would need to triage without opening the
  *                                console (playlist ids, error messages, ISO
  *                                timestamps, links).
+ * @param {string} [args.to]      Recipient, for emails that aren't dev alerts
+ *                                (e.g. subscription cancellations). Defaults to
+ *                                ALERT_EMAIL_TO.
  * @returns {Promise<{ok: boolean, reason?: string}>}
  */
-export async function sendAlert({ subject, text }) {
+export async function sendAlert({ subject, text, to: toOverride }) {
   const key = process.env.SUPABASE_AUTH;
   if (!key) {
     if (!warnedMissing) {
@@ -53,7 +56,7 @@ export async function sendAlert({ subject, text }) {
     return { ok: false, reason: 'no_key' };
   }
   const from = process.env.ALERT_EMAIL_FROM || DEFAULT_FROM;
-  const to   = process.env.ALERT_EMAIL_TO   || DEFAULT_TO;
+  const to   = toOverride || process.env.ALERT_EMAIL_TO || DEFAULT_TO;
 
   try {
     const r = await fetch(RESEND_URL, {

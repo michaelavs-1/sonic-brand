@@ -4,7 +4,10 @@
      - the dashboard's "צור פלייליסטים" (empty open day) / "המקום פתוח?" (closed
        day) links,
      - "החליפו עכשיו" after a timeline change or a type switch in the Profile tab
-       (`replaceToday: true`).
+       (`replaceToday: true`),
+     - "צור פלייליסטים עכשיו" before opening (`openNow: true`, 2026-10-06): the
+       build acts as though today opens now (hoursOpeningNow) — instead of the
+       cron's build before opening.
 
    Builds exactly what the v7 cron would build today, branching on the
    business's delivery mode:
@@ -49,6 +52,8 @@
 import { pgrSelect, pgrPatch } from '../../v5/supabase-client.js';
 import { buildOneDailyPlaylist } from '../../v6/account/_daily-builder.js';
 import { requireBusinessOwner } from '../../v6/account/_require-business-owner.js';
+import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.js';
+import { logDailyBuilds } from './_build-log.js';
 import { setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
 import { planOption1, planOption2, attachTrackGenres, insertPlaylistRows } from './_daily-builder.js';
@@ -57,15 +62,15 @@ import { replaceStatus, liveDailyRows, businessDaySinceIso, REPLACE_FIELD } from
 import { acquireBuildLock } from './_build-lock.js';
 import { verifyUser, auditSetting } from './_settings-helpers.js';
 import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
-import { datedLabel, undatedLabel } from '../../../v7/generation/playlist-length.js';
+import { datedLabel, undatedLabel, ilPartsFromDate } from '../../../v7/generation/playlist-length.js';
 
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const INTER_PLAYLIST_STAGGER_MS = 3000;   // same as _daily-builder.js BUILD_STAGGER_MS
 
 const NOTHING_TO_BUILD = {
-  'no-directions':          'הכיוונים המוזיקליים עדיין לא הוכנו — בחרו שוב באפשרות הראשונה בפרופיל',
+  'no-directions':          'הכנת הפלייליסטים שלכם לא הושלמה — לחצו על "השלימו עכשיו" בדף הבית',
   'no-approved-genres':     'לא נמצא פרופיל מוזיקלי לבניית פלייליסטים',
-  'directions-read-failed': 'שגיאה בטעינת הכיוונים המוזיקליים — נסו שוב',
+  'directions-read-failed': 'שגיאה בטעינת הנתונים — נסו שוב',
   'past-close':             'היום כבר כמעט נגמר — הפלייליסטים הבאים ייבנו מחר',
   'closed-today':           'המקום סגור היום',
 };
@@ -89,6 +94,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Today's slots as { key, title, label, build() → {skipped, reason?, row?} }.
 // title = the undated name ("Daily Mix #1"), label = the dated dashboard name
 // ("Daily Mix #1 · 28.09.2026") the built row carries.
+// The hours with day `dayIdx` opening at `now` (Israel clock, to the minute).
+function hoursOpeningNow(hours, dayIdx, now) {
+  const p = ilPartsFromDate(now);
+  const open = `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
+  return { ...hours, [dayIdx]: { ...hours[dayIdx], open } };
+}
+
 async function planSlots({ mode, businessId, hours, now, replaceToday, origin, ownerId, bizName }) {
   if (mode === 'option2') {
     const plan = await planOption2Timeline({ businessId, hours, now, onDemand: true });
@@ -146,11 +158,14 @@ export default async function handler(req, res) {
     const user = await verifyUser(req);
     if (!user) return res.status(401).json({ error: 'unauthorized' });
 
-    const { businessId, bizName, replaceToday = false } = req.body || {};
+    const { businessId, bizName, replaceToday = false, openNow = false } = req.body || {};
     if (!businessId) return res.status(400).json({ error: 'businessId required' });
 
     try { await requireBusinessOwner(businessId, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
+    if (await subscriptionEnded(businessId)) {
+      return res.status(402).json({ code: 'subscription_ended', error: SUBSCRIPTION_ENDED_MESSAGE });
+    }
 
     const [settingsRows, hoursRows] = await Promise.all([
       pgrSelect('business_v7_settings',
@@ -193,11 +208,22 @@ export default async function handler(req, res) {
       if (live.length) return res.status(409).json({ error: 'כבר יש פלייליסטים להיום', code: 'already-built' });
     }
 
+    // "צור פלייליסטים עכשיו" before opening: this build acts as though today
+    // opens now — Option 1 sizes the playlists from now to closing, Option 2
+    // starts its mixes now and moves the curve's opening dot to now (the
+    // usual keep-clock-times rule for an hours change). The stored hours stay
+    // as they are; the cron then skips the day (already built).
+    const buildHours = openNow && !replaceToday && w.phase === 'before-open'
+      ? hoursOpeningNow(hours, w.dayIdx, now) : hours;
+
     const origin = selfOrigin(req);
     const { slots, reason } = await planSlots({
-      mode, businessId, hours, now, replaceToday, origin, ownerId: user.id, bizName: bizName || '',
+      mode, businessId, hours: buildHours, now, replaceToday, origin, ownerId: user.id, bizName: bizName || '',
     });
     if (!slots.length) {
+      await logDailyBuilds([{
+        business_id: businessId, il_date: w.isoDate, source: 'dashboard', outcome: `nothing-to-build:${reason || '?'}`,
+      }]);
       return res.status(400).json({ error: NOTHING_TO_BUILD[reason] || 'אין מה לבנות כרגע', code: reason || undefined });
     }
 
@@ -231,6 +257,7 @@ export default async function handler(req, res) {
 
     let builtCount = 0;
     let failedCount = 0;
+    const failures = [];   // for the build log
     const newRows = [];
     for (let i = 0; i < slots.length; i++) {
       if (i > 0) await sleep(INTER_PLAYLIST_STAGGER_MS);
@@ -239,6 +266,7 @@ export default async function handler(req, res) {
         const result = await slot.build();
         if (result.skipped) {
           failedCount++;
+          failures.push(`${slot.title}: ${result.reason || 'no tracks matched'}`);
           send({ type: 'failed', direction_id: slot.key, error: result.reason || 'no tracks matched' });
           continue;
         }
@@ -249,6 +277,7 @@ export default async function handler(req, res) {
           // dashboard row failed. Report it and keep going.
           console.error(`[v7 generate-daily] business_playlists INSERT failed for ${result.row.spotify_id}:`, e.message);
           failedCount++;
+          failures.push(`${slot.title}: db insert failed: ${e.message}`);
           send({ type: 'failed', direction_id: slot.key, error: `db insert failed: ${e.message}` });
           continue;
         }
@@ -271,12 +300,18 @@ export default async function handler(req, res) {
       } catch (e) {
         console.error(`[v7 generate-daily] "${slot.title}" build threw:`, e.message);
         failedCount++;
+        failures.push(`${slot.title}: ${e.message || 'unknown error'}`);
         send({ type: 'failed', direction_id: slot.key, error: e.message || 'unknown error' });
       }
     }
 
     send({ type: 'done', built: builtCount, failed: failedCount });
     console.log(`[v7 generate-daily] user=${user.id} biz=${businessId} mode=${mode}${replaceToday ? ' REPLACE' : ''} built ${builtCount}/${slots.length}`);
+    await logDailyBuilds([{
+      business_id: businessId, il_date: w.isoDate, source: 'dashboard',
+      outcome: builtCount ? (failedCount ? 'partial' : 'built') : 'zero-built',
+      built: builtCount, failed: failedCount, detail: failures.join('\n') || null,
+    }]);
     res.end();
   } catch (err) {
     console.error('[v7 generate-daily] failed:', err.message);

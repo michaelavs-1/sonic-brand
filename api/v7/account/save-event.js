@@ -20,6 +20,7 @@ import { verifyUser }          from './_settings-helpers.js';
 import {
   ownedBusiness, eventsMadeToday, SPECIAL_PLAYLISTS_PER_DAY, DAILY_CAP_MESSAGE,
 } from './_special-events.js';
+import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.js';
 
 const GENRE_SOURCES = new Set(['event', 'daily']);
 
@@ -54,6 +55,9 @@ export default async function handler(req, res) {
     }
     try { await ownedBusiness(businessId, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
+    if (await subscriptionEnded(businessId)) {
+      return res.status(402).json({ code: 'subscription_ended', error: SUBSCRIPTION_ENDED_MESSAGE });
+    }
 
     const name        = String(event.name || '').trim().slice(0, 120);
     const description = String(event.description || '').trim().slice(0, 4000);

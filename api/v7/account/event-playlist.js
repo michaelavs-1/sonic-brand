@@ -32,6 +32,7 @@ import { attachTrackGenres, insertPlaylistRows } from './_daily-builder.js';
 import { acquireBuildLock } from './_build-lock.js';
 import { verifyUser }   from './_settings-helpers.js';
 import { ownedBusiness, selfOrigin, parseModelJson, geminiText } from './_special-events.js';
+import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.js';
 import { nextIl4amIso, prevIl4amIso, closedDayTargetTracks, ilPartsFromDate } from '../../../v7/generation/playlist-length.js';
 import {
   EVENT_PLAYLIST_SYSTEM_PROMPT, buildEventPlaylistUserMessage, normalizeEventPlaylistParams,
@@ -141,6 +142,9 @@ export default async function handler(req, res) {
     let biz;
     try { biz = await ownedBusiness(businessId, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
+    if (await subscriptionEnded(businessId)) {
+      return res.status(402).json({ code: 'subscription_ended', error: SUBSCRIPTION_ENDED_MESSAGE });
+    }
 
     const ev = await readEvent(businessId, eventId);
     if (!ev) return res.status(404).json({ error: 'הפלייליסט לא נמצא' });

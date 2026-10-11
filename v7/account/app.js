@@ -62,6 +62,7 @@ import { generateEnergyDirections } from '../generation/energy-directions.js?v=0
 import { generateLevelDirections } from '../generation/level-directions.js?v=28092026a';
 import { pickLevelDirections, levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
 import { setWaitText, WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
+import { mountHypPayment, ensureHypPaymentStyles } from '../hyp-payment.js?v=06102026a';
 import { PASSWORD_RULES_TEXT, passwordProblem } from '/shared/password-rules.js?v=28092026a';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON, {
@@ -510,10 +511,19 @@ async function enterDashboardInner() {
     catch (e) { console.warn('currentBizId write failed:', e?.message || e); }
   }
 
+  // Profile → מנוי + the Home tab's "subscription ended" banner. Started now,
+  // alongside the dashboard data, so it's usually in before Profile opens.
+  loadSubscription();
+  // The Home tab's "why no playlists" line — also started now, so the line
+  // can appear whole with the box instead of a moment later.
+  const dailyStatusPending = dailyStatusRequest('GET');
+  dailyStatusPending.catch(() => {});   // handled in loadDailyStatus
+
   await loadDashboardData(business.id);
   renderAll();
   show('dashView');
   logTasteForTesting();   // TEMPORARY — Ami's testing (see DEBUG_TASTE_LOG)
+  loadDailyStatus(dailyStatusPending);
 
   // v7 first-login gate: block the dashboard behind #v7ModeGate until the
   // owner picks a daily-delivery mode. Resolves immediately if already chosen.
@@ -732,7 +742,7 @@ async function checkV7ModeGate() {
             // The mode is saved, but without energy directions the cron
             // can't build Option 1. Keep the gate open so the owner can
             // retry (click Option 1 again) or switch to Option 2.
-            if (err) { err.textContent = 'לא הצלחנו להכין את הכיוונים המוזיקליים. נסו שוב או בחרו באפשרות השנייה.'; err.classList.remove('hide'); }
+            if (err) { err.textContent = 'לא הצלחנו להכין את הפלייליסטים שלכם. נסו שוב או בחרו באפשרות השנייה.'; err.classList.remove('hide'); }
             opt1.disabled = false;
             opt2.disabled = false;
             busy = false;
@@ -1211,6 +1221,7 @@ function renderPlaylistsTitle() {
 // ---------- greeting + business name ----------
 function renderBusiness() {
   $('bizName').textContent = business.name || 'העסק שלי';
+  $('acctEmail').textContent = user?.email || '';
   const h = new Date().getHours();
   const hello = h < 5 ? 'לילה טוב' : h < 12 ? 'בוקר טוב' : h < 17 ? 'צהריים טובים' : h < 22 ? 'ערב טוב' : 'לילה טוב';
   const g = $('greeting');
@@ -1295,6 +1306,8 @@ function renderProfileTab() {
   updateNameActions();
   updateSaveHoursButton();
   renderDeliverySection();
+  renderSubscriptionSection();
+  loadSubscription();   // refresh (dates move on; a cancellation may have run out)
 
   $('passwordUser').value = user?.email || '';
   $('currentPassword').value = '';
@@ -1350,10 +1363,10 @@ function renderDeliverySection() {
   paint(state.deliveryMode);
   setMsg('');
   if (state.deliveryMode === 'option1' && state.energyBuildFailed) {
-    setMsg('הכיוונים המוזיקליים עדיין לא הוכנו — לחצו על האפשרות הראשונה כדי לנסות שוב', 'err');
+    setMsg('הכנת הפלייליסטים לא הושלמה — לחצו על האפשרות הראשונה כדי לנסות שוב', 'err');
   }
   if (state.deliveryMode === 'option2' && state.levelBuildFailed) {
-    setMsg('הכיוונים המוזיקליים עדיין לא הוכנו — לחצו על האפשרות השנייה כדי לנסות שוב', 'err');
+    setMsg('הכנת הפלייליסטים לא הושלמה — לחצו על האפשרות השנייה כדי לנסות שוב', 'err');
   }
 
   // Option 2's per-level directions (see ensureLevelDirections). The wait
@@ -1361,8 +1374,8 @@ function renderDeliverySection() {
   const prepareLevelDirections = async (replaceNow) => {
     const { ok } = await ensureLevelDirections({
       onGenerate: () => setMsg((replaceNow
-        ? 'מכינים את הכיוונים המוזיקליים… מיד נבנה את הפלייליסטים החדשים של היום'
-        : 'מכינים את הכיוונים המוזיקליים…') + '\n' + ENERGY_BUILD_WAIT_NOTE),
+        ? 'מכינים את הפלייליסטים החדשים שלכם…'
+        : 'מכינים את הפלייליסטים שלכם…') + '\n' + ENERGY_BUILD_WAIT_NOTE),
     });
     state.levelBuildFailed = !ok;
     return ok;
@@ -1395,14 +1408,14 @@ function renderDeliverySection() {
       // persist endpoint replace-existing DELETEs the old set first). Option 1
       // can't build without them, so a replacement waits for this.
       setMsg((replaceNow
-        ? 'מכינים את הכיוונים המוזיקליים… מיד נבנה את הפלייליסטים החדשים של היום'
-        : 'מכינים את הכיוונים המוזיקליים…') + '\n' + ENERGY_BUILD_WAIT_NOTE);
+        ? 'מכינים את הפלייליסטים החדשים שלכם…'
+        : 'מכינים את הפלייליסטים שלכם…') + '\n' + ENERGY_BUILD_WAIT_NOTE);
       const ok = await buildEnergyDirections();
       state.energyBuildFailed = !ok;
       if (!ok) {
         setMsg(replaceNow
-          ? 'הכיוונים המוזיקליים לא הוכנו, ולכן הפלייליסטים של היום לא הוחלפו — לחצו שוב על האפשרות הראשונה'
-          : 'הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות הראשונה', 'err');
+          ? 'הכנת הפלייליסטים לא הושלמה, ולכן הפלייליסטים של היום לא הוחלפו — לחצו שוב על האפשרות הראשונה'
+          : 'הכנת הפלייליסטים לא הושלמה — לחצו שוב על האפשרות הראשונה', 'err');
         return;
       }
       setMsg(savedNote(prev === 'option2' ? data.replace : null, replaceNow), 'ok');
@@ -1425,7 +1438,7 @@ function renderDeliverySection() {
       lock(true);
       try {
         const ok = await prepareLevelDirections(false);
-        setMsg(ok ? 'הכיוונים המוזיקליים מוכנים ✓' : 'הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות השנייה', ok ? 'ok' : 'err');
+        setMsg(ok ? 'ההכנה הושלמה ✓' : 'הכנת הפלייליסטים לא הושלמה — לחצו שוב על האפשרות השנייה', ok ? 'ok' : 'err');
       } finally {
         lock(false);
       }
@@ -1451,8 +1464,8 @@ function renderDeliverySection() {
       // builds without them (every genre of each level).
       if (!await prepareLevelDirections(r.replaceNow)) {
         setMsg(r.replaceNow
-          ? 'הכיוונים המוזיקליים לא הוכנו (לחצו שוב על האפשרות השנייה) — בונים בינתיים את הפלייליסטים של היום בדף הבית'
-          : 'הכיוונים המוזיקליים לא הוכנו — לחצו שוב על האפשרות השנייה', 'err');
+          ? 'הכנת הפלייליסטים לא הושלמה (לחצו שוב על האפשרות השנייה) — בונים בינתיים את הפלייליסטים של היום בדף הבית'
+          : 'הכנת הפלייליסטים לא הושלמה — לחצו שוב על האפשרות השנייה', 'err');
         if (r.replaceNow) runReplaceToday();
         return;
       }
@@ -1484,6 +1497,255 @@ function renderDeliverySection() {
   opt2.onclick = chooseOption2;
   if (editBtn) editBtn.onclick = editTimeline;
 }
+
+// ---------- subscription (Profile → מנוי, 2026-10-06) ----------
+// The monthly subscription (Hyp recurring agreement): status, price, next
+// charge, invoice details, cancel (two steps + optional reason) and resume
+// (only until the paid month runs out). Shown only while real payments are on
+// and this account has a paid subscription — GET /api/v7/account/subscription
+// answers { paymentsEnabled, subscription }. Once a cancelled subscription has
+// run out, the Home tab shows #subEndedBanner (the server then refuses builds).
+state.subscription = null;
+state.subscriptionLoaded = false;   // false until the first answer arrives
+
+// Whether this account had the section last time, per device — so the section
+// shows at once on the next visit (a spinner inside until the details load)
+// instead of popping in a second later. Unknown → shown, then hidden if the
+// answer says there's no subscription.
+const SUB_VISIBLE_KEY = 'rubin-v7-sub-visible:';
+function rememberedSubVisible() {
+  try { return localStorage.getItem(SUB_VISIBLE_KEY + business.id); } catch { return null; }
+}
+function rememberSubVisible(visible) {
+  try { localStorage.setItem(SUB_VISIBLE_KEY + business.id, visible ? '1' : '0'); } catch { /* private mode */ }
+}
+
+const heDate = (iso) => (iso ? iso.split('-').reverse().join('.') : '');
+// The day before a 'YYYY-MM-DD' date (the last day of service before a charge date).
+function dayBefore(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
+async function subscriptionRequest(method, body) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token) throw new Error('לא מחוברים');
+  const url = method === 'GET'
+    ? `/api/v7/account/subscription?business_id=${encodeURIComponent(business.id)}`
+    : '/api/v7/account/subscription';
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    ...(body ? { body: JSON.stringify({ business_id: business.id, ...body }) } : {}),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+  return data;
+}
+
+// One request at a time: a second call while one is in flight shares it.
+let subscriptionLoad = null;
+function loadSubscription() {
+  if (!business) return Promise.resolve();
+  if (subscriptionLoad) return subscriptionLoad;
+  subscriptionLoad = (async () => {
+    try {
+      const data = await subscriptionRequest('GET');
+      state.subscription = data.paymentsEnabled ? (data.subscription || null) : null;
+      rememberSubVisible(!!state.subscription);
+    } catch (e) {
+      console.warn('loadSubscription:', e?.message || e);
+      state.subscription = null;
+    } finally {
+      state.subscriptionLoaded = true;
+      subscriptionLoad = null;
+      renderSubscriptionSection();
+      // The Home line's "חדשו את המנוי" link needs the subscription too.
+      if (state.dailyStatus?.reason === 'subscription-ended' && !state.generating) renderPlaylists();
+    }
+  })();
+  return subscriptionLoad;
+}
+
+function setSubMsg(text, kind) {
+  const msg = $('subMsg');
+  if (!msg) return;
+  msg.style.color = kind === 'err' ? '#ff9b8a' : kind === 'ok' ? 'var(--teal-soft)' : '';
+  setWaitText(msg, text);
+}
+
+function renderSubscriptionSection() {
+  if (!business) return;
+  if (!state.subscriptionLoaded) {
+    // Still loading: show the section (unless this device knows there's
+    // none) with a spinner inside, in case the owner opens it.
+    $('subscriptionSection')?.classList.toggle('hide', rememberedSubVisible() === '0');
+    const spin = document.createElement('div');
+    spin.className = 'sub-loading';
+    spin.innerHTML = '<span class="sb-spinner" aria-label="טוען"></span>';
+    $('subRows').replaceChildren(spin);
+    for (const id of ['subCancel', 'subConfirm', 'subResume', 'subRenew']) $(id)?.classList.add('hide');
+    setSubMsg('');
+    return;
+  }
+  const sub = state.subscription;
+  $('subscriptionSection')?.classList.toggle('hide', !sub);
+  const banner = $('subEndedBanner');
+  if (banner) {
+    banner.classList.toggle('hide', sub?.status !== 'ended');
+    banner.replaceChildren();
+    if (sub?.status === 'ended') {
+      banner.append(`המנוי שלכם הסתיים ב־${heDate(sub.lastDay)}, ולכן לא נבנים יותר פלייליסטים חדשים. `,
+        renewLink());
+    }
+  }
+  if (!sub) return;
+
+  const statusText = { active: 'פעיל', cancelled: 'בוטל', ended: 'הסתיים' }[sub.status] || '';
+  const rows = [['סטטוס', statusText]];
+  if (sub.status === 'active') {
+    rows.push(['מחיר', `₪${sub.amountMonthly} לחודש`]);
+    rows.push(['החיוב הבא', `${heDate(sub.nextChargeOn)} · ₪${sub.amountMonthly}`]);
+  } else {
+    rows.push([sub.status === 'cancelled' ? 'הפלייליסטים ממשיכים עד' : 'פעיל עד', heDate(sub.lastDay)]);
+  }
+  rows.push(['מנוי מאז', heDate(sub.startedOn)]);
+  if (sub.invoiceEmail) rows.push(['חשבוניות נשלחות אל', sub.invoiceEmail, 'ltr']);
+  if (sub.invoiceName)  rows.push(['חשבונית על שם', sub.invoiceName]);
+  if (sub.taxId)        rows.push(['ח.פ / ע.מ', sub.taxId]);
+
+  $('subRows').replaceChildren(...rows.map(([label, value, cls]) => {
+    const row = document.createElement('div');
+    row.className = 'sub-row';
+    const dt = document.createElement('dt');
+    dt.textContent = label;
+    const dd = document.createElement('dd');
+    dd.textContent = value;
+    if (cls) dd.className = cls;
+    row.append(dt, dd);
+    return row;
+  }));
+
+  $('subCancel').classList.toggle('hide', sub.status !== 'active');
+  $('subConfirm').classList.add('hide');
+  $('subResume').classList.toggle('hide', sub.status !== 'cancelled');
+  $('subRenew').classList.toggle('hide', sub.status !== 'ended');
+  setSubMsg(sub.status === 'cancelled' ? 'לא תחויבו יותר.' : '');
+}
+
+function lockSubscriptionButtons(on) {
+  for (const id of ['subCancel', 'subCancelConfirm', 'subResume', 'subRenew']) {
+    const b = $(id);
+    if (b) b.disabled = on;
+  }
+}
+
+// ---- renewal after the end (2026-10-06) ----
+// A new payment from inside the account: the shared Hyp form
+// (v7/hyp-payment.js) on a sheet, pre-filled with last time's details. The
+// checkout is tied to this business from the start (renewBusinessId), and
+// api/v7/payment/return.js reactivates the subscription as soon as Hyp
+// confirms — even if this page is closed by then. Here, once it's paid: the
+// section refreshes, and today's playlists are built if the place is open
+// today and nothing was built yet (like the first login).
+let renewal = null;   // the mounted payment form while the sheet is open
+
+function renewLink() {
+  const a = document.createElement('a');
+  a.href = '#';
+  a.className = 'closed-open-link';
+  a.textContent = 'חדשו את המנוי';
+  a.addEventListener('click', (e) => { e.preventDefault(); startRenewal(); });
+  return a;
+}
+
+function startRenewal() {
+  const sub = state.subscription;
+  if (!business || sub?.status !== 'ended' || renewal) return;
+  ensureHypPaymentStyles();
+  $('renewModal').classList.remove('hide');
+  renewal = mountHypPayment($('renewHost'), {
+    heading: 'חידוש המנוי',
+    email: user?.email || '',
+    businessName: business.name || '',
+    renewal: {
+      businessId: business.id,
+      getToken: async () => (await sb.auth.getSession()).data.session?.access_token || '',
+    },
+    prefill: sub.billing || null,
+  });
+  renewal.promise.then(afterRenewal);
+}
+
+function closeRenewal() {
+  renewal?.destroy();
+  renewal = null;
+  $('renewModal').classList.add('hide');
+  $('renewHost').replaceChildren();
+}
+
+async function afterRenewal() {
+  closeRenewal();
+  toast('המנוי חודש ✓');
+  await loadSubscription();
+  if (state.subscription?.status === 'active') {
+    setSubMsg(`המנוי חודש ✓ החיוב הבא ב־${heDate(state.subscription.nextChargeOn)}.`, 'ok');
+  }
+  state.dailyStatus = null;
+  if (!state.generating) renderPlaylists();
+  await loadDailyStatus();
+  const reason = state.dailyStatus?.reason;
+  if (reason === 'before-build' || reason === 'error') {
+    switchTab('Home');
+    runGenerateDaily();
+  }
+}
+
+$('subRenew')?.addEventListener('click', startRenewal);
+$('renewClose')?.addEventListener('click', closeRenewal);
+
+$('subCancel')?.addEventListener('click', () => {
+  const sub = state.subscription;
+  if (!sub?.nextChargeOn) return;
+  $('subConfirmText').textContent =
+    `לבטל את המנוי? לא תחויבו יותר, והפלייליסטים ימשיכו להגיע עד ${heDate(dayBefore(sub.nextChargeOn))} — סוף החודש ששולם.`;
+  $('subReason').value = '';
+  $('subCancel').classList.add('hide');
+  $('subConfirm').classList.remove('hide');
+  setSubMsg('');
+});
+
+$('subCancelConfirm')?.addEventListener('click', async () => {
+  lockSubscriptionButtons(true);
+  setSubMsg('מבטלים את המנוי…');
+  try {
+    const data = await subscriptionRequest('POST', { action: 'cancel', reason: $('subReason').value.trim() });
+    state.subscription = data.subscription;
+    renderSubscriptionSection();
+    setSubMsg(`המנוי בוטל. לא תחויבו יותר, והפלייליסטים ימשיכו עד ${heDate(data.subscription?.lastDay)}.`, 'ok');
+  } catch (e) {
+    console.error('cancel subscription:', e);
+    setSubMsg(e.message || 'משהו השתבש — נסו שוב', 'err');
+  } finally {
+    lockSubscriptionButtons(false);
+  }
+});
+
+$('subResume')?.addEventListener('click', async () => {
+  lockSubscriptionButtons(true);
+  setSubMsg('מחדשים את המנוי…');
+  try {
+    const data = await subscriptionRequest('POST', { action: 'resume' });
+    state.subscription = data.subscription;
+    renderSubscriptionSection();
+    setSubMsg(`המנוי חודש ✓ החיוב הבא ב־${heDate(data.subscription?.nextChargeOn)}.`, 'ok');
+  } catch (e) {
+    console.error('resume subscription:', e);
+    setSubMsg(e.message || 'משהו השתבש — נסו שוב', 'err');
+  } finally {
+    lockSubscriptionButtons(false);
+  }
+});
 
 // Toggle any `.hours-toggle` (naming is historical — same styling +
 // behavior now covers the directions section too). aria-controls points
@@ -1781,6 +2043,181 @@ function logPlaylistOpen(spotifyId, source) {
   })();
 }
 
+// ---------- why there are no daily playlists (2026-10-06) ----------
+// GET /api/v7/account/daily-status → { reason, hasLive }; the reason line
+// under "לא נוצרו פלייליסטים" (see that endpoint for the reasons). While the
+// cron is building ('building') it re-checks every 15s, and before the build
+// ('before-build') every 5 min, so an open page picks up the new set. "דווחו"
+// emails Roni a report (POST action:'report'); "השלימו עכשיו" redoes Option
+// 1's missing directions, then builds today's set if its time has passed.
+state.dailyStatus = null;      // { reason, hasLive } | null (not loaded yet)
+state.dailyReport = null;      // null | 'sending' | 'sent'
+state.completingSetup = false; // "השלימו עכשיו" in progress
+let dailyStatusTimer = null;
+
+const DAILY_REASON_TEXT = {
+  'subscription-ended': 'המנוי שלכם הסתיים',
+  'closed':             'המקום סגור היום',
+  'before-build':       'הפלייליסטים ייווצרו לפני הפתיחה',
+  'after-close':        'הפלייליסטים הבאים ייווצרו לפני הפתיחה הבאה',
+};
+
+const reportedKey = () => `rubin-v7-reported:${business.id}:${businessWindowAt(bmeta().hours).isoDate}`;
+function reportedToday() {
+  try { return !!localStorage.getItem(reportedKey()); } catch { return false; }
+}
+
+async function dailyStatusRequest(method, body) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token) throw new Error('לא מחוברים');
+  const url = method === 'GET'
+    ? `/api/v7/account/daily-status?business_id=${encodeURIComponent(business.id)}`
+    : '/api/v7/account/daily-status';
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    ...(body ? { body: JSON.stringify({ business_id: business.id, ...body }) } : {}),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.error || `שגיאה ${r.status}`);
+  return data;
+}
+
+// `pending` = a request already in flight (boot starts it alongside the
+// dashboard data, so the line is usually ready when the box first renders).
+async function loadDailyStatus(pending) {
+  if (!business) return;
+  clearTimeout(dailyStatusTimer);
+  try {
+    state.dailyStatus = await (pending || dailyStatusRequest('GET'));
+  } catch (e) {
+    console.warn('loadDailyStatus:', e?.message || e);
+    // Show the line without a reason rather than leave the box empty.
+    if (!state.dailyStatus) state.dailyStatus = { reason: null, hasLive: false };
+    if (!state.generating) renderPlaylists();
+    return;
+  }
+  // Built elsewhere (the cron) while this page showed none → reload once.
+  const showing = (bmeta().playlists || []).some((p) => playlistIsLive(p) && !p.eventId);
+  if (state.dailyStatus.hasLive && !showing && !state.generating) {
+    try { await loadDashboardData(business.id); } catch { /* soft */ }
+    renderPlaylistsTitle();
+  }
+  if (!state.generating) renderPlaylists();
+  const reason = state.dailyStatus.reason;
+  if (reason === 'building' || reason === 'before-build') {
+    dailyStatusTimer = setTimeout(loadDailyStatus, reason === 'building' ? 15000 : 5 * 60 * 1000);
+  }
+}
+
+async function reportDailyProblem() {
+  state.dailyReport = 'sending';
+  renderPlaylists();
+  try {
+    await dailyStatusRequest('POST', { action: 'report' });
+    state.dailyReport = 'sent';
+    try { localStorage.setItem(reportedKey(), '1'); } catch { /* private mode */ }
+  } catch (e) {
+    state.dailyReport = null;
+    toast(String(e.message || 'משהו השתבש — נסו שוב').slice(0, 120));
+  }
+  renderPlaylists();
+}
+
+async function completeSetup() {
+  state.completingSetup = true;
+  renderPlaylists();
+  const ok = await buildEnergyDirections();
+  state.energyBuildFailed = !ok;
+  state.completingSetup = false;
+  if (!ok) {
+    toast('ההכנה לא הושלמה — נסו שוב');
+    renderPlaylists();
+    return;
+  }
+  await loadDailyStatus();
+  // Past the build time → nobody else will build today's set now.
+  if (state.dailyStatus?.reason === 'error') runGenerateDaily();
+}
+
+// The empty state of the daily-playlists box: one line,
+// "לא נוצרו פלייליסטים · <reason> · צור פלייליסטים". Drawn only once the
+// reason is known, so the line appears whole rather than in two steps.
+function renderEmptyDaily(wrap) {
+  if (!state.dailyStatus && !state.completingSetup) {
+    // Reason still loading → a spinner in the line's place.
+    const spin = document.createElement('div');
+    spin.className = 'daily-loading';
+    spin.innerHTML = '<span class="sb-spinner" aria-label="טוען"></span>';
+    wrap.append(spin);
+    return;
+  }
+  const reason = state.dailyStatus?.reason || null;
+  const link = (text, onClick) => {
+    const a = document.createElement('a');
+    a.href = '#';
+    a.className = 'closed-open-link';
+    a.textContent = text;
+    a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
+    return a;
+  };
+
+  if (reason === 'building' || state.completingSetup) {
+    const p = document.createElement('p');
+    p.className = 'muted daily-wait';
+    if (state.completingSetup) {
+      setWaitText(p, `מכינים את הפלייליסטים שלכם…\n${ENERGY_BUILD_WAIT_NOTE}`);
+    } else {
+      setWaitText(p, 'הפלייליסטים נבנים עכשיו…');
+      const spin = document.createElement('span');
+      spin.className = 'pl-inline-spinner';
+      spin.setAttribute('aria-label', 'בונים');
+      p.append(spin);
+    }
+    wrap.append(p);
+    return;
+  }
+
+  const msg = document.createElement('p');
+  msg.className = 'muted';
+  msg.textContent = 'לא נוצרו פלייליסטים';
+  const sep = () => msg.append(' · ');
+
+  if (reason === 'subscription-ended' && state.subscription?.status === 'ended') {
+    sep();
+    msg.append(`${DAILY_REASON_TEXT[reason]} – `, renewLink());
+  } else if (DAILY_REASON_TEXT[reason]) {
+    sep();
+    msg.append(DAILY_REASON_TEXT[reason]);
+  } else if (reason === 'needs-directions') {
+    sep();
+    msg.append('הכנת הפלייליסטים שלכם לא הושלמה – ', link('השלימו עכשיו', completeSetup));
+  } else if (reason === 'error') {
+    sep();
+    if (state.dailyReport === 'sent' || (state.dailyReport == null && reportedToday())) {
+      msg.append('דיווחנו, נבדוק את זה ✓');
+    } else if (state.dailyReport === 'sending') {
+      const s = document.createElement('span');
+      setWaitText(s, 'שולחים דיווח…');
+      msg.append(s);
+    } else {
+      msg.append('שגיאה – ', link('דווחו', reportDailyProblem));
+    }
+  }
+
+  // On closed days the title already offers "המקום פתוח?" which opens the
+  // same modal — skip the link there to avoid a redundant CTA. No link either
+  // when a build can't work (setup incomplete / subscription ended).
+  if (!todayIsClosed() && reason !== 'needs-directions' && reason !== 'subscription-ended') {
+    // Before opening: build now, as though the place opens now (it replaces
+    // the build the cron would do before opening).
+    const openNow = reason === 'before-build';
+    sep();
+    msg.append(link(openNow ? 'צור פלייליסטים עכשיו' : 'צור פלייליסטים', () => openGenerateDailyModal({ openNow })));
+  }
+  wrap.append(msg);
+}
+
 function renderPlaylists() {
   const wrap = $('slotsWrap');
   wrap.innerHTML = '';
@@ -1836,24 +2273,7 @@ function renderPlaylists() {
     return;
   }
   if (!playlists.length) {
-    const msg = document.createElement('p');
-    msg.className = 'muted';
-    msg.textContent = 'לא נוצרו פלייליסטים';
-    // On closed days the title already offers "המקום פתוח?" which opens the
-    // same modal — skip the body link there to avoid a redundant CTA.
-    if (!todayIsClosed()) {
-      msg.append(document.createTextNode(' '));
-      const genLink = document.createElement('a');
-      genLink.href = '#';
-      genLink.className = 'closed-open-link';
-      genLink.textContent = 'צור פלייליסטים';
-      genLink.addEventListener('click', (e) => {
-        e.preventDefault();
-        openGenerateDailyModal();
-      });
-      msg.append(genLink);
-    }
-    wrap.append(msg);
+    renderEmptyDaily(wrap);
     return;
   }
   // Sort most-clicked first. On a fresh account (no opens anywhere) this
@@ -2354,7 +2774,22 @@ async function expandOne(playlist, token, target) {
 // the business's delivery mode (Option 1: 4 energy-tier playlists; Option 2: 2
 // full-length mixes) — the same plan the v7 cron uses.
 
-function openGenerateDailyModal() {
+// The popup's wording per case:
+//   openNow   — "צור פלייליסטים עכשיו" before opening: the build acts as
+//               though today opens now (api/v7/account/generate-daily.js).
+//   closed    — "המקום פתוח?" on a closed day: a ~12-hour set.
+//   otherwise — today's set.
+const GEN_DAILY_COPY = {
+  openNow: { title: 'צור פלייליסטים עכשיו', btn: 'צור פלייליסטים עכשיו',
+    text: 'ניצור את הפלייליסטים של היום כבר עכשיו, כאילו המקום נפתח עכשיו — הם יימשכו עד הסגירה.' },
+  closed:  { title: 'צור פלייליסטים יומיים', btn: 'צור פלייליסטים יומיים',
+    text: 'ניצור לכם סט פלייליסטים באורך של כ־12 שעות לפי הטעם המוזיקלי שלכם.' },
+  today:   { title: 'צור פלייליסטים יומיים', btn: 'צור פלייליסטים יומיים',
+    text: 'ניצור לכם את הפלייליסטים של היום לפי הטעם המוזיקלי שלכם.' },
+};
+let genDailyOpenNow = false;
+
+function openGenerateDailyModal({ openNow = false } = {}) {
   // Silently no-op if a build is already running — the closed-day title
   // link stays visible during generation (placeholders don't count as
   // "playlists for today"), so guard against a second confirmation opening
@@ -2362,6 +2797,12 @@ function openGenerateDailyModal() {
   if (state.generating) return;
   const modal = $('genDailyModal');
   if (!modal) return;
+  genDailyOpenNow = openNow;
+  const copy = GEN_DAILY_COPY[openNow ? 'openNow' : todayIsClosed() ? 'closed' : 'today'];
+  $('genDailyTitle').textContent = copy.title;
+  $('genDailyText').textContent = copy.text;
+  const btn = $('genDailyConfirm');
+  if (btn) { btn.disabled = false; btn.textContent = copy.btn; }
   modal.classList.remove('hide');
 }
 
@@ -2371,7 +2812,7 @@ function closeGenerateDailyModal() {
   modal.classList.add('hide');
   // Reset button state in case a prior attempt left it disabled.
   const btn = $('genDailyConfirm');
-  if (btn) { btn.disabled = false; btn.textContent = 'צור פלייליסטים יומיים'; }
+  if (btn) btn.disabled = false;
 }
 
 // Today's playlist names are fixed per type — same order the server plans them
@@ -2392,7 +2833,7 @@ function expectedDailySlots(mode) {
 // starts now and hides each old playlist as its replacement lands. While it
 // streams, the list shows only the new set's rows; any old playlist whose
 // replacement failed comes back on the final reload.
-async function runGenerateDaily({ replaceToday = false } = {}) {
+async function runGenerateDaily({ replaceToday = false, openNow = false } = {}) {
   if (state.generating) return;
   // Close the modal immediately — the build runs in the background and
   // the owner watches placeholders → real rows fill in as each playlist
@@ -2424,8 +2865,10 @@ async function runGenerateDaily({ replaceToday = false } = {}) {
     // of how the stream ended (done / connection drop / mid-flight error).
     try { await loadDashboardData(business.id); } catch { /* soft */ }
     state.generating = null;
+    state.dailyStatus = null;   // stale — the line waits for the fresh one below
     renderPlaylistsTitle();
     renderPlaylists();
+    loadDailyStatus();   // the "why no playlists" line, in case nothing was built
   };
 
   try {
@@ -2441,6 +2884,7 @@ async function runGenerateDaily({ replaceToday = false } = {}) {
         businessId: business.id,
         bizName: business.name || '',
         replaceToday: !!replaceToday,
+        openNow: !!openNow,
       }),
     });
     if (!r.ok) {
@@ -2506,7 +2950,7 @@ async function runGenerateDaily({ replaceToday = false } = {}) {
   }
 }
 
-$('genDailyConfirm')?.addEventListener('click', () => runGenerateDaily());
+$('genDailyConfirm')?.addEventListener('click', () => runGenerateDaily({ openNow: genDailyOpenNow }));
 $('genDailyCancel')?.addEventListener('click', closeGenerateDailyModal);
 $('genDailyModal')?.addEventListener('click', (e) => {
   // Click on backdrop (the modal wrapper itself) closes.

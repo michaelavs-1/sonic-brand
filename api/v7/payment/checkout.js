@@ -10,12 +10,19 @@
                         (the payment screen's inline coupon check)
 
      POST { email, businessName?, coupon?, onboardingSessionId?, checkoutId?,
-            billing: { name, address?, invoiceBusinessName?, taxId? } }
+            billing: { name, address?, invoiceBusinessName?, taxId? },
+            renewBusinessId? }
      →    { checkoutId, paymentUrl, amountFirst, amountMonthly,
             coupon: { code, percentOff } | null,
             couponRejected,   // a code was sent but isn't a valid coupon → full price
             env: 'test' | 'production' }
      | 400 { error: <Hebrew billing message> | 'valid email required' }
+
+   Renewal (renewBusinessId + the owner's JWT, 2026-10-06): the account page's
+   "חידוש המנוי" after a cancelled subscription has ended. Allowed only then
+   (409 otherwise). The row is tied to the business from the start
+   (business_id), with the account's email and business name — return.js then
+   reactivates the subscription when Hyp confirms the payment.
 
    businessName is the onboarding name (Hyp reports only). billing is the
    payment screen's form: name = the cardholder (required); the invoice is
@@ -37,6 +44,8 @@ import { requireSite, setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
 import { PAYMENTS_ENABLED, monthlyPriceIls, hypConfig, hypEnv, signPaymentPage } from './_hyp.js';
 import { invoiceEmailFor } from '../../../shared/invoice-email.js';
+import { verifyUser } from '../account/_settings-helpers.js';
+import { subscriptionStatus } from '../account/_subscription.js';
 
 // First-month coupons, per environment: V7_COUPONS_ENABLED=true turns them on.
 // Off by default: on the TEST terminal Hyp's server returned a 500 after
@@ -48,6 +57,22 @@ const COUPONS_ENABLED = String(process.env.V7_COUPONS_ENABLED || '').trim().toLo
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Renewal: the owner's business, if its subscription has ended.
+//   → { renewal: { businessId, email, name } } | { status, error }
+async function renewalFor(req, businessId) {
+  if (!UUID_RE.test(String(businessId || ''))) return { status: 400, error: 'renewBusinessId invalid' };
+  const user = await verifyUser(req);
+  if (!user?.email) return { status: 401, error: 'unauthorized' };
+  const rows = await pgrSelect('businesses', { id: `eq.${businessId}`, owner_id: `eq.${user.id}` },
+    { select: 'id,name,subscription_cancelled_at,subscription_ends_at', limit: 1, useService: true });
+  const biz = rows?.[0];
+  if (!biz) return { status: 403, error: 'not your business' };
+  const status = subscriptionStatus(biz);
+  if (status === 'cancelled') return { status: 409, error: 'המנוי עדיין פעיל עד סוף החודש — אפשר לחדש אותו בכפתור "חידוש המנוי" בלי תשלום חדש.' };
+  if (status !== 'ended') return { status: 409, error: 'המנוי שלכם פעיל.' };
+  return { renewal: { businessId: biz.id, email: String(user.email).toLowerCase(), name: biz.name || '' } };
+}
 
 // Returns { billing } or { error } (a Hebrew message for the form).
 function cleanBilling(raw) {
@@ -72,11 +97,13 @@ async function findCoupon(code) {
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
 
-// This page's earlier checkout, if it's still pending (same email + terminal).
-async function findPendingCheckout(checkoutId, email, env) {
+// This page's earlier checkout, if it's still pending (same email + terminal,
+// and the same renewal business — or none, for a signup).
+async function findPendingCheckout(checkoutId, email, env, businessId = null) {
   if (!UUID_RE.test(String(checkoutId || ''))) return null;
   const rows = await pgrSelect('payment_checkouts',
-    { id: `eq.${checkoutId}`, status: 'eq.pending', email: `eq.${email}`, hyp_env: `eq.${env}` },
+    { id: `eq.${checkoutId}`, status: 'eq.pending', email: `eq.${email}`, hyp_env: `eq.${env}`,
+      business_id: businessId ? `eq.${businessId}` : 'is.null' },
     { select: 'id,order_no', limit: 1, useService: true });
   return Array.isArray(rows) && rows[0] ? rows[0] : null;
 }
@@ -84,7 +111,7 @@ async function findPendingCheckout(checkoutId, email, env) {
 export default async function handler(req, res) {
   setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method === 'GET') {
     if (!PAYMENTS_ENABLED) return res.status(200).json({ paymentsEnabled: false });
@@ -120,10 +147,16 @@ export default async function handler(req, res) {
   if (!await guard(req, res, 'v7-checkout', 30, 60)) return;
 
   try {
-    const { email, businessName, coupon, onboardingSessionId, checkoutId } = req.body || {};
-    const cleanEmail = String(email || '').trim().toLowerCase();
+    const { email, businessName, coupon, onboardingSessionId, checkoutId, renewBusinessId } = req.body || {};
+    let renewal = null;
+    if (renewBusinessId) {
+      const r = await renewalFor(req, renewBusinessId);
+      if (!r.renewal) return res.status(r.status).json({ error: r.error });
+      renewal = r.renewal;
+    }
+    const cleanEmail = renewal ? renewal.email : String(email || '').trim().toLowerCase();
     if (!EMAIL_RE.test(cleanEmail)) return res.status(400).json({ error: 'valid email required' });
-    const bizName = String(businessName || '').trim().slice(0, 80);
+    const bizName = String(renewal ? renewal.name : businessName || '').trim().slice(0, 80);
     const { billing, error: billingError } = cleanBilling(req.body?.billing);
     if (billingError) return res.status(400).json({ error: billingError });
 
@@ -154,7 +187,7 @@ export default async function handler(req, res) {
       billing:        { ...billing, invoiceEmail: invoiceEmailFor(cleanEmail) },
     };
 
-    let checkout = await findPendingCheckout(checkoutId, cleanEmail, cfg.env);
+    let checkout = await findPendingCheckout(checkoutId, cleanEmail, cfg.env, renewal?.businessId);
     if (checkout) {
       await pgrPatch('payment_checkouts', { id: `eq.${checkout.id}` },
         { ...details, updated_at: new Date().toISOString() });
@@ -164,7 +197,8 @@ export default async function handler(req, res) {
         hyp_env:               cfg.env,
         masof:                 cfg.masof,
         email:                 cleanEmail,
-        onboarding_session_id: typeof onboardingSessionId === 'string' ? onboardingSessionId.slice(0, 100) : null,
+        onboarding_session_id: !renewal && typeof onboardingSessionId === 'string' ? onboardingSessionId.slice(0, 100) : null,
+        ...(renewal ? { business_id: renewal.businessId } : {}),
       }, { returnRows: true });
       checkout = Array.isArray(inserted) ? inserted[0] : inserted;
       if (!checkout?.id || !checkout?.order_no) throw new Error('checkout insert returned no row');
@@ -189,7 +223,7 @@ export default async function handler(req, res) {
       return res.status(502).json({ error: 'לא הצלחנו לפתוח את דף התשלום. נסו שוב עוד רגע.' });
     }
 
-    console.log(`[v7 checkout] ${cfg.env} order ${checkout.order_no} (${cleanEmail}) first=${amountFirst} monthly=${amountMonthly}${couponRow ? ` coupon=${couponRow.code}` : ''}`);
+    console.log(`[v7 checkout] ${cfg.env}${renewal ? ' RENEWAL' : ''} order ${checkout.order_no} (${cleanEmail}) first=${amountFirst} monthly=${amountMonthly}${couponRow ? ` coupon=${couponRow.code}` : ''}`);
     return res.status(200).json({
       checkoutId:    checkout.id,
       paymentUrl,

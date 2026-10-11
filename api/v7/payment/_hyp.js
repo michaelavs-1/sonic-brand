@@ -12,7 +12,8 @@
 
    The subscription is Hyp-managed (הוראת קבע): HK=True, freq=1 (monthly),
    Tash=999 (until cancelled), OnlyOnApprove=True. Amount is the monthly price;
-   a first-month coupon becomes TashFirstPayment. SendHesh=True emails a tax
+   a first-month coupon becomes TashFirstPayment + FirstDate (the second
+   charge's date, YYYYMMDD). SendHesh=True emails a tax
    invoice, issued in the terminal owner's name — only if Hyp's invoicing
    module (Hyp Invoice / EZcount) is active on the terminal.
 
@@ -122,6 +123,17 @@ async function hypGet(query) {
 
 const money = (n) => Number(n).toFixed(2);
 
+// The second charge's date, YYYYMMDD: one month after today in Israel, clamped
+// to the month's last day (Jan 31 → Feb 28/29).
+export function nextMonthIlDate(now = new Date()) {
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem' })
+    .format(now).split('-').map(Number);
+  const ny = m === 12 ? y + 1 : y;
+  const nm = m === 12 ? 1 : m + 1;
+  const nd = Math.min(d, new Date(Date.UTC(ny, nm, 0)).getUTCDate());
+  return `${ny}${String(nm).padStart(2, '0')}${String(nd).padStart(2, '0')}`;
+}
+
 // Returns the full payment-page URL for the browser. Throws with err.ccode on
 // a Hyp error (902 = wrong PassP, 904 = missing What, ...).
 //
@@ -137,6 +149,7 @@ export async function signPaymentPage({
   businessName,
   billing = {},
 }) {
+  const discounted = Number(amountFirst) !== Number(amountMonthly);
   const params = {
     action:  'APISign',
     What:    'SIGN',
@@ -150,7 +163,11 @@ export async function signPaymentPage({
     Tash:          '999',
     OnlyOnApprove: 'True',
     // First-month coupon. Omitted when there's no discount.
-    TashFirstPayment: Number(amountFirst) !== Number(amountMonthly) ? money(amountFirst) : undefined,
+    TashFirstPayment: discounted ? money(amountFirst) : undefined,
+    // The date of the second charge. Not in Hyp's docs: Hyp's tech rep said
+    // (2026-10-05) a TashFirstPayment page crashes without it. Sent only with
+    // TashFirstPayment, so the full-price flow, which works, stays as it was.
+    FirstDate: discounted ? nextMonthIlDate() : undefined,
     Order:   String(orderNo),
     Sign:    'True',
     Info:    businessName ? `Robin - ${businessName}` : 'Robin',
@@ -186,6 +203,16 @@ export async function signPaymentPage({
     throw err;
   }
   return `${HYP_BASE}?${text}`;
+}
+
+// Terminates (terminate: true) or resumes a recurring agreement
+// (action=HKStatus, NewStat 1 / 2). Returns Hyp's CCode as a string: '0' =
+// done, '906' = no such agreement on this terminal. Throws on network errors.
+export async function setAgreementStatus({ cfg, hkId, terminate }) {
+  const text = await hypGet(toQuery({
+    action: 'HKStatus', Masof: cfg.masof, PassP: cfg.passp, HKId: String(hkId), NewStat: terminate ? '1' : '2',
+  }));
+  return String(parseHyp(text).CCode ?? '');
 }
 
 // Verifies a success-page redirect with Hyp. rawQuery must be exactly the

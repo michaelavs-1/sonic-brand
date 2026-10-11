@@ -86,6 +86,9 @@ import {
 } from './_auth-users.js';
 import { passwordProblem } from '../../../shared/password-rules.js';
 import { hoursProblem } from '../../../shared/opening-hours.js';
+import { nextChargeDate } from './_subscription.js';
+import { emailOps, ilDate } from '../_ops-email.js';
+import { ilPartsFromDate } from '../../../v7/generation/playlist-length.js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://xhkqrxljncazvbgkmqex.supabase.co';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inhoa3FyeGxqbmNhenZiZ2ttcWV4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDQ5NjgsImV4cCI6MjA5MTMyMDk2OH0.OQjdrnAUUCuuPjsAtt2gJDaCL3O9rRJ2XumtBNIxqC8';
@@ -252,13 +255,38 @@ async function loadPaidCheckout(checkoutId, email) {
   const noPayment = { status: 402, error: 'לא מצאנו תשלום עבור ההרשמה הזו.' };
   if (!UUID_RE.test(String(checkoutId || ''))) return noPayment;
   const rows = await pgrSelect('payment_checkouts', { id: `eq.${checkoutId}` },
-    { select: 'id,status,email,business_id,paid_at', limit: 1, useService: true });
+    { select: 'id,order_no,status,email,business_id,paid_at,amount_first,amount_monthly,coupon_code,billing,hyp_env,hyp_hk_id', limit: 1, useService: true });
   const checkout = Array.isArray(rows) ? rows[0] : null;
   if (!checkout || checkout.status !== 'paid') return noPayment;
   if (checkout.business_id && checkout.email !== email) {
     return { status: 409, error: 'התשלום הזה כבר שימש להרשמה אחרת.' };
   }
   return { checkout };
+}
+
+// Emails OPS_EMAIL_TO (api/v7/_ops-email.js) about a new paying customer. Never throws.
+async function notifyNewSubscription({ checkout, businessId, bizName, email }) {
+  const billing = checkout.billing || {};
+  const paidOn = ilPartsFromDate(new Date(checkout.paid_at)).isoDate;
+  const discounted = Number(checkout.amount_first) !== Number(checkout.amount_monthly);
+  await emailOps({
+    subject: `מנוי חדש — ${bizName || businessId}`,
+    lines: [
+      'לקוח חדש נרשם לרובין ושילם.',
+      '',
+      `עסק: ${bizName || '(ללא שם)'}`,
+      `אימייל: ${email}`,
+      `מזהה עסק: ${businessId}`,
+      `מחיר חודשי: ₪${Number(checkout.amount_monthly)}`,
+      ...(discounted ? [`חודש ראשון: ₪${Number(checkout.amount_first)} (קופון ${checkout.coupon_code || '—'})`] : []),
+      `תאריך תשלום: ${ilDate(paidOn)}`,
+      `החיוב הבא: ${ilDate(nextChargeDate(checkout.paid_at))}`,
+      `חשבונית על שם: ${billing.invoiceBusinessName || billing.name || '—'}`,
+      ...(billing.taxId ? [`ח.פ / ע.מ: ${billing.taxId}`] : []),
+      '',
+      `הזמנה ${checkout.order_no} · הוראת קבע (HKId) ${checkout.hyp_hk_id || '—'} · מסוף ${checkout.hyp_env}`,
+    ],
+  });
 }
 
 export default async function handler(req, res) {
@@ -353,6 +381,10 @@ export default async function handler(req, res) {
     if (checkout && checkout.business_id !== businessId) {
       await pgrPatch('payment_checkouts', { id: `eq.${checkout.id}` },
         { business_id: businessId, email: cleanEmail, updated_at: new Date().toISOString() });
+      // A new subscription — sent once, on the claim (a resend finds it
+      // already claimed). Right here rather than at the end, so a failed
+      // magic-link email and its retry can't lose it.
+      await notifyNewSubscription({ checkout, businessId, bizName, email: cleanEmail });
     }
 
     // user_metadata: only small identity flags (dashboard reads currentBizId

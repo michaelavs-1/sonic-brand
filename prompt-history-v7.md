@@ -46,7 +46,35 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-05 (latest) — Requested genres: always approved, in every Option-1 playlist of their tier
+## 2026-10-11 (latest) — Israeli genres: hits are popularity 45–100, not 60–100
+
+**Applies to:** `R1+R2` (the Popularity preference sub-rule in `PROCESSING_RULES_SECTION`, which R2 imports)
+
+Roni's change. Spotify's popularity score is global and Israel is a small market, so with 60 as the floor almost no Israeli track counted as a hit: 232 of 2,749 (8%) on 2026-10-11, and 7 of 326 in `רוק ישראלי`. The six Israeli genres now use 45 = the median of their combined catalog (about 1,400 tracks pass). Every other genre keeps 60. The numbers live in the DB (`hit_popularity_floor`, migration `v5/precompute/migrations/2026-10-11-israeli-hit-floor.sql`), applied by every v7 track function for both `hard` (filter) and `soft` (hits first). The prompt only tells the model about the exception, so it doesn't steer away from Israeli genres when the owner asks for hits.
+
+What changed in the sub-rule: a new "Exception — Israeli genres" paragraph after "Fixed definition"; the `"hard"` and `"soft"` bullets name both windows (60–100 / 45–100, 60+ / 45+); the genre-skew paragraph ends "to its hit window" instead of "to the hit window uniformly". The rest of `PROCESSING_RULES_SECTION` is unchanged.
+
+Full text of the Popularity preference sub-rule after the change:
+
+```
+- **Popularity preference (special sub-rule):** If the emphases text expresses a preference for well-known / familiar / hit tracks (or its inverse — deep cuts / lesser-known music), set the `popularity_preference` field on every direction accordingly.
+
+  **Fixed definition — a "hit" ALWAYS means popularity ∈ [60, 100].** However the owner phrases their ask ("hits", "well-known", "familiar", "mainstream", "songs everyone knows", "top 40", "chart-toppers", "recognizable", "safe picks", "להיטים", "מוכרים", "שירים שכולם מכירים", "מיינסטרים", "שירי מצעד", or any equivalent phrasing in any language), the concept ALWAYS maps to this exact popularity window. This is a hard-coded constant — NOT a knob you tune per venue or per direction. Your only classification job is to detect whether the ask is present and how strong it is (`hard` vs `soft`); the DB layer enforces the 60–100 window automatically when you set the preference.
+
+  **Exception — Israeli genres** (`בלדות ישראליות`, `פופ מזרחית`, `מזרחית ישנה`, `רוק ישראלי`, `שירי ארץ ישראל`, `שירי יום הזיכרון והשואה`): Israeli tracks score lower on this global popularity scale, so for these genres the DB uses 45–100 instead. They have plenty of tracks in their own hit window — do NOT avoid them because the owner asked for hits.
+
+  - `"hard"` — user is emphatic that they want ONLY hits ("only hits", "well-known only", "familiar songs only", "mainstream only", "רק להיטים", "רק שירים מוכרים", "רק מוזיקה מוכרת"). DB strictly filters to the hit window (60–100; 45–100 for Israeli genres).
+  - `"soft"` — user prefers hits but hasn't ruled out deeper cuts ("mostly hits", "lots of hits", "familiar with some surprises", "יותר להיטים", "בעיקר שירים מוכרים", "רוב הזמן להיטים"). DB keeps the full pool but bias-sorts the hit range (60+; 45+ for Israeli genres) to the front of the random draw.
+  - `"none"` — the emphases text doesn't mention popularity or familiarity at all (default). This is also correct if the user asks for the OPPOSITE (deep cuts, lesser-known, esoteric) — the full, unfiltered pool already includes them.
+
+  UNLIKE the instrumentalness rule, this preference DOES influence your genre choices: when set to `"hard"` or `"soft"`, skew AWAY from esoteric or niche-only genres (e.g., `Peruvian Chicha`, `Anatolian Psychedelic Rock`, `Tishoumaren`, `Dabke`, `Neo Exotica`, `Ethio-Jazz`, `Rebetiko`, `Laiko`, `Turk Arabesk`, `Medieval Music`, `Piano Impressionism`) — those genres have deep pools but few tracks in the hit window. Lean toward genres with rich hit catalogs (`Modern Pop`, `80s Pop`, `90's pop party`, `Rock`, `Hip Hop`, `RnB`, `Funk`, `Disco`, `Indie Rock`, `Bossa Nova`, `Jazz (Standards)`, and other mainstream-adjacent styles). This is your one lever — you decide the genre mix per direction; the DB then filters/biases each genre's pool to its hit window.
+
+  **Uniform across directions unless the owner explicitly asks otherwise.** Set the same `popularity_preference` on ALL your directions by default — one classification per emphases text, applied everywhere. EXCEPTION: if the emphases text explicitly asks for time-of-day or context-based variance ("hits during lunch, deeper cuts in the evening", "מסיבתי בסוף השבוע, יותר אינטימי באמצע השבוע", "background jazz in the morning but hits for happy hour"), vary the value per-direction to match. Do NOT invent per-direction variance the owner didn't ask for.
+```
+
+---
+
+## 2026-10-05 — Requested genres: always approved, in every Option-1 playlist of their tier
 
 **Applies to:** `taste profile` + `energy directions`
 

@@ -188,6 +188,32 @@ $$;
 --            random draw and deep cuts fill in only if the hit pool is
 --            thin.
 --   'none' — unchanged (atmosphere window applies).
+--
+-- Since 2026-10-11 the hit floor depends on the genre: 45 for the Israeli
+-- genres, 60 for every other one (hit_popularity_floor below; migration
+-- 2026-10-11-israeli-hit-floor.sql). A track found through two requested
+-- genres is a hit if it clears either genre's floor.
+
+-- Same definition as in migrations/2026-10-11-israeli-hit-floor.sql — keep
+-- the two identical. A new Israeli genre must be added here too.
+CREATE OR REPLACE FUNCTION hit_popularity_floor(p_genre text)
+RETURNS int
+LANGUAGE sql IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN lower(p_genre) IN (
+            'בלדות ישראליות',
+            'פופ מזרחית',
+            'מזרחית ישנה',
+            'רוק ישראלי',
+            'שירי ארץ ישראל',
+            'שירי יום הזיכרון והשואה'
+        ) THEN 45
+        ELSE 60
+    END
+$$;
+
+GRANT EXECUTE ON FUNCTION hit_popularity_floor(text) TO anon, authenticated, service_role;
 
 -- Drop prior signatures so re-runs don't leave orphaned overloads. CREATE
 -- OR REPLACE only replaces on EXACT signature match, so adding a new arg
@@ -213,28 +239,30 @@ CREATE OR REPLACE FUNCTION v5_direction_tracks(
 LANGUAGE sql STABLE
 AS $$
     WITH candidates AS (
-        SELECT DISTINCT
+        SELECT
             ta.spotify_id,
             ta.instrumentalness,
-            ta.popularity
+            bool_or(coalesce(ta.popularity, 0) >= hit_popularity_floor(pg.genre)) AS is_hit
         FROM playlist_genres pg
         JOIN playlist_tracks pt ON pt.playlist_id = pg.playlist_id
         JOIN track_analyses  ta ON ta.spotify_id  = pt.spotify_id
         WHERE ta.status = 'ok'
           AND pg.genre = ANY(SELECT lower(g) FROM unnest(p_genres) AS g)
           AND ta.tempo BETWEEN p_bpm_lo AND p_bpm_hi
-          -- Effective popularity window: hard pop_pref overrides to [60,100].
+          -- Effective popularity window: hard pop_pref overrides to
+          -- [genre's hit floor, 100].
           AND ta.popularity BETWEEN
-              (CASE WHEN p_pop_pref = 'hard' THEN 60  ELSE p_pop_lo END)
+              (CASE WHEN p_pop_pref = 'hard' THEN hit_popularity_floor(pg.genre) ELSE p_pop_lo END)
               AND
               (CASE WHEN p_pop_pref = 'hard' THEN 100 ELSE p_pop_hi END)
           AND (p_inst_pref <> 'hard' OR coalesce(ta.instrumentalness, 0) >= 85)
+        GROUP BY ta.spotify_id, ta.instrumentalness
     )
     SELECT spotify_id
     FROM candidates
     ORDER BY
       (p_inst_pref = 'soft' AND coalesce(instrumentalness, 0) < 85)::int,
-      (p_pop_pref  = 'soft' AND coalesce(popularity, 0) < 60)::int,
+      (p_pop_pref  = 'soft' AND NOT is_hit)::int,
       random()
     LIMIT p_limit;
 $$;
@@ -284,6 +312,7 @@ ALTER TABLE v6_daily_track_history ENABLE ROW LEVEL SECURITY;
 -- p_pop_pref (added 2026-09-02): 'none' | 'soft' | 'hard'. Same three-state
 -- semantics as v5_direction_tracks — hard OVERRIDES popularity window to
 -- [60,100], soft biases hits (popularity >= 60) via ORDER BY, none unchanged.
+-- The 60 is 45 for Israeli genres since 2026-10-11 (hit_popularity_floor).
 
 -- Drop prior signature so re-runs don't leave orphaned overloads (same
 -- reason as v5_direction_tracks above — CREATE OR REPLACE only replaces
@@ -309,19 +338,20 @@ CREATE OR REPLACE FUNCTION v6_direction_tracks_recent(
 LANGUAGE sql STABLE
 AS $$
     WITH candidates AS (
-        SELECT DISTINCT
+        SELECT
             ta.spotify_id,
             ta.instrumentalness,
-            ta.popularity
+            bool_or(coalesce(ta.popularity, 0) >= hit_popularity_floor(pg.genre)) AS is_hit
         FROM playlist_genres pg
         JOIN playlist_tracks pt ON pt.playlist_id = pg.playlist_id
         JOIN track_analyses  ta ON ta.spotify_id  = pt.spotify_id
         WHERE ta.status = 'ok'
           AND pg.genre = ANY(SELECT lower(g) FROM unnest(p_genres) AS g)
           AND ta.tempo BETWEEN p_bpm_lo AND p_bpm_hi
-          -- Effective popularity window: hard pop_pref overrides to [60,100].
+          -- Effective popularity window: hard pop_pref overrides to
+          -- [genre's hit floor, 100].
           AND ta.popularity BETWEEN
-              (CASE WHEN p_pop_pref = 'hard' THEN 60  ELSE p_pop_lo END)
+              (CASE WHEN p_pop_pref = 'hard' THEN hit_popularity_floor(pg.genre) ELSE p_pop_lo END)
               AND
               (CASE WHEN p_pop_pref = 'hard' THEN 100 ELSE p_pop_hi END)
           AND (p_inst_pref <> 'hard' OR coalesce(ta.instrumentalness, 0) >= 85)
@@ -335,12 +365,13 @@ AS $$
                     AND h.served_at > now() - (p_exclude_days || ' days')::interval
               )
           )
+        GROUP BY ta.spotify_id, ta.instrumentalness
     )
     SELECT spotify_id
     FROM candidates
     ORDER BY
       (p_inst_pref = 'soft' AND coalesce(instrumentalness, 0) < 85)::int,
-      (p_pop_pref  = 'soft' AND coalesce(popularity, 0) < 60)::int,
+      (p_pop_pref  = 'soft' AND NOT is_hit)::int,
       random()
     LIMIT p_limit;
 $$;

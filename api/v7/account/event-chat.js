@@ -19,6 +19,7 @@ import { setCors }              from '../../v6/origin-guard.js';
 import { guard }                from '../../v6/ratelimit.js';
 import { verifyUser }           from './_settings-helpers.js';
 import { ownedBusiness, eventsMadeToday, selfOrigin, parseModelJson, geminiText } from './_special-events.js';
+import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.js';
 import { EVENT_CHAT_SYSTEM_PROMPT, buildEventChatContext } from '../../../v7/generation/event-chat-prompt.js';
 import { ilPartsFromDate, nextIl4amIso } from '../../../v7/generation/playlist-length.js';
 
@@ -99,6 +100,9 @@ export default async function handler(req, res) {
     let biz;
     try { biz = await ownedBusiness(businessId, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
+    if (await subscriptionEnded(businessId)) {
+      return res.status(402).json({ code: 'subscription_ended', error: SUBSCRIPTION_ENDED_MESSAGE });
+    }
 
     // Missing / malformed sessionStartAt → fresh session, no history.
     const sessionStartClause = (typeof sessionStartAt === 'string' && sessionStartAt.length && !Number.isNaN(Date.parse(sessionStartAt)))

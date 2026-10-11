@@ -11,6 +11,10 @@
    parent window (same origin) so onboarding continues. The parent also polls
    /api/v7/payment/status, so a lost message never strands the owner.
 
+   A renewal checkout (business_id set from the start — the account page's
+   "חידוש המנוי") also reactivates the subscription (renewSubscription in
+   api/v7/account/_subscription.js) before the row is marked paid.
+
    Idempotent: a reload of a paid checkout just re-renders the success page.
    Hyp sends no server-to-server notification — this redirect is the only
    signal a payment happened.
@@ -19,6 +23,8 @@
 import { pgrSelect, pgrPatch } from '../../v5/supabase-client.js';
 import { guard } from '../../v6/ratelimit.js';
 import { hypConfig, parseHyp, verifyReturn } from './_hyp.js';
+import { renewSubscription } from '../account/_subscription.js';
+import { emailOps } from '../_ops-email.js';
 
 function page(res, status, { title, body, checkoutId = null, paymentStatus = null }) {
   const msg = JSON.stringify({ source: 'rubin-hyp', checkoutId, status: paymentStatus });
@@ -99,6 +105,30 @@ export default async function handler(req, res) {
     }
     if (!p.HKId) {
       console.warn(`[v7 payment return] order ${p.Order} paid but no HKId — recurring agreement may not have been created`);
+    }
+
+    // A renewal (tied to a business from the start — checkout.js
+    // renewBusinessId): reactivate the subscription BEFORE marking the row
+    // paid, so the account page finds it active when it sees "paid". A failure
+    // here never loses the payment — it's marked paid below and Roni is told.
+    if (checkout.business_id) {
+      try {
+        await renewSubscription({ checkout, hkId: p.HKId, amount: p.Amount });
+      } catch (e) {
+        console.error(`[v7 payment return] order ${p.Order} renewal reactivation failed:`, e.message);
+        await emailOps({
+          subject: `חידוש מנוי שולם אך לא הופעל — הזמנה ${p.Order}`,
+          lines: [
+            'לקוח שילם על חידוש מנוי, אבל הפעלת המנוי מחדש נכשלה. צריך לנקות ידנית את',
+            'subscription_cancelled_at / subscription_ends_at / subscription_cancel_reason בטבלת businesses.',
+            '',
+            `מזהה עסק: ${checkout.business_id}`,
+            `אימייל: ${checkout.email || '—'}`,
+            `הזמנה ${p.Order} · HKId ${p.HKId || '—'} · מסוף ${checkout.hyp_env}`,
+            `שגיאה: ${e.message}`,
+          ],
+        });
+      }
     }
 
     await pgrPatch('payment_checkouts', { id: `eq.${checkout.id}` }, {

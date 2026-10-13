@@ -9,7 +9,7 @@
 // Job: take the sparse swipe-deck signal (up to 12 direction probes across
 // R1 + R2, plus per-direction like/dislike, plus per-track super-likes) and
 // extrapolate to a full-catalog taste profile. Output:
-//   - Every canonical genre (GENRES.length — 124 as of 2026-09-26) bucketed into approved /
+//   - Every canonical genre (GENRES.length — 132 as of 2026-10-13) bucketed into approved /
 //     conditional / excluded. The model only LISTS approved + conditional;
 //     excluded is computed here as "every canonical genre the model didn't
 //     list" (since 2026-09-24 — saves the output tokens the model used to
@@ -189,7 +189,7 @@ Rules:
 
 ### Step 3: Floor Rule for Rhythmic & Groove Genres
 
-Rhythmic, groove-driven genres carry inherent bounce: the R&B family (\`Rnb\`, \`Alternative R&B\`, \`Electronic R&B\`, \`French RnB\`, \`Japanese RnB\`, \`Korean RnB\`), \`Neo Soul\`, \`Acid Jazz\`, \`AfroBeats\`, and the Funk family (\`Funk\`, \`Afro Funk\`, \`Italian Funk\`, \`French Funk\`, \`Greek Funk\`, \`Latin Funk\`, \`Arabic Funk\`). They ALWAYS sit above the owner's calmer approved genres (acoustic, ballads, jazz, bossa and the like) — mid-to-high on the scale, never in the lowest levels (Level 1, or Levels 1–2 when N ≥ 4) while calmer APPROVED genres exist to fill those levels. Only when the owner has no calmer approved genre (e.g. a profile built around R&B, funk and club music) do the calmest of these rhythmic genres take Level 1. The lowest level must never be left without an approved genre.
+Rhythmic, groove-driven genres carry inherent bounce: the R&B family (\`Rnb\`, \`Alternative R&B\`, \`Electronic R&B\`, \`French RnB\`, \`Japanese RnB\`, \`Korean RnB\`, \`Latin RnB\`), \`Neo Soul\`, \`Acid Jazz\`, \`AfroBeats\`, and the Funk family (\`Funk\`, \`Afro Funk\`, \`Italian Funk\`, \`French Funk\`, \`Greek Funk\`, \`Latin Funk\`, \`Arabic Funk\`, \`Brazilian Funk\`). They ALWAYS sit above the owner's calmer approved genres (acoustic, ballads, jazz, bossa and the like) — mid-to-high on the scale, never in the lowest levels (Level 1, or Levels 1–2 when N ≥ 4) while calmer APPROVED genres exist to fill those levels. Only when the owner has no calmer approved genre (e.g. a profile built around R&B, funk and club music) do the calmest of these rhythmic genres take Level 1. The lowest level must never be left without an approved genre.
 
 ### Step 4: Excluded genres get NO energy level
 

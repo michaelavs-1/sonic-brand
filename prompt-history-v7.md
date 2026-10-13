@@ -46,7 +46,43 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-11 (latest) — Israeli genres: hits are popularity 45–100, not 60–100
+## 2026-10-13 (latest) — Latin RnB and Brazilian Funk added to their genre families
+
+**Applies to:** R1+R2, taste profile, energy directions, level directions
+
+Resolves the "Not done yet" note in the entry below (Roni's call). `Latin RnB` joins every R&B family list and `Brazilian Funk` every Funk family list. They now cluster with their siblings in the probes, get the groove floor in the taste profile, and blend with their siblings in the daily-playlist directions. Only these lists changed. The changed lines now read (as the model sees them):
+
+R1 `BEAT_PERCUSSION_RULE`, inside `ENERGY_PAIRING_SECTION`, which R2 imports:
+
+```
+- **RnB family** — `Rnb`, `French RnB`, `Japanese RnB`, `Korean RnB`, `Latin RnB` cluster with each other. Vocal-forward, polished, contemporary R&B. NOT with Funk. NOT with Neo Soul.
+- **Funk family** — `Funk`, `Afro Funk`, `Italian Funk`, `French Funk`, `Greek Funk`, `Latin Funk`, `Arabic Funk`, `Brazilian Funk` cluster with each other. Horn-forward, raw, rhythm-section-driven organic groove. NOT with Neo Soul. NOT with the RnB family.
+```
+
+Taste profile, groove floor (`EDITABLE_PROMPT_SECTION`): the R&B family list gains `Latin RnB` after `Korean RnB`, and the Funk family list gains `Brazilian Funk` after `Arabic Funk`. The rest of the paragraph is unchanged.
+
+Energy directions + level directions (both `EDITABLE_PROMPT_SECTION`s, the same two lines in each):
+
+```
+  - *Example 3 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, Neo Soul, Acid Jazz, French RnB, Japanese RnB, Korean RnB, and Latin RnB.
+  - *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk, Latin Funk, Brazilian Funk).
+```
+
+---
+
+## 2026-10-13 — 8 new genres added to shared/genre-universe.js
+
+**Applies to:** all v7 (source-of-truth edit; flows to R1 + R2 + taste profile + energy directions + level directions + event playlist via imports)
+
+Cross-referenced from `prompt-history.md`'s 2026-10-13 entry (primary record). New genres: `Andean Chill`, `Brazilian Funk`, `French Musette`, `Hip House`, `Jangle pop`, `Latin DownTempo`, `Latin RnB`, `Trip Hop`. `GENRES.length` moves 124 → 132, so the taste profile now buckets 132 genres. No prompt text changed.
+
+**Not done yet, for Ami to decide:** some prompts list genre families by name, and the new genres aren't in those lists:
+- `Latin RnB` is not in R1's "RnB family" (`BEAT_PERCUSSION_RULE`) or in the taste profile's groove-floor R&B family.
+- `Brazilian Funk` is not in the taste profile's groove-floor Funk family. If it means baile funk (funk carioca) rather than 70s-style funk, it may not belong there.
+
+---
+
+## 2026-10-11 — Israeli genres: hits are popularity 45–100, not 60–100
 
 **Applies to:** `R1+R2` (the Popularity preference sub-rule in `PROCESSING_RULES_SECTION`, which R2 imports)
 

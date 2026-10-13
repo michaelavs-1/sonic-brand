@@ -32,7 +32,26 @@ history matters for debugging old rows.
 
 ---
 
-## 2026-09-26 (latest) — 8 new genres added to shared/genre-universe.js
+## 2026-10-13 (latest) — 8 new genres added to shared/genre-universe.js
+
+**Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
+
+Ami added these genres to Data Box Tab 2 on 2026-10-06 / 2026-10-07. Their sheet playlists were digested between 2026-10-06 and 2026-10-13 (fail-fast runs, then a 6-retry error run that was still running when they were added). Counts as of 2026-10-13 morning, 3,914 OK tracks in all; Jangle pop still had 321 failed tracks waiting for the retry run. Inserted alphabetically, like the 2026-09-26 batch:
+
+- `Andean Chill` (253 OK tracks · 6 playlists)
+- `Brazilian Funk` (639 OK · 11 playlists)
+- `French Musette` (275 OK · 5 playlists)
+- `Hip House` (279 OK · 3 playlists)
+- `Jangle pop` (653 OK · 10 playlists)
+- `Latin DownTempo` (264 OK · 5 playlists)
+- `Latin RnB` (708 OK · 9 playlists)
+- `Trip Hop` (843 OK · 10 playlists)
+
+`GENRES.length` moves from 124 → 132. Two other new sheet genres, `Acoustic Blues` and `Futre Funk` (a typo for Future Funk that Ami is fixing), were NOT added: nothing from them is in the database yet. Cross-referenced in `prompt-history-v7.md` at the same date.
+
+---
+
+## 2026-09-26 — 8 new genres added to shared/genre-universe.js
 
 **Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
 

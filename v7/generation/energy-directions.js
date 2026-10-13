@@ -153,8 +153,8 @@ A direction is played as one continuous playlist, so everything inside it must b
 - **Maximize Complementary Global Genres:** Proactively weave together genres from different regions and cultural scenes that share the exact same energy and dynamic feel. The examples below name genres only to show the idea — use only genres from the approved list.
   - *Example 1 (Cross-Cultural Lounge/Dining):* Blend Latin, Middle Eastern, Turkish, and European flavours (Flamenco, Arab Classic, Turk Arabesk, Rebetiko, Fado) under one cohesive mid-tempo vibe.
   - *Example 2 (Cross-Cultural Energetic Dining):* Blend Latin, Middle Eastern, Asian, and European flavours (Cha Cha Cha, Peruvian Cumbia, Anatolian Psychedelic Rock, Tishoumaren, Thai Molam, Samba-Choro) under one cohesive, not danceable yet groove-filled vibe.
-  - *Example 3 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, Neo Soul, Acid Jazz, French RnB, Japanese RnB, and Korean RnB.
-  - *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk, Latin Funk).
+  - *Example 3 (Global RnB & Soul):* Enrich standard R&B directions by incorporating international equivalents that share the exact same vibe and tempo tier, such as RnB, Neo Soul, Acid Jazz, French RnB, Japanese RnB, Korean RnB, and Latin RnB.
+  - *Example 4 (Global Funk & Groove):* Funk genres blend well with one another regardless of origin country (Funk, Afro Funk, Italian Funk, French Funk, Greek Funk, Arabic Funk, Latin Funk, Brazilian Funk).
   - *Example 5 (Global Disco and City Pop):* Genres from around the world that share a similar groove background, such as a disco groove, pair naturally. In this case, Disco (not Nu Disco or Italo Disco) along with Japanese City Pop and Chinese City Pop.
 
 ### 10. Equal Genre Weight & Density (No Anchor Genre)

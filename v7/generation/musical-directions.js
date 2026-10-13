@@ -164,8 +164,8 @@ NEVER pair drum-driven groove genres with ambient, drumless, or slow acoustic ge
 
 **Within the groove family, DO NOT group genres that share only "having a beat" as a common trait.** They test different listener profiles and belong in different diagnostic probes. The tight-cluster boundaries inside the groove family are:
 
-- **RnB family** — \`Rnb\`, \`French RnB\`, \`Japanese RnB\`, \`Korean RnB\` cluster with each other. Vocal-forward, polished, contemporary R&B. NOT with Funk. NOT with Neo Soul.
-- **Funk family** — \`Funk\`, \`Afro Funk\`, \`Italian Funk\`, \`French Funk\`, \`Greek Funk\`, \`Latin Funk\`, \`Arabic Funk\` cluster with each other. Horn-forward, raw, rhythm-section-driven organic groove. NOT with Neo Soul. NOT with the RnB family.
+- **RnB family** — \`Rnb\`, \`French RnB\`, \`Japanese RnB\`, \`Korean RnB\`, \`Latin RnB\` cluster with each other. Vocal-forward, polished, contemporary R&B. NOT with Funk. NOT with Neo Soul.
+- **Funk family** — \`Funk\`, \`Afro Funk\`, \`Italian Funk\`, \`French Funk\`, \`Greek Funk\`, \`Latin Funk\`, \`Arabic Funk\`, \`Brazilian Funk\` cluster with each other. Horn-forward, raw, rhythm-section-driven organic groove. NOT with Neo Soul. NOT with the RnB family.
 - **Neo Soul family** — \`Neo Soul\`, \`Alternative R&B\` cluster with each other. Vocal-driven, contemporary, moody. NOT with Funk. NOT with the RnB family.
 - **Hip Hop family** — \`Hip Hop\`, \`French Hip Hop\`, \`German Hip Hop\`, \`Icelandic Hip Hop\` cluster with each other. Rhymed vocals over programmed beats, urban. NOT with Funk. NOT with Neo Soul.
 - **Trap / Drill family** — \`Trap\`, \`Grime & Drill\` cluster with each other, or with Hip Hop genres of matching aggressive energy. Sharp electronic beats, edgy. NOT with organic Funk. NOT with classic RnB.

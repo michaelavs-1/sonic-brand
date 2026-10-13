@@ -14,8 +14,11 @@
 // outside the window it is (migration 2026-10-13-v7-energy-windows.sql, which
 // carries the same step of 5).
 //
-// These are the defaults. The taste chat (next step) will let an owner move
-// them. Special playlists don't use energy; they stay on tempo.
+// These are the defaults. The taste chat (2026-10-13) moves them per owner:
+// Option 1's windows (business_v7_settings.energy_windows, read through
+// option1EnergyWindow's `stored`) and one Option 2 recipe's range
+// (business_v7_level_directions.energy_range). Special playlists don't use
+// energy; they stay on tempo.
 //
 // Pure, bare imports — browser + server.
 
@@ -39,9 +42,17 @@ export const LEVEL_ENERGY_WINDOWS = Object.freeze({
 });
 
 // 'high' | 'low' → { min, max } (a copy), or null for an unknown tier.
-export function option1EnergyWindow(tier) {
+// `stored` = business_v7_settings.energy_windows ({ high: [min, max], low:
+// [min, max] }, set by the taste chat); a missing or malformed tier falls back
+// to the default.
+export function option1EnergyWindow(tier, stored = null) {
   const w = OPTION1_ENERGY_WINDOWS[tier];
-  return w ? { min: w.min, max: w.max } : null;
+  if (!w) return null;
+  const s = stored && typeof stored === 'object' ? stored[tier] : null;
+  const lo = Number(Array.isArray(s) ? s[0] : s?.min);
+  const hi = Number(Array.isArray(s) ? s[1] : s?.max);
+  if (Number.isFinite(lo) && Number.isFinite(hi) && lo >= 0 && hi <= 100 && lo < hi) return { min: Math.round(lo), max: Math.round(hi) };
+  return { min: w.min, max: w.max };
 }
 
 // Level L on an N-level scale → { min, max }. N is read with normLevels (the

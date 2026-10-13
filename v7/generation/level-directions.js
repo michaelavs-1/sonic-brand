@@ -99,7 +99,7 @@ const LIBRARY_SECTION = `## Library Size & Diversity
 // the wording (Roni, 2026-09-28: "I don't want forced pairings"): the
 // "no forced pairings" paragraph at the top, and §8 / §9 no longer push
 // fusions or a 4–6 genre count when the level's genres don't fit together.
-const COHERENCE_SECTION = `## Coherence Inside Each Direction
+export const COHERENCE_SECTION = `## Coherence Inside Each Direction
 
 A direction is played as one continuous stretch of the mix, so everything inside it must belong together. These rules decide which genres may share a direction.
 

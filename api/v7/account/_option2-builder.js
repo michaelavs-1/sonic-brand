@@ -81,9 +81,10 @@ const isMissingRpc = (e) => e?.status === 404 || /PGRST202|Could not find the fu
 // builder then plays every genre of the level, as before).
 export async function readLevelDirections(businessId) {
   try {
+    // '*': energy_range (the taste chat, 2026-10-13) when the column exists.
     return await pgrSelect('business_v7_level_directions',
       { business_id: `eq.${businessId}`, active: 'is.true' },
-      { select: 'id,energy_level,rank,title_en,genres', order: 'energy_level.asc,rank.asc.nullslast', useService: true }) || [];
+      { select: '*', order: 'energy_level.asc,rank.asc.nullslast', useService: true }) || [];
   } catch (e) {
     console.warn(`[v7 option2] level directions read failed for biz=${businessId}:`, e.message);
     return [];
@@ -94,8 +95,9 @@ async function readInputs(businessId) {
   const [settings, profiles, levelDirections] = await Promise.all([
     pgrSelect('business_v7_settings', { business_id: `eq.${businessId}` },
       { select: 'timeline', limit: 1, useService: true }),
+    // '*': genre_weights (the taste chat, 2026-10-13) when the column exists.
     pgrSelect('business_taste_profiles', { business_id: `eq.${businessId}` },
-      { select: 'approved_genres,energy_levels_total,instrumentalness_preference,popularity_preference', limit: 1, useService: true }),
+      { select: '*', limit: 1, useService: true }),
     readLevelDirections(businessId),
   ]);
   const tp = profiles?.[0] || null;
@@ -105,15 +107,17 @@ async function readInputs(businessId) {
     N: normLevels(tp?.energy_levels_total),
     inst: normPref(tp?.instrumentalness_preference),
     pop: normPref(tp?.popularity_preference),
+    weights: tp?.genre_weights && typeof tp.genre_weights === 'object' ? tp.genre_weights : null,
     levelDirections,
   };
 }
 
-// Stored level-direction rows → Map<level, [{ id, title_en, genres }]> in
-// rank order, keeping only genres that are approved AT that level (the
-// profile is the source of truth). A level with approved genres but no
-// usable direction gets its genre list as one implicit direction (id null).
-// No usable rows at all → null (no library).
+// Stored level-direction rows → Map<level, [{ id, title_en, genres, energy_range }]>
+// in rank order, keeping only genres that are approved AT that level (the
+// profile is the source of truth). energy_range = the recipe's own range (set
+// by the taste chat), or null for its level's default. A level with approved
+// genres but no usable direction gets its genre list as one implicit
+// direction (id null). No usable rows at all → null (no library).
 export function levelLibrary(rows, genresByLevel) {
   if (!Array.isArray(rows) || !rows.length) return null;
   const sorted = [...rows].sort((a, b) =>
@@ -125,18 +129,20 @@ export function levelLibrary(rows, genresByLevel) {
     const genres = [...new Set((Array.isArray(r.genres) ? r.genres : [])
       .map((g) => allowed.get(String(g).toLowerCase())).filter(Boolean))];
     if (!genres.length) continue;
+    const [lo, hi] = Array.isArray(r.energy_range) ? r.energy_range.map(Number) : [];
+    const range = Number.isFinite(lo) && Number.isFinite(hi) && lo < hi ? [Math.round(lo), Math.round(hi)] : null;
     if (!lib.has(L)) lib.set(L, []);
-    lib.get(L).push({ id: r.id || null, title_en: r.title_en || '', genres });
+    lib.get(L).push({ id: r.id || null, title_en: r.title_en || '', genres, energy_range: range });
   }
   if (!lib.size) return null;
   for (const [L, genres] of genresByLevel) {
-    if (!lib.has(L) && genres.length) lib.set(L, [{ id: null, title_en: `(all level ${L} genres)`, genres }]);
+    if (!lib.has(L) && genres.length) lib.set(L, [{ id: null, title_en: `(all level ${L} genres)`, genres, energy_range: null }]);
   }
   return lib;
 }
 
 const directionsMeta = (picks) => Object.fromEntries([...picks].sort((a, b) => a[0] - b[0])
-  .map(([L, d]) => [L, { id: d.id, title_en: d.title_en, genres: d.genres }]));
+  .map(([L, d]) => [L, { id: d.id, title_en: d.title_en, genres: d.genres, energy_range: d.energy_range || null }]));
 
 // Which stretch of the day to fill, and the energy curve over it.
 export function planWindow({ hours, timeline, now = new Date(), onDemand = false }) {
@@ -172,7 +178,7 @@ async function callPool({ businessId, specs, inst, pop, excludeDays }) {
   if (!specs.length) return [];
   return await pgrRpc('v7_timeline_pool', {
     p_biz_id: businessId,
-    p_specs: specs.map(({ genre, n, playlists, lo, hi }) => ({ genre, n, playlists, lo, hi })),
+    p_specs: specs.map(({ key, genre, n, playlists, lo, hi }) => ({ key, genre, n, playlists, lo, hi })),
     p_inst_pref: inst,
     p_pop_pref: pop,
     p_exclude_days: excludeDays,
@@ -191,7 +197,7 @@ export async function planOption2Timeline({ businessId, hours, now = new Date(),
 // Same, from explicit inputs (scripts/_v7-option2-dryrun.mjs plans for fixture
 // profiles with this). Read-only: the only DB access is the pool RPC.
 // levelDirections = business_v7_level_directions rows ([] → no library).
-export async function planFromInputs({ businessId, hours, timeline, approved, N, inst = 'none', pop = 'none', levelDirections = [], now = new Date(), onDemand = false }) {
+export async function planFromInputs({ businessId, hours, timeline, approved, N, inst = 'none', pop = 'none', levelDirections = [], weights = null, now = new Date(), onDemand = false }) {
   N = normLevels(N);
   const genresByLevel = new Map();
   const canonical = new Map();
@@ -213,25 +219,50 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
   const MIXES = OPTION2_TITLES.length;
   const lib = levelLibrary(levelDirections, genresByLevel);
   const picks = lib ? pickLevelDirections(lib, win.isoDate, MIXES) : null;
-  const perMix = picks ? picks.map((m) => new Map([...m].map(([L, d]) => [L, d.genres]))) : null;
   if (!lib && levelDirections?.length) console.warn(`[v7 option2] biz=${businessId}: stored level directions don't match the taste profile — playing every genre of each level`);
+
+  // Pools: one per genre AND energy range. A recipe's songs come from its own
+  // range when the taste chat set one, otherwise from its level's
+  // (energy-windows.js). From here to the assembler, "genres" are these pool
+  // keys; tracks get their genre back at the end.
+  const windows = new Map([...genresByLevel.keys()].map((L) => [L, levelEnergyWindow(L, N)]));
+  const pool = new Map();   // key → { genre, lo, hi }
+  const keyFor = (genre, L, range) => {
+    const [lo, hi] = range || [windows.get(L).min, windows.get(L).max];
+    const key = `${genre}@${lo}-${hi}`;
+    if (!pool.has(key)) pool.set(key, { genre, lo, hi });
+    return key;
+  };
+  const perMix = picks ? picks.map((m) => new Map([...m].map(([L, d]) => [L, d.genres.map((g) => keyFor(g, L, d.energy_range))]))) : null;
+  const keysByLevel = perMix ? null : new Map([...genresByLevel].map(([L, gs]) => [L, gs.map((g) => keyFor(g, L, null))]));
 
   const hardPref = inst === 'hard' || pop === 'hard';
   const demandArgs = { startMin: win.startMin, endMin: win.endMin, energyAt: win.energyAt, N, hardPref };
   const { specs, minsByLevel, minsByLevelPerMix } = perMix
     ? estimateDemandPerMix({ ...demandArgs, genresByLevelPerMix: perMix })
-    : estimateDemand({ ...demandArgs, genresByLevel, mixes: MIXES });
+    : estimateDemand({ ...demandArgs, genresByLevel: keysByLevel, mixes: MIXES });
 
-  // Each genre's songs come from its level's energy range. The range rules out
-  // many of a sampled playlist's tracks, so twice as many playlists are sampled.
-  const windows = new Map([...genresByLevel.keys()].map((L) => [L, levelEnergyWindow(L, N)]));
+  // estimateDemand names each spec by its pool key. The range rules out many
+  // of a sampled playlist's tracks, so twice as many playlists are sampled.
   for (const s of specs) {
-    const w = windows.get(s.level);
-    if (!w) continue;
-    s.lo = w.min;
-    s.hi = w.max;
+    const p = pool.get(s.genre);
+    s.key = s.genre;
+    s.genre = p.genre;
+    s.lo = p.lo;
+    s.hi = p.hi;
     s.playlists = Math.min(200, s.playlists * 2);
   }
+  // Rows from an RPC without the `key` column (before migration
+  // 2026-10-13-v7-taste-chat.sql — when no recipe has its own range yet, so a
+  // genre has one key) map back by genre.
+  const keysOfGenre = new Map();
+  for (const s of specs) {
+    const g = s.genre.toLowerCase();
+    keysOfGenre.set(g, [...(keysOfGenre.get(g) || []), s.key]);
+  }
+  const keyOfRow = (r) => r.key || (keysOfGenre.get(String(r.genre).toLowerCase()) || [])[0] || null;
+  const weightOf = new Map(Object.entries(weights || {}).map(([g, w]) => [g.toLowerCase(), Number(w)]));
+  const poolWeights = new Map([...pool].map(([k, p]) => [k, weightOf.get(p.genre.toLowerCase()) || 1]));
 
   // Tier 1 + tier 2 (wider playlist sample for genres that came back short
   // of in-range songs).
@@ -249,33 +280,31 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
   if (fresh.length && !('ring' in fresh[0])) {
     console.error('[v7 option2] v7_timeline_pool returns no energy ring — run migration 2026-10-13-v7-energy-windows.sql. Building without the energy ranges.');
   }
-  // Which side of its genre's range a track is on (-1 below, 1 above, 0 inside
+  // Which side of its pool's range a track is on (-1 below, 1 above, 0 inside
   // or unknown) — the assembler widens one side at a time.
-  const genreWindow = new Map();
-  for (const [L, genres] of genresByLevel) for (const g of genres) genreWindow.set(g, windows.get(L));
-  const sideOf = (g, energy) => {
-    const w = genreWindow.get(g);
-    if (energy == null || !w) return 0;
-    return energy < w.min ? -1 : energy > w.max ? 1 : 0;
+  const sideOf = (key, energy) => {
+    const p = pool.get(key);
+    if (energy == null || !p) return 0;
+    return energy < p.lo ? -1 : energy > p.hi ? 1 : 0;
   };
-  const byGenre = new Map([...canonical.values()].map((g) => [g, new Map()]));
+  const byKey = new Map(specs.map((s) => [s.key, new Map()]));
   const add = (rows, into) => {
     for (const r of rows) {
-      const g = canonical.get(String(r.genre).toLowerCase());
-      if (!g || into.get(g)?.has(r.spotify_id)) continue;
+      const k = keyOfRow(r);
+      if (!k || !into.has(k) || into.get(k).has(r.spotify_id)) continue;
       const energy = r.energy ?? null;
-      into.get(g).set(r.spotify_id, { id: r.spotify_id, sec: r.duration_sec, energy, ring: Number(r.ring) || 0, side: sideOf(g, energy) });
+      into.get(k).set(r.spotify_id, { id: r.spotify_id, sec: r.duration_sec, energy, ring: Number(r.ring) || 0, side: sideOf(k, energy) });
     }
   };
-  add(fresh, byGenre);
-  const inRange = (g) => {
+  add(fresh, byKey);
+  const inRange = (k) => {
     let n = 0;
-    for (const t of byGenre.get(g)?.values() || []) if (!t.ring) n++;
+    for (const t of byKey.get(k)?.values() || []) if (!t.ring) n++;
     return n;
   };
-  const short = specs.filter((s) => inRange(s.genre) < s.n);
+  const short = specs.filter((s) => inRange(s.key) < s.n);
   if (short.length) {
-    add(await callPool({ businessId, specs: short.map((s) => ({ ...s, playlists: 200 })), inst, pop, excludeDays: EXCLUDE_DAYS }), byGenre);
+    add(await callPool({ businessId, specs: short.map((s) => ({ ...s, playlists: 200 })), inst, pop, excludeDays: EXCLUDE_DAYS }), byKey);
   }
 
   // Refill: a genre group whose fresh supply is under 1.1× what it has to
@@ -299,15 +328,15 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
       groups.push({ need: needAll, genres: [...union] });
     }
   } else {
-    for (const [L, genres] of genresByLevel) groups.push({ need: trackNeed(minsByLevel.get(L), MIXES), genres });
+    for (const [L, keys] of keysByLevel) groups.push({ need: trackNeed(minsByLevel.get(L), MIXES), genres: keys });
   }
-  const refillGenres = new Set();
+  const refillKeys = new Set();
   for (const grp of groups) {
-    const supply = grp.genres.reduce((n, g) => n + (byGenre.get(g)?.size || 0), 0);
-    if (grp.need && supply < grp.need * 1.1) grp.genres.forEach((g) => refillGenres.add(g));
+    const supply = grp.genres.reduce((n, k) => n + (byKey.get(k)?.size || 0), 0);
+    if (grp.need && supply < grp.need * 1.1) grp.genres.forEach((k) => refillKeys.add(k));
   }
-  const refill = new Map([...canonical.values()].map((g) => [g, new Map()]));
-  const refillSpecs = specs.filter((s) => refillGenres.has(s.genre));
+  const refill = new Map(specs.map((s) => [s.key, new Map()]));
+  const refillSpecs = specs.filter((s) => refillKeys.has(s.key));
   if (refillSpecs.length) {
     add(await callPool({ businessId, specs: refillSpecs, inst, pop, excludeDays: 0 }), refill);
   }
@@ -315,21 +344,22 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
 
   const seed = randomUUID();
   const rng = mulberry32(seedFrom(seed));
-  // Each genre's pool: the fresh tracks, then the refill (flagged; the
-  // assembler orders by range, side and ring itself).
+  // Each pool: the fresh tracks, then the refill (flagged; the assembler
+  // orders by range, side and ring itself).
   const pools = new Map();
-  for (const g of canonical.values()) {
-    const freshList = shuffle([...byGenre.get(g).values()], rng);
+  for (const s of specs) {
+    const freshList = shuffle([...byKey.get(s.key).values()], rng);
     const freshIds = new Set(freshList.map((t) => t.id));
-    const refillList = shuffle([...refill.get(g).values()].filter((t) => !freshIds.has(t.id)), rng)
+    const refillList = shuffle([...refill.get(s.key).values()].filter((t) => !freshIds.has(t.id)), rng)
       .map((t) => ({ ...t, refill: true }));
-    pools.set(g, [...freshList, ...refillList]);
+    pools.set(s.key, [...freshList, ...refillList]);
   }
 
   const { mixes, stats } = assembleMixes({
-    startMin: win.startMin, endMin: win.endMin, energyAt: win.energyAt, N, genresByLevel: perMix || genresByLevel, pools, rng,
-    mixes: MIXES,
+    startMin: win.startMin, endMin: win.endMin, energyAt: win.energyAt, N, genresByLevel: perMix || keysByLevel, pools, rng,
+    weights: poolWeights, mixes: MIXES,
   });
+  for (const m of mixes) for (const t of m.tracks) t.genre = pool.get(t.genre)?.genre || t.genre;
 
   const meta = {
     v: 2,

@@ -129,7 +129,7 @@ const LIBRARY_SECTION = `## Library Size & Diversity
 // imported, so v7 keeps no runtime dependency on v6 and Ami can tune these
 // separately. Renumbered 7–12 and lightly adapted (approved genres only; no
 // Non-Overlap rule — overlap is allowed here).
-const COHERENCE_SECTION = `## Coherence Inside Each Direction
+export const COHERENCE_SECTION = `## Coherence Inside Each Direction
 
 A direction is played as one continuous playlist, so everything inside it must belong together. These rules decide which genres may share a direction. Requested genres are the one exception (see Requested Genres): they go into every direction of their tier regardless of these rules.
 

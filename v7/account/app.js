@@ -51,13 +51,18 @@ function clearNeedsNewPassword() {
 }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { computeTargetForToday, ilPartsFromDate, datedLabel, prevIl4amIso, nextIl4amIso } from '../generation/playlist-length.js?v=03102026a';
+import { computeTargetForToday, ilPartsFromDate, datedLabel, undatedLabel, prevIl4amIso, nextIl4amIso } from '../generation/playlist-length.js?v=03102026a';
 import {
   reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf, levelOf, fmtHM,
-} from '../generation/energy-timeline.js?v=24092026a';
+  parseHM, nudgePoints,
+} from '../generation/energy-timeline.js?v=13102026a';
 import { TimelineEditor, energyColor } from './energy-timeline-editor.js?v=24092026a';
 import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
-import { mountDirectionChat, openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=03102026a';
+// direction-chat.js (v6's chat) is no longer mounted in v7 — the Home tab's
+// card is the taste chat since 2026-10-13. Its exports are still referenced by
+// the per-playlist edit / trash paths, which v7 rows never show (no direction_id).
+import { openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=03102026a';
+import { mountTasteChat } from './taste-chat.js?v=13102026b';
 import { generateEnergyDirections } from '../generation/energy-directions.js?v=05102026a';
 import { generateLevelDirections } from '../generation/level-directions.js?v=28092026a';
 import { pickLevelDirections, levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
@@ -190,19 +195,30 @@ async function loadDashboardData(businessId) {
   };
 }
 
-// Order playlists most-clicked first. Ties break most-recently-created first,
-// which matches the previous default order (created_at DESC) — so a fresh
-// user with zero clicks anywhere sees exactly what they saw before this
-// change, and a click accumulator only kicks in once opens exist. Server-
-// side mirror of this same logic lives in generate-daily.js (per-direction
-// aggregation for build order).
+// v7's daily playlists have fixed names, shown in that order (2026-10-13):
+// "#1" before "#2", the energetic ones before the calm ones — the order
+// they're built in and the order the loading placeholders show
+// (expectedDailySlots).
+const OPTION1_DAILY_TITLES = ['אנרגיה גבוהה #1', 'אנרגיה גבוהה #2', 'אנרגיה רגועה #1', 'אנרגיה רגועה #2'];
+const OPTION2_DAILY_TITLES = ['Daily Mix #1', 'Daily Mix #2'];
+const DAILY_ORDER = [...OPTION1_DAILY_TITLES, ...OPTION2_DAILY_TITLES];
+const dailyRank = (p) => {
+  const i = DAILY_ORDER.indexOf(undatedLabel(p.label));
+  return i < 0 ? DAILY_ORDER.length : i;
+};
+
+// The fixed names first, in DAILY_ORDER; anything else (rows from before the
+// fixed names) after them, most-clicked first, then the newest.
 function sortPlaylistsByClicksDesc(playlists) {
   const counts = state.dashboard?.clicksBySpotifyId || new Map();
   return [...playlists].sort((a, b) => {
+    const ra = dailyRank(a);
+    const rb = dailyRank(b);
+    if (ra !== rb) return ra - rb;
     const ca = counts.get(a.id) || 0;
     const cb = counts.get(b.id) || 0;
     if (cb !== ca) return cb - ca;
-    return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    return (b.createdAtMs || 0) - (a.createdAtMs || 0);
   });
 }
 
@@ -536,10 +552,18 @@ async function enterDashboardInner() {
   // for 15 min after a mode change so it can't race this build.
   if (pickedModeNow && !hasPlaylistsForToday()) runGenerateDaily();
 
-  // Mount the direction-edit chat module (idempotent). It doesn't hit the
-  // network until the owner opens the Home tab's "חידודים מוזיקליים" card —
-  // see the directionsToggle listener below.
-  mountDirectionChat({ supabase: sb, getBusiness: () => business });
+  // The Home tab's "הטעם המוזיקלי שלכם" chat (taste-chat.js; idempotent).
+  mountTasteChat({
+    supabase: sb,
+    getBusiness: () => business,
+    hooks: {
+      askReplace: (replace) => askReplaceToday(replace),
+      runReplaceToday,
+      openTimelineWithHint: editTimelineWithHint,
+      prefs: () => state.tastePrefs || {},
+    },
+  });
+  loadTastePrefs();
 
   // Background expansion of any onboarding playlists that are still at
   // sample size. The endpoint streams progress and updateCountInRow ticks
@@ -781,6 +805,7 @@ async function checkV7ModeGate() {
         },
       });
       if (!r.saved) { busy = false; return; }
+      await showShuffleWarning();
       opt1.disabled = true;
       opt2.disabled = true;
       const { ok } = await ensureLevelDirections({ onGenerate: () => building?.classList.remove('hide') });
@@ -857,9 +882,11 @@ function askReplaceStep(replace) {
     const max = Number(replace?.cap || 2);
     const atMax = left <= 0;
     cap.classList.toggle('max', atMax);
+    // One line with the daily limit and what's left (Roni, 2026-10-13); the
+    // taste chat asks through this same step.
     cap.textContent = atMax
       ? `הגעתם למקסימום של ${max} החלפות ביום — השינוי ייכנס לתוקף מחר.`
-      : left === 1 ? 'נותרה החלפה אחת להיום.' : `אפשר להחליף את הפלייליסטים עד ${max} פעמים ביום.`;
+      : `אפשר להחליף את הפלייליסטים עד ${max === 2 ? 'פעמיים' : `${max} פעמים`} ביום · נותרו היום: ${left}`;
     nowBtn.disabled = atMax;
     keepBtn.textContent = atMax ? 'הבנתי' : 'השאירו עד סגירה';
     nowBtn.onclick = () => resolve(true);
@@ -906,7 +933,10 @@ function renderTimelineSpark() {
 // playlists. Resolves once the modal closes:
 //   { saved:false }                       cancelled / "חזרה"
 //   { saved:true, replaceNow, result }    saved (replaceNow → caller rebuilds today)
-function openTimelineModal({ context, onSave }) {
+// `hint` (the taste chat, 2026-10-13): { time: 'HH:MM', direction: 'up'|'down' }
+// — today's curve opens already moved one level at that time (nudgePoints);
+// the owner saves it or not.
+function openTimelineModal({ context, onSave, hint = null }) {
   return new Promise(async (resolve) => {
     const modal = $('timelineModal');
     const saveBtn = $('tlSave');
@@ -918,6 +948,14 @@ function openTimelineModal({ context, onSave }) {
     const groups = reconcileTimeline(state.timeline, hours).groups.map((g) => ({ ...g, points: g.points.map((p) => ({ ...p })) }));
     const N = await loadEnergyLevels();
     let active = Math.max(0, groups.findIndex((g) => g.days.includes(todayDayIdx())));
+    if (hint && groups[active]) {
+      const g = groups[active];
+      let m = parseHM(hint.time);
+      if (Number.isFinite(m)) {
+        if (m < windowOf(g).openMin) m += 1440;   // after midnight, on an overnight day
+        g.points = nudgePoints(g.points, g, m, hint.direction, N);
+      }
+    }
 
     const loadActive = () => {
       const g = groups[active];
@@ -992,6 +1030,47 @@ function openTimelineModal({ context, onSave }) {
 function runReplaceToday() {
   switchTab('Home');
   runGenerateDaily({ replaceToday: true });
+}
+
+// The taste chat's curve suggestion: the editor opens with the change ready;
+// saving runs the usual save + "replace today's playlists?" step.
+async function editTimelineWithHint(hint) {
+  const r = await openTimelineModal({
+    context: 'edit',
+    hint,
+    onSave: async (timeline) => {
+      const data = await postTimeline(timeline);
+      state.timeline = data.timeline || timeline;
+      return data;
+    },
+  });
+  if (r.saved && r.replaceNow) runReplaceToday();
+  return r;
+}
+
+// The owner's instrumental / well-known preferences — the taste chat's
+// sample songs follow them, like the onboarding swipe deck's.
+async function loadTastePrefs() {
+  try {
+    const { data } = await sb.from('business_taste_profiles')
+      .select('instrumentalness_preference,popularity_preference')
+      .eq('business_id', business.id)
+      .maybeSingle();
+    state.tastePrefs = { inst: data?.instrumentalness_preference || 'none', pop: data?.popularity_preference || 'none' };
+  } catch { /* the samples go without preferences */ }
+}
+
+// Whenever Option 2 is chosen (Roni, 2026-10-13): the mixes follow the
+// curve song by song, so shuffle (and Smart Shuffle) must be off and each
+// mix starts from its first song at opening. Resolves on "הבנתי".
+function showShuffleWarning() {
+  return new Promise((resolve) => {
+    const m = $('shuffleModal');
+    const ok = $('shuffleOk');
+    if (!m || !ok) { resolve(); return; }
+    ok.onclick = () => { m.classList.add('hide'); resolve(); };
+    m.classList.remove('hide');
+  });
 }
 
 // Status line after a save that didn't (or couldn't) replace today's set.
@@ -1265,11 +1344,6 @@ function switchTab(tab) {
   if (tab === 'Profile') renderProfileTab();
 }
 
-// The "חידודים מוזיקליים" chat lives on the Home tab (moved from Profile,
-// 2026-10-03). Its transcript + directions load the first time the card is
-// opened — openDirectionChat is idempotent.
-$('directionsToggle')?.addEventListener('click', () => { openDirectionChat(); });
-
 // Open the "חידודים מוזיקליים" card on the Home tab (used by the per-playlist
 // edit icon — which v7 rows never show, since they carry no direction_id).
 function openDirectionsSection() {
@@ -1459,6 +1533,7 @@ function renderDeliverySection() {
       });
       if (!r.saved) return;            // cancelled → still Option 1
       paint('option2');
+      await showShuffleWarning();
       // The level directions come before any "replace now" build, which
       // plays from them. If they fail, the replacement still runs — Option 2
       // builds without them (every genre of each level).
@@ -2276,9 +2351,7 @@ function renderPlaylists() {
     renderEmptyDaily(wrap);
     return;
   }
-  // Sort most-clicked first. On a fresh account (no opens anywhere) this
-  // degrades to the previous default (most-recently-created first) via
-  // the tiebreaker in sortPlaylistsByClicksDesc.
+  // Fixed order by name (#1 before #2); see sortPlaylistsByClicksDesc.
   const sorted = sortPlaylistsByClicksDesc(playlists);
   for (const p of sorted) {
     wrap.append(buildPlaylistRow(p));
@@ -2819,8 +2892,8 @@ function closeGenerateDailyModal() {
 // (api/v7/account/_daily-builder.js planOption1: high tier first; Option 2:
 // _option2-builder.js OPTION2_TITLES). null → unknown type, generic placeholder.
 function expectedDailySlots(mode) {
-  const titles = mode === 'option1' ? ['אנרגיה גבוהה #1', 'אנרגיה גבוהה #2', 'אנרגיה רגועה #1', 'אנרגיה רגועה #2']
-    : mode === 'option2' ? ['Daily Mix #1', 'Daily Mix #2']
+  const titles = mode === 'option1' ? OPTION1_DAILY_TITLES
+    : mode === 'option2' ? OPTION2_DAILY_TITLES
     : null;
   if (!titles) return null;
   // Dated like the rows the server builds ("Daily Mix #1 · 28.09.2026").

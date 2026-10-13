@@ -105,7 +105,9 @@ console.log(`curve dots: ${m.points.map((p) => `${fmtHM(p.m)}=${p.e}`).join('  '
 console.log(`stats: ${JSON.stringify(plan.stats)}`);
 const ranges = m.energy_windows || {};
 console.log(`energy ranges: ${Object.entries(ranges).map(([L, [lo, hi]]) => `L${L} ${lo}–${hi}`).join(' · ') || '(none)'}`);
-const inRange = (t) => { const w = ranges[t.level]; return !!w && t.energy != null && t.energy >= w[0] && t.energy <= w[1]; };
+// A recipe's own range (the taste chat) when it has one, else its level's.
+const rangeFor = (slot, t) => slot.meta?.directions?.[t.level]?.energy_range || ranges[t.level];
+const inRangeOf = (slot) => (t) => { const w = rangeFor(slot, t); return !!w && t.energy != null && t.energy >= w[0] && t.energy <= w[1]; };
 console.log(`genres per level: ${m.source === 'level-directions' ? `level directions (day ${m.day_number} of the rotation)` : 'every genre of the level (no level-direction library)'}`);
 for (const slot of plan.slots) {
   const dirs = slot.meta?.directions;
@@ -118,11 +120,11 @@ for (const slot of plan.slots) {
   const total = slot.tracks.reduce((n, t) => n + t.sec, 0);
   const genres = new Map();
   for (const t of slot.tracks) genres.set(t.genre, (genres.get(t.genre) || 0) + 1);
-  console.log(`\n--- ${slot.title}: ${slot.tracks.length} tracks, ${dur(total)} (${(total / 60).toFixed(0)} min), ${slot.tracks.filter(inRange).length} inside their level's energy range — ${[...genres].map(([g, n]) => `${g}×${n}`).join(', ')}`);
+  console.log(`\n--- ${slot.title}: ${slot.tracks.length} tracks, ${dur(total)} (${(total / 60).toFixed(0)} min), ${slot.tracks.filter(inRangeOf(slot)).length} inside their energy range — ${[...genres].map(([g, n]) => `${g}×${n}`).join(', ')}`);
   if (quiet) continue;
   for (const t of slot.tracks) {
     // * = outside the level's energy range (the range had to widen).
-    console.log(`  ${fmtHM(t.startMin)}  L${t.level}  E${String(t.energy ?? '–').padStart(3)}${inRange(t) ? ' ' : '*'} ${dur(t.sec).padStart(5)}  ${t.genre.padEnd(20)} ${t.id}`);
+    console.log(`  ${fmtHM(t.startMin)}  L${t.level}  E${String(t.energy ?? '–').padStart(3)}${inRangeOf(slot)(t) ? ' ' : '*'} ${dur(t.sec).padStart(5)}  ${t.genre.padEnd(20)} ${t.id}`);
   }
 }
 const ids = plan.slots.flatMap((s) => s.tracks.map((t) => t.id));

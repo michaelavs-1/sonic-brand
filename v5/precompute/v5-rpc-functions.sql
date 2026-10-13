@@ -319,6 +319,11 @@ ALTER TABLE v6_daily_track_history ENABLE ROW LEVEL SECURITY;
 -- at most 5 outside it, then 10, and so on — the range widens only as far as
 -- the pool needs. NULL (the default) = no range. See migration
 -- 2026-10-13-v7-energy-windows.sql.
+--
+-- p_genre_weights (added 2026-10-13, v7 taste chat): {"<lowercase genre>": w}.
+-- A track's chance is scaled by its genre's weight (missing = 1). The
+-- business's own songs (business_allowed_tracks) under one of p_genres come
+-- in too. See migration 2026-10-13-v7-taste-chat.sql.
 
 -- Drop prior signature so re-runs don't leave orphaned overloads (same
 -- reason as v5_direction_tracks above — CREATE OR REPLACE only replaces
@@ -327,6 +332,8 @@ DROP FUNCTION IF EXISTS v6_direction_tracks_recent(text[], int, int, int, int, i
 -- 2026-09-02: previous signature — added p_pop_pref after p_inst_pref.
 DROP FUNCTION IF EXISTS v6_direction_tracks_recent(text[], int, int, int, int, int, uuid, text, int, text, text);
 -- 2026-10-13: previous signature — added p_energy_lo / p_energy_hi after p_pop_pref.
+DROP FUNCTION IF EXISTS v6_direction_tracks_recent(text[], int, int, int, int, int, uuid, text, int, text, text, int, int);
+-- 2026-10-13 (taste chat): previous signature — added p_genre_weights after p_energy_hi.
 
 CREATE OR REPLACE FUNCTION v6_direction_tracks_recent(
     p_genres        text[],
@@ -337,22 +344,33 @@ CREATE OR REPLACE FUNCTION v6_direction_tracks_recent(
     p_limit         int,
     p_biz_id        uuid,
     p_direction_key text,
-    p_exclude_days  int  DEFAULT 7,
-    p_inst_pref     text DEFAULT 'none',
-    p_pop_pref      text DEFAULT 'none',
-    p_energy_lo     int  DEFAULT NULL,
-    p_energy_hi     int  DEFAULT NULL
+    p_exclude_days  int   DEFAULT 7,
+    p_inst_pref     text  DEFAULT 'none',
+    p_pop_pref      text  DEFAULT 'none',
+    p_energy_lo     int   DEFAULT NULL,
+    p_energy_hi     int   DEFAULT NULL,
+    p_genre_weights jsonb DEFAULT NULL
 ) RETURNS TABLE (
     spotify_id text
 )
 LANGUAGE sql STABLE
 AS $$
-    WITH candidates AS (
+    WITH recent AS (
+        SELECT h.spotify_id
+        FROM v6_daily_track_history h
+        WHERE p_exclude_days > 0
+          AND h.business_id   = p_biz_id
+          AND h.direction_key = p_direction_key
+          AND h.served_at > now() - (p_exclude_days || ' days')::interval
+    ),
+    catalog AS (
         SELECT
             ta.spotify_id,
             ta.instrumentalness,
             ta.energy,
-            bool_or(coalesce(ta.popularity, 0) >= hit_popularity_floor(pg.genre)) AS is_hit
+            bool_or(coalesce(ta.popularity, 0) >= hit_popularity_floor(pg.genre)) AS is_hit,
+            max(coalesce((p_genre_weights->>pg.genre)::numeric, 1))               AS weight,
+            false                                                                 AS allowed
         FROM playlist_genres pg
         JOIN playlist_tracks pt ON pt.playlist_id = pg.playlist_id
         JOIN track_analyses  ta ON ta.spotify_id  = pt.spotify_id
@@ -366,17 +384,29 @@ AS $$
               AND
               (CASE WHEN p_pop_pref = 'hard' THEN 100 ELSE p_pop_hi END)
           AND (p_inst_pref <> 'hard' OR coalesce(ta.instrumentalness, 0) >= 85)
-          AND (
-              p_exclude_days <= 0
-              OR ta.spotify_id NOT IN (
-                  SELECT h.spotify_id
-                  FROM v6_daily_track_history h
-                  WHERE h.business_id   = p_biz_id
-                    AND h.direction_key = p_direction_key
-                    AND h.served_at > now() - (p_exclude_days || ' days')::interval
-              )
-          )
+          AND ta.spotify_id NOT IN (SELECT r.spotify_id FROM recent r)
         GROUP BY ta.spotify_id, ta.instrumentalness, ta.energy
+    ),
+    own_songs AS (
+        SELECT DISTINCT ON (a.spotify_id)
+            a.spotify_id,
+            ta.instrumentalness,
+            ta.energy,
+            true                                                       AS is_hit,
+            coalesce((p_genre_weights->>lower(a.genre))::numeric, 1)   AS weight,
+            true                                                       AS allowed
+        FROM business_allowed_tracks a
+        LEFT JOIN track_analyses ta ON ta.spotify_id = a.spotify_id AND ta.status = 'ok'
+        WHERE a.business_id = p_biz_id
+          AND a.removed_at IS NULL
+          AND lower(a.genre) = ANY(SELECT lower(g) FROM unnest(p_genres) AS g)
+          AND a.spotify_id NOT IN (SELECT r.spotify_id FROM recent r)
+        ORDER BY a.spotify_id
+    ),
+    candidates AS (
+        SELECT * FROM catalog c WHERE c.spotify_id NOT IN (SELECT o.spotify_id FROM own_songs o)
+        UNION ALL
+        SELECT * FROM own_songs
     )
     SELECT spotify_id
     FROM candidates
@@ -384,11 +414,11 @@ AS $$
       -- Energy ring: 5-point steps outside [p_energy_lo, p_energy_hi].
       (CASE
          WHEN p_energy_lo IS NULL OR p_energy_hi IS NULL THEN 0
-         WHEN energy IS NULL THEN 999
+         WHEN energy IS NULL THEN (CASE WHEN allowed THEN 0 ELSE 999 END)
          ELSE ceil(greatest(p_energy_lo - energy, energy - p_energy_hi, 0) / 5.0)::int
        END),
-      (p_inst_pref = 'soft' AND coalesce(instrumentalness, 0) < 85)::int,
+      (p_inst_pref = 'soft' AND NOT allowed AND coalesce(instrumentalness, 0) < 85)::int,
       (p_pop_pref  = 'soft' AND NOT is_hit)::int,
-      random()
+      -ln(1 - random()) / greatest(weight, 0.01)
     LIMIT p_limit;
 $$;

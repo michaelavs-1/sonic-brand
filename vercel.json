@@ -123,6 +123,12 @@
     "api/v7/account/daily-status.js": {
       "maxDuration": 30
     },
+    "api/v7/account/taste-chat.js": {
+      "maxDuration": 120
+    },
+    "api/v7/account/taste-apply.js": {
+      "maxDuration": 30
+    },
     "api/v7/ami/test-playlist.js": {
       "maxDuration": 60
     },

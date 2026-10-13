@@ -171,7 +171,7 @@ All five v7 prompts (R1, R2, taste profile, Option-1 energy directions, Option-2
 
 `gemini_call_log.label` values in use:
 - v6: `onboarding` (R1), `onboarding-refined` (R2), plus post-signup labels for event chat / direction-edit chat / preview-direction.
-- v7: `v7-onboarding` (R1), `v7-onboarding-refined` (R2), `v7-taste-profile`, `v7-energy-directions` (Option-1 energy-tier generation at the delivery-mode gate), `v7-level-directions` (Option-2 per-level libraries, when Option 2 is chosen and the stored library doesn't fit the profile; the 2026-09-28 test runs used `v7-level-directions-test`), `v7-event-chat` + `v7-event-playlist` (special playlists, since 2026-10-03; both called server-side).
+- v7: `v7-onboarding` (R1), `v7-onboarding-refined` (R2), `v7-taste-profile`, `v7-energy-directions` (Option-1 energy-tier generation at the delivery-mode gate), `v7-level-directions` (Option-2 per-level libraries, when Option 2 is chosen and the stored library doesn't fit the profile; the 2026-09-28 test runs used `v7-level-directions-test`), `v7-event-chat` + `v7-event-playlist` (special playlists, since 2026-10-03; both called server-side), `v7-taste-chat` (the taste chat, since 2026-10-13; server-side).
 
 Admin API `/api/internal/gemini-spend`'s `by_label[]` breaks these out separately, so v7 spend is trackable from day one of runtime.
 
@@ -185,7 +185,7 @@ Removed 2026-09-23. v7's homogeneity axes (energy / instrumentation / register /
 
 ### v7 persists a taste profile, NOT `business_directions`
 
-v7 does NOT write `business_directions` (v6's per-direction table). Instead, signup persists the flat taste profile to **`business_taste_profiles`**, the chosen delivery mode to **`business_v7_settings`**, and (Option 1 only) energy-tiered directions to **`business_v7_directions`** — three new tables (see DATA MODEL). Consequences: v6's daily-gen cron, direction-edit chat, and admin API all read `business_directions` and see nothing for v7 businesses — which is correct (v6's cron is shut off; v7 has its own cron; the Home tab's "חידודים מוזיקליים" direction-chat ships dormant for v7). The admin API's v7 view is a future item.
+v7 does NOT write `business_directions` (v6's per-direction table). Instead, signup persists the flat taste profile to **`business_taste_profiles`**, the chosen delivery mode to **`business_v7_settings`**, and (Option 1 only) energy-tiered directions to **`business_v7_directions`** — three new tables (see DATA MODEL). Consequences: v6's daily-gen cron, direction-edit chat, and admin API all read `business_directions` and see nothing for v7 businesses — which is correct (v6's cron is shut off; v7 has its own cron; the Home tab's chat is v7's own taste chat since 2026-10-13). The admin API's v7 view is a future item.
 
 ### v7 daily runtime (Option 1 / Option 2) — BUILT
 
@@ -225,6 +225,7 @@ The owner draws the day's energy as a curve through draggable dots (the editor a
   - **Build log:** `v7_daily_build_log` (migration [`2026-10-06-v7-daily-build-log.sql`](v5/precompute/migrations/2026-10-06-v7-daily-build-log.sql)). The cron writes every result except routine skips; `generate-daily.js` writes each dashboard build (source `dashboard`). Without the migration the writes are skipped and the report says the log is unavailable.
   - **Wording:** owners never see "כיוונים מוזיקליים". The directions step is "מכינים את הפלייליסטים שלכם…" / "הכנת הפלייליסטים לא הושלמה" everywhere (gate, Profile, Home).
 - **Loading placeholders:** the dashboard draws today's cards with their final names the moment a build starts (`expectedDailySlots` in `v7/account/app.js` — names are fixed per type); the server's `plan` line then takes over.
+- **Order on the Home tab** (2026-10-13): always by the fixed names — אנרגיה גבוהה #1, #2, אנרגיה רגועה #1, #2; Daily Mix #1 before #2 (`DAILY_ORDER` / `sortPlaylistsByClicksDesc` in `v7/account/app.js`). Before, the list fell back to newest first, so #2, built seconds after #1, came first. Clicks only order rows without a fixed name.
 - **TEMPORARY testing log (Ami, 2026-09-24):** `DEBUG_TASTE_LOG` in `v7/account/app.js` prints the account's taste profile (genres by energy level), Option-1 directions / Option-2 timeline, the Option-2 level-direction library (whether it still fits the profile, and today's pick per mix), and today's playlists (Option 2: each mix's directions + consecutive level/genre stretches) to the browser console on every dashboard load. Turn off / delete when testing ends.
 - **Needs migration `v5/precompute/migrations/2026-09-24-v7-timeline-pool.sql`** (track_analyses.duration_sec + trigger + backfill, and the pool RPC).
 
@@ -277,7 +278,7 @@ The daily playlists take their songs from inside a range of **track energy** (`t
   | 5 | 20–48 · 28–56 · 36–64 · 44–72 · 52–80 |
   | 6 | 20–47 · 27–53 · 33–60 · 40–67 · 47–73 · 53–80 |
 
-  Each genre takes its own level's range. Every direction at a level shares it for now; the taste chat will be able to change one direction's range.
+  Each genre takes its own level's range. The taste chat can give one recipe its own range (`business_v7_level_directions.energy_range`), and can move Option 1's two windows per business (`business_v7_settings.energy_windows`); see "v7 taste chat".
 - **When a range is short of songs** it widens by 5 on each side, only as far as needed; songs from the last 7 days come in only after that. Done in SQL: each candidate gets a **ring** = how many 5-point steps outside the range its energy is (0 = inside; no energy value = last), and tracks are taken ring by ring.
   - **Option 1:** `v6_direction_tracks_recent` gained `p_energy_lo` / `p_energy_hi` (DEFAULT NULL = no range, so v6, Ami's test playlists and the scripts are unchanged) and sorts by ring first, ahead of the soft instrumental / popularity preferences. `fetchTracksWithHistory` (v6 `_daily-builder.js`) passes them when the direction has an `energy_range`. Its refill with recently served songs only runs when even the widened pool is short.
   - **Option 2:** each `v7_timeline_pool` spec carries `lo` / `hi`, and the result gains `energy` + `ring`. The builder samples twice as many playlists per genre, and re-samples with 200 when a genre is short of in-range songs. It marks each track's side of its range (`side` -1 below / 1 above) and the recently served refill (`refill`). The assembler only draws among the level's genres whose next track is the most preferred one left, so a level uses every in-range song of all its genres before widening.
@@ -333,13 +334,50 @@ The Home tab's chat makes a one-off playlist for something happening **today**. 
   - Thinking levels match v6: low for the chat, high for the classifier.
 - **Live test:** `scripts/_v7-special-playlists-walkthrough.mjs`. It runs against `vercel dev` on a throwaway business and cleans up after itself. It creates ~2 Spotify playlists and makes ~6 Gemini calls; avoid running it at :00 / :30. It also checks every chat reply for singular forms and for "מיוחד" / "ספיישל". 23 checks passed on 2026-10-03.
 
+### v7 taste chat — "הטעם המוזיקלי שלכם" (2026-10-13)
+
+The Home tab's chat for the DAILY music. It replaced the dormant v6 "חידודים מוזיקליים" chat (design agreed with Roni, 2026-10-13). The owner says what they think: too much or too little of something, something new, songs they love, too energetic or too calm at some time. The chat changes the taste profile and the behind-the-scenes recipes ("directions") to match.
+
+- **Flow.**
+  1. `api/v7/account/taste-chat.js`: one Gemini turn (prompt `v7/generation/taste-chat-prompt.js`, per mode; context `_taste-context.js`; label `v7-taste-chat`, thinking medium).
+  2. A reply can carry a **proposal** (a list of ops), **suggestions** (the genre deck), a **timeline_hint** or **offer_new_mix** (Option 2).
+  3. Every proposal is dry-run against the business's state (`vetReply`): ops that don't fit are dropped, and a proposal left empty becomes a normal message.
+  4. The owner confirms in the card. `api/v7/account/taste-apply.js` re-reads the proposal from the stored message (never from the client), runs it again on the current state and writes it.
+  5. The dashboard then asks the Profile tab's "replace today's playlists now?" question.
+  - Client: `v7/account/taste-chat.js`. Messages go to `business_direction_chats` (v6's chat log; v7 has no `business_directions`); the session model is the special-playlists chat's (`sessionStartAt`).
+- **The ops** (`v7/generation/taste-ops.js`, pure; tests `node --test scripts/test-taste-ops.mjs`):
+  - `set_weight` (steps 0.25 / 0.5 / 1 / 1.5 / 2; 1 = today's mix), `remove_genre` (turned down too), `reject_genre`, `add_genre`, `move_genre`, `set_requested` (super-like);
+  - recipe edits `dir_add` / `dir_remove` / `dir_new` / `dir_delete` (keys `H1`… / `C1`… in Option 1, `L2-1`… in Option 2);
+  - `set_pref`; `shift_window` (Option 1); `set_range` (Option 2); `allow_track`; `undo`.
+  - After the ops, recipes are made consistent with the profile. An added or moved genre that no recipe plays gets a recipe of its own (Option 1: unless it's requested), and an Option 1 tier left with no recipe gets one.
+  - Only the CURRENT mode's library is edited. The other one is rebuilt from the profile at the next type switch (Option 2 rows are re-stamped with the new `profile_key`, so they're kept).
+- **What the chat may say** (prompt rules): plural only; never "כיוון/כיוונים", recipe, weight, level, or any internal number (the 2-replacements limit is the exception). Catalog genre names are a soft rule (fine when needed). The daily playlists are "פלייליסטים", never "מיקסים". Songs are always asked for as a Spotify link, plainly, with the how-to and no "כדי שנוכל לבדוק" (`_spotify-links.js` reads every link, short app links included: title, artist, catalog genres, energy, where it sits in today's playlists). The chat reads the clock (IL, overnight-aware) on every turn.
+- **Adding genres.** A genre the owner names gets a sample song before the confirm (`new_genres` → "שמעו דוגמה", the `#tasteModal` modal). "Something new" → 3–5 suggestions (conditional genres first, then the catalog by the taste profile's expansion rules) → the deck:
+  - each card has a sample song plus לא בשבילי / אהבתי / סופר לייק;
+  - dislikes are recorded at once (`taste-apply` action `reject` → `rejected_genres`);
+  - the results go back as a "[תוצאות ההאזנה] …" message, and the chat proposes adding the liked genres (super-liked = requested).
+- **A song the owner loves:** raise its genre or add it, plus `allow_track`. The song plays only in THIS owner's playlists (`business_allowed_tracks`; the RPCs add it to its genre's pool), like any other song of that genre. Until it's analysed it counts as inside the energy range. Roni gets an email for every unanalysed one.
+- **Option 1 energy:** "too energetic" / "not enough" → shift that tier's window by 10, then 5, then smaller after an overshoot. No limits beyond 0–100; the two windows may overlap. Stored in `business_v7_settings.energy_windows`.
+- **Option 2:** a linked song is placed in today's mixes (planned time, level, recipe, energy, range).
+  - **More than ~15 min off the clock:** the chat asks about shuffle first, then late start / pauses, names the song to skip to, and may offer a new mix from now (counts toward the 2/day replacements).
+  - **Otherwise it picks one of three fixes:**
+    - the curve (`timeline_hint` → the editor opens with one level up/down at that time, `nudgePoints` in energy-timeline.js; never offered where the curve is already at the top/bottom);
+    - the recipe's range (`set_range` → `business_v7_level_directions.energy_range`);
+    - the genre's level.
+- **Undo** reverts the newest change from `business_taste_changes` (before/after snapshots). A change made under the other playlist type restores the profile but keeps the current recipes.
+- **Builders** read it all: genre weights (Option 1 via `v6_direction_tracks_recent`'s `p_genre_weights`, Option 2 in the assembler), Option 1's own windows, Option 2's per-recipe ranges (one pool per genre + range, `v7_timeline_pool` spec `key`), and the owner's own songs.
+- **Shuffle warning** (`#shuffleModal`, `showShuffleWarning` in `v7/account/app.js`): shown whenever Option 2 is chosen (gate + Profile switch), with drawn shuffle / Smart Shuffle icons.
+- **Replace question:** it now always shows one line, "אפשר להחליף את הפלייליסטים עד פעמיים ביום · נותרו היום: N", and the chat asks through the same step.
+- **Migration** [`v5/precompute/migrations/2026-10-13-v7-taste-chat.sql`](v5/precompute/migrations/2026-10-13-v7-taste-chat.sql): the columns + `business_allowed_tracks` + `business_taste_changes` + the RPC changes. Without it the builders run as before, and the chat can't apply.
+- **Live test:** `scripts/_v7-taste-chat-walkthrough.mjs` (vercel dev, a throwaway business: Option 1, then an Option 2 part with a fake "today's mix" row that runs only while the test venue is open, 08:00–23:00 IL; ~11 Gemini calls, no playlists built, self-cleaning). 31 checks passed on 2026-10-13 (one case since removed). It also checks every reply for singular forms and for "כיוון" / "שילוב" / "מיקס" ("השילובים" slipped in before the prompt banned it), and that a link is asked for plainly.
+
 ### v7 onboarding + signup runtime — BUILT
 
 - **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (R1 + R2 swipe decks) / `result.js` (registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → R1 swipe → (R2 if <3 picks) → registration → payment (Hyp; the placeholder screen while `PAYMENTS_ENABLED = false`) → taste-profile bar → `/v7/account`.
 - **Account** (`v7/account/`): `index.html` + `app.js` (delivery-mode gate, energy-directions build) + `direction-chat.js` (dormant for v7 — reads empty `business_directions`).
-  - **Home tab, top to bottom:** the daily playlists; today's special-playlist cards ("פלייליסטים אחרים", always visible); the **"חידודים מוזיקליים"** chat; the special-playlists chat ("צריכים משהו אחר היום?"; see "v7 special playlists" above).
+  - **Home tab, top to bottom:** the daily playlists; today's special-playlist cards ("פלייליסטים אחרים", always visible); the **"הטעם המוזיקלי שלכם"** chat (see "v7 taste chat" above); the special-playlists chat ("צריכים משהו אחר היום?"; see "v7 special playlists" above).
   - **The two chats** are identical collapsible dropdown cards, closed by default (same `.hours-toggle` pattern as the Profile sections).
-  - **"חידודים מוזיקליים"** moved there from the Profile tab on 2026-10-03. `direction-chat.js` boots the first time its card opens. It's still the dormant v6 copy until a v7 version is built.
+  - The taste chat replaced the dormant v6 copy (`direction-chat.js`, which had moved there from the Profile tab on 2026-10-03) on 2026-10-13. `direction-chat.js` is no longer mounted.
 - **Opening-hours rule (2026-09-29).** A day's closing time must be after its opening time, except a close after midnight, allowed up to 06:00 (20:00–02:00 is fine, 15:00–14:00 isn't). A day is also capped at 20 hours (so 06:30–06:00 is refused), and open = close is refused. Without the rule, an overnight window swallows the next morning: `businessWindowAt` keeps treating it as the previous business day. One source, **`shared/opening-hours.js`** (`dayHoursProblem` / `hoursProblems` / `hoursProblem`), used in three places:
   - the hours editor (`v7/hours-selector.js`): the problem is shown under the days with red time fields, and "המשך" / Profile "שמור" stay disabled while it's there;
   - `api/v7/account/update-hours.js`: 400 `bad_hours` with the Hebrew text;
@@ -402,8 +440,10 @@ sonic-brand/
 │   │   │                                      special-playlists chat + cards (eventBuilds, todaysEvents)
 │   │   ├── energy-timeline-editor.js       ← The approved Option-2 timeline editor (TimelineEditor), extracted from
 │   │   │                                      the sandbox; injects its own .etl-* styles. Client-only.
-│   │   └── direction-chat.js               ← DORMANT for v7 (reads empty business_directions; kept for parity). Drives the
-│   │                                          Home tab's "חידודים מוזיקליים" card (moved from Profile 2026-10-03).
+│   │   ├── taste-chat.js                   ← The Home tab's "הטעם המוזיקלי שלכם" chat (2026-10-13): transcript, confirm,
+│   │   │                                      sample songs + the genre deck (#tasteModal), curve hint / new-mix buttons.
+│   │   └── direction-chat.js               ← v6's dormant chat. No longer mounted in v7 (2026-10-13); its exports are
+│   │                                          still imported by the per-playlist edit / trash paths v7 never shows.
 │   └── generation/
 │       ├── energy-timeline.js              ← Option-2 timeline MODEL (browser + server): hours groups, :00/:30 slots,
 │       │                                      monotone curve, levels, reconcileTimeline (keep clock times),
@@ -435,6 +475,8 @@ sonic-brand/
 │       │                                      popularity-window.js (unused copy deleted 2026-09-24).
 │       ├── event-chat-prompt.js            ← v7 special-playlists chat prompt (today only, 2/day, styles question) +
 │       │                                      buildEventChatContext. Used server-side by api/v7/account/event-chat.js.
+│       ├── taste-chat-prompt.js            ← v7 taste chat prompt (per delivery mode) + formatTasteContext + normalizeTasteReply.
+│       ├── taste-ops.js                    ← v7 taste chat ops (pure): stateFromRows / applyOps / stateToRows / snapshots.
 │       ├── event-playlist-prompt.js        ← v7 special-playlist classifier: brief → genres + tempo + preferences.
 │       │                                      Used by api/v7/account/event-playlist.js. Tempo is TEMPORARY (→ energy).
 │       └── ai-provider.js                  ← Independent copy of v6's provider switch. Currently identical
@@ -574,6 +616,12 @@ sonic-brand/
 │   │       ├── delete-event.js             ← Card trash: archive + delete the row; playlist deleted now, or handed to
 │   │       │                                  the expire cron while a cron runs.
 │   │       ├── _special-events.js          ← Shared: cap count, ownership + business name, model-JSON parsing.
+│   │       ├── taste-chat.js               ← One turn of the taste chat; vets proposals against the state.
+│   │       ├── taste-apply.js              ← Applies a confirmed proposal / undo / the deck's dislikes; emails Roni about
+│   │       │                                  unanalysed added songs.
+│   │       ├── _taste-state.js             ← Read / write the taste chat's state (profile, library, windows, own songs).
+│   │       ├── _taste-context.js           ← The chat's per-turn context (time, played shares, today's mixes, curve, log).
+│   │       ├── _spotify-links.js           ← Spotify song links in a message → title / artist / catalog genres / energy.
 │   │       ├── subscription.js             ← Profile → מנוי: GET the subscription; POST cancel / resume (Hyp HKStatus,
 │   │       │                                  email to ronnie@algorithm-media.com, audit).
 │   │       ├── _subscription.js            ← Charge dates, status, and the "ended?" checks used by the cron + builds.
@@ -680,6 +728,9 @@ sonic-brand/
 │   ├── test-energy-windows-live.mjs         ← Read-only check (prod Supabase) that both daily-playlist track functions take songs
 │   │                                          inside the energy range first. Run after the 2026-10-13 migration.
 │   ├── test-opening-hours.mjs               ← Offline tests (node --test) for shared/opening-hours.js.
+│   ├── test-taste-ops.mjs                   ← Offline tests (node --test) for the taste chat's ops, prompt context and reply checks.
+│   ├── _v7-taste-chat-walkthrough.mjs       ← Taste chat live E2E (vercel dev, throwaway business, Option 1 + Option 2, ~11
+│   │                                          Gemini calls, no playlists built, self-cleaning).
 │   ├── test-taste-profile-normalize.mjs     ← Offline tests (node --test) for normalizeTasteProfile (level shift, names,
 │   │                                          requested genres).
 │   ├── test-option1-draw.mjs                ← Offline tests (node --test) for Option 1's daily draw + requested genres.
@@ -888,6 +939,7 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 - `/api/v7/payment/checkout` (`v7-checkout`) — 30/min; its coupon check `GET ?coupon=` (`v7-coupon-check`) — 30/min; `/api/v7/payment/status` (`v7-payment-status`) — 120/min; `/api/v7/payment/return` (`v7-payment-return`) — 60/min; `/api/v7/account/subscription` (`v7-subscription`) — 20/min; `/api/v7/account/daily-status` GET (`v7-daily-status`) — 60/min, its "דווחו" POST (`v7-daily-report`) — 5/hour
 - `/api/v7/ami/test-playlist` POST (`ami-test-playlist`) — 40/hour; its GET cron-status check (`ami-test-playlist-status`) — 120/min
 - `/api/v7/account/event-chat` (`v7-event-chat`) — 20/min; `save-event` (`v7-save-event`) — 20/min; `event-playlist` (`v7-event-playlist`) — 20/hour; `delete-event` (`v7-delete-event`) — 30/min. On top of that, special playlists are capped at 2 per business per day
+- `/api/v7/account/taste-chat` (`v7-taste-chat`) — 20/min; `taste-apply` (`v7-taste-apply`) — 20/min
 
 **Behavior notes:**
 - Keyed by client IP (via `x-forwarded-for` first-hop, `x-real-ip`, or
@@ -1180,12 +1232,14 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 - `business_event_chats` — { id, business_id, role ('user'|'assistant'), content (raw JSON for assistant / plain text for user), proposal (jsonb — `{name_he, description_he}` on confirming assistant turns, plus `genre_source` from v7's chat; null otherwise), event_id (nullable FK → business_events; backfilled by v6's `upsert-event.js` / v7's `save-event.js` when the chat produces a saved event), created_at }. Rolling per-business message log for the special-events chat on `/v6/account` and `/v7/account`. Written by `POST /api/v6/account/event-chat` and `POST /api/v7/account/event-chat`. Client's on-screen transcript still resets to empty on hard refresh / after finalize — a client `SESSION_START_AT_ISO` gates both what the browser shows AND what the server includes in Gemini's context. Persistence is orthogonal (every turn logged for admin visibility regardless of what the client displays). Added 2026-08-30 (migration `2026-08-30-event-chat.sql`).
 
 **v7 production data (owned by v7 signup + account; migration `2026-09-23-v7-tables.sql`, RUN):**
-- `business_taste_profiles` — one row per v7 business (PK `business_id`). The flat, full-catalog taste profile produced by `v7/generation/taste-profile.js` and persisted by `signup.js` at onboarding (before the verification email goes out). Columns: { business_id (uuid PK), energy_levels_total (int 2..6), approved_genres (jsonb — [{genre, energy_level}]), conditional_genres (jsonb — [{genre, energy_level, note_en}]; **DATA ONLY, builders ignore it**), excluded_genres (jsonb — [string]), instrumentalness_preference (text), popularity_preference (text), reasoning_en (text), audit_tally (jsonb, analytics), **requested_genres** (jsonb — [string], the genres Option 1 puts in every playlist of their tier), **super_liked_genres** (jsonb — [string]), **round2_emphases** (text) }. The last three were added 2026-10-05 (migration `2026-10-05-v7-requested-genres.sql`); NULL = signed up before. Writers fall back to saving without them if the migration hasn't run. Owner-scoped RLS SELECT; service-role writes. Replaces `business_directions` as v7's taste source of truth.
-- `business_v7_settings` — one row per v7 business (PK `business_id`). { business_id (uuid PK), delivery_mode (text CHECK IN ('option1','option2'); NULL until the gate is picked), timeline (jsonb — Option 2's energy timeline, v2 shape `{version:2, groups:[{days, open, close, points:[{m,e}]}]}`, see § V7 ARCHITECTURE "Option 2: energy timeline"), updated_at (bumped only by delivery-mode changes) }. Written by `set-delivery-mode.js`, `update-timeline.js`, and `update-hours.js` (reconciliation). Changes are audited in `business_settings_changes` (fields `delivery_mode`, `energy_timeline`; plus `daily_playlists_replaced` per "replace now").
+- `business_taste_profiles` — one row per v7 business (PK `business_id`). The flat, full-catalog taste profile produced by `v7/generation/taste-profile.js` and persisted by `signup.js` at onboarding (before the verification email goes out). Columns: { business_id (uuid PK), energy_levels_total (int 2..6), approved_genres (jsonb — [{genre, energy_level}]), conditional_genres (jsonb — [{genre, energy_level, note_en}]; **DATA ONLY, builders ignore it**), excluded_genres (jsonb — [string]), instrumentalness_preference (text), popularity_preference (text), reasoning_en (text), audit_tally (jsonb, analytics), **requested_genres** (jsonb — [string], the genres Option 1 puts in every playlist of their tier), **super_liked_genres** (jsonb — [string]), **round2_emphases** (text), **genre_weights** (jsonb `{genre: w}` — the taste chat's weights, only ≠ 1; NULL = all 1), **rejected_genres** (jsonb — [string], genres the owner turned down; the chat's deck never offers them) }. The last three were added 2026-10-05 (migration `2026-10-05-v7-requested-genres.sql`); NULL = signed up before. Writers fall back to saving without them if the migration hasn't run. Owner-scoped RLS SELECT; service-role writes. Replaces `business_directions` as v7's taste source of truth.
+- `business_v7_settings` — one row per v7 business (PK `business_id`). { business_id (uuid PK), delivery_mode (text CHECK IN ('option1','option2'); NULL until the gate is picked), timeline (jsonb — Option 2's energy timeline, v2 shape `{version:2, groups:[{days, open, close, points:[{m,e}]}]}`, see § V7 ARCHITECTURE "Option 2: energy timeline"), **energy_windows** (jsonb `{high:[min,max], low:[min,max]}` — Option 1's windows moved by the taste chat; NULL = 50–80 / 20–50; 2026-10-13), updated_at (bumped only by delivery-mode changes) }. Written by `set-delivery-mode.js`, `update-timeline.js`, and `update-hours.js` (reconciliation). Changes are audited in `business_settings_changes` (fields `delivery_mode`, `energy_timeline`; plus `daily_playlists_replaced` per "replace now").
 - **`track_analyses.duration_sec`** (int, added 2026-09-24, migration `2026-09-24-v7-timeline-pool.sql`) — track length parsed from `raw_analysis->>'duration'` ("m:ss"), filled by a `BEFORE INSERT OR UPDATE OF raw_analysis` trigger (covers every analysis writer) + a one-time backfill. Used by the Option-2 builder via the `v7_timeline_pool` RPC.
 - `business_v7_directions` — Option-1 energy-tiered directions: a library of up to 30 per business (populated at mode selection via `save-energy-directions.js`, which replaces the whole set and keeps at most 30; `rank` is bookkeeping only — the daily draw is random). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_tier (text CHECK IN ('high','low')), rank (int), title_en (text), genres (jsonb — [string], canonical), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active. Only Option 1 uses this; Option 2 uses `business_v7_level_directions` (below).
+- `business_allowed_tracks` — songs an owner gave the taste chat (Spotify link) that play in THEIR playlists only (migration `2026-10-13-v7-taste-chat.sql`). { id bigserial, business_id (FK → businesses ON DELETE CASCADE), spotify_id, genre (canonical — the pool it joins), title, artist, duration_sec, added_at, removed_at (undo / replaced), UNIQUE(business_id, spotify_id) }. Read by `v6_direction_tracks_recent` and `v7_timeline_pool` (no preference filters; unanalysed = inside the energy range). RLS on, no policies.
+- `business_taste_changes` — every change the taste chat applied (same migration). { id bigserial, business_id (FK, cascade), delivery_mode, ops (jsonb — the applied ops), summary_he, before / after (jsonb — taste-ops.js snapshots), message_id (FK → business_direction_chats, SET NULL), applied_at, undone_at }. Undo restores `before` of the newest row that isn't undone. RLS on, no policies.
 - `v7_daily_build_log` — what happened when a business's daily playlists were built, or why not (migration `2026-10-06-v7-daily-build-log.sql`). { id bigserial, business_id (FK → businesses ON DELETE CASCADE), il_date, source ('cron'|'dashboard'), outcome ('built'|'partial'|'zero-built'|'build-failed'|'no-directions'|… or 'nothing-to-build:<reason>'), built, failed, detail (error text), created_at }. Written by the v7 cron (all but routine skips) and `generate-daily.js`; read by `daily-status.js`. RLS on, no policies.
-- `business_v7_level_directions` — Option-2 per-energy-level direction libraries (migration `2026-09-28-v7-level-directions.sql`). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_level (int CHECK 1..6), rank (int — rotation order within the level), title_en (text, internal), genres (jsonb — canonical, all approved at that level), profile_key (text — `levelProfileKey` of the taste profile it was built from), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active; owner-scoped RLS SELECT. Written by `save-level-directions.js` (replace-all) and `scripts/_v7-regenerate-level-directions.mjs`; separate from Option 1's table, so switching types never touches it. See "Option 2: level directions" in § V7 ARCHITECTURE.
+- `business_v7_level_directions` — Option-2 per-energy-level direction libraries (migration `2026-09-28-v7-level-directions.sql`). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_level (int CHECK 1..6), rank (int — rotation order within the level), title_en (text, internal), genres (jsonb — canonical, all approved at that level), profile_key (text — `levelProfileKey` of the taste profile it was built from), **energy_range** (jsonb [min, max] — the recipe's own range, set by the taste chat; NULL = its level's default; 2026-10-13), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active; owner-scoped RLS SELECT. Written by `save-level-directions.js` (replace-all) and `scripts/_v7-regenerate-level-directions.mjs`; separate from Option 1's table, so switching types never touches it. See "Option 2: level directions" in § V7 ARCHITECTURE.
 - **v7 `business_playlists` rows insert `direction_id: null`** — that column is an FK to v6's `business_directions`; a `business_v7_directions` id would violate it (the two are different tables). See the v7 daily runtime mechanism in § V7 ARCHITECTURE.
 - **`payment_checkouts`** (migration `2026-09-27-v7-payments.sql`) — one row per Hyp payment attempt from the v7 payment step. { id (uuid PK — the client's handle), order_no (bigserial, sent to Hyp as `Order`), hyp_env ('test'|'production'), masof, email, business_name, onboarding_session_id, coupon_code (FK → payment_coupons), percent_off, amount_first, amount_monthly, status ('pending'|'paid'|'failed'), hyp_trans_id (Hyp `Id`), hyp_hk_id (Hyp `HKId` — the recurring agreement, needed to cancel), hyp_acode, hyp_ccode, hyp_amount, return_query (raw redirect query, audit), paid_at, business_id (FK → businesses ON DELETE SET NULL — set when signup claims it; a renewal row has it from creation), **billing** (jsonb `{name, address, invoiceBusinessName, taxId, invoiceEmail}` — what the payment screen sent Hyp for the invoice; `invoiceEmail` = the address actually sent to Hyp, with any "+tag" dropped (`shared/invoice-email.js`); migration `2026-09-28-v7-payment-billing.sql`), created_at, updated_at }. RLS on, no policies (server-only). A paid row with `business_id` null = paid but never signed up.
 - **`payment_coupons`** — { code (PK, uppercase), percent_off (1..100, first month only), active, note, created_at }. Seeded with `TEST50` (50%) for testing — deactivate before real customers: `UPDATE payment_coupons SET active = false WHERE code = 'TEST50';`. RLS on, no policies.
@@ -1522,7 +1576,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 ## PROMPT EDITING PROTOCOL
 
-Nine prompts (musical directions, the v7 prompts built on them, and v7's special-playlist prompts) exist across two versions, tracked in two audit-log files:
+Ten prompts (musical directions, the v7 prompts built on them, v7's special-playlist prompts and the taste chat) exist across two versions, tracked in two audit-log files:
 
 **v6 (production)** — tracked in `prompt-history.md`:
 - **v6 Round 1** — `EDITABLE_PROMPT_SECTION` + `FIXED_PROMPT_SECTION` in `v6/generation/musical-directions.js`, both composed from named sub-constants. Mirrored byte-for-byte in `v5/generation/musical-directions.js` (kept for legacy `v5/app.js` — no longer read by Ami's dashboard).
@@ -1536,6 +1590,7 @@ Nine prompts (musical directions, the v7 prompts built on them, and v7's special
 - **v7 Level directions** — `v7/generation/level-directions.js`. Option-2 per-energy-level direction libraries from `approved_genres`. `Applies to: level directions`.
 - **v7 Event chat** — `v7/generation/event-chat-prompt.js`. The special-playlists chat (today only, 2 per day, styles question). `Applies to: event chat`.
 - **v7 Event playlist** — `v7/generation/event-playlist-prompt.js`. Brief → genres + tempo + preferences for a special playlist. `Applies to: event playlist`.
+- **v7 Taste chat** — `v7/generation/taste-chat-prompt.js` (built per delivery mode). The Home tab's "הטעם המוזיקלי שלכם" chat. Imports the direction generators' `COHERENCE_SECTION`s and the taste profile's `CORE_PHILOSOPHY_SECTION` / `HARD_BOUNDARY_RULES_SECTION` — an edit to those changes this prompt too. `Applies to: taste chat`.
 
 **Any edit to any prompt** appends a NEW entry at the top of the correct history file (v6 edits → `prompt-history.md`; v7 edits → `prompt-history-v7.md`). Each entry MUST include:
 - An **Applies to:** line. For v6: `Round 1` / `Round 2` / `both`. For v7: `Round 1` / `Round 2` / `taste profile` / `R1+R2` / `energy directions` / `level directions` / `event chat` / `event playlist` / `all v7`.
@@ -1640,7 +1695,7 @@ Older knobs still in use:
 - **Tab 1** "לפי מקומות" (gid `0`): business types → genres. Read by `api/v4/databox.js`.
 - **Tab 2** "לפי ז׳אנרים" (gid `1199564828`): genre → up to 15 playlist links, data from row 7. Read by `api/v4/databox-genres.js`.
 - **"What did Ami add?"** = compare Tab 2 with `playlist_genres` (playlists not yet in the DB) and with `shared/genre-universe.js` (genres not in the prompts). Then refresh the baseline with `node v4/precompute/snapshot-databox.mjs` (needs `vercel dev`), so the next check can diff against it.
-- **As of 2026-10-13:** `Acoustic Blues` (9 playlists) and `Futre Funk` (8, a typo for Future Funk that Ami is fixing) are on the sheet with nothing ingested yet.
+- **As of 2026-10-13 (afternoon):** four genres are on the sheet with nothing ingested yet: `Acoustic Blues` (9 playlists), `Future Funk` (8; was "Futre Funk" until Ami fixed it), `פופ ישראלי` (12) and `היפ הופ ישראלי` (11). The two Israeli ones will also need adding to `hit_popularity_floor` when they join the genre list (see "Israeli genres" under Popularity preference).
 
 `v4/precompute/dry-run-fill.mjs` — plans new playlists from Data Box Tab 2 (needs `vercel dev`):
 - `--target-playlists=N|max` — fill each genre up to N playlists (default 5), or `max` = every playlist the sheet lists for it.
@@ -1701,7 +1756,7 @@ v7 does NOT reuse `business_directions`. Signup persists the flat taste profile 
 
 ### RESOLVED — Playlist builder for v7
 
-Built as two delivery modes (see the v7 daily runtime mechanism in § V7 ARCHITECTURE): **Option 1** = 4 playlists/day (2 high + 2 low energy-tier directions from `business_v7_directions`); **Option 2** = 2 mixes/day whose energy follows the owner-drawn timeline, placed by track duration (built 2026-09-24 — `api/v7/account/_option2-builder.js`; see "Option 2: energy timeline" in § V7 ARCHITECTURE; needs migration `2026-09-24-v7-timeline-pool.sql`). Driven by `api/cron/v7-generate-daily.js`. Still-open refinements: Option 1 is still count-based (3.5 min/track assumed vs 4.16 measured — could reuse the duration pool); the Home tab's "חידודים מוזיקליים" chat (v6's dormant direction-chat, moved from Profile 2026-10-03) is next in line for a v7 version, renamed "הטעם המוזיקלי שלכם". Its design was agreed with Roni on 2026-10-13 and isn't built yet: genre weights, a genre swipe deck, songs by Spotify link, and moving the energy ranges. Step 1, the energy ranges themselves, was built the same day; the `conditional` bucket is stored but not consumed (below).
+Built as two delivery modes (see the v7 daily runtime mechanism in § V7 ARCHITECTURE): **Option 1** = 4 playlists/day (2 high + 2 low energy-tier directions from `business_v7_directions`); **Option 2** = 2 mixes/day whose energy follows the owner-drawn timeline, placed by track duration (built 2026-09-24 — `api/v7/account/_option2-builder.js`; see "Option 2: energy timeline" in § V7 ARCHITECTURE; needs migration `2026-09-24-v7-timeline-pool.sql`). Driven by `api/cron/v7-generate-daily.js`. Still-open refinements: Option 1 is still count-based (3.5 min/track assumed vs 4.16 measured — could reuse the duration pool); the Home tab's chat is v7's own taste chat since 2026-10-13 ("הטעם המוזיקלי שלכם", see § V7 ARCHITECTURE); the `conditional` bucket is stored but not consumed (below).
 
 ### RESOLVED (interim) — BPM parameter on `v5_*_tracks` RPCs
 

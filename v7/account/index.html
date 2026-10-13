@@ -2672,10 +2672,84 @@
     /* Once the user has sent a first message, the textarea collapses to a
        single-line height — the base textarea.input has min-height:74px which
        we override, and rows="1" is set on the element to match. */
-    #chatInput.compact {
+    #chatInput.compact,
+    #tasteChatInput.compact {
       min-height: 0;
       padding-top: 10px;
       padding-bottom: 10px;
+    }
+
+    /* Taste chat (2026-10-13): the status line that replaces a bubble's
+       buttons once a change applied, the deck's three buttons, and the
+       shuffle warning's icons. */
+    .taste-note {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--teal-soft);
+    }
+
+    .dp-actions.taste-actions {
+      flex-wrap: wrap;
+    }
+
+    /* Above the first-login gate (.gd-overlay, 120) and the timeline modal (130). */
+    #shuffleModal {
+      z-index: 140;
+    }
+
+    .shuffle-modal p {
+      line-height: 1.6;
+    }
+
+    .shuffle-icons {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      margin: 14px 0 6px;
+      flex-wrap: wrap;
+    }
+
+    .shuffle-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      min-width: 130px;
+      padding: 12px 10px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .04);
+      font-size: 13px;
+    }
+
+    .shuffle-pair {
+      display: flex;
+      gap: 10px;
+    }
+
+    .shuffle-ico {
+      width: 34px;
+      height: 34px;
+      fill: none;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .shuffle-col.ok .shuffle-ico {
+      stroke: #8c959b;
+    }
+
+    .shuffle-col.on .shuffle-ico {
+      stroke: #1ed760;
+    }
+
+    .shuffle-ico .spark {
+      fill: currentColor;
+      stroke: none;
+    }
+
+    .shuffle-col.on .shuffle-ico .spark {
+      fill: #1ed760;
     }
 
     /* Chunky solid up-arrow next to "שלח" — inline SVG for reliable weight
@@ -3408,37 +3482,37 @@
         <div id="eventsWrap"></div>
       </div>
 
-      <!-- "חידודים מוזיקליים" chat — moved here from the Profile tab on
-          2026-10-03, in a dropdown card identical to the special-playlists
-          chat below (.hours-toggle / .hours-body, wired once at load by the
-          generic toggle handler in app.js; starts closed). Populated by
-          direction-chat.js, which loads the first time the card is opened —
-          still dormant for v7 (it reads v6's empty business_directions). -->
+      <!-- "הטעם המוזיקלי שלכם" — the taste chat (2026-10-13; replaced the
+          dormant v6 "חידודים מוזיקליים" chat). A dropdown card identical to
+          the special-playlists chat below (.hours-toggle / .hours-body, wired
+          by the generic toggle handler in app.js; starts closed). Driven by
+          taste-chat.js; the server side is api/v7/account/taste-chat.js +
+          taste-apply.js. -->
       <div class="box">
         <div class="hours-section" style="margin:0">
-          <button type="button" class="hours-toggle" id="directionsToggle" aria-expanded="false" aria-controls="directionsBody">
-            <h2 style="margin:0"><span class="h-ico">🎚️</span>חידודים מוזיקליים</h2>
+          <button type="button" class="hours-toggle" id="tasteToggle" aria-expanded="false" aria-controls="tasteBody">
+            <h2 style="margin:0"><span class="h-ico">🎧</span>הטעם המוזיקלי שלכם</h2>
             <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <polyline points="6 9 12 15 18 9" />
             </svg>
           </button>
-          <div class="hours-body hide" id="directionsBody">
-            <p class="muted sub" style="margin:6px 0 12px">מרגישים שיש חידוד חשוב או משהו שבא לכם להוסיף? כתבו לצ'אט.</p>
-            <div id="dirCards" class="dir-cards"></div>
-            <div id="dirChatMessages" class="chat-messages" aria-live="polite"></div>
-            <textarea class="input" id="dirChatInput" rows="3" maxlength="500"
-              placeholder="בלי ספרדית / יותר מקצבים שחורים / לאט יותר באופן כללי"></textarea>
-            <button class="btn" id="dirChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
+          <div class="hours-body hide" id="tasteBody">
+            <p class="muted sub" style="margin:6px 0 12px">ספרו לצ׳אט מה אתם חושבים על המוזיקה היומית: מה יש יותר מדי או
+              פחות מדי, מה בא לכם להוסיף, שירים שאתם אוהבים, או מתי המוזיקה אנרגטית או רגועה מדי.</p>
+            <div id="tasteChatMessages" class="chat-messages" aria-live="polite"></div>
+            <textarea class="input" id="tasteChatInput" rows="3" maxlength="1500"
+              placeholder="לדוגמה: יש לי יותר מדי R&amp;B / חסרים לי מקצבים אפריקאיים / הצהריים אנרגטיים מדי"></textarea>
+            <button class="btn" id="tasteChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 2L22 12H17V22H7V12H2Z" />
               </svg></button>
-            <p class="muted" id="dirChatMsg" style="text-align:center;margin-top:8px"></p>
+            <p class="muted" id="tasteChatMsg" style="text-align:center;margin-top:8px"></p>
           </div>
         </div>
       </div>
 
       <!-- Special-playlists chat — collapsible, same pattern as the
-          "חידודים מוזיקליים" card above. Starts closed. Today's cards above
+          "הטעם המוזיקלי שלכם" card above. Starts closed. Today's cards above
           ("פלייליסטים אחרים") stay visible — they hold the "▶ פתח" buttons. -->
       <div class="box">
         <div class="hours-section" style="margin:0">
@@ -3667,6 +3741,48 @@
   </div>
   <div class="dp-toast" id="dpToast"></div>
 
+  <!-- The taste chat's sample songs + genre deck (taste-chat.js). Same look
+       as the preview modal above (dp-* styles); one card at a time. -->
+  <div class="dp-overlay hide" id="tasteModal" role="dialog" aria-modal="true" aria-labelledby="tmTitle">
+    <div class="dp-modal">
+      <div class="dp-head">
+        <div class="dp-title" id="tmTitle"></div>
+        <button class="dp-close" id="tmClose" type="button" aria-label="סגור">×</button>
+      </div>
+      <div class="dp-desc" id="tmDesc"></div>
+      <div id="tmBody"></div>
+      <div class="dp-actions taste-actions" id="tmActions"></div>
+    </div>
+  </div>
+
+  <!-- Shuffle warning, shown whenever Option 2 is chosen (first-login gate +
+       Profile switch; showShuffleWarning in app.js). The mixes follow the
+       energy curve song by song, so shuffle must be off. Icons drawn here,
+       not Spotify's own artwork. -->
+  <div class="gd-overlay hide" id="shuffleModal" role="dialog" aria-modal="true" aria-labelledby="shuffleTitle">
+    <div class="gd-modal shuffle-modal">
+      <h3 id="shuffleTitle">חשוב: לנגן בלי ערבוב</h3>
+      <p>הפלייליסטים בנויים שיר אחרי שיר לפי שעות היום. כדי שהאנרגיה תתאים לשעה, כבו בספוטיפיי את הערבוב (Shuffle) וגם את
+        הערבוב החכם (Smart Shuffle), והתחילו כל פלייליסט מהשיר הראשון בשעת הפתיחה.</p>
+      <div class="shuffle-icons">
+        <div class="shuffle-col ok">
+          <svg class="shuffle-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 3.8c1.1 1.6 2.3 2.6 4.3 2.6H20" /><path d="M3 17h3.5c1.4 0 2.4-.5 3.3-1.4M14.2 8.4c.9-.9 1.9-1.4 3.3-1.4H20" /><polyline points="17.5 4.5 20 7 17.5 9.5" /><polyline points="17.5 14.5 20 17 17.5 19.5" /></svg>
+          <span>✓ כבוי (אפור)</span>
+        </div>
+        <div class="shuffle-col on">
+          <span class="shuffle-pair">
+            <svg class="shuffle-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h3.5c2 0 3.2 1 4.3 2.6l2.4 3.8c1.1 1.6 2.3 2.6 4.3 2.6H20" /><path d="M3 17h3.5c1.4 0 2.4-.5 3.3-1.4M14.2 8.4c.9-.9 1.9-1.4 3.3-1.4H20" /><polyline points="17.5 4.5 20 7 17.5 9.5" /><polyline points="17.5 14.5 20 17 17.5 19.5" /></svg>
+            <svg class="shuffle-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9h3.5c2 0 3.2 1 4.3 2.6l1.6 2.6c1.1 1.6 2.3 2.6 4.3 2.6H20" /><path d="M3 17h3.5c1.4 0 2.4-.5 3.3-1.4M14.2 10.4c.9-.9 1.9-1.4 3.3-1.4H20" /><polyline points="17.5 6.5 20 9 17.5 11.5" /><polyline points="17.5 14.5 20 17 17.5 19.5" /><path class="spark" d="M5.5 1.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z" /></svg>
+          </span>
+          <span>✗ מופעל (ירוק)</span>
+        </div>
+      </div>
+      <div class="gd-actions">
+        <button class="btn" id="shuffleOk" type="button">הבנתי</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Confirmation modal for the Home tab's per-playlist trash icon.
        Opens with the direction id staged in pendingTrashDirectionId
        (see app.js). Three-way choice: edit (jumps to the direction-edit
@@ -3790,7 +3906,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=06102026k"></script>
+  <script type="module" src="/v7/account/app.js?v=13102026b"></script>
 </body>
 
 </html>

@@ -82,6 +82,32 @@ import { option1EnergyWindow } from '../../../v7/generation/energy-windows.js';
 const PREF_SET = new Set(['none', 'soft', 'hard']);
 const normPref = (v) => (PREF_SET.has(v) ? v : 'none');
 
+// business_taste_profiles.genre_weights ({"Rnb": 0.5}) → the RPC's form
+// ({"rnb": 0.5}; playlist_genres stores genres lowercase). Only weights other
+// than 1; null when there are none.
+export function lowercaseWeights(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const out = {};
+  for (const [g, w] of Object.entries(raw)) {
+    const n = Number(w);
+    if (typeof g === 'string' && g.trim() && Number.isFinite(n) && n > 0 && n !== 1) out[g.trim().toLowerCase()] = n;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// Option 1's energy windows (business_v7_settings.energy_windows, set by the
+// taste chat; null / missing column → the defaults).
+async function readEnergyWindows(businessId) {
+  try {
+    const rows = await pgrSelect('business_v7_settings', { business_id: `eq.${businessId}` },
+      { select: '*', limit: 1, useService: true });
+    return rows?.[0]?.energy_windows || null;
+  } catch (e) {
+    console.warn(`[v7 daily-builder] energy windows read failed for biz=${businessId}:`, e.message);
+    return null;
+  }
+}
+
 // Read the taste profile once: carry-through inst/pop prefs (used by both
 // options), the approved genre pool (used by Option 2), and the requested
 // genres + energy scale (Option 1 puts each requested genre in every playlist
@@ -90,20 +116,14 @@ const normPref = (v) => (PREF_SET.has(v) ? v : 'none');
 // presence, so this is belt-and-suspenders. If requested_genres isn't there
 // yet (migration 2026-10-05-v7-requested-genres.sql not run), it's read
 // without it.
-const PROFILE_COLUMNS = 'approved_genres,instrumentalness_preference,popularity_preference,energy_levels_total';
+// '*' rather than a column list: requested_genres (2026-10-05) and
+// genre_weights (2026-10-13, the taste chat) are read when their columns
+// exist, and the read still works before those migrations.
 async function readProfilePrefs(businessId) {
-  const none = { inst_pref: 'none', pop_pref: 'none', approvedGenres: [], requestedGenres: [], energyLevelsTotal: null };
-  const read = (select) => pgrSelect('business_taste_profiles',
-    { business_id: `eq.${businessId}` }, { select, useService: true, limit: 1 });
+  const none = { inst_pref: 'none', pop_pref: 'none', approvedGenres: [], requestedGenres: [], energyLevelsTotal: null, genreWeights: null };
   try {
-    let rows;
-    try {
-      rows = await read(`${PROFILE_COLUMNS},requested_genres`);
-    } catch (e) {
-      if (!/requested_genres/.test(e.message || '')) throw e;
-      console.error('[v7 daily-builder] business_taste_profiles.requested_genres missing — run migration 2026-10-05-v7-requested-genres.sql.');
-      rows = await read(PROFILE_COLUMNS);
-    }
+    const rows = await pgrSelect('business_taste_profiles',
+      { business_id: `eq.${businessId}` }, { select: '*', useService: true, limit: 1 });
     const tp = rows?.[0];
     if (!tp) return none;
     return {
@@ -112,6 +132,7 @@ async function readProfilePrefs(businessId) {
       approvedGenres: Array.isArray(tp.approved_genres) ? tp.approved_genres : [],
       requestedGenres: Array.isArray(tp.requested_genres) ? tp.requested_genres : [],
       energyLevelsTotal: Number(tp.energy_levels_total) || null,
+      genreWeights: lowercaseWeights(tp.genre_weights),
     };
   } catch (e) {
     console.warn(`[v7 daily-builder] taste profile read failed for biz=${businessId}:`, e.message);
@@ -141,7 +162,7 @@ const tierPlaylistName = (tier, n) => `${TIER_NAME_HE[tier] || 'פלייליסט
 // the owner-facing label; it rides in the v6 builder's `title_en` slot, which
 // becomes the dashboard row label (business_playlists.label) and the Spotify
 // playlist title/description.
-function shapeV7Direction(d, name, inst_pref, pop_pref, energy_range) {
+function shapeV7Direction(d, name, inst_pref, pop_pref, energy_range, genre_weights = null) {
   return {
     id: null,
     title_en: name,
@@ -151,6 +172,7 @@ function shapeV7Direction(d, name, inst_pref, pop_pref, energy_range) {
     instrumentalness_preference: inst_pref,
     popularity_preference: pop_pref,
     energy_range,
+    genre_weights,
   };
 }
 
@@ -180,6 +202,20 @@ export async function attachTrackGenres(row) {
     for (const p of pairs || []) {
       const g = canonical.get(String(p.genre).toLowerCase());
       if (g && map[p.spotify_id] && !map[p.spotify_id].includes(g)) map[p.spotify_id].push(g);
+    }
+    // The owner's own songs (taste chat, business_allowed_tracks) aren't in
+    // the catalog's genre playlists — they carry the genre they were added under.
+    const missing = ids.filter((id) => !map[id].length);
+    if (missing.length && row.business_id) {
+      try {
+        const own = await pgrSelect('business_allowed_tracks',
+          { business_id: `eq.${row.business_id}`, spotify_id: `in.(${missing.map((x) => `"${x}"`).join(',')})` },
+          { select: 'spotify_id,genre', useService: true });
+        for (const o of own || []) {
+          const g = canonical.get(String(o.genre).toLowerCase());
+          if (g && map[o.spotify_id] && !map[o.spotify_id].includes(g)) map[o.spotify_id].push(g);
+        }
+      } catch { /* table missing before migration 2026-10-13-v7-taste-chat.sql */ }
     }
     row.track_genres = map;
   } catch (e) {
@@ -256,8 +292,10 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   const highTier = dirRows.filter((d) => d.energy_tier === 'high');
   const lowTier  = dirRows.filter((d) => d.energy_tier === 'low');
 
-  // 2. Carry-through prefs + requested genres from the taste profile.
-  const { inst_pref, pop_pref, approvedGenres, requestedGenres, energyLevelsTotal } = await readProfilePrefs(businessId);
+  // 2. Carry-through prefs + requested genres + genre weights from the taste
+  //    profile, and the tiers' energy windows.
+  const [{ inst_pref, pop_pref, approvedGenres, requestedGenres, energyLevelsTotal, genreWeights }, storedWindows] =
+    await Promise.all([readProfilePrefs(businessId), readEnergyWindows(businessId)]);
   const requested = energyLevelsTotal
     ? requestedByTier(requestedGenres, approvedGenres, energyLevelsTotal)
     : { high: [], low: [] };
@@ -270,15 +308,17 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   //    libraries built before the rule). The TRACKS inside each direction also
   //    rotate day to day (fetchTracksWithHistory's random draw + 7-day dedup).
   //    Each tier's songs come from its energy range (high 50–80, low 20–50,
-  //    v7/generation/energy-windows.js), widened by 5 on each side only when
-  //    the range is short of songs.
+  //    v7/generation/energy-windows.js — or the owner's own, moved by the
+  //    taste chat), widened by 5 on each side only when the range is short of
+  //    songs. Genre weights (the taste chat) scale how often a genre's songs
+  //    are drawn.
   const high = pickTierPair(highTier);
   const low  = pickTierPair(lowTier);
   if (!high.length && !low.length) return EMPTY('no-directions');
 
   const shape = (tier) => (d, i) => shapeV7Direction(
     { ...d, genres: withRequested(d.genres, requested[tier]) },
-    tierPlaylistName(tier, i + 1), inst_pref, pop_pref, option1EnergyWindow(tier));
+    tierPlaylistName(tier, i + 1), inst_pref, pop_pref, option1EnergyWindow(tier, storedWindows), genreWeights);
   const directions = [...high.map(shape('high')), ...low.map(shape('low'))];
 
   // 4. Per-playlist length (Roni's spec, 2026-09-24): HALF the day's opening

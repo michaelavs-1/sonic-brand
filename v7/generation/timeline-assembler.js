@@ -196,16 +196,24 @@ function pickGenre(cands, remaining, rng) {
 //                    shuffled by the caller. ring = 5-point steps outside the
 //                    level's energy range (missing = 0 = inside); side = -1
 //                    below the range / 1 above it; refill = recently served.
+//                    (The builder's "genres" are pool keys — one per genre and
+//                    energy range — mapped back to genres afterwards.)
+//   weights          Map<genre, number> (the taste chat's genre weights;
+//                    missing = 1): a genre's share of the draw is scaled by it
 //   → { mixes: [{ tracks: [{ id, genre, level, startMin, sec, energy }], endMin }],
 //       stats: { short, nullDurations, levelFallbacks, widened, repeats } }
 //   (levelFallbacks = tracks placed at a nearby level because the curve's
 //   own level had nothing left for that mix; widened = fresh tracks from
 //   outside their level's energy range; repeats = refill tracks)
 export function assembleMixes({
-  startMin, endMin, energyAt, N, genresByLevel, pools, rng,
+  startMin, endMin, energyAt, N, genresByLevel, pools, rng, weights = null,
   mixes = 2, defaultSec = DEFAULT_TRACK_SEC, maxTracks = MAX_TRACKS_PER_MIX,
 }) {
   const n = normLevels(N);
+  const weightOf = (g) => {
+    const w = Number(weights?.get?.(g));
+    return Number.isFinite(w) && w > 0 ? w : 1;
+  };
   const used = new Set();
   const ringOf = (t) => Number(t?.ring) || 0;
   // Each genre's tracks in queues: fresh / refill × inside the range / below
@@ -287,7 +295,7 @@ export function assembleMixes({
     let top = null;
     for (const b of best.values()) if (!top || cmp(b.key, top) < 0) top = b.key;
     const cands = [...best].filter(([, b]) => cmp(b.key, top) === 0).map(([g]) => g);
-    const genre = pickGenre(cands, (g) => atHead(best.get(g).q), rng);
+    const genre = pickGenre(cands, (g) => atHead(best.get(g).q) * weightOf(g), rng);
     const q = best.get(genre).q;
     const t = head(q);
     q.ptr++;

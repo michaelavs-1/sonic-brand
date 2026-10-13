@@ -83,22 +83,31 @@ export async function activeDirections(businessId) {
 // Missing function / parameter list (migration not run yet) → PostgREST 404 PGRST202.
 const isMissingRpc = (e) => e?.status === 404 || /PGRST202|Could not find the function/i.test(e?.message || '');
 
-// v6_direction_tracks_recent, with the direction's energy range when it has
-// one. v7 Option 1 directions carry energy_range {min, max} (2026-10-13,
-// v7/generation/energy-windows.js): the RPC takes songs inside it first and
-// widens it by 5 on each side only as far as the pool needs. v6 directions
-// carry none. If the RPC doesn't take the range yet (migration
-// 2026-10-13-v7-energy-windows.sql not run), build without it — loudly.
+// v6_direction_tracks_recent, with what a v7 Option 1 direction adds:
+//   - energy_range {min, max} (2026-10-13, v7/generation/energy-windows.js):
+//     songs inside it first, widened by 5 on each side only as far as the
+//     pool needs;
+//   - genre_weights {"<lowercase genre>": w} (2026-10-13, the taste chat): a
+//     genre's songs are drawn w times as often; the RPC also adds the
+//     business's own songs (business_allowed_tracks).
+// v6 directions carry neither. If the RPC doesn't take them yet (migrations
+// 2026-10-13-v7-energy-windows.sql / -v7-taste-chat.sql not run), build
+// without them — loudly.
 async function directionTracksRpc(args, direction) {
   const er = direction.energy_range;
-  if (er && Number.isFinite(Number(er.min)) && Number.isFinite(Number(er.max))) {
+  const energy = er && Number.isFinite(Number(er.min)) && Number.isFinite(Number(er.max))
+    ? { p_energy_lo: Math.round(er.min), p_energy_hi: Math.round(er.max) } : null;
+  const weights = direction.genre_weights && typeof direction.genre_weights === 'object' && Object.keys(direction.genre_weights).length
+    ? { p_genre_weights: direction.genre_weights } : null;
+  const attempts = [];
+  if (weights) attempts.push({ ...args, ...energy, ...weights });
+  if (energy) attempts.push({ ...args, ...energy });
+  for (const a of attempts) {
     try {
-      return await pgrRpc('v6_direction_tracks_recent', {
-        ...args, p_energy_lo: Math.round(er.min), p_energy_hi: Math.round(er.max),
-      }, { useService: true });
+      return await pgrRpc('v6_direction_tracks_recent', a, { useService: true });
     } catch (e) {
       if (!isMissingRpc(e)) throw e;
-      console.error('[daily-builder] v6_direction_tracks_recent takes no energy range — run migration 2026-10-13-v7-energy-windows.sql. Building without it.');
+      console.error(`[daily-builder] v6_direction_tracks_recent takes no ${'p_genre_weights' in a ? 'genre weights — run migration 2026-10-13-v7-taste-chat.sql' : 'energy range — run migration 2026-10-13-v7-energy-windows.sql'}. Building without it.`);
     }
   }
   return pgrRpc('v6_direction_tracks_recent', args, { useService: true });

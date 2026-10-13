@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {
   parseHM, fmtHM, windowOf, hoursGroups, groupDaysLabel, slotMinutes, defaultPoints,
   curveThrough, energyAtFn, levelOf, effectiveLevel, sanitizePoints, reconcileTimeline,
-  groupForDay, mainGroup, businessWindowAt, MAX_POINTS,
+  groupForDay, mainGroup, businessWindowAt, MAX_POINTS, nudgePoints,
 } from '../v7/generation/energy-timeline.js';
 import {
   assembleMixes, estimateDemand, estimateDemandPerMix, mulberry32, shuffle, seedFrom,
@@ -525,8 +525,42 @@ test('levelLibrary: rank order, profile filter, implicit direction for a level w
   ], byLevel);
   assert.deepEqual(lib.get(1).map((d) => d.id), ['a', 'b']);
   assert.deepEqual(lib.get(1)[0].genres, ['Bossa Nova']);
-  assert.deepEqual(lib.get(2), [{ id: null, title_en: '(all level 2 genres)', genres: ['Funk'] }]);
+  assert.deepEqual(lib.get(2), [{ id: null, title_en: '(all level 2 genres)', genres: ['Funk'], energy_range: null }]);
   assert.deepEqual(lib.get(3)[0].genres, ['Disco']);
+  // A recipe's own range (the taste chat) rides along; junk → null.
+  const ranged = levelLibrary([
+    { id: 'r', energy_level: 1, rank: 1, title_en: 'R', genres: ['Fado'], energy_range: [25, 45] },
+    { id: 's', energy_level: 1, rank: 2, title_en: 'S', genres: ['Bossa Nova'], energy_range: [60, 40] },
+  ], byLevel);
+  assert.deepEqual(ranged.get(1).map((d) => d.energy_range), [[25, 45], null]);
+});
+
+test('nudgePoints: the nearest dot moves one level; far from any dot a dot is added', () => {
+  const g = { open: '09:00', close: '17:00' };
+  const pts = [{ m: 540, e: 0.2 }, { m: 780, e: 0.8 }, { m: 1020, e: 0.4 }];
+  const down = nudgePoints(pts, g, 790, 'down', 4);
+  assert.deepEqual(down.find((p) => p.m === 780), { m: 780, e: 0.55 }, 'within 45 min → that dot, one level (1/4) down');
+  assert.equal(down.length, 3);
+  const added = nudgePoints(pts, g, 660, 'up', 4);
+  assert.equal(added.length, 4, 'two hours from any dot → a new dot');
+  const nd = added.find((p) => p.m === 660);
+  assert.ok(nd && nd.e > energyAtFn(pts)(660), 'above the old curve');
+  assert.equal(nudgePoints([{ m: 540, e: 1 }, { m: 1020, e: 1 }], g, 540, 'up', 4)[0].e, 1, 'clamped at the top');
+});
+
+test('assembler: genre weights scale a genre\'s share', () => {
+  const pools = synthPools(['A', 'B'], 400, 9);
+  const one = new Map([[1, ['A', 'B']]]);
+  const count = (r) => r.mixes.flatMap((m) => m.tracks).reduce((n, t) => n + (t.genre === 'A'), 0);
+  const even = assembleMixes(base({ energyAt: FLAT, genresByLevel: one, pools }));
+  const less = assembleMixes(base({ energyAt: FLAT, genresByLevel: one, pools, weights: new Map([['A', 0.25]]) }));
+  const total = (r) => r.mixes.flatMap((m) => m.tracks).length;
+  const shareEven = count(even) / total(even);
+  const shareLess = count(less) / total(less);
+  assert.ok(shareEven > 0.4 && shareEven < 0.6, `even share ${shareEven.toFixed(2)}`);
+  assert.ok(shareLess < 0.32, `weight 0.25 share ${shareLess.toFixed(2)}`);
+  const ones = assembleMixes(base({ energyAt: FLAT, genresByLevel: one, pools, weights: new Map([['A', 1], ['B', 1]]) }));
+  assert.deepEqual(ones.mixes.map((m) => m.tracks.map((t) => t.id)), even.mixes.map((m) => m.tracks.map((t) => t.id)), 'weights of 1 = no weights');
 });
 
 test('normalizeLevelDirections + shapeLevelRows: level-checked genres, no duplicate sets, caps, profile key', () => {

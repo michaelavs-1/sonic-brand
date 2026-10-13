@@ -216,6 +216,26 @@ export function sanitizePoints(points, group) {
   return pts;
 }
 
+// The taste chat's curve suggestion ("calmer around 14:00", 2026-10-13): one
+// level's worth (1/N) down or up at that time. The nearest dot moves when it's
+// within 45 minutes; otherwise a dot is added there (on the clock's :00/:30)
+// at the curve's height ± one level, if there's room (MAX_POINTS). The owner
+// then sees it in the editor and saves (or not). timeMin = minutes on the
+// group's clock (an after-midnight time of an overnight group is > 1440).
+export function nudgePoints(points, group, timeMin, direction, N) {
+  const step = (direction === 'down' ? -1 : 1) / normLevels(N);
+  const pts = sanitizePoints(points, group).map((p) => ({ ...p }));
+  let near = null;
+  for (const p of pts) if (!near || Math.abs(p.m - timeMin) < Math.abs(near.m - timeMin)) near = p;
+  if (near && Math.abs(near.m - timeMin) <= 45) {
+    near.e = round2(clamp01(near.e + step));
+  } else if (pts.length < MAX_POINTS) {
+    const m = snapMinute(group, timeMin);
+    if (!pts.some((p) => p.m === m)) pts.push({ m, e: round2(clamp01(energyAtFn(pts)(m) + step)) });
+  }
+  return sanitizePoints(pts, group);
+}
+
 // ---------------------------------------------------------------------------
 // Reconciliation: stored timeline × current hours → one timeline per group
 // ---------------------------------------------------------------------------

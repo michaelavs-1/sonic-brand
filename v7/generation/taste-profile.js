@@ -67,7 +67,7 @@ const MAX_TOKENS = 65536;
 
 const TASTE_PROFILE_INTRO = `You classify a user's music taste for a public-facing-business playlist tool. The user has completed a diagnostic swipe deck of up to 12 tightly-clustered "musical direction" probes (Round 1 + optional Round 2). You will receive the probes plus the user's per-direction decisions (like / dislike) and their super-liked genres. Your job is to extrapolate that sparse signal to a full-catalog taste profile: for each of the ${GENRES.length} canonical genres, decide whether it belongs in the user's approved list, a conditional list, or neither. You only output the approved and conditional lists — every genre you leave out of both is treated as excluded. Then partition the approved and conditional genres into N energy levels (2–6, dynamic per user based on the SPREAD of their taste) so downstream playlist builders can slot each genre into the right operational context.`;
 
-const CORE_PHILOSOPHY_SECTION = `## CORE PHILOSOPHY: MAXIMALIST EXPANSION WITH SMART BOUNDARIES
+export const CORE_PHILOSOPHY_SECTION = `## CORE PHILOSOPHY: MAXIMALIST EXPANSION WITH SMART BOUNDARIES
 
 Your goal is to **APPROVE AS MANY GENRES AS REASONABLY POSSIBLE**, while maintaining precise control to ensure the business owner actually enjoys every single approved genre.
 
@@ -79,7 +79,7 @@ Expand boldly based on the owner's taste patterns, but **do not spray-and-pray**
   * *Example 2 (World Rhythms + Soul Synergy):* User liked \`Bossa Nova\`, \`Gypsy jazz\`, and \`Latin Funk\` → Boldly approve \`Cha Cha Cha\`, \`Peruvian Cumbia\`, \`Bolero\`, \`Fado\`, \`Samba\`, \`Samba-Choro\`, etc.
   * *Example 3 (Groove/Soul):* Likes \`Neo Soul\`, \`Electronic R&B\`, and \`AfroBeats\` → Boldly approve \`Funk\`, \`Mo Town\`, \`Amapiano\`, \`Acid Jazz\`, \`Soulful House\`, etc. (\`Soulful House\` passes the Electronic Music Guardrail here because the liked \`Electronic R&B\` is a tightly adjacent electronic genre.)`;
 
-const HARD_BOUNDARY_RULES_SECTION = `## HARD BOUNDARY RULES (MUST FOLLOW STRICTLY)
+export const HARD_BOUNDARY_RULES_SECTION = `## HARD BOUNDARY RULES (MUST FOLLOW STRICTLY)
 
 1. **Electronic Music Guardrail:** \`DownTempo\`, \`Organic House\`, and ALL electronic-leaning genres (e.g., \`Deep House\`, \`Tech House\`, \`Indie Dance\`, \`IndieTronica\`, \`Nu Disco\`, \`French Touch\`, \`Progressive & Psy Trance\`) must NEVER be auto-expanded or inferred into \`approved\` unless the user explicitly liked or super-liked that exact genre or a tightly adjacent electronic genre in R1/R2.
 2. **Classical & Spa/Ambient Guardrail:** Classical genres (\`Baroque\`, \`Chamber music\`, \`Piano Impressionism\`) and spa/relaxing ambient music must NEVER be inferred or auto-approved based on venue type or general "chill" vibe. They are ONLY eligible for \`approved\` or \`conditional\` if the user was explicitly presented with them (or an identical genre) in earlier diagnostic probes AND swiped right / super-liked them.

@@ -1,3 +1,5 @@
+> **Superseded (2026-10-13):** the admin API's v2 moved these fields — `playlist_opens` → `clicks.raw`, `playlist_opens_summary` → `clicks.{total, by_playlist, by_source}`, plus `clicks.by_day`. Current reference: [admin-api-for-michael.md](admin-api-for-michael.md). Kept as history.
+
 # Robin — Admin API delta: playlist opens
 
 > Focused delta doc. Paste this into your Claude alongside (or in

@@ -284,6 +284,28 @@ function round1DirectionsSeen(...lists) {
   return [...byRank.values()].sort((a, b) => a.rank - b.rank);
 }
 
+// The swipe cards the owner saw (Round 1 + Round 2) with what they did with
+// each — saved with the taste profile at signup for the admin console
+// (business_taste_profiles.onboarding_probes, 2026-10-13). Ranks are unique
+// across rounds (R1 1–8, R2 9–12), so verdicts go by rank.
+function onboardingProbes() {
+  const liked = new Set((state.picked || []).map((d) => d?.rank));
+  const disliked = new Set((state.dislikedDirections || []).map((d) => d?.rank));
+  const r2 = new Set((state.round2Directions || []).map((d) => d?.rank));
+  const byRank = new Map();
+  for (const d of [state.directions || [], state.picked || [], state.dislikedDirections || [], state.round2Directions || []].flat()) {
+    if (d && Number.isFinite(d.rank) && !byRank.has(d.rank)) byRank.set(d.rank, d);
+  }
+  return [...byRank.values()].sort((a, b) => a.rank - b.rank).map((d) => ({
+    round: r2.has(d.rank) ? 2 : 1,
+    rank: d.rank,
+    title_en: d.title_en || '',
+    description_he: d.description_he || '',
+    genres: Array.isArray(d.genres) ? d.genres : [],
+    verdict: liked.has(d.rank) ? 'liked' : disliked.has(d.rank) ? 'disliked' : 'not-swiped',
+  }));
+}
+
 // Wrap a promise so it rejects with AbortError if `signal` fires. The underlying
 // operation keeps running; we just stop caring about its result.
 function abortable(promise, signal) {
@@ -1138,6 +1160,8 @@ async function goToStep(start) {
             // its energy tier.
             superLikedGenres: [...new Set(state.superLikedGenres.values())],
             round2Emphases: state.round2Emphases || '',
+            // The swipe cards + verdicts, for the admin console (2026-10-13).
+            onboardingProbes: onboardingProbes(),
             onboardingSessionId: state.onboardingSessionId,
           },
           // Flattened audit tally: [{ genre, like, dislike }]. Persisted with

@@ -34,10 +34,15 @@ import { applyOps, snapshotOf, stateFromSnapshot } from '../../../v7/generation/
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const MIGRATION_HINT = 'run migration 2026-10-13-v7-taste-chat.sql';
 
+// The newest change the owner may undo — null when there's none, or when the
+// newest change was made in the admin console (source 'admin', migration
+// 2026-10-13-admin-console.sql): undo restores a whole snapshot, so undoing an
+// older chat change would also wipe out the admin's newer one.
 async function lastChange(businessId) {
   const rows = await pgrSelect('business_taste_changes', { business_id: `eq.${businessId}`, undone_at: 'is.null' },
     { select: '*', order: 'applied_at.desc', limit: 1, useService: true });
-  return rows?.[0] || null;
+  const last = rows?.[0] || null;
+  return last && last.source !== 'admin' ? last : null;
 }
 
 // The email to Roni for each added song we haven't analysed (it plays as

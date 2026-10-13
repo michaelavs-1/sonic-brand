@@ -138,14 +138,8 @@
     "api/cron/v7-generate-daily.js": {
       "maxDuration": 300
     },
-    "api/internal/users.js": {
-      "maxDuration": 30
-    },
-    "api/internal/business.js": {
-      "maxDuration": 30
-    },
-    "api/internal/gemini-spend.js": {
-      "maxDuration": 30
+    "api/internal/*.js": {
+      "maxDuration": 300
     }
   },
   "crons": [

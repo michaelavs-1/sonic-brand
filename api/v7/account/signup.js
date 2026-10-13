@@ -56,6 +56,7 @@
      superLikedTracks?: [spotify_id],
      superLikedGenres?: [genre],         // the swipe deck's super-liked genres
      round2Emphases?,                    // the Round 2 refinement text
+     onboardingProbes?,                  // the swipe cards + verdicts (admin console, 2026-10-13)
      onboardingSessionId?,
      skipEmail?,                         // test scripts only — honored ONLY with
                                          // a valid x-sonic-internal header
@@ -316,6 +317,7 @@ export default async function handler(req, res) {
       superLikedTracks,
       superLikedGenres,
       round2Emphases,
+      onboardingProbes,
       onboardingSessionId,
       tasteProfile,
       genreTally,
@@ -404,7 +406,7 @@ export default async function handler(req, res) {
     // Fatal: without it the account is useless (and a retry is idempotent).
     // The super-liked genres + Round 2 text are kept with it (2026-10-05).
     await upsertTasteProfileRow(tasteProfileRow(businessId, tasteProfile, genreTally,
-      { superLikedGenres, round2Emphases: String(round2Emphases || '') }));
+      { superLikedGenres, round2Emphases: String(round2Emphases || ''), onboardingProbes }));
 
     // Gemini spend back-fill — the onboarding Gemini calls (v7-onboarding,
     // v7-onboarding-refined, v7-taste-profile) were logged with

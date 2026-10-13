@@ -112,6 +112,9 @@ export default async function handler(req, res) {
           output:   data.usageMetadata.candidatesTokenCount,
           thinking: data.usageMetadata.thoughtsTokenCount || 0,
           total:    data.usageMetadata.totalTokenCount,
+          // Prompt tokens served from Google's implicit cache (part of
+          // `input`), billed at the cache rate — see gemini-pricing.js.
+          cached:   data.usageMetadata.cachedContentTokenCount || 0,
         };
       }
       const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
@@ -157,6 +160,7 @@ export default async function handler(req, res) {
           output_tokens:          usage.output   || 0,
           thinking_tokens:        usage.thinking || 0,
           total_tokens:           usage.total    || 0,
+          cached_tokens:          usage.cached   || 0,
           cost_usd:               computeCostUsd(model, usage),
           business_id:            typeof business_id === 'string' ? business_id : null,
           onboarding_session_id:  typeof onboarding_session_id === 'string' ? onboarding_session_id : null,
@@ -164,8 +168,16 @@ export default async function handler(req, res) {
           finish_reason:          cand?.finishReason || null,
         };
         try {
-          await pgrInsert('gemini_call_log', row);
-          console.log('[gemini] spend-log OK cost=', row.cost_usd, 'label=', row.label);
+          try {
+            await pgrInsert('gemini_call_log', row);
+          } catch (err) {
+            // cached_tokens arrives with migration 2026-10-13-admin-console.sql;
+            // until then, log the row without it (cost_usd already counts it).
+            if (!/cached_tokens/.test(err?.message || '')) throw err;
+            const { cached_tokens, ...rest } = row;
+            await pgrInsert('gemini_call_log', rest);
+          }
+          console.log('[gemini] spend-log OK cost=', row.cost_usd, 'label=', row.label, 'cached=', row.cached_tokens);
         } catch (err) {
           console.warn('[gemini] spend-log insert failed:', err?.message || err);
         }

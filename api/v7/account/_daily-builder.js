@@ -76,8 +76,10 @@ import {
   datedLabel,
 } from '../../../v7/generation/playlist-length.js';
 import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
-import { pickTierPair, requestedByTier, withRequested } from '../../../v7/generation/option1-draw.js';
+import { pickTierPair, requestedByTier, withRequested, tierOfLevel } from '../../../v7/generation/option1-draw.js';
 import { option1EnergyWindow } from '../../../v7/generation/energy-windows.js';
+import { applyOption1Picks } from '../../../v7/generation/daily-picks.js';
+import { readDailyPicks } from './_daily-picks.js';
 
 const PREF_SET = new Set(['none', 'soft', 'hard']);
 const normPref = (v) => (PREF_SET.has(v) ? v : 'none');
@@ -162,6 +164,9 @@ const tierPlaylistName = (tier, n) => `${TIER_NAME_HE[tier] || 'פלייליסט
 // the owner-facing label; it rides in the v6 builder's `title_en` slot, which
 // becomes the dashboard row label (business_playlists.label) and the Spotify
 // playlist title/description.
+// v7_source (2026-10-13) = which library direction the slot played, kept in the
+// row's expansion.direction so the admin console can show what each day offered
+// (admin_pick: the admin console picked it for the day).
 function shapeV7Direction(d, name, inst_pref, pop_pref, energy_range, genre_weights = null) {
   return {
     id: null,
@@ -173,6 +178,7 @@ function shapeV7Direction(d, name, inst_pref, pop_pref, energy_range, genre_weig
     popularity_preference: pop_pref,
     energy_range,
     genre_weights,
+    v7_source: { direction_id: d.id || null, title_en: d.title_en || null, admin_pick: !!d.admin_pick },
   };
 }
 
@@ -312,8 +318,16 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   //    taste chat), widened by 5 on each side only when the range is short of
   //    songs. Genre weights (the taste chat) scale how often a genre's songs
   //    are drawn.
-  const high = pickTierPair(highTier);
-  const low  = pickTierPair(lowTier);
+  //    The admin console can pick a slot's direction for the day instead
+  //    (business_v7_daily_picks, v7/generation/daily-picks.js); a picked
+  //    slot's partner is then the direction least like the pick.
+  const labelDate = businessWindowAt(hours, now).isoDate;
+  const picks = energyLevelsTotal ? await readDailyPicks(businessId, labelDate, 'option1') : [];
+  const tierAllowed = (tier) => new Map(approvedGenres
+    .filter((a) => a?.genre && tierOfLevel(a.energy_level, energyLevelsTotal) === tier)
+    .map((a) => [String(a.genre).toLowerCase(), a.genre]));
+  const high = applyOption1Picks('high', pickTierPair(highTier), highTier, picks, tierAllowed('high'));
+  const low  = applyOption1Picks('low',  pickTierPair(lowTier),  lowTier,  picks, tierAllowed('low'));
   if (!high.length && !low.length) return EMPTY('no-directions');
 
   const shape = (tier) => (d, i) => shapeV7Direction(
@@ -333,7 +347,7 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   }
   const target = Math.max(MIN_TARGET_TRACKS, Math.ceil((spanMins / 2 + 90) / AVG_TRACK_MINUTES));
 
-  return { directions, target, expiryIso, labelDate: businessWindowAt(hours, now).isoDate, reason: null };
+  return { directions, target, expiryIso, labelDate, reason: null };
 }
 
 export async function buildOption1Batch({ ownerId, businessId, bizName, hours, origin, now = new Date() }) {

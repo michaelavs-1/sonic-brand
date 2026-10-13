@@ -47,100 +47,24 @@
    One playlist at a time with a 3s stagger (Spotify rate-limit lesson,
    2026-08-22); INSERT per playlist so rows persist even if the stream is cut.
    Pre-flight failures return plain JSON 4xx/5xx with { error, code? }.
+
+   The build itself lives in ./_run-daily-build.js since 2026-10-13, shared
+   with the admin console's "rebuild today" (api/internal/daily-picks.js).
+   This file is the owner's door to it: rate limit, JWT, ownership.
 */
 
-import { pgrSelect, pgrPatch } from '../../v5/supabase-client.js';
-import { buildOneDailyPlaylist } from '../../v6/account/_daily-builder.js';
 import { requireBusinessOwner } from '../../v6/account/_require-business-owner.js';
-import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.js';
-import { logDailyBuilds } from './_build-log.js';
 import { setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
-import { planOption1, planOption2, attachTrackGenres, insertPlaylistRows } from './_daily-builder.js';
-import { planOption2Timeline, createTimelineMix } from './_option2-builder.js';
-import { replaceStatus, liveDailyRows, businessDaySinceIso, REPLACE_FIELD } from './_replace-status.js';
-import { acquireBuildLock } from './_build-lock.js';
-import { verifyUser, auditSetting } from './_settings-helpers.js';
-import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
-import { datedLabel, undatedLabel, ilPartsFromDate } from '../../../v7/generation/playlist-length.js';
+import { verifyUser } from './_settings-helpers.js';
+import { runDailyBuild } from './_run-daily-build.js';
 
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const INTER_PLAYLIST_STAGGER_MS = 3000;   // same as _daily-builder.js BUILD_STAGGER_MS
-
-const NOTHING_TO_BUILD = {
-  'no-directions':          'הכנת הפלייליסטים שלכם לא הושלמה — לחצו על "השלימו עכשיו" בדף הבית',
-  'no-approved-genres':     'לא נמצא פרופיל מוזיקלי לבניית פלייליסטים',
-  'directions-read-failed': 'שגיאה בטעינת הנתונים — נסו שוב',
-  'past-close':             'היום כבר כמעט נגמר — הפלייליסטים הבאים ייבנו מחר',
-  'closed-today':           'המקום סגור היום',
-};
-
-const CODE_MESSAGES = {
-  'build-in-progress':  'כבר נבנים פלייליסטים — נסו שוב בעוד רגע',
-  'replace-cap':        'הגעתם למקסימום של 2 החלפות ביום — השינוי ייכנס לתוקף מחר',
-  'past-close':         'היום כבר כמעט נגמר — השינוי ייכנס לתוקף מחר',
-  'closed-today':       'המקום סגור היום — השינוי ייכנס לתוקף ביום הפתיחה הבא',
-  'nothing-to-replace': 'אין פלייליסטים להיום להחלפה',
-};
 
 function selfOrigin(req) {
   const host  = req.headers['x-forwarded-host'] || req.headers.host;
   const proto = req.headers['x-forwarded-proto'] || 'https';
   return `${proto}://${host}`;
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-// Today's slots as { key, title, label, build() → {skipped, reason?, row?} }.
-// title = the undated name ("Daily Mix #1"), label = the dated dashboard name
-// ("Daily Mix #1 · 28.09.2026") the built row carries.
-// The hours with day `dayIdx` opening at `now` (Israel clock, to the minute).
-function hoursOpeningNow(hours, dayIdx, now) {
-  const p = ilPartsFromDate(now);
-  const open = `${String(p.hour).padStart(2, '0')}:${String(p.minute).padStart(2, '0')}`;
-  return { ...hours, [dayIdx]: { ...hours[dayIdx], open } };
-}
-
-async function planSlots({ mode, businessId, hours, now, replaceToday, origin, ownerId, bizName }) {
-  if (mode === 'option2') {
-    const plan = await planOption2Timeline({ businessId, hours, now, onDemand: true });
-    if (!plan.fallback) {
-      if (!plan.slots.length) return { slots: [], reason: plan.reason };
-      return {
-        reason: null,
-        slots: plan.slots.map((s) => ({
-          key: s.key,
-          title: s.title,
-          label: datedLabel(s.title, plan.meta?.il_date),
-          build: () => createTimelineMix({
-            origin, ownerId, businessId, bizName, title: s.title, tracks: s.tracks, expiryIso: plan.expiryIso, meta: s.meta,
-          }),
-        })),
-      };
-    }
-  }
-  const plan = mode === 'option1'
-    ? await planOption1({ businessId, hours, now, onDemand: true, fromNow: replaceToday })
-    : await planOption2({ businessId, hours, now, onDemand: true });   // naive fallback
-  if (!plan.directions.length) return { slots: [], reason: plan.reason };
-  return {
-    reason: null,
-    slots: plan.directions.map((direction, i) => ({
-      key: `slot-${i}`,
-      title: direction.title_en || 'פלייליסט',
-      label: datedLabel(direction.title_en || 'פלייליסט', plan.labelDate),
-      build: async () => {
-        const r = await buildOneDailyPlaylist({
-          origin, ownerId, businessId, direction, target: plan.target, bizName, expiryIso: plan.expiryIso,
-        });
-        if (!r.skipped) {
-          r.row.label = datedLabel(r.row.label, plan.labelDate);
-          await attachTrackGenres(r.row);
-        }
-        return r;
-      },
-    })),
-  };
 }
 
 export default async function handler(req, res) {
@@ -151,7 +75,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
   if (!await guard(req, res, 'v7-generate-daily', 12, 3600)) return;
 
-  let lock = null;
   try {
     if (!SERVICE_KEY) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not set' });
 
@@ -163,155 +86,22 @@ export default async function handler(req, res) {
 
     try { await requireBusinessOwner(businessId, user.id); }
     catch (e) { return res.status(e.status || 403).json({ error: e.message }); }
-    if (await subscriptionEnded(businessId)) {
-      return res.status(402).json({ code: 'subscription_ended', error: SUBSCRIPTION_ENDED_MESSAGE });
-    }
 
-    const [settingsRows, hoursRows] = await Promise.all([
-      pgrSelect('business_v7_settings',
-        { business_id: `eq.${businessId}` },
-        { select: 'delivery_mode', limit: 1, useService: true }),
-      pgrSelect('business_hours',
-        { business_id: `eq.${businessId}` },
-        { select: 'hours', limit: 1, useService: true }),
-    ]);
-    const mode  = settingsRows?.[0]?.delivery_mode || null;
-    const hours = hoursRows?.[0]?.hours || null;
-    if (mode !== 'option1' && mode !== 'option2') {
-      return res.status(400).json({ error: 'בחרו קודם סוג פלייליסטים יומיים (בלשונית הפרופיל)' });
-    }
-
-    lock = await acquireBuildLock(businessId);
-    if (!lock.acquired) {
-      return res.status(409).json({ error: CODE_MESSAGES['build-in-progress'], code: 'build-in-progress' });
-    }
-
-    const now = new Date();
-    const w = businessWindowAt(hours, now);
-    let oldRows = [];
-    if (replaceToday) {
-      const status = await replaceStatus({ businessId, hours, now });
-      if (!status.eligible) {
-        const code = status.reason === 'no-live-playlists' ? 'nothing-to-replace' : status.reason;
-        return res.status(409).json({ error: CODE_MESSAGES[code] || CODE_MESSAGES['past-close'], code });
-      }
-      if (status.left <= 0) {
-        return res.status(429).json({ error: CODE_MESSAGES['replace-cap'], code: 'replace-cap' });
-      }
-      oldRows = await liveDailyRows(businessId, businessDaySinceIso(w), now);
-    } else {
-      // One live set per business day (this endpoint also fires automatically
-      // right after the first-login gate — guard a reload-and-click double).
-      // Live rows only: once today's set has expired, the owner may still
-      // build a fresh one.
-      const live = await liveDailyRows(businessId, businessDaySinceIso(w), now);
-      if (live.length) return res.status(409).json({ error: 'כבר יש פלייליסטים להיום', code: 'already-built' });
-    }
-
-    // "צור פלייליסטים עכשיו" before opening: this build acts as though today
-    // opens now — Option 1 sizes the playlists from now to closing, Option 2
-    // starts its mixes now and moves the curve's opening dot to now (the
-    // usual keep-clock-times rule for an hours change). The stored hours stay
-    // as they are; the cron then skips the day (already built).
-    const buildHours = openNow && !replaceToday && w.phase === 'before-open'
-      ? hoursOpeningNow(hours, w.dayIdx, now) : hours;
-
-    const origin = selfOrigin(req);
-    const { slots, reason } = await planSlots({
-      mode, businessId, hours: buildHours, now, replaceToday, origin, ownerId: user.id, bizName: bizName || '',
+    // The build itself (incl. the subscription check, the build lock, the
+    // replace rules and the build log) is shared with the admin console:
+    // ./_run-daily-build.js.
+    const result = await runDailyBuild({
+      businessId, ownerId: user.id, bizName: bizName || '', replaceToday, openNow, origin: selfOrigin(req),
+    }, {
+      beforeStream: () => {
+        res.setHeader('Content-Type',      'application/x-ndjson; charset=utf-8');
+        res.setHeader('Cache-Control',     'no-cache, no-transform');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders?.();
+      },
+      send: (obj) => { res.write(JSON.stringify(obj) + '\n'); },
     });
-    if (!slots.length) {
-      await logDailyBuilds([{
-        business_id: businessId, il_date: w.isoDate, source: 'dashboard', outcome: `nothing-to-build:${reason || '?'}`,
-      }]);
-      return res.status(400).json({ error: NOTHING_TO_BUILD[reason] || 'אין מה לבנות כרגע', code: reason || undefined });
-    }
-
-    // ---- streaming phase: ndjson ----
-    res.setHeader('Content-Type',      'application/x-ndjson; charset=utf-8');
-    res.setHeader('Cache-Control',     'no-cache, no-transform');
-    res.setHeader('X-Accel-Buffering', 'no');
-    res.flushHeaders?.();
-    const send = (obj) => { res.write(JSON.stringify(obj) + '\n'); };
-
-    send({ type: 'plan', directions: slots.map((s) => ({ direction_id: s.key, title: s.label })) });
-
-    const plannedTitles = new Set(slots.map((s) => s.title));
-    const pendingOld = new Map(oldRows.map((r) => [r.spotify_id, r]));
-    const hideOld = async (rows) => {
-      if (!rows.length) return;
-      const nowIso = new Date().toISOString();
-      const hidden = [];
-      for (const r of rows) {
-        try {
-          await pgrPatch('business_playlists',
-            { spotify_id: `eq.${r.spotify_id}`, business_id: `eq.${businessId}` }, { expires_at: nowIso });
-          hidden.push(r.spotify_id);
-        } catch (e) {
-          console.warn(`[v7 generate-daily] hiding old playlist ${r.spotify_id} failed:`, e.message);
-        }
-        pendingOld.delete(r.spotify_id);
-      }
-      if (hidden.length) send({ type: 'replaced', spotify_ids: hidden });
-    };
-
-    let builtCount = 0;
-    let failedCount = 0;
-    const failures = [];   // for the build log
-    const newRows = [];
-    for (let i = 0; i < slots.length; i++) {
-      if (i > 0) await sleep(INTER_PLAYLIST_STAGGER_MS);
-      const slot = slots[i];
-      try {
-        const result = await slot.build();
-        if (result.skipped) {
-          failedCount++;
-          failures.push(`${slot.title}: ${result.reason || 'no tracks matched'}`);
-          send({ type: 'failed', direction_id: slot.key, error: result.reason || 'no tracks matched' });
-          continue;
-        }
-        try {
-          await insertPlaylistRows([result.row]);
-        } catch (e) {
-          // The Spotify playlist exists (and is in the expiry ledger); only the
-          // dashboard row failed. Report it and keep going.
-          console.error(`[v7 generate-daily] business_playlists INSERT failed for ${result.row.spotify_id}:`, e.message);
-          failedCount++;
-          failures.push(`${slot.title}: db insert failed: ${e.message}`);
-          send({ type: 'failed', direction_id: slot.key, error: `db insert failed: ${e.message}` });
-          continue;
-        }
-        builtCount++;
-        newRows.push({ spotify_id: result.row.spotify_id, label: result.row.label });
-        send({ type: 'built', direction_id: slot.key, row: result.row });
-
-        if (replaceToday) {
-          if (builtCount === 1) {
-            // Counts toward today's cap only once something was actually built.
-            await auditSetting(businessId, REPLACE_FIELD,
-              { mode, playlists: oldRows.map((r) => ({ spotify_id: r.spotify_id, label: r.label })) },
-              { mode, titles: [...plannedTitles] });
-            // Type switch: old names don't match the new ones → all go now.
-            await hideOld([...pendingOld.values()].filter((r) => !plannedTitles.has(undatedLabel(r.label))));
-          }
-          // Names match without the date (older rows may carry none).
-          await hideOld([...pendingOld.values()].filter((r) => undatedLabel(r.label) === slot.title));
-        }
-      } catch (e) {
-        console.error(`[v7 generate-daily] "${slot.title}" build threw:`, e.message);
-        failedCount++;
-        failures.push(`${slot.title}: ${e.message || 'unknown error'}`);
-        send({ type: 'failed', direction_id: slot.key, error: e.message || 'unknown error' });
-      }
-    }
-
-    send({ type: 'done', built: builtCount, failed: failedCount });
-    console.log(`[v7 generate-daily] user=${user.id} biz=${businessId} mode=${mode}${replaceToday ? ' REPLACE' : ''} built ${builtCount}/${slots.length}`);
-    await logDailyBuilds([{
-      business_id: businessId, il_date: w.isoDate, source: 'dashboard',
-      outcome: builtCount ? (failedCount ? 'partial' : 'built') : 'zero-built',
-      built: builtCount, failed: failedCount, detail: failures.join('\n') || null,
-    }]);
+    if (result.status) return res.status(result.status).json(result.body);
     res.end();
   } catch (err) {
     console.error('[v7 generate-daily] failed:', err.message);
@@ -320,7 +110,5 @@ export default async function handler(req, res) {
     }
     try { res.write(JSON.stringify({ type: 'done', built: 0, failed: 0, error: err.message }) + '\n'); } catch {}
     try { res.end(); } catch {}
-  } finally {
-    try { await lock?.release(); } catch {}
   }
 }

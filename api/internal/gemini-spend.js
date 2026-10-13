@@ -1,58 +1,41 @@
-/* GET /api/internal/gemini-spend
-   Admin view of Gemini API spend.
+/* GET /api/internal/gemini-spend[?from=YYYY-MM-DD&to=YYYY-MM-DD]
+   Admin view of Gemini API spend, from gemini_call_log (one row per call,
+   written by api/v6/gemini.js — every Gemini call in the app goes through
+   that proxy, v7's server-side chats included).
 
-   Auth: bearer token in `Authorization: Bearer <INTERNAL_ADMIN_API_KEY>`.
-   CORS: `*` — bearer token IS the boundary.
+   Auth: bearer `INTERNAL_ADMIN_API_KEY`. CORS: `*` — bearer token IS the boundary.
 
-   Response shape:
+   Response:
      {
        totals: {
-         all_time_usd, all_time_calls,
-         attributed_usd, attributed_calls,      // rows with business_id set
-         abandoned_usd,  abandoned_calls        // rows with onboarding_session_id
-                                                //   still set (no signup)
+         all_time_usd,            // since_logging_usd + baseline_usd
+         baseline_usd,            // Google's bill before logging started (2026-08-25)
+         since_logging_usd, all_time_calls,
+         attributed_usd,   attributed_calls,    // a business that still exists
+         abandoned_usd,    abandoned_calls,     // onboarding that never signed up
+         unattributed_usd, unattributed_calls,  // Ami's prompt dashboard, test
+                                                // scripts, deleted (test) businesses
+         tokens: { input, cached, output, thinking },
        },
-       by_day: [
-         { day: 'YYYY-MM-DD',  usd, calls }     // UTC dates, newest first, up to 90 days
-       ],
-       by_label: [
-         { label,              usd, calls }     // e.g. 'onboarding', 'event-chat'
-       ],
-       by_business: [
-         { business_id, business_name, owner_email, usd, calls }  // attributed
-                                                //   rows only, sorted by usd desc
-       ],
-       recent: [
-         { id, created_at, model, label,
-           input_tokens, output_tokens, thinking_tokens,
-           cost_usd, business_id, onboarding_session_id,
-           finish_reason, http_status }         // last 50 calls, newest first
-       ]
+       range: { from, to, usd, calls } | null,  // ?from/?to — PACIFIC dates, the
+                                                // way Google's billing report
+                                                // counts days (for comparing)
+       by_month_google: [{ month, usd, calls }],   // Pacific time, newest first
+       by_day_google:   [{ day, usd, calls }],     // Pacific time, newest first, 120 days
+       by_day:          [{ day, usd, calls }],     // Israel time, newest first, 120 days
+       by_label:        [{ label, usd, calls }],
+       by_business:     [{ business_id, business_name, owner_email, usd, calls }],
+       recent:          [last 50 calls, newest first],
+       notes:           [how the numbers are made]
      }
 
-   Aggregation is done in JS after a single fetch — good enough for
-   pilot scale (thousands of rows). If the table grows past ~50k rows,
-   move to a Postgres RPC that GROUP BYs on the server.
+   Reads EVERY row (paged; a plain select stops at 1,000 rows — the old
+   version of this endpoint would have under-counted from the 1,001st call).
 */
 
 import { pgrSelect } from '../v5/supabase-client.js';
 import { requireAdmin, setAdminCors } from './_guard.js';
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-const HARD_ROW_CAP = 10000;   // sanity cap; PostgREST default is 1000
-
-// Same admin-API paginated list users.js uses. Kept inline (rather than
-// shared) since both files are small and dependency-light.
-async function listAllAuthUsers() {
-  const r = await fetch(`${SUPABASE_URL}/auth/v1/admin/users?page=1&per_page=1000`, {
-    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-  });
-  if (!r.ok) return [];
-  const data = await r.json().catch(() => ({}));
-  return Array.isArray(data?.users) ? data.users : [];
-}
+import { hasServiceKey, listAllAuthUsers, selectAll, round6, ISO_DATE_RE } from './_admin.js';
 
 // Pre-logging baseline: the total Gemini spend from Google's billing
 // dashboard covering all calls made BEFORE 2026-08-25 (when gemini_call_log
@@ -65,6 +48,21 @@ async function listAllAuthUsers() {
 // the number has changed materially.
 const HISTORICAL_BASELINE_USD = 9.19;
 
+const dateIn = (tz) => {
+  const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' });
+  return (iso) => (iso ? f.format(new Date(iso)) : '');
+};
+const pacificDate = dateIn('America/Los_Angeles');
+const israelDate  = dateIn('Asia/Jerusalem');
+
+function bump(map, key, cost, extra = {}) {
+  const b = map.get(key) || { ...extra, usd: 0, calls: 0 };
+  b.usd += cost;
+  b.calls += 1;
+  map.set(key, b);
+}
+const out = (map, sortFn) => [...map.values()].sort(sortFn).map((b) => ({ ...b, usd: round6(b.usd) }));
+
 export default async function handler(req, res) {
   setAdminCors(req, res);
   if (req.method === 'OPTIONS') return res.status(200).end();
@@ -72,121 +70,86 @@ export default async function handler(req, res) {
   if (!requireAdmin(req, res))  return;
 
   try {
-    // Pull log rows + businesses + auth users in parallel. Business + user
-    // fetches are for enriching the `by_business` rollup with name / email.
+    if (!hasServiceKey()) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not set' });
+    const from = ISO_DATE_RE.test(String(req.query?.from || '')) ? req.query.from : null;
+    const to   = ISO_DATE_RE.test(String(req.query?.to || ''))   ? req.query.to   : null;
+
     const [rows, businesses, users] = await Promise.all([
-      pgrSelect('gemini_call_log', {}, {
-        select: 'id,created_at,model,label,input_tokens,output_tokens,thinking_tokens,total_tokens,cost_usd,business_id,onboarding_session_id,http_status,finish_reason',
-        order:  'created_at.desc',
-        limit:  HARD_ROW_CAP,
-        useService: true,
-      }),
-      pgrSelect('businesses', {}, {
-        select: 'id,name,owner_id',
-        useService: true,
-      }),
-      listAllAuthUsers(),
+      selectAll('gemini_call_log', {}, { select: '*', order: 'id.asc' }),
+      pgrSelect('businesses', {}, { select: 'id,name,owner_id', useService: true }),
+      listAllAuthUsers().catch(() => []),
     ]);
+    const all = [...rows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 
-    const all = Array.isArray(rows) ? rows : [];
-    const emailByUserId = new Map();
-    for (const u of users) if (u?.id) emailByUserId.set(u.id, u.email || null);
-    const bizById = new Map();
-    for (const b of (businesses || [])) {
-      bizById.set(b.id, { name: b.name || null, owner_email: emailByUserId.get(b.owner_id) || null });
-    }
+    const emailByUserId = new Map(users.filter((u) => u?.id).map((u) => [u.id, u.email || null]));
+    const bizById = new Map((businesses || []).map((b) => [b.id, { name: b.name || null, owner_email: emailByUserId.get(b.owner_id) || null }]));
 
-    let all_time_usd    = 0;
-    let attributed_usd  = 0;
-    let abandoned_usd   = 0;
-    let all_time_calls  = 0;
-    let attributed_calls = 0;
-    let abandoned_calls = 0;
-
-    const byDay      = new Map();  // 'YYYY-MM-DD' → { usd, calls }
-    const byLabel    = new Map();  // label        → { usd, calls }
-    const byBusiness = new Map();  // business_id  → { usd, calls }
+    const t = { all: 0, attributed: 0, abandoned: 0, unattributed: 0 };
+    const n = { all: 0, attributed: 0, abandoned: 0, unattributed: 0 };
+    const tokens = { input: 0, cached: 0, output: 0, thinking: 0 };
+    const range = from || to ? { from, to, usd: 0, calls: 0 } : null;
+    const byDay = new Map();
+    const byDayG = new Map();
+    const byMonthG = new Map();
+    const byLabel = new Map();
+    const byBusiness = new Map();
+    let firstCached = null;
 
     for (const r of all) {
       const cost = Number(r.cost_usd) || 0;
-      all_time_usd   += cost;
-      all_time_calls += 1;
+      t.all += cost; n.all += 1;
+      const bucket = r.business_id && bizById.has(r.business_id) ? 'attributed'
+        : r.onboarding_session_id ? 'abandoned' : 'unattributed';
+      t[bucket] += cost; n[bucket] += 1;
+      if (bucket === 'attributed') bump(byBusiness, r.business_id, cost, { business_id: r.business_id });
 
-      if (r.business_id) {
-        attributed_usd   += cost;
-        attributed_calls += 1;
-        const bbucket = byBusiness.get(r.business_id) || { business_id: r.business_id, usd: 0, calls: 0 };
-        bbucket.usd   += cost;
-        bbucket.calls += 1;
-        byBusiness.set(r.business_id, bbucket);
-      } else if (r.onboarding_session_id) {
-        abandoned_usd    += cost;
-        abandoned_calls  += 1;
-      }
-      // Rows with neither ID (e.g. Ami's prompt dashboard, unattributed
-      // one-offs) are counted in all_time but not in either bucket.
+      tokens.input += Number(r.input_tokens) || 0;
+      tokens.cached += Number(r.cached_tokens) || 0;
+      tokens.output += Number(r.output_tokens) || 0;
+      tokens.thinking += Number(r.thinking_tokens) || 0;
+      if (Number(r.cached_tokens) > 0 && (!firstCached || r.created_at < firstCached)) firstCached = r.created_at;
 
-      const day = (r.created_at || '').slice(0, 10);
-      if (day) {
-        const bucket = byDay.get(day) || { day, usd: 0, calls: 0 };
-        bucket.usd   += cost;
-        bucket.calls += 1;
-        byDay.set(day, bucket);
-      }
-
+      const dG = pacificDate(r.created_at);
+      if (range && (!from || dG >= from) && (!to || dG <= to)) { range.usd += cost; range.calls += 1; }
+      bump(byDayG, dG, cost, { day: dG });
+      bump(byMonthG, dG.slice(0, 7), cost, { month: dG.slice(0, 7) });
+      const dI = israelDate(r.created_at);
+      bump(byDay, dI, cost, { day: dI });
       const lbl = r.label || '(unlabeled)';
-      const lbucket = byLabel.get(lbl) || { label: lbl, usd: 0, calls: 0 };
-      lbucket.usd   += cost;
-      lbucket.calls += 1;
-      byLabel.set(lbl, lbucket);
+      bump(byLabel, lbl, cost, { label: lbl });
     }
-
-    const round = (n) => Number(n.toFixed(6));
-
-    const by_day = [...byDay.values()]
-      .sort((a, b) => b.day.localeCompare(a.day))
-      .slice(0, 90)
-      .map((d) => ({ day: d.day, usd: round(d.usd), calls: d.calls }));
-
-    const by_label = [...byLabel.values()]
-      .sort((a, b) => b.usd - a.usd)
-      .map((l) => ({ label: l.label, usd: round(l.usd), calls: l.calls }));
-
-    const by_business = [...byBusiness.values()]
-      .sort((a, b) => b.usd - a.usd)
-      .map((b) => {
-        const meta = bizById.get(b.business_id) || {};
-        return {
-          business_id:   b.business_id,
-          business_name: meta.name        || null,
-          owner_email:   meta.owner_email || null,
-          usd:           round(b.usd),
-          calls:         b.calls,
-        };
-      });
-
-    const recent = all.slice(0, 50);
+    if (range) range.usd = round6(range.usd);
 
     res.setHeader('Cache-Control', 'no-store');
     return res.status(200).json({
       totals: {
-        // all_time_usd includes the pre-logging historical baseline.
-        // The two other fields let the UI show the split.
-        all_time_usd:      round(all_time_usd + HISTORICAL_BASELINE_USD),
-        baseline_usd:      HISTORICAL_BASELINE_USD,
-        since_logging_usd: round(all_time_usd),
-        all_time_calls,                             // calls we've logged only
-        // Attributed / abandoned only cover logged calls — the historical
-        // baseline is one lump sum with no attribution possible.
-        attributed_usd:    round(attributed_usd),
-        attributed_calls,
-        abandoned_usd:     round(abandoned_usd),
-        abandoned_calls,
+        all_time_usd:       round6(t.all + HISTORICAL_BASELINE_USD),
+        baseline_usd:       HISTORICAL_BASELINE_USD,
+        since_logging_usd:  round6(t.all),
+        all_time_calls:     n.all,
+        attributed_usd:     round6(t.attributed),   attributed_calls:   n.attributed,
+        abandoned_usd:      round6(t.abandoned),    abandoned_calls:    n.abandoned,
+        unattributed_usd:   round6(t.unattributed), unattributed_calls: n.unattributed,
+        tokens,
       },
-      by_day,
-      by_label,
-      by_business,
-      recent,
+      range,
+      by_month_google: out(byMonthG, (a, b) => b.month.localeCompare(a.month)),
+      by_day_google:   out(byDayG, (a, b) => b.day.localeCompare(a.day)).slice(0, 120),
+      by_day:          out(byDay, (a, b) => b.day.localeCompare(a.day)).slice(0, 120),
+      by_label:        out(byLabel, (a, b) => b.usd - a.usd),
+      by_business:     out(byBusiness, (a, b) => b.usd - a.usd).map((b) => ({
+        business_id: b.business_id,
+        business_name: bizById.get(b.business_id)?.name || null,
+        owner_email: bizById.get(b.business_id)?.owner_email || null,
+        usd: b.usd, calls: b.calls,
+      })),
+      recent: all.slice(0, 50),
+      notes: [
+        'cost_usd per call = Google\'s published gemini-3.6-flash rates (api/v6/gemini-pricing.js) × the token counts Google returned for that call; thinking tokens are billed as output.',
+        `Prompt tokens served from Google's cache (billed at a tenth of the input rate) are logged and priced since ${firstCached || 'migration 2026-10-13-admin-console.sql runs'}; before that they were priced at the full input rate, so older costs run slightly high (input is ~19% of total cost).`,
+        'Not counted: Gemini calls made outside this app with the same Google project/key (e.g. AI Studio), and any taxes on Google\'s bill.',
+        'by_day_google / by_month_google / range use Pacific time, like Google\'s billing reports; by_day uses Israel time.',
+      ],
     });
   } catch (err) {
     console.error('[internal:gemini-spend] failed:', err.message);

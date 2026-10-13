@@ -83,8 +83,11 @@ export async function buildTasteContext({ businessId, biz, state, settings, hour
   const [rows, changeRows, replace] = await Promise.all([
     pgrSelect('business_playlists', { business_id: `eq.${businessId}`, event_id: 'is.null', created_at: `gte.${since}` },
       { select: 'spotify_id,label,genres,track_ids,track_genres,expansion,created_at,expires_at', order: 'created_at.desc', limit: 60, useService: true }).catch(() => []),
+    // '*': `source` (2026-10-13) when the column exists. Changes made in the
+    // admin console aren't the owner's, so the chat isn't shown them.
     pgrSelect('business_taste_changes', { business_id: `eq.${businessId}` },
-      { select: 'applied_at,summary_he,ops,undone_at', order: 'applied_at.desc', limit: 8, useService: true }).catch(() => []),
+      { select: '*', order: 'applied_at.desc', limit: 8, useService: true })
+      .then((rs) => (rs || []).filter((c) => c.source !== 'admin')).catch(() => []),
     hours ? replaceStatus({ businessId, hours, now }).catch(() => null) : Promise.resolve(null),
   ]);
   const live = (rows || []).filter((r) => !r.expires_at || Date.parse(r.expires_at) > now.getTime());

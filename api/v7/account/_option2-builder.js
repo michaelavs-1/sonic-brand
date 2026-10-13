@@ -64,6 +64,8 @@ import {
 } from '../../../v7/generation/timeline-assembler.js';
 import { levelEnergyWindow } from '../../../v7/generation/energy-windows.js';
 import { CLOSED_DAY_MINUTES, nextIl4amIso, datedLabel } from '../../../v7/generation/playlist-length.js';
+import { applyOption2Picks } from '../../../v7/generation/daily-picks.js';
+import { readDailyPicks } from './_daily-picks.js';
 
 export const OPTION2_DIRECTION_KEY = 'v7-option2';
 export const OPTION2_TITLES = ['Daily Mix #1', 'Daily Mix #2'];
@@ -142,7 +144,7 @@ export function levelLibrary(rows, genresByLevel) {
 }
 
 const directionsMeta = (picks) => Object.fromEntries([...picks].sort((a, b) => a[0] - b[0])
-  .map(([L, d]) => [L, { id: d.id, title_en: d.title_en, genres: d.genres, energy_range: d.energy_range || null }]));
+  .map(([L, d]) => [L, { id: d.id, title_en: d.title_en, genres: d.genres, energy_range: d.energy_range || null, ...(d.admin_pick ? { admin_pick: true } : {}) }]));
 
 // Which stretch of the day to fill, and the energy curve over it.
 export function planWindow({ hours, timeline, now = new Date(), onDemand = false }) {
@@ -191,13 +193,17 @@ async function callPool({ businessId, specs, inst, pop, excludeDays }) {
 //   → { slots:[{ key, title, tracks }], expiryIso, meta, stats, reason:null }
 export async function planOption2Timeline({ businessId, hours, now = new Date(), onDemand = false }) {
   const inputs = await readInputs(businessId);
-  return planFromInputs({ businessId, hours, now, onDemand, ...inputs });
+  // The admin console's picks for the business day (v7/generation/daily-picks.js).
+  const dailyPicks = await readDailyPicks(businessId, businessWindowAt(hours, now).isoDate, 'option2');
+  return planFromInputs({ businessId, hours, now, onDemand, ...inputs, dailyPicks });
 }
 
 // Same, from explicit inputs (scripts/_v7-option2-dryrun.mjs plans for fixture
 // profiles with this). Read-only: the only DB access is the pool RPC.
 // levelDirections = business_v7_level_directions rows ([] → no library).
-export async function planFromInputs({ businessId, hours, timeline, approved, N, inst = 'none', pop = 'none', levelDirections = [], weights = null, now = new Date(), onDemand = false }) {
+// dailyPicks = the admin's business_v7_daily_picks rows for the day ([] → the
+// usual rotation everywhere; ignored when there's no library).
+export async function planFromInputs({ businessId, hours, timeline, approved, N, inst = 'none', pop = 'none', levelDirections = [], weights = null, dailyPicks = [], now = new Date(), onDemand = false }) {
   N = normLevels(N);
   const genresByLevel = new Map();
   const canonical = new Map();
@@ -218,7 +224,7 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
   // plays every genre of the level).
   const MIXES = OPTION2_TITLES.length;
   const lib = levelLibrary(levelDirections, genresByLevel);
-  const picks = lib ? pickLevelDirections(lib, win.isoDate, MIXES) : null;
+  const picks = lib ? applyOption2Picks(pickLevelDirections(lib, win.isoDate, MIXES), dailyPicks, genresByLevel, lib) : null;
   if (!lib && levelDirections?.length) console.warn(`[v7 option2] biz=${businessId}: stored level directions don't match the taste profile — playing every genre of each level`);
 
   // Pools: one per genre AND energy range. A recipe's songs come from its own

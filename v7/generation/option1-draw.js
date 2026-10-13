@@ -72,16 +72,26 @@ function similarity(a, b, common) {
 export function pickTierPair(pool, rng = Math.random) {
   if (!Array.isArray(pool) || !pool.length) return [];
   if (pool.length === 1) return [pool[0], pool[0]];
+  const first = pool[Math.floor(rng() * pool.length)];
+  return [first, leastAlike(pool, first, rng)];
+}
+
+// The direction of `pool` least like `first` (ties at random), never `first`
+// itself — or, with a genre set equal to it, never one with the same genres
+// (`first` may be a copy from outside the pool: an admin's daily pick,
+// v7/generation/daily-picks.js). A pool with nothing else → `first`.
+export function leastAlike(pool, first, rng = Math.random) {
+  if (!Array.isArray(pool) || !pool.length) return first;
   const lower = (d) => (d.genres || []).map((g) => String(g).toLowerCase());
   const common = new Set(lower(pool[0]).filter((g) => pool.every((d) => lower(d).includes(g))));
-  const first = pool[Math.floor(rng() * pool.length)];
+  const firstKey = lower(first).sort().join('|');
   let best = Infinity;
   let candidates = [];
   for (const d of pool) {
-    if (d === first) continue;
+    if (d === first || lower(d).sort().join('|') === firstKey) continue;
     const s = similarity(first, d, common);
     if (s < best - 1e-9) { best = s; candidates = [d]; }
     else if (Math.abs(s - best) <= 1e-9) candidates.push(d);
   }
-  return [first, candidates[Math.floor(rng() * candidates.length)]];
+  return candidates.length ? candidates[Math.floor(rng() * candidates.length)] : first;
 }

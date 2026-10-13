@@ -1,7 +1,10 @@
 /* Auth guard for /api/internal/* endpoints.
 
-   Michael's forthcoming admin dashboard (host TBD, not part of this repo)
-   is the only intended caller. Auth model: a single shared bearer token
+   Michael's admin dashboard (host TBD, not part of this repo) is the only
+   intended caller. Since 2026-10-13 the API also WRITES (direction edits,
+   daily picks + rebuilds, coupons), so the key is as powerful as the
+   service key for those actions — share it only with people who may make
+   them. Auth model: a single shared bearer token
    in the `INTERNAL_ADMIN_API_KEY` env var, presented as either
      Authorization: Bearer <key>
    or the direct `x-internal-admin-key` header for scripts/curl that don't
@@ -40,7 +43,8 @@ export function setAdminCors(_req, res) {
   // malicious page in the user's browser can't attach the token unless
   // the user pasted it there. See file header comment.
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  // POST / PATCH / DELETE: the admin console's actions (2026-10-13).
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, x-internal-admin-key, Content-Type');
   res.setHeader('Vary', 'Origin');
 }

@@ -360,6 +360,7 @@ export async function buildOneDailyPlaylist({
         genres:         genresList,
         bpm_range:      direction.bpm_range,
         ...(direction.energy_range ? { energy_range: direction.energy_range } : {}),   // v7 Option 1
+        ...(direction.v7_source ? { v7_source: direction.v7_source } : {}),         // v7 Option 1: the library direction played
       },
       // popularityWindow dropped 2026-09-02 — atmosphere-derived popularity
       // window removed; per-direction popularity_preference is the sole

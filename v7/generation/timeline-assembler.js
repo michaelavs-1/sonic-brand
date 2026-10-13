@@ -23,6 +23,20 @@
 // profile a library was built from, so the dashboard can tell whether a
 // stored library still fits.
 //
+// Energy ranges (Roni, 2026-10-13): each level has a range of track energy
+// (v7/generation/energy-windows.js). Every pool track carries a `ring` — how
+// many 5-point steps outside its level's range its energy is (0 = inside,
+// computed by the v7_timeline_pool RPC) — and which side of the range it's on.
+// The genre draw only considers the level's genres whose next track is the
+// most preferred one left: a level uses all its in-range songs, across all
+// its genres, before the range widens, and widens fully before a song from
+// the last 7 days comes back. When it widens, it takes ONE side at a time:
+// the side the curve leans to at that moment (the upper half of the level's
+// row → the slightly more energetic songs, the lower half → the calmer ones),
+// nearest first, and the other side only once that one is used up — so a
+// widened stretch doesn't swing between both edges. With every ring 0 (no
+// ranges) the draw is exactly the one described above.
+//
 // Randomness comes only from the injected `rng` — tests pass a seeded
 // mulberry32; the builder seeds from a random UUID and stores the seed.
 //
@@ -178,41 +192,73 @@ function pickGenre(cands, remaining, rng) {
 //   genresByLevel    Map<level, genre[]>   (taste profile's approved genres),
 //                    or an array of such Maps, one per mix (today's level
 //                    directions — mix k only plays genres from its own Map)
-//   pools            Map<genre, [{ id, sec }]> in preference order (fresh
-//                    tracks first, recently-served refill after) — already
-//                    shuffled by the caller
-//   → { mixes: [{ tracks: [{ id, genre, level, startMin, sec }], endMin }],
-//       stats: { short, nullDurations, levelFallbacks } }
+//   pools            Map<genre, [{ id, sec, energy?, ring?, side?, refill? }]>
+//                    shuffled by the caller. ring = 5-point steps outside the
+//                    level's energy range (missing = 0 = inside); side = -1
+//                    below the range / 1 above it; refill = recently served.
+//   → { mixes: [{ tracks: [{ id, genre, level, startMin, sec, energy }], endMin }],
+//       stats: { short, nullDurations, levelFallbacks, widened, repeats } }
 //   (levelFallbacks = tracks placed at a nearby level because the curve's
-//   own level had nothing left for that mix)
+//   own level had nothing left for that mix; widened = fresh tracks from
+//   outside their level's energy range; repeats = refill tracks)
 export function assembleMixes({
   startMin, endMin, energyAt, N, genresByLevel, pools, rng,
   mixes = 2, defaultSec = DEFAULT_TRACK_SEC, maxTracks = MAX_TRACKS_PER_MIX,
 }) {
   const n = normLevels(N);
   const used = new Set();
-  const ptr = new Map();
-  const skipUsed = (g) => {
-    const list = pools.get(g) || [];
-    let i = ptr.get(g) || 0;
-    while (i < list.length && used.has(list[i].id)) i++;
-    ptr.set(g, i);
-    return i;
+  const ringOf = (t) => Number(t?.ring) || 0;
+  // Each genre's tracks in queues: fresh / refill × inside the range / below
+  // it / above it / outside with no known side; each queue in ring order
+  // (stable, so a ring keeps the caller's shuffle).
+  const sideOf = (t) => (ringOf(t) === 0 ? 'in' : t.side < 0 ? 'below' : t.side > 0 ? 'above' : 'unknown');
+  const queues = new Map();
+  for (const [g, list] of pools) {
+    const byKey = new Map();
+    for (const t of list) {
+      const tier = t.refill ? 1 : 0;
+      const side = sideOf(t);
+      const key = `${tier}|${side}`;
+      if (!byKey.has(key)) byKey.set(key, { tier, side, list: [], ptr: 0 });
+      byKey.get(key).list.push(t);
+    }
+    for (const q of byKey.values()) q.list.sort((a, b) => ringOf(a) - ringOf(b));
+    queues.set(g, [...byKey.values()]);
+  }
+  const head = (q) => {
+    while (q.ptr < q.list.length && used.has(q.list[q.ptr].id)) q.ptr++;
+    return q.ptr < q.list.length ? q.list[q.ptr] : null;
   };
-  const remaining = (g) => (pools.get(g) || []).length - skipUsed(g);
-  const next = (g) => {
-    const i = skipUsed(g);
-    const list = pools.get(g) || [];
-    if (i >= list.length) return null;
-    ptr.set(g, i + 1);
-    return list[i];
+  const remaining = (g) => (queues.get(g) || []).reduce((sum, q) => (head(q), sum + q.list.length - q.ptr), 0);
+  // Preference of a queue's next track: fresh before refill; inside the range,
+  // then the side the curve leans to (`pref`: 1 = above, -1 = below), then the
+  // other side, then no known side; then the nearer ring.
+  const rank = (side, pref) => (side === 'in' ? 0 : side === (pref > 0 ? 'above' : 'below') ? 1 : side === 'unknown' ? 3 : 2);
+  const keyOf = (q, pref) => [q.tier, rank(q.side, pref), ringOf(head(q))];
+  const cmp = (a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+  const bestQueue = (g, pref) => {
+    let best = null;
+    for (const q of queues.get(g) || []) {
+      if (!head(q)) continue;
+      const key = keyOf(q, pref);
+      if (!best || cmp(key, best.key) < 0) best = { q, key };
+    }
+    return best;
+  };
+  // How many tracks follow the queue's next one at the same ring (= the whole
+  // pool when nothing has a ring).
+  const atHead = (q) => {
+    const r = ringOf(head(q));
+    let j = q.ptr;
+    while (j < q.list.length && ringOf(q.list[j]) === r) j++;
+    return j - q.ptr;
   };
   const mapFor = (k) => (Array.isArray(genresByLevel) ? genresByLevel[k] || genresByLevel[0] : genresByLevel);
   const levelGenres = (L, k) => (mapFor(k).get(L) || []).filter((g) => remaining(g) > 0);
   const availableFor = (k) => (L) => levelGenres(L, k).length > 0;
 
   const state = Array.from({ length: mixes }, () => ({ cursor: startMin, tracks: [], done: false }));
-  const stats = { short: false, nullDurations: 0, levelFallbacks: 0 };
+  const stats = { short: false, nullDurations: 0, levelFallbacks: 0, widened: 0, repeats: 0 };
 
   for (;;) {
     let k = -1;
@@ -229,15 +275,33 @@ export function assembleMixes({
 
     if (L !== levelOf(e, n)) stats.levelFallbacks++;
 
-    // effectiveLevel only returns a level with tracks left, so `next` finds one.
-    const genre = pickGenre(levelGenres(L, k), remaining, rng);
-    const t = next(genre);
+    // When the range has to widen, take the side the curve leans to: the
+    // upper half of level L's row → slightly more energetic songs, the lower
+    // half → slightly calmer ones (a fallback level above the curve → calmer,
+    // below it → more energetic).
+    const pref = e * n >= L - 0.5 ? 1 : -1;
+    // effectiveLevel only returns a level with tracks left, so every genre
+    // here has a queue. Only the genres whose best next track ties for the
+    // most preferred take part in the draw.
+    const best = new Map(levelGenres(L, k).map((g) => [g, bestQueue(g, pref)]));
+    let top = null;
+    for (const b of best.values()) if (!top || cmp(b.key, top) < 0) top = b.key;
+    const cands = [...best].filter(([, b]) => cmp(b.key, top) === 0).map(([g]) => g);
+    const genre = pickGenre(cands, (g) => atHead(best.get(g).q), rng);
+    const q = best.get(genre).q;
+    const t = head(q);
+    q.ptr++;
     used.add(t.id);
+    if (t.refill) stats.repeats++;
+    else if (ringOf(t) > 0) stats.widened++;
     let sec = Number(t.sec);
     if (!Number.isFinite(sec) || sec <= 0) { sec = defaultSec; stats.nullDurations++; }
     // floor, not round: a track starting at 1049.997 must not be recorded
     // at 1050 (= the window's end).
-    s.tracks.push({ id: t.id, genre, level: L, startMin: Math.floor(s.cursor * 100) / 100, sec });
+    s.tracks.push({
+      id: t.id, genre, level: L, startMin: Math.floor(s.cursor * 100) / 100, sec,
+      energy: t.energy == null ? null : Number(t.energy),
+    });
     s.cursor += sec / 60;
   }
 

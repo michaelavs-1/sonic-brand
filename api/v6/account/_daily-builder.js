@@ -80,10 +80,35 @@ export async function activeDirections(businessId) {
 
 // -------- Supabase RPC + Spotify helpers --------
 
+// Missing function / parameter list (migration not run yet) → PostgREST 404 PGRST202.
+const isMissingRpc = (e) => e?.status === 404 || /PGRST202|Could not find the function/i.test(e?.message || '');
+
+// v6_direction_tracks_recent, with the direction's energy range when it has
+// one. v7 Option 1 directions carry energy_range {min, max} (2026-10-13,
+// v7/generation/energy-windows.js): the RPC takes songs inside it first and
+// widens it by 5 on each side only as far as the pool needs. v6 directions
+// carry none. If the RPC doesn't take the range yet (migration
+// 2026-10-13-v7-energy-windows.sql not run), build without it — loudly.
+async function directionTracksRpc(args, direction) {
+  const er = direction.energy_range;
+  if (er && Number.isFinite(Number(er.min)) && Number.isFinite(Number(er.max))) {
+    try {
+      return await pgrRpc('v6_direction_tracks_recent', {
+        ...args, p_energy_lo: Math.round(er.min), p_energy_hi: Math.round(er.max),
+      }, { useService: true });
+    } catch (e) {
+      if (!isMissingRpc(e)) throw e;
+      console.error('[daily-builder] v6_direction_tracks_recent takes no energy range — run migration 2026-10-13-v7-energy-windows.sql. Building without it.');
+    }
+  }
+  return pgrRpc('v6_direction_tracks_recent', args, { useService: true });
+}
+
 // Fetch `target` unique spotify_ids for one (business, direction), avoiding
 // tracks served to that same pair within DEDUP_WINDOW_DAYS. If the filtered
 // pool comes back short (narrow direction / small track catalogue), refill
-// from the full pool so the playlist still reaches target length.
+// from the full pool so the playlist still reaches target length. With an
+// energy range, the range widens before any recently served track comes in.
 export async function fetchTracksWithHistory({ businessId, direction, target }) {
   const key = directionKey(direction);
   const genres = Array.isArray(direction.genres) && direction.genres.length
@@ -124,9 +149,9 @@ export async function fetchTracksWithHistory({ businessId, direction, target }) 
   // statement_timeout) — for expand-playlist growing to ~120 tracks the
   // ORDER BY random() + LIMIT reliably tripped 3s and the strict one-time
   // onboardingExpanded flag left playlists stuck at their sample size.
-  const primary = await pgrRpc('v6_direction_tracks_recent', {
+  const primary = await directionTracksRpc({
     ...baseArgs, p_limit: target, p_exclude_days: DEDUP_WINDOW_DAYS,
-  }, { useService: true });
+  }, direction);
   const ids = (primary || []).map((r) => r.spotify_id).filter(Boolean);
 
   // Pool-shortage fallback: refill from the full pool. Ask for extra so we
@@ -136,9 +161,9 @@ export async function fetchTracksWithHistory({ businessId, direction, target }) 
   if (ids.length < target) {
     const seen = new Set(ids);
     const need = target - ids.length;
-    const fill = await pgrRpc('v6_direction_tracks_recent', {
+    const fill = await directionTracksRpc({
       ...baseArgs, p_limit: (need + ids.length) * 2, p_exclude_days: 0,
-    }, { useService: true });
+    }, direction);
     for (const r of (fill || [])) {
       if (r?.spotify_id && !seen.has(r.spotify_id)) {
         ids.push(r.spotify_id);
@@ -325,6 +350,7 @@ export async function buildOneDailyPlaylist({
         description_he: direction.description_he,
         genres:         genresList,
         bpm_range:      direction.bpm_range,
+        ...(direction.energy_range ? { energy_range: direction.energy_range } : {}),   // v7 Option 1
       },
       // popularityWindow dropped 2026-09-02 — atmosphere-derived popularity
       // window removed; per-direction popularity_preference is the sole

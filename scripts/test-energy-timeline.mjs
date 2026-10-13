@@ -411,6 +411,99 @@ test('assembler: per-mix level fallback when a mix has nothing at a level', () =
   assert.ok(mixes[1].tracks.some((t) => t.level === 2));
 });
 
+// ---- energy rings (2026-10-13) ----
+// Pools the way the builder hands them over: each block shuffled. Entries are
+// [ring, count, { side, refill }]; the id records them all.
+function ringPools(spec, seed) {
+  const r = mulberry32(seed);
+  const pools = new Map();
+  for (const [g, blocks] of Object.entries(spec)) {
+    const list = [];
+    for (const [ring, count, { side = 0, refill = false } = {}] of blocks) {
+      const tag = `${refill ? 'p' : 'f'}${ring}${side > 0 ? 'a' : side < 0 ? 'b' : ''}`;
+      const block = Array.from({ length: count }, (_, i) => ({
+        id: `${g}-${tag}-${i}`, sec: 170 + Math.floor(r() * 140), ring, side, energy: 40 + ring,
+        ...(refill ? { refill: true } : {}),
+      }));
+      list.push(...shuffle(block, r));
+    }
+    pools.set(g, list);
+  }
+  return pools;
+}
+const tagOf = (id) => {
+  const [, refill, ring, side] = /-([fp])(\d+)([ab]?)-/.exec(id);
+  return { refill: refill === 'p', ring: Number(ring), side: side === 'a' ? 1 : side === 'b' ? -1 : 0 };
+};
+const ringOf = (id) => tagOf(id).ring;
+const orderOf = (id) => (tagOf(id).refill ? 1000 : 0) + tagOf(id).ring;
+const ascending = (xs) => xs.every((x, i) => i === 0 || x >= xs[i - 1]);
+const FLAT = energyAtFn([{ m: 540, e: .2 }, { m: 1020, e: .2 }]);   // level 1 all day (N=3)
+
+test('assembler: a level uses every in-range song, across its genres, before widening', () => {
+  // A has few in-range songs, B many. ~110 tracks needed over both mixes, 165 available.
+  const pools = ringPools({ A: [[0, 5], [1, 60]], B: [[0, 40], [1, 60]] }, 3);
+  const { mixes, stats } = assembleMixes(base({ endMin: 770, energyAt: FLAT, genresByLevel: new Map([[1, ['A', 'B']]]), pools }));
+  const placed = mixes.flatMap((m) => m.tracks);
+  assert.ok(placed.length < 165 && placed.length > 60, `placed ${placed.length}`);
+  assert.equal(stats.short, false);
+  const inRange = placed.filter((t) => ringOf(t.id) === 0);
+  assert.equal(inRange.length, 45, 'all 45 in-range songs used');
+  for (const m of mixes) assert.ok(ascending(m.tracks.map((t) => ringOf(t.id))), 'never back inside the range after widening');
+  assert.equal(stats.widened, placed.length - 45);
+  assert.equal(stats.repeats, 0);
+  assert.ok(placed.every((t) => t.energy === 40 + ringOf(t.id)), 'energy carried through');
+});
+
+test('assembler: the range widens fully before recently served songs come back', () => {
+  const pools = ringPools({ A: [[0, 20], [2, 20], [0, 200, { refill: true }]], B: [[1, 20], [1, 200, { refill: true }]] }, 4);
+  const { mixes, stats } = assembleMixes(base({ energyAt: FLAT, genresByLevel: new Map([[1, ['A', 'B']]]), pools }));
+  const placed = mixes.flatMap((m) => m.tracks);
+  assert.equal(placed.filter((t) => !tagOf(t.id).refill).length, 60, 'every fresh song used');
+  assert.equal(stats.widened, 40);
+  assert.equal(stats.repeats, placed.length - 60);
+  for (const m of mixes) assert.ok(ascending(m.tracks.map((t) => orderOf(t.id))), 'ring order 0 → 1 → 2, then the refill');
+});
+
+test('assembler: a widened stretch takes the side the curve leans to, nearest first', () => {
+  // N=2, level 1 = the lower half of the scale. The curve rises through it:
+  // below its middle (e < .25) the calmer side, above it the more energetic one.
+  const RISING = energyAtFn([{ m: 540, e: .02 }, { m: 1050, e: .48 }]);
+  const pools = ringPools({
+    A: [[0, 5], [1, 200, { side: -1 }], [1, 200, { side: 1 }]],
+    B: [[0, 5], [2, 100, { side: -1 }], [2, 100, { side: 1 }]],
+  }, 5);
+  const { mixes, stats } = assembleMixes(base({ N: 2, energyAt: RISING, genresByLevel: new Map([[1, ['A', 'B']]]), pools }));
+  const placed = mixes.flatMap((m) => m.tracks);
+  assert.equal(placed.filter((t) => ringOf(t.id) === 0).length, 10, 'in-range songs first');
+  const widened = placed.filter((t) => ringOf(t.id) > 0);
+  assert.equal(widened.length, stats.widened);
+  for (const t of widened) {
+    const pref = RISING(t.startMin + 2) * 2 >= .5 ? 1 : -1;
+    assert.equal(tagOf(t.id).side, pref, `${t.id} at ${fmtHM(t.startMin)}`);
+    assert.equal(ringOf(t.id), 1, 'the nearer songs before the farther ones');
+  }
+  assert.ok(widened.some((t) => tagOf(t.id).side < 0) && widened.some((t) => tagOf(t.id).side > 0), 'both halves of the day');
+
+  // The preferred side runs out → the other side, never back.
+  const HIGH = energyAtFn([{ m: 540, e: .45 }, { m: 1020, e: .45 }]);   // upper half of level 1 → more energetic
+  const few = ringPools({ A: [[0, 2], [1, 3, { side: 1 }], [1, 300, { side: -1 }]] }, 6);
+  const r = assembleMixes(base({ N: 2, energyAt: HIGH, genresByLevel: new Map([[1, ['A']]]), pools: few, mixes: 1 }));
+  const sides = r.mixes[0].tracks.map((t) => (ringOf(t.id) === 0 ? 'in' : tagOf(t.id).side > 0 ? 'above' : 'below'));
+  assert.deepEqual(sides.slice(0, 5), ['in', 'in', 'above', 'above', 'above']);
+  assert.ok(sides.slice(5).every((x) => x === 'below'));
+});
+
+test('assembler: no rings = the old draw, track for track', () => {
+  const plain = synthPools(['A', 'B', 'C', 'D', 'E', 'F'], 150, 7);
+  const zero = new Map([...plain].map(([g, list]) => [g, list.map((t) => ({ ...t, ring: 0 }))]));
+  const a = assembleMixes(base({ pools: plain }));
+  const b = assembleMixes(base({ pools: zero }));
+  assert.deepEqual(a.mixes.map((m) => m.tracks.map((t) => t.id)), b.mixes.map((m) => m.tracks.map((t) => t.id)));
+  assert.equal(a.stats.widened, 0);
+  assert.equal(a.stats.repeats, 0);
+});
+
 test('estimateDemandPerMix: per-mix demand merged per genre', () => {
   const perMix = [new Map([[1, ['A']], [2, ['C']], [3, ['E']]]), new Map([[1, ['B']], [2, ['C']], [3, ['F']]])];
   const { specs, minsByLevelPerMix } = estimateDemandPerMix({ startMin: 540, endMin: 1050, energyAt: CURVE, N: 3, genresByLevelPerMix: perMix });

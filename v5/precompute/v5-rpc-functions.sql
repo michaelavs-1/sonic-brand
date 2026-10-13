@@ -313,12 +313,20 @@ ALTER TABLE v6_daily_track_history ENABLE ROW LEVEL SECURITY;
 -- semantics as v5_direction_tracks — hard OVERRIDES popularity window to
 -- [60,100], soft biases hits (popularity >= 60) via ORDER BY, none unchanged.
 -- The 60 is 45 for Israeli genres since 2026-10-11 (hit_popularity_floor).
+--
+-- p_energy_lo / p_energy_hi (added 2026-10-13, v7 Option 1): an energy range
+-- (track_analyses.energy, 0-100). Tracks inside it come first, then the ones
+-- at most 5 outside it, then 10, and so on — the range widens only as far as
+-- the pool needs. NULL (the default) = no range. See migration
+-- 2026-10-13-v7-energy-windows.sql.
 
 -- Drop prior signature so re-runs don't leave orphaned overloads (same
 -- reason as v5_direction_tracks above — CREATE OR REPLACE only replaces
 -- on exact signature match).
 DROP FUNCTION IF EXISTS v6_direction_tracks_recent(text[], int, int, int, int, int, uuid, text, int, text);
 -- 2026-09-02: previous signature — added p_pop_pref after p_inst_pref.
+DROP FUNCTION IF EXISTS v6_direction_tracks_recent(text[], int, int, int, int, int, uuid, text, int, text, text);
+-- 2026-10-13: previous signature — added p_energy_lo / p_energy_hi after p_pop_pref.
 
 CREATE OR REPLACE FUNCTION v6_direction_tracks_recent(
     p_genres        text[],
@@ -331,7 +339,9 @@ CREATE OR REPLACE FUNCTION v6_direction_tracks_recent(
     p_direction_key text,
     p_exclude_days  int  DEFAULT 7,
     p_inst_pref     text DEFAULT 'none',
-    p_pop_pref      text DEFAULT 'none'
+    p_pop_pref      text DEFAULT 'none',
+    p_energy_lo     int  DEFAULT NULL,
+    p_energy_hi     int  DEFAULT NULL
 ) RETURNS TABLE (
     spotify_id text
 )
@@ -341,6 +351,7 @@ AS $$
         SELECT
             ta.spotify_id,
             ta.instrumentalness,
+            ta.energy,
             bool_or(coalesce(ta.popularity, 0) >= hit_popularity_floor(pg.genre)) AS is_hit
         FROM playlist_genres pg
         JOIN playlist_tracks pt ON pt.playlist_id = pg.playlist_id
@@ -365,11 +376,17 @@ AS $$
                     AND h.served_at > now() - (p_exclude_days || ' days')::interval
               )
           )
-        GROUP BY ta.spotify_id, ta.instrumentalness
+        GROUP BY ta.spotify_id, ta.instrumentalness, ta.energy
     )
     SELECT spotify_id
     FROM candidates
     ORDER BY
+      -- Energy ring: 5-point steps outside [p_energy_lo, p_energy_hi].
+      (CASE
+         WHEN p_energy_lo IS NULL OR p_energy_hi IS NULL THEN 0
+         WHEN energy IS NULL THEN 999
+         ELSE ceil(greatest(p_energy_lo - energy, energy - p_energy_hi, 0) / 5.0)::int
+       END),
       (p_inst_pref = 'soft' AND coalesce(instrumentalness, 0) < 85)::int,
       (p_pop_pref  = 'soft' AND NOT is_hit)::int,
       random()

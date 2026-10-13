@@ -19,7 +19,8 @@
        energy_tier, and fills the 4 fixed names ("אנרגיה גבוהה #1/#2",
        "אנרגיה רגועה #1/#2") with 2 directions per tier — the first random,
        the second the least like it, re-drawn every build/day (pickTierPair).
-       The tier's requested genres go into both. Half-day target each.
+       The tier's requested genres go into both. Half-day target each. Songs
+       from the tier's energy range (high 50–80, low 20–50).
        → { directions, target, expiryIso, labelDate, reason }  (directions [] +
          reason when there's nothing to build; labelDate = the business day
          for the dated dashboard names)
@@ -56,7 +57,8 @@
 
    v7 emits no tempo axis, so every direction carries a wide-open
    bpm_range:{min:0,max:300} (v6_direction_tracks_recent requires one);
-   popularity/instrumentalness prefs (from the taste profile) do the narrowing.
+   popularity/instrumentalness prefs (from the taste profile) and Option 1's
+   energy range per tier (energy_range, 2026-10-13) do the narrowing.
    Bare imports only — this module is server-reachable.
 */
 
@@ -75,6 +77,7 @@ import {
 } from '../../../v7/generation/playlist-length.js';
 import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
 import { pickTierPair, requestedByTier, withRequested } from '../../../v7/generation/option1-draw.js';
+import { option1EnergyWindow } from '../../../v7/generation/energy-windows.js';
 
 const PREF_SET = new Set(['none', 'soft', 'hard']);
 const normPref = (v) => (PREF_SET.has(v) ? v : 'none');
@@ -134,10 +137,11 @@ const tierPlaylistName = (tier, n) => `${TIER_NAME_HE[tier] || 'פלייליסט
 
 // Shape a business_v7_directions row into the v6-style direction object
 // buildOneDailyPlaylist/fetchTracksWithHistory expect. id:null (FK), wide-open
-// bpm_range, prefs from the taste profile. `name` is the owner-facing label;
-// it rides in the v6 builder's `title_en` slot, which becomes the dashboard
-// row label (business_playlists.label) and the Spotify playlist title/description.
-function shapeV7Direction(d, name, inst_pref, pop_pref) {
+// bpm_range, prefs from the taste profile, the tier's energy range. `name` is
+// the owner-facing label; it rides in the v6 builder's `title_en` slot, which
+// becomes the dashboard row label (business_playlists.label) and the Spotify
+// playlist title/description.
+function shapeV7Direction(d, name, inst_pref, pop_pref, energy_range) {
   return {
     id: null,
     title_en: name,
@@ -146,6 +150,7 @@ function shapeV7Direction(d, name, inst_pref, pop_pref) {
     bpm_range: { min: 0, max: 300 },
     instrumentalness_preference: inst_pref,
     popularity_preference: pop_pref,
+    energy_range,
   };
 }
 
@@ -264,13 +269,16 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   //    playlists (withRequested — the library already has them; this covers
   //    libraries built before the rule). The TRACKS inside each direction also
   //    rotate day to day (fetchTracksWithHistory's random draw + 7-day dedup).
+  //    Each tier's songs come from its energy range (high 50–80, low 20–50,
+  //    v7/generation/energy-windows.js), widened by 5 on each side only when
+  //    the range is short of songs.
   const high = pickTierPair(highTier);
   const low  = pickTierPair(lowTier);
   if (!high.length && !low.length) return EMPTY('no-directions');
 
   const shape = (tier) => (d, i) => shapeV7Direction(
     { ...d, genres: withRequested(d.genres, requested[tier]) },
-    tierPlaylistName(tier, i + 1), inst_pref, pop_pref);
+    tierPlaylistName(tier, i + 1), inst_pref, pop_pref, option1EnergyWindow(tier));
   const directions = [...high.map(shape('high')), ...low.map(shape('low'))];
 
   // 4. Per-playlist length (Roni's spec, 2026-09-24): HALF the day's opening

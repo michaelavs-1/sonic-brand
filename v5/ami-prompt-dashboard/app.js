@@ -58,7 +58,7 @@ import {
   normalizeTasteProfile,
 } from '/v7/generation/taste-profile.js?v=05102026a';
 import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=20092026a';
-import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=05102026a';
+import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=13102026a';
 import { renderTestPlaylists } from './test-playlists.js?v=30092026b';
 
 // Match v6 production. Gemini 3.6-flash's hard output-token cap is 65536;

@@ -31,10 +31,17 @@
         — random tracks per genre with durations, sized from the curve,
         excluding tracks served to this business in the last 7 days; wider
         sample for short genres; recently-served refill for levels still short.
+        Energy ranges (2026-10-13, migration 2026-10-13-v7-energy-windows.sql):
+        each genre's songs come from its level's range
+        (v7/generation/energy-windows.js); every row carries its `ring` =
+        5-point steps outside the range, and a genre short of in-range songs
+        gets the wider sample too.
      5. Assembly: v7/generation/timeline-assembler.js — tracks end to end by
         duration, each track's genre drawn at random from the mix's genres
         at that level (the day's direction; no genre runs since
-        2026-09-28), two disjoint mixes. Seeded RNG; the seed and each mix's directions are
+        2026-09-28), in-range songs first across the level's genres, then
+        the range widens, then recently served songs; two disjoint mixes.
+        Seeded RNG; the seed, the energy ranges and each mix's directions are
         stored on the row (expansion.v7_timeline).
      6. Each mix → Spotify create + add (v6 spotifyCall / addAllTracks: same
         retry + spotify_paused handling), history (direction_key
@@ -55,6 +62,7 @@ import {
   estimateDemand, estimateDemandPerMix, assembleMixes, pickLevelDirections, dayNumber,
   mulberry32, seedFrom, shuffle, DEFAULT_TRACK_SEC,
 } from '../../../v7/generation/timeline-assembler.js';
+import { levelEnergyWindow } from '../../../v7/generation/energy-windows.js';
 import { CLOSED_DAY_MINUTES, nextIl4amIso, datedLabel } from '../../../v7/generation/playlist-length.js';
 
 export const OPTION2_DIRECTION_KEY = 'v7-option2';
@@ -164,7 +172,7 @@ async function callPool({ businessId, specs, inst, pop, excludeDays }) {
   if (!specs.length) return [];
   return await pgrRpc('v7_timeline_pool', {
     p_biz_id: businessId,
-    p_specs: specs.map(({ genre, n, playlists }) => ({ genre, n, playlists })),
+    p_specs: specs.map(({ genre, n, playlists, lo, hi }) => ({ genre, n, playlists, lo, hi })),
     p_inst_pref: inst,
     p_pop_pref: pop,
     p_exclude_days: excludeDays,
@@ -214,7 +222,19 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
     ? estimateDemandPerMix({ ...demandArgs, genresByLevelPerMix: perMix })
     : estimateDemand({ ...demandArgs, genresByLevel, mixes: MIXES });
 
-  // Tier 1 + tier 2 (wider playlist sample for genres that came back short).
+  // Each genre's songs come from its level's energy range. The range rules out
+  // many of a sampled playlist's tracks, so twice as many playlists are sampled.
+  const windows = new Map([...genresByLevel.keys()].map((L) => [L, levelEnergyWindow(L, N)]));
+  for (const s of specs) {
+    const w = windows.get(s.level);
+    if (!w) continue;
+    s.lo = w.min;
+    s.hi = w.max;
+    s.playlists = Math.min(200, s.playlists * 2);
+  }
+
+  // Tier 1 + tier 2 (wider playlist sample for genres that came back short
+  // of in-range songs).
   const t0 = Date.now();
   let fresh;
   try {
@@ -226,16 +246,34 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
     }
     throw e;
   }
+  if (fresh.length && !('ring' in fresh[0])) {
+    console.error('[v7 option2] v7_timeline_pool returns no energy ring — run migration 2026-10-13-v7-energy-windows.sql. Building without the energy ranges.');
+  }
+  // Which side of its genre's range a track is on (-1 below, 1 above, 0 inside
+  // or unknown) — the assembler widens one side at a time.
+  const genreWindow = new Map();
+  for (const [L, genres] of genresByLevel) for (const g of genres) genreWindow.set(g, windows.get(L));
+  const sideOf = (g, energy) => {
+    const w = genreWindow.get(g);
+    if (energy == null || !w) return 0;
+    return energy < w.min ? -1 : energy > w.max ? 1 : 0;
+  };
   const byGenre = new Map([...canonical.values()].map((g) => [g, new Map()]));
   const add = (rows, into) => {
     for (const r of rows) {
       const g = canonical.get(String(r.genre).toLowerCase());
       if (!g || into.get(g)?.has(r.spotify_id)) continue;
-      into.get(g).set(r.spotify_id, { id: r.spotify_id, sec: r.duration_sec });
+      const energy = r.energy ?? null;
+      into.get(g).set(r.spotify_id, { id: r.spotify_id, sec: r.duration_sec, energy, ring: Number(r.ring) || 0, side: sideOf(g, energy) });
     }
   };
   add(fresh, byGenre);
-  const short = specs.filter((s) => (byGenre.get(s.genre)?.size || 0) < s.n);
+  const inRange = (g) => {
+    let n = 0;
+    for (const t of byGenre.get(g)?.values() || []) if (!t.ring) n++;
+    return n;
+  };
+  const short = specs.filter((s) => inRange(s.genre) < s.n);
   if (short.length) {
     add(await callPool({ businessId, specs: short.map((s) => ({ ...s, playlists: 200 })), inst, pop, excludeDays: EXCLUDE_DAYS }), byGenre);
   }
@@ -277,11 +315,14 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
 
   const seed = randomUUID();
   const rng = mulberry32(seedFrom(seed));
+  // Each genre's pool: the fresh tracks, then the refill (flagged; the
+  // assembler orders by range, side and ring itself).
   const pools = new Map();
   for (const g of canonical.values()) {
     const freshList = shuffle([...byGenre.get(g).values()], rng);
     const freshIds = new Set(freshList.map((t) => t.id));
-    const refillList = shuffle([...refill.get(g).values()].filter((t) => !freshIds.has(t.id)), rng);
+    const refillList = shuffle([...refill.get(g).values()].filter((t) => !freshIds.has(t.id)), rng)
+      .map((t) => ({ ...t, refill: true }));
     pools.set(g, [...freshList, ...refillList]);
   }
 
@@ -301,6 +342,8 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
     levels_total: N,
     window: [Math.round(win.startMin), Math.round(win.endMin)],
     seed,
+    // Each level's energy range [min, max] (2026-10-13).
+    energy_windows: Object.fromEntries([...windows].sort((a, b) => a[0] - b[0]).map(([L, w]) => [L, [w.min, w.max]])),
     // 'level-directions' = each mix played one direction per level (each
     // slot's meta.directions); 'level-genres' = no library, every genre of
     // the level.
@@ -362,6 +405,7 @@ export async function createTimelineMix({ origin, ownerId, businessId, bizName, 
         starts: tracks.map((t) => t.startMin),
         levels: tracks.map((t) => t.level),
         run_genres: tracks.map((t) => t.genre),   // each track's genre (name kept from the genre-runs era)
+        energies: tracks.map((t) => t.energy ?? null),
       },
     },
     event_id: null,

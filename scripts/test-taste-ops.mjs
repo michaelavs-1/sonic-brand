@@ -4,8 +4,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  stateFromRows, applyOps, stateToRows, snapshotOf, stateFromSnapshot, snapWeight, rangeOf,
+  stateFromRows, applyOps, stateToRows, snapshotOf, stateFromSnapshot, snapWeight, rangeOf, popularityOfTier,
 } from '../v7/generation/taste-ops.js';
+import { tierPopularity } from '../v7/generation/option1-draw.js';
 import {
   buildTasteChatSystemPrompt, formatTasteContext, normalizeTasteReply,
 } from '../v7/generation/taste-chat-prompt.js';
@@ -212,4 +213,51 @@ test('context helpers: song playing at a time, genre shares', () => {
   assert.equal(songAt([540, 544, 548], 600, 600), -1);
   const shares = playedShares([{ track_ids: ['a', 'b', 'c', 'd'], track_genres: { a: ['Funk'], b: ['Funk', 'Disco'], c: ['Disco'], d: [] } }]);
   assert.deepEqual(shares.map((x) => [x.genre, Math.round(x.share * 100)]), [['Funk', 50], ['Disco', 50]]);
+});
+
+test('well-known songs per tier (Option 1); whole account clears tiers; Option 2 takes no tier', () => {
+  const s = opt1();   // popularity_preference 'soft'
+  assert.equal(s.popTiers, null);
+  const hi = applyOps(s, [{ op: 'set_pref', field: 'popularity', value: 'hard', tier: 'high' }]);
+  assert.equal(hi.changed, true);
+  assert.deepEqual(hi.state.popTiers, { high: 'hard', low: 'soft' });
+  assert.equal(hi.state.pop, 'soft', 'the account value stays');
+  assert.equal(popularityOfTier(hi.state, 'high'), 'hard');
+  assert.equal(popularityOfTier(hi.state, 'low'), 'soft');
+  assert.deepEqual(stateToRows(hi.state, 'biz').profile.popularity_tiers, { high: 'hard', low: 'soft' });
+  // the other tier the same → folds back into the account value
+  const both = applyOps(hi.state, [{ op: 'set_pref', field: 'popularity', value: 'hard', tier: 'low' }]).state;
+  assert.equal(both.popTiers, null);
+  assert.equal(both.pop, 'hard');
+  assert.equal(stateToRows(both, 'biz').profile.popularity_tiers, null);
+  // no tier = all four, and the per-tier values go
+  const all = applyOps(hi.state, [{ op: 'set_pref', field: 'popularity', value: 'none' }]).state;
+  assert.equal(all.popTiers, null);
+  assert.equal(all.pop, 'none');
+  // bad tiers, a tier on instrumentalness, a tier in Option 2 → dropped
+  assert.equal(applyOps(s, [{ op: 'set_pref', field: 'popularity', value: 'hard', tier: 'evening' }]).dropped.length, 1);
+  assert.equal(applyOps(s, [{ op: 'set_pref', field: 'instrumentalness', value: 'hard', tier: 'high' }]).dropped.length, 1);
+  assert.equal(applyOps(opt2(), [{ op: 'set_pref', field: 'popularity', value: 'hard', tier: 'high' }]).dropped.length, 1);
+  assert.equal(applyOps(opt2(), [{ op: 'set_pref', field: 'popularity', value: 'hard' }]).state.pop, 'hard');
+  // stored rows: equal tiers read as none; a missing tier follows the account
+  const read = (t) => stateFromRows({ mode: 'option1', profile: { ...PROFILE, popularity_tiers: t }, option1Rows: OPT1_ROWS }).popTiers;
+  assert.equal(read({ high: 'soft', low: 'soft' }), null);
+  assert.deepEqual(read({ high: 'hard' }), { high: 'hard', low: 'soft' });
+  assert.equal(read('junk'), null);
+  // undo of a change logged before popTiers existed → no per-tier values
+  const { popTiers, ...oldSnap } = snapshotOf(s);
+  assert.equal(stateFromSnapshot(hi.state, oldSnap).popTiers, null);
+  assert.deepEqual(stateFromSnapshot(s, snapshotOf(hi.state)).popTiers, { high: 'hard', low: 'soft' });
+  // the builders' helper
+  assert.equal(tierPopularity('soft', { high: 'hard', low: 'none' }, 'low'), 'none');
+  assert.equal(tierPopularity('soft', null, 'high'), 'soft');
+  assert.equal(tierPopularity(undefined, { high: 'junk' }, 'high'), 'none');
+  // prompt + context
+  assert.ok(buildTasteChatSystemPrompt('option1').includes('"tier":"high"}   (popularity only'));
+  assert.ok(!buildTasteChatSystemPrompt('option2').includes('(popularity only'));
+  for (const mode of ['option1', 'option2']) assert.ok(buildTasteChatSystemPrompt(mode).includes('## Aim to please'));
+  const line = (st) => formatTasteContext({ state: st, business: {}, now: {} }).match(/Well-known songs: [^\n]*/)[0];
+  assert.equal(line(hi.state), 'Well-known songs: energetic playlists only, calm playlists mostly');
+  assert.equal(line(both), 'Well-known songs: only (all four playlists)');
+  assert.equal(line(opt2()), 'Well-known songs: mostly');
 });

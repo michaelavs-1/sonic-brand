@@ -13,7 +13,8 @@
 // 2026-10-13):
 //   - the taste profile: approved genres + their energy levels, conditional,
 //     requested (super-liked), rejected ("turned down" — never offered again),
-//     per-genre weights (1 = today's mix), instrumental / well-known prefs;
+//     per-genre weights (1 = today's mix), instrumental / well-known prefs
+//     (Option 1 can hold "well-known" per tier — popTiers, 2026-10-14);
 //   - the library of the CURRENT delivery mode only (the other mode's library
 //     is rebuilt from the profile when the owner switches): Option 1 =
 //     high/calm recipes (business_v7_directions), Option 2 = recipes per
@@ -25,7 +26,7 @@
 // "C1".. (calm), Option 2 "L2-1" (level 2, first recipe).
 
 import { GENRES } from '../../shared/genre-universe.js';
-import { tierOfLevel } from './option1-draw.js';
+import { tierOfLevel, tierPopularity } from './option1-draw.js';
 import { normLevels } from './energy-timeline.js';
 import { OPTION1_ENERGY_WINDOWS, levelEnergyWindow } from './energy-windows.js';
 import { levelProfileKey } from './timeline-assembler.js';
@@ -41,6 +42,15 @@ const CANON = new Map(GENRES.map((g) => [g.toLowerCase(), g]));
 export const canonicalGenre = (g) => (typeof g === 'string' ? CANON.get(g.trim().toLowerCase()) || null : null);
 const PREFS = new Set(['none', 'soft', 'hard']);
 const normPref = (v) => (PREFS.has(v) ? v : 'none');
+// Option 1's "well-known songs" per tier (business_taste_profiles.
+// popularity_tiers): { high, low } when the two tiers differ, else null (both
+// follow the account's popularity_preference).
+const normPopTiers = (t, pop) => {
+  if (!t || typeof t !== 'object') return null;
+  const high = PREFS.has(t.high) ? t.high : pop;
+  const low = PREFS.has(t.low) ? t.low : pop;
+  return high === low ? null : { high, low };
+};
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const uniq = (xs) => [...new Set(xs)];
 const setKey = (genres) => [...genres].sort().join('|');
@@ -90,6 +100,7 @@ export function stateFromRows({ mode, profile, settings = null, option1Rows = []
     if (cg && sw != null && sw !== 1) weights[cg] = sw;
   }
 
+  const pop = normPref(profile?.popularity_preference);
   const ew = settings?.energy_windows || {};
   const windows = {
     high: window2(ew.high, OPTION1_ENERGY_WINDOWS.high),
@@ -137,7 +148,8 @@ export function stateFromRows({ mode, profile, settings = null, option1Rows = []
     rejected: canonList(profile?.rejected_genres),
     weights,
     inst: normPref(profile?.instrumentalness_preference),
-    pop: normPref(profile?.popularity_preference),
+    pop,
+    popTiers: normPopTiers(profile?.popularity_tiers, pop),
     windows,
     option1Dirs,
     levelDirs,
@@ -147,13 +159,17 @@ export function stateFromRows({ mode, profile, settings = null, option1Rows = []
 
 // What undo restores and the change log stores: every part the ops can touch.
 export function snapshotOf(state) {
-  const { approved, conditional, requested, rejected, weights, inst, pop, windows, option1Dirs, levelDirs, allowed } = state;
-  return clone({ approved, conditional, requested, rejected, weights, inst, pop, windows, option1Dirs, levelDirs, allowed });
+  const { approved, conditional, requested, rejected, weights, inst, pop, popTiers = null, windows, option1Dirs, levelDirs, allowed } = state;
+  return clone({ approved, conditional, requested, rejected, weights, inst, pop, popTiers, windows, option1Dirs, levelDirs, allowed });
 }
 
+// A snapshot from before popTiers existed (2026-10-14) had no per-tier value.
 export function stateFromSnapshot(base, snap) {
-  return { ...clone(base), ...clone(snap) };
+  return { ...clone(base), popTiers: null, ...clone(snap) };
 }
+
+// "Well-known songs" of one Option 1 tier ('high' | 'low').
+export const popularityOfTier = (state, tier) => tierPopularity(state.pop, state.popTiers, tier);
 
 // ---- lookups ----
 const levelOfGenre = (s, g) => s.approved.find((a) => a.genre === g)?.energy_level ?? null;
@@ -313,12 +329,29 @@ const HANDLERS = {
     return null;
   },
 
+  // popularity also takes a tier in Option 1 (Ami, 2026-10-14): "high" or
+  // "low" sets that tier only; no tier sets the whole account and clears the
+  // per-tier values. Two equal tiers fold back into the account's value.
   set_pref(s, op) {
     const v = PREFS.has(op.value) ? op.value : null;
     if (!v) return 'value must be none, soft or hard';
-    if (op.field === 'instrumentalness') s.inst = v;
-    else if (op.field === 'popularity') s.pop = v;
-    else return 'field must be instrumentalness or popularity';
+    const tier = op.tier == null || op.tier === '' || op.tier === 'both' ? null : op.tier;
+    if (op.field === 'instrumentalness') {
+      if (tier) return 'tier is for popularity only';
+      s.inst = v;
+      return null;
+    }
+    if (op.field !== 'popularity') return 'field must be instrumentalness or popularity';
+    if (!tier) {
+      s.pop = v;
+      s.popTiers = null;
+      return null;
+    }
+    if (tier !== 'high' && tier !== 'low') return 'tier must be "high" or "low", or left out for both';
+    if (s.mode !== 'option1') return 'tier is for Option 1 only';
+    const t = { high: popularityOfTier(s, 'high'), low: popularityOfTier(s, 'low'), [tier]: v };
+    if (t.high === t.low) { s.pop = t.high; s.popTiers = null; }
+    else s.popTiers = t;
     return null;
   },
 
@@ -469,6 +502,7 @@ export function stateToRows(state, businessId) {
     genre_weights: Object.keys(state.weights).length ? state.weights : null,
     instrumentalness_preference: state.inst,
     popularity_preference: state.pop,
+    popularity_tiers: state.popTiers || null,
   };
   const d = OPTION1_ENERGY_WINDOWS;
   const isDefault = state.windows.high[0] === d.high.min && state.windows.high[1] === d.high.max

@@ -118,6 +118,14 @@ async function directionTracksRpc(args, direction) {
 // pool comes back short (narrow direction / small track catalogue), refill
 // from the full pool so the playlist still reaches target length. With an
 // energy range, the range widens before any recently served track comes in.
+//
+// v7 "only hits where there are enough" (Ami, 2026-10-14): a direction with
+// popularity_preference 'hard' AND popularity_fallback 'soft' whose hits not
+// served in the last 7 days can't fill the playlist is drawn as 'soft'
+// instead (hits first, then the rest) — rather than coming out short or
+// repeating last week's hits. v6 directions carry no popularity_fallback, so
+// they behave as before.
+// → { ids, directionKey, popularityApplied }
 export async function fetchTracksWithHistory({ businessId, direction, target }) {
   const key = directionKey(direction);
   const genres = Array.isArray(direction.genres) && direction.genres.length
@@ -158,9 +166,15 @@ export async function fetchTracksWithHistory({ businessId, direction, target }) 
   // statement_timeout) — for expand-playlist growing to ~120 tracks the
   // ORDER BY random() + LIMIT reliably tripped 3s and the strict one-time
   // onboardingExpanded flag left playlists stuck at their sample size.
-  const primary = await directionTracksRpc({
+  let primary = await directionTracksRpc({
     ...baseArgs, p_limit: target, p_exclude_days: DEDUP_WINDOW_DAYS,
   }, direction);
+  if (pop_pref === 'hard' && direction.popularity_fallback === 'soft' && (primary || []).length < target) {
+    baseArgs.p_pop_pref = 'soft';
+    primary = await directionTracksRpc({
+      ...baseArgs, p_limit: target, p_exclude_days: DEDUP_WINDOW_DAYS,
+    }, direction);
+  }
   const ids = (primary || []).map((r) => r.spotify_id).filter(Boolean);
 
   // Pool-shortage fallback: refill from the full pool. Ask for extra so we
@@ -182,7 +196,7 @@ export async function fetchTracksWithHistory({ businessId, direction, target }) 
     }
   }
 
-  return { ids, directionKey: key };
+  return { ids, directionKey: key, popularityApplied: baseArgs.p_pop_pref };
 }
 
 // Record every served track in v6_daily_track_history so future runs can
@@ -300,7 +314,7 @@ export function playlistName(bizName, direction) {
 export async function buildOneDailyPlaylist({
   origin, ownerId, businessId, direction, target, bizName, expiryIso,
 }) {
-  const { ids, directionKey: key } = await fetchTracksWithHistory({
+  const { ids, directionKey: key, popularityApplied } = await fetchTracksWithHistory({
     businessId, direction, target,
   });
   if (!ids.length) {
@@ -361,6 +375,9 @@ export async function buildOneDailyPlaylist({
         bpm_range:      direction.bpm_range,
         ...(direction.energy_range ? { energy_range: direction.energy_range } : {}),   // v7 Option 1
         ...(direction.v7_source ? { v7_source: direction.v7_source } : {}),         // v7 Option 1: the library direction played
+        // v7 Option 1 (2026-10-14): the tier's "well-known songs" and what the
+        // draw applied ('soft' = too few unplayed hits for only hits).
+        ...(direction.popularity_fallback ? { popularity: { preference: direction.popularity_preference, applied: popularityApplied } } : {}),
       },
       // popularityWindow dropped 2026-09-02 — atmosphere-derived popularity
       // window removed; per-direction popularity_preference is the sole

@@ -36,6 +36,10 @@
         (v7/generation/energy-windows.js); every row carries its `ring` =
         5-point steps outside the range, and a genre short of in-range songs
         gets the wider sample too.
+        "Only well-known songs" (popularity 'hard', Ami 2026-10-14) is decided
+        per genre at every build: a genre whose hits not played in the last 7
+        days cover what it needs today plays only hits; one that doesn't plays
+        hits first, then the rest ('soft'), so it neither repeats nor thins out.
      5. Assembly: v7/generation/timeline-assembler.js — tracks end to end by
         duration, each track's genre drawn at random from the mix's genres
         at that level (the day's direction; no genre runs since
@@ -176,26 +180,36 @@ export function planWindow({ hours, timeline, now = new Date(), onDemand = false
   };
 }
 
+// One RPC call per popularity preference: a spec's own `pop` (set when "only
+// hits" falls back to hits-first for its genre) wins over the account's.
 async function callPool({ businessId, specs, inst, pop, excludeDays }) {
   if (!specs.length) return [];
-  return await pgrRpc('v7_timeline_pool', {
+  const byPop = new Map();
+  for (const s of specs) {
+    const p = s.pop || pop;
+    if (!byPop.has(p)) byPop.set(p, []);
+    byPop.get(p).push(s);
+  }
+  const results = await Promise.all([...byPop].map(([p, group]) => pgrRpc('v7_timeline_pool', {
     p_biz_id: businessId,
-    p_specs: specs.map(({ key, genre, n, playlists, lo, hi }) => ({ key, genre, n, playlists, lo, hi })),
+    p_specs: group.map(({ key, genre, n, playlists, lo, hi }) => ({ key, genre, n, playlists, lo, hi })),
     p_inst_pref: inst,
-    p_pop_pref: pop,
+    p_pop_pref: p,
     p_exclude_days: excludeDays,
-  }, { useService: true }) || [];
+  }, { useService: true })));
+  return results.flatMap((r) => r || []);
 }
 
 // Plan today's two mixes for a business (reads its timeline + taste profile).
 //   → { fallback:true }                        pool RPC missing → use the naive builder
 //   → { slots:[], reason }                     nothing to build
 //   → { slots:[{ key, title, tracks }], expiryIso, meta, stats, reason:null }
-export async function planOption2Timeline({ businessId, hours, now = new Date(), onDemand = false }) {
+// overrides: replaces read inputs (scripts/_v7-option2-dryrun.mjs --pop=).
+export async function planOption2Timeline({ businessId, hours, now = new Date(), onDemand = false, overrides = {} }) {
   const inputs = await readInputs(businessId);
   // The admin console's picks for the business day (v7/generation/daily-picks.js).
   const dailyPicks = await readDailyPicks(businessId, businessWindowAt(hours, now).isoDate, 'option2');
-  return planFromInputs({ businessId, hours, now, onDemand, ...inputs, dailyPicks });
+  return planFromInputs({ businessId, hours, now, onDemand, ...inputs, dailyPicks, ...overrides });
 }
 
 // Same, from explicit inputs (scripts/_v7-option2-dryrun.mjs plans for fixture
@@ -312,6 +326,17 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
   if (short.length) {
     add(await callPool({ businessId, specs: short.map((s) => ({ ...s, playlists: 200 })), inst, pop, excludeDays: EXCLUDE_DAYS }), byKey);
   }
+  // "Only hits" where there are enough (Ami, 2026-10-14). After the two
+  // samples above (the second covers all of a genre's playlists), a pool with
+  // fewer than n rows = the genre's hits not played in the last 7 days, at
+  // any energy, don't cover what it needs today (n = its share of today's
+  // mixes with the usual margin). Such a genre plays hits first, then the
+  // rest ('soft') — refetched from all its playlists.
+  const hitsFirst = pop === 'hard' ? specs.filter((s) => (byKey.get(s.key)?.size || 0) < s.n) : [];
+  if (hitsFirst.length) {
+    for (const s of hitsFirst) { s.pop = 'soft'; byKey.set(s.key, new Map()); }
+    add(await callPool({ businessId, specs: hitsFirst.map((s) => ({ ...s, playlists: 200 })), inst, pop, excludeDays: EXCLUDE_DAYS }), byKey);
+  }
 
   // Refill: a genre group whose fresh supply is under 1.1× what it has to
   // cover gets recently-served tracks too, queued AFTER the fresh ones.
@@ -385,12 +410,15 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
     // the level.
     source: picks ? 'level-directions' : 'level-genres',
     day_number: dayNumber(win.isoDate),
+    // "Only hits" (2026-10-14): the genres that had too few unplayed hits
+    // today and played hits first instead.
+    ...(pop === 'hard' ? { popularity: { preference: 'hard', hits_first: [...new Set(hitsFirst.map((s) => s.genre))] } } : {}),
   };
   const slotMeta = (i) => ({ ...meta, directions: picks ? directionsMeta(picks[i]) : null });
   const pickLog = picks
     ? ' picks=' + picks.map((m, i) => `#${i + 1}{${[...m].sort((a, b) => a[0] - b[0]).map(([L, d]) => `L${L}:${d.title_en}`).join(', ')}}`).join(' ')
     : ' picks=none(level-genres)';
-  console.log(`[v7 option2] biz=${businessId} window=${meta.window.join('-')} kind=${win.kind} pool=${poolMs}ms tracks=${mixes.map((m) => m.tracks.length).join('+')} stats=${JSON.stringify(stats)}${pickLog}`);
+  console.log(`[v7 option2] biz=${businessId} window=${meta.window.join('-')} kind=${win.kind} pool=${poolMs}ms tracks=${mixes.map((m) => m.tracks.length).join('+')} stats=${JSON.stringify(stats)}${pickLog}${meta.popularity ? ` hits_first=[${meta.popularity.hits_first.join(', ')}]` : ''}`);
   return {
     reason: null,
     slots: mixes.map((m, i) => ({ key: `slot-${i}`, title: OPTION2_TITLES[i], tracks: m.tracks, meta: slotMeta(i) })),

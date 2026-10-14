@@ -581,6 +581,7 @@ whether they really paid.
   "genre_weights": { "Funk": 0.5 },
   "instrumentalness_preference": "none",
   "popularity_preference": "soft",
+  "popularity_tiers": null,
   "reasoning_en": "…",
   "updated_at": "…"
 }
@@ -595,7 +596,15 @@ whether they really paid.
 - `rejected_genres` — genres the owner turned down in the taste chat.
 - Preferences (`none` / `soft` / `hard`):
   - `instrumentalness_preference` — prefer, or only allow, songs without vocals;
-  - `popularity_preference` — prefer, or only allow, well-known songs.
+  - `popularity_preference` — prefer, or only allow, well-known songs;
+  - `popularity_tiers` — Option 1 only: `{ "high": "hard", "low": "none" }`
+    when the owner set well-known songs differently for the energetic and the
+    calm playlists (through the taste chat); `null` = both follow
+    `popularity_preference`.
+  - With "only" (`hard`), a style that has too few well-known songs not played
+    in the last 7 days plays its well-known songs first, then its other songs,
+    so playlists stay full. Each daily playlist's `played.popularity` shows
+    where that happened (see `daily` below).
 - The whole object is `null` if the business has no profile.
 
 #### `delivery`
@@ -655,6 +664,12 @@ whether they really paid.
     `source: "level-genres"` = there was no library, so each level played all
     its genres.
   - `admin_pick: true` = chosen through `/daily-picks`.
+  - `popularity` (since 2026-10-14; `null` unless the playlist was set to
+    only well-known songs): Option 1 `{preference, applied}` — `applied: "soft"`
+    on an "only" (`hard`) playlist = its styles had too few well-known songs
+    not played in the last week, so it played those first and then others;
+    Option 2 `{preference: "hard", hits_first: [genre]}` — the styles that did
+    that in this mix.
 - `replaced` — taken off the owner's dashboard early, by the owner's
   "replace now" or a `rebuild_today`. The replacement is in the same day's
   list.

@@ -23,7 +23,7 @@ import { GENRE_UNIVERSE_SECTION } from '../../shared/genre-universe.js';
 import { COHERENCE_SECTION as OPTION1_COHERENCE } from './energy-directions.js';
 import { COHERENCE_SECTION as OPTION2_COHERENCE } from './level-directions.js';
 import { CORE_PHILOSOPHY_SECTION, HARD_BOUNDARY_RULES_SECTION } from './taste-profile.js';
-import { WEIGHT_STEPS, rangeOf } from './taste-ops.js';
+import { WEIGHT_STEPS, rangeOf, popularityOfTier } from './taste-ops.js';
 
 export const TASTE_CHAT_STATES = ['gathering', 'confirming', 'suggesting', 'off_topic'];
 // What the deck results message starts with (the client sends it; the prompt
@@ -68,6 +68,13 @@ const UNDERSTANDING = `## Understanding what the owner means
 - If it's genuinely unclear which genres or which playlists they mean, ask ONE short question. Don't ask about anything the context already tells you.
 - If a request contradicts what they asked for during onboarding (their "Musical emphases") or a change made earlier in this chat ("## Changes made through this chat"), point it out in one sentence and do what they now ask once they confirm. The newest request wins.`;
 
+const AIM_TO_PLEASE = `## Aim to please
+
+- When the owner asks for something more specific than what you can change — a certain hour of the day, only one of the two playlists of a kind, one artist, weekends only, never this one song again — make the closest change you CAN make and tell them it's taken care of, describing what they'll hear ("מעכשיו בפלייליסטים האנרגטיים יהיו רק שירים מוכרים"). Don't explain what can't be done, don't apologise, don't list limitations.
+- Stay truthful: say only what your proposal actually does. Never claim the narrower thing they asked for (don't say "רק בין 18:00 ל-20:00" when the change is for the whole day).
+- Prefer the smallest change that moves things the way they asked. If the closest change touches much more than they asked for (taking a whole style out because of one song), say in one positive sentence what you'll do, then propose it.
+- Only when nothing you can change comes close, say so in one friendly sentence and offer the nearest thing you can do.`;
+
 const CHANGES_COMMON = `## What you can change
 
 Every change is a list of ops in a proposal (exact shapes under "## Output format"):
@@ -81,7 +88,7 @@ Every change is a list of ops in a proposal (exact shapes under "## Output forma
   - under a genre they don't have → propose adding that genre (add_genre + placement) + allow_track under it;
   - not in our catalog → work out its genre from what you know about the song and artist (one genre from the catalog), tell the owner which kind of music you think it is, and do the same.
   allow_track makes that exact song available in this owner's playlists (only theirs), under a genre that is approved once the proposal applies. It plays like any other song of that genre — not every day.
-- **Instrumental music / well-known songs:** set_pref (instrumentalness / popularity: "none" = no preference, "soft" = mostly, "hard" = only).
+- **Instrumental music:** set_pref instrumentalness ("none" = no preference, "soft" = mostly, "hard" = only). Well-known songs: see "## Well-known songs".
 - **Undo:** "תחזירו כמו שהיה", "תבטלו את השינוי" → a proposal whose only op is undo; it reverts the newest change under "## Changes made through this chat" (say what it reverts).`;
 
 const ENERGY_OPTION1 = `## Energy (this owner has the 4 daily playlists)
@@ -104,6 +111,21 @@ const ENERGY_OPTION2 = `## Energy (this owner has the 2 daily mixes): music that
    b. **The recipe's range.** The song is near an edge of its recipe's range → narrow or shift that recipe's range (set_range), e.g. too energetic at 40–70 → 40–60. Ranges stay within 0–100 and at least 10 wide.
    c. **A genre louder or calmer than its level** → move_genre to the neighbouring level (and dir_add it into that level's recipes where it blends), or take it out of that recipe (dir_remove).
 4. "Too energetic in the afternoon" without a song: use the curve and the times; ask for a song link when you need to know what was playing.`;
+
+const FEW_HITS = `- Some styles have few well-known songs. So that the playlists stay full and don't repeat songs from the last week, a style that doesn't have enough well-known songs for its part of the day plays its well-known songs first and then its other songs — on its own, every day. You don't need to do anything about it, and don't mention it unless the owner asks why they still hear songs they don't know; then explain it in plain words and offer to play less of those styles (set_weight) or take them out.`;
+
+const POPULARITY_OPTION1 = `## Well-known songs (popularity)
+
+- "רק שירים מוכרים" → set_pref popularity "hard"; "יותר שירים מוכרים" / "בעיקר מוכרים" → "soft"; "לא חייב להיטים" → "none". A "hit" is fixed (the owner never hears numbers).
+- It can be set for the energetic playlists only ("tier": "high"), the calm ones only ("tier": "low"), or all four (leave tier out). When the owner names one kind ("בפלייליסטים הרגועים", "כשיש אנרגיה"), set that tier only; otherwise all four. There's no setting per hour or per single playlist — use the closest (see "## Aim to please").
+- "## Taste profile" → "Well-known songs" shows the current setting.
+${FEW_HITS}`;
+
+const POPULARITY_OPTION2 = `## Well-known songs (popularity)
+
+- "רק שירים מוכרים" → set_pref popularity "hard"; "יותר שירים מוכרים" / "בעיקר מוכרים" → "soft"; "לא חייב להיטים" → "none". A "hit" is fixed (the owner never hears numbers). It applies to both mixes and the whole day (no tier) — for "only in the evening" or "only in Daily Mix #1", use the closest (see "## Aim to please").
+- "## Taste profile" → "Well-known songs" shows the current setting.
+${FEW_HITS}`;
 
 const CONFIRMING = `## Proposing and confirming
 
@@ -147,7 +169,8 @@ Ops (each one an object with "op" + its fields):
 - {"op":"dir_remove","dir":"${mode === 'option2' ? 'L2-1' : 'H2'}","genre":"Rnb"}
 - ${mode === 'option2' ? '{"op":"dir_new","energy_level":2,"genres":["Bossa Nova","Fado"],"title_en":"Acoustic Lusophone Café"}' : '{"op":"dir_new","tier":"low","genres":["Bossa Nova","Fado"],"title_en":"Acoustic Lusophone Café"}'}   (title_en: a short internal English label)
 - {"op":"dir_delete","dir":"${mode === 'option2' ? 'L3-2' : 'C3'}"}
-- {"op":"set_pref","field":"instrumentalness","value":"soft"}   (field "instrumentalness" or "popularity"; value "none" | "soft" | "hard")
+- {"op":"set_pref","field":"instrumentalness","value":"soft"}   (field "instrumentalness" or "popularity"; value "none" | "soft" | "hard")${mode === 'option2' ? '' : `
+- {"op":"set_pref","field":"popularity","value":"hard","tier":"high"}   (popularity only: tier "high" = the energetic playlists, "low" = the calm ones; leave it out for all four)`}
 - ${mode === 'option2' ? '{"op":"set_range","dir":"L2-1","min":40,"max":60}' : '{"op":"shift_window","tier":"high","delta":-10}'}
 - {"op":"allow_track","spotify_id":"<id from ## Songs the owner linked>","genre":"Bossa Nova"}
 - {"op":"undo"}   (alone)`;
@@ -160,8 +183,10 @@ export function buildTasteChatSystemPrompt(mode) {
     LANGUAGE,
     SONG_LINKS,
     UNDERSTANDING,
+    AIM_TO_PLEASE,
     CHANGES_COMMON,
     m === 'option2' ? ENERGY_OPTION2 : ENERGY_OPTION1,
+    m === 'option2' ? POPULARITY_OPTION2 : POPULARITY_OPTION1,
     CONFIRMING,
     coherence(m),
     TASTE_RULES,
@@ -174,6 +199,13 @@ export function buildTasteChatSystemPrompt(mode) {
 
 const HE_WEEKDAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const PREF_TEXT = { none: 'no preference', soft: 'mostly', hard: 'only' };
+// Option 1 can differ per tier (2026-10-14).
+const popularityLine = (s) => {
+  if (s.mode !== 'option1') return PREF_TEXT[s.pop];
+  const high = popularityOfTier(s, 'high');
+  const low = popularityOfTier(s, 'low');
+  return high === low ? `${PREF_TEXT[high]} (all four playlists)` : `energetic playlists ${PREF_TEXT[high]}, calm playlists ${PREF_TEXT[low]}`;
+};
 
 // ctx (built by api/v7/account/_taste-context.js):
 //   business { name, description, emphases }
@@ -210,7 +242,7 @@ export function formatTasteContext(ctx) {
     const tier = s.mode === 'option1' ? (L > s.N / 2 ? ' (HIGH tier)' : ' (CALM tier)') : '';
     lines.push(`- Level ${L}${tier}: ${(byLevel.get(L) || []).map((g) => g + tag(g)).join(', ') || '—'}`);
   }
-  out.push(`## Taste profile (energy scale 1..${s.N}, 1 = calmest)\n${lines.join('\n')}\n- Conditional (in reserve, not played): ${s.conditional.map((c) => `${c.genre} (L${c.energy_level})`).join(', ') || '—'}\n- Turned down (never suggest): ${s.rejected.join(', ') || '—'}\n- Instrumental music: ${PREF_TEXT[s.inst]} · Well-known songs: ${PREF_TEXT[s.pop]}\n- The owner's own songs: ${s.allowed.map((a) => `"${a.title}" — ${a.artist} (${a.genre})`).join('; ') || '—'}`);
+  out.push(`## Taste profile (energy scale 1..${s.N}, 1 = calmest)\n${lines.join('\n')}\n- Conditional (in reserve, not played): ${s.conditional.map((c) => `${c.genre} (L${c.energy_level})`).join(', ') || '—'}\n- Turned down (never suggest): ${s.rejected.join(', ') || '—'}\n- Instrumental music: ${PREF_TEXT[s.inst]} · Well-known songs: ${popularityLine(s)}\n- The owner's own songs: ${s.allowed.map((a) => `"${a.title}" — ${a.artist} (${a.genre})`).join('; ') || '—'}`);
 
   if (s.mode === 'option1') {
     const dirs = (tier) => s.option1Dirs.filter((d) => d.energy_tier === tier).map((d) => `- ${d.key}: ${d.genres.join(', ')}`).join('\n') || '- —';

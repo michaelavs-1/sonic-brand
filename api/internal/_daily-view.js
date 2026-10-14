@@ -25,9 +25,12 @@ export function businessDayOf(row) {
 }
 
 // What a daily row played.
-//   Option 1 → { kind:'option1', direction: { id, title_en, admin_pick } | null, genres }
+//   Option 1 → { kind:'option1', direction: { id, title_en, admin_pick } | null, genres, popularity }
 //              (direction recorded since 2026-10-13; older rows: genres only)
-//   Option 2 → { kind:'option2', by_level: [{ level, title_en, genres, admin_pick }], source }
+//   Option 2 → { kind:'option2', by_level: [{ level, title_en, genres, admin_pick }], source, popularity }
+//   popularity (2026-10-14, null otherwise): Option 1 { preference, applied } —
+//   applied 'soft' = "only hits" had too few unplayed hits, so hits first;
+//   Option 2 { preference: 'hard', hits_first: [genre] } — the genres that did.
 export function playedOf(row) {
   const tl = row?.expansion?.v7_timeline;
   if (tl) {
@@ -35,6 +38,7 @@ export function playedOf(row) {
     return {
       kind: 'option2',
       source: tl.source || null,
+      popularity: tl.popularity || null,
       by_level: dirs
         ? Object.entries(dirs).map(([L, d]) => ({ level: Number(L), id: d?.id || null, title_en: d?.title_en || '', genres: d?.genres || [], admin_pick: !!d?.admin_pick }))
           .sort((a, b) => a.level - b.level)
@@ -42,7 +46,7 @@ export function playedOf(row) {
     };
   }
   const src = row?.expansion?.direction?.v7_source || null;
-  return { kind: 'option1', direction: src, genres: Array.isArray(row?.genres) ? row.genres : [] };
+  return { kind: 'option1', direction: src, genres: Array.isArray(row?.genres) ? row.genres : [], popularity: row?.expansion?.direction?.popularity || null };
 }
 
 // Daily rows + click rows → [{ il_date, playlists: [...], opens_total }],

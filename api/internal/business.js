@@ -249,6 +249,7 @@ export default async function handler(req, res) {
         genre_weights:               profile.genre_weights || null,
         instrumentalness_preference: profile.instrumentalness_preference,
         popularity_preference:       profile.popularity_preference,
+        popularity_tiers:            profile.popularity_tiers || null,   // Option 1 per tier (2026-10-14)
         reasoning_en:                profile.reasoning_en,
         updated_at:                  profile.updated_at || null,
       } : null,

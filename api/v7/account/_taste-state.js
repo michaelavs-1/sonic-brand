@@ -18,6 +18,8 @@
    profile_key no longer matches).
 
    Needs migration 2026-10-13-v7-taste-chat.sql (new columns + tables).
+   Option 1's per-tier "well-known songs" (popularity_tiers) needs
+   2026-10-14-v7-popularity.sql; without it, every other change still saves.
    Not an HTTP endpoint. Bare imports only. */
 
 import { pgrSelect, pgrPatch, pgrDelete, pgrInsert, pgrUpsert } from '../../v5/supabase-client.js';
@@ -25,6 +27,21 @@ import { stateFromRows, stateToRows } from '../../../v7/generation/taste-ops.js'
 import { readLevelDirections } from './_option2-builder.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const POPULARITY_TIERS_HINT = 'run migration 2026-10-14-v7-popularity.sql';
+
+// The profile PATCH. Before migration 2026-10-14-v7-popularity.sql there's
+// no popularity_tiers column: save without it, unless the change needs it.
+async function patchProfile(businessId, profile) {
+  try {
+    await pgrPatch('business_taste_profiles', { business_id: `eq.${businessId}` }, profile);
+  } catch (e) {
+    if (!/popularity_tiers/.test(e.message || '')) throw e;
+    if (profile.popularity_tiers) throw new Error(`business_taste_profiles.popularity_tiers is missing — ${POPULARITY_TIERS_HINT}`);
+    console.warn(`[v7 taste-state] business_taste_profiles.popularity_tiers missing — ${POPULARITY_TIERS_HINT}. Saving without it.`);
+    const { popularity_tiers, ...rest } = profile;
+    await pgrPatch('business_taste_profiles', { business_id: `eq.${businessId}` }, rest);
+  }
+}
 
 // → { state, profile, settings } | null (no taste profile / no delivery mode)
 export async function readTasteState(businessId) {
@@ -52,7 +69,7 @@ export async function writeTasteState(businessId, prev, next) {
   const rows = stateToRows(next, businessId);
   const before = stateToRows(prev, businessId);
 
-  await pgrPatch('business_taste_profiles', { business_id: `eq.${businessId}` }, rows.profile);
+  await patchProfile(businessId, rows.profile);
 
   if (next.mode === 'option1') {
     if (!same(rows.settings, before.settings)) {

@@ -19,6 +19,9 @@
  *   node scripts/_v7-option2-dryrun.mjs <businessId> --at=09:00
  *   node scripts/_v7-option2-dryrun.mjs <businessId> --date=2026-10-02 --at=09:00
  *                                                          plan another day (the level-direction rotation follows the date)
+ *   add --pop=hard (or soft / none) to plan with that "well-known songs" preference
+ *       instead of the business's own; with hard it lists the genres that had too
+ *       few unplayed hits and play hits first instead (2026-10-14).
  *   add --quiet to print only the summary.
  *
  * A business with a level-direction library (business_v7_level_directions)
@@ -48,6 +51,11 @@ const at = args.find((a) => a.startsWith('--at='))?.slice(5) || null;
 const date = args.find((a) => a.startsWith('--date='))?.slice(7) || null;
 if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) { console.error('--date must be YYYY-MM-DD'); process.exit(1); }
 const quiet = args.includes('--quiet');
+// --pop=none|soft|hard: plan with this "well-known songs" preference instead of
+// the business's own (fixture: instead of none).
+const popArg = args.find((a) => a.startsWith('--pop='))?.slice(6) || null;
+if (popArg && !['none', 'soft', 'hard'].includes(popArg)) { console.error('--pop must be none, soft or hard'); process.exit(1); }
+const overrides = popArg ? { pop: popArg } : {};
 const businessId = args.find((a) => /^[0-9a-f-]{36}$/i.test(a)) || null;
 
 const imp = (p) => import(pathToFileURL(join(repoRoot, p)).href);
@@ -81,14 +89,14 @@ if (businessId) {
   now = at || date ? nowAt(at) : new Date();
   const [h] = await pgrSelect('business_hours', { business_id: `eq.${businessId}` }, { select: 'hours', limit: 1, useService: true });
   if (!h?.hours) { console.error('That business has no hours row.'); process.exit(1); }
-  plan = await planOption2Timeline({ businessId, hours: h.hours, now, onDemand: true });
+  plan = await planOption2Timeline({ businessId, hours: h.hours, now, onDemand: true, overrides });
   label = `business ${businessId}`;
 } else {
   now = nowAt(at || '08:00');
   const hours = Object.fromEntries([0, 1, 2, 3, 4, 5, 6].map((d) => [d, { closed: false, open: '09:00', close: '23:00' }]));
   plan = await planFromInputs({
     businessId: '00000000-0000-0000-0000-000000000000', hours, timeline: null,
-    approved: FIXTURE_PROFILE.approved, N: FIXTURE_PROFILE.N, now, onDemand: true,
+    approved: FIXTURE_PROFILE.approved, N: FIXTURE_PROFILE.N, now, onDemand: true, ...overrides,
   });
   label = 'fixture profile (8 genres, 4 levels), 09:00–23:00, default timeline';
 }
@@ -103,6 +111,7 @@ const m = plan.meta;
 console.log(`window ${fmtHM(m.window[0])}–${fmtHM(m.window[1])} (${m.kind}) · group ${m.open}–${m.close} · levels ${m.levels_total} · expires ${plan.expiryIso} · planned in ${ms} ms`);
 console.log(`curve dots: ${m.points.map((p) => `${fmtHM(p.m)}=${p.e}`).join('  ')}`);
 console.log(`stats: ${JSON.stringify(plan.stats)}`);
+if (m.popularity) console.log(`only well-known songs: hits first instead (too few unplayed hits today) — ${m.popularity.hits_first.join(', ') || 'none; every genre plays only hits'}`);
 const ranges = m.energy_windows || {};
 console.log(`energy ranges: ${Object.entries(ranges).map(([L, [lo, hi]]) => `L${L} ${lo}–${hi}`).join(' · ') || '(none)'}`);
 // A recipe's own range (the taste chat) when it has one, else its level's.

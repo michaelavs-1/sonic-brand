@@ -19,6 +19,17 @@
 // "high", the rest "low" (same rule as v7/generation/energy-directions.js).
 export const tierOfLevel = (level, n) => (Number(level) > n / 2 ? 'high' : 'low');
 
+// "Well-known songs" for one tier (Ami, 2026-10-14): the taste chat can set it
+// per tier (business_taste_profiles.popularity_tiers, {high, low}); a tier
+// without its own value follows the whole account's popularity_preference.
+// → 'none' | 'soft' | 'hard'
+const POP_PREFS = new Set(['none', 'soft', 'hard']);
+export function tierPopularity(accountPref, tiers, tier) {
+  const own = tiers && typeof tiers === 'object' ? tiers[tier] : null;
+  if (POP_PREFS.has(own)) return own;
+  return POP_PREFS.has(accountPref) ? accountPref : 'none';
+}
+
 // requestedGenres: [string]; approvedGenres: [{genre, energy_level}].
 // → { high: [genre], low: [genre] } — each requested genre in the tier of its
 // approved energy level. A requested genre that isn't approved is skipped

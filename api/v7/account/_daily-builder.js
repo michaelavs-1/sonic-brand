@@ -20,7 +20,9 @@
        "אנרגיה רגועה #1/#2") with 2 directions per tier — the first random,
        the second the least like it, re-drawn every build/day (pickTierPair).
        The tier's requested genres go into both. Half-day target each. Songs
-       from the tier's energy range (high 50–80, low 20–50).
+       from the tier's energy range (high 50–80, low 20–50). "Well-known
+       songs" per tier (the taste chat, 2026-10-14); "only hits" falls back
+       to hits-first for a playlist without enough unplayed hits.
        → { directions, target, expiryIso, labelDate, reason }  (directions [] +
          reason when there's nothing to build; labelDate = the business day
          for the dated dashboard names)
@@ -76,7 +78,7 @@ import {
   datedLabel,
 } from '../../../v7/generation/playlist-length.js';
 import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
-import { pickTierPair, requestedByTier, withRequested, tierOfLevel } from '../../../v7/generation/option1-draw.js';
+import { pickTierPair, requestedByTier, withRequested, tierOfLevel, tierPopularity } from '../../../v7/generation/option1-draw.js';
 import { option1EnergyWindow } from '../../../v7/generation/energy-windows.js';
 import { applyOption1Picks } from '../../../v7/generation/daily-picks.js';
 import { readDailyPicks } from './_daily-picks.js';
@@ -121,8 +123,10 @@ async function readEnergyWindows(businessId) {
 // '*' rather than a column list: requested_genres (2026-10-05) and
 // genre_weights (2026-10-13, the taste chat) are read when their columns
 // exist, and the read still works before those migrations.
+// popTiers (2026-10-14): Option 1's per-tier "well-known songs"
+// (popularity_tiers, set by the taste chat), null = both follow pop_pref.
 async function readProfilePrefs(businessId) {
-  const none = { inst_pref: 'none', pop_pref: 'none', approvedGenres: [], requestedGenres: [], energyLevelsTotal: null, genreWeights: null };
+  const none = { inst_pref: 'none', pop_pref: 'none', popTiers: null, approvedGenres: [], requestedGenres: [], energyLevelsTotal: null, genreWeights: null };
   try {
     const rows = await pgrSelect('business_taste_profiles',
       { business_id: `eq.${businessId}` }, { select: '*', useService: true, limit: 1 });
@@ -131,6 +135,7 @@ async function readProfilePrefs(businessId) {
     return {
       inst_pref: normPref(tp.instrumentalness_preference),
       pop_pref:  normPref(tp.popularity_preference),
+      popTiers:  tp.popularity_tiers && typeof tp.popularity_tiers === 'object' ? tp.popularity_tiers : null,
       approvedGenres: Array.isArray(tp.approved_genres) ? tp.approved_genres : [],
       requestedGenres: Array.isArray(tp.requested_genres) ? tp.requested_genres : [],
       energyLevelsTotal: Number(tp.energy_levels_total) || null,
@@ -167,6 +172,9 @@ const tierPlaylistName = (tier, n) => `${TIER_NAME_HE[tier] || 'פלייליסט
 // v7_source (2026-10-13) = which library direction the slot played, kept in the
 // row's expansion.direction so the admin console can show what each day offered
 // (admin_pick: the admin console picked it for the day).
+// popularity_fallback 'soft' (2026-10-14) on "only hits": a playlist whose
+// hits not played in the last 7 days can't fill it is drawn hits-first instead
+// (fetchTracksWithHistory in v6's _daily-builder.js).
 function shapeV7Direction(d, name, inst_pref, pop_pref, energy_range, genre_weights = null) {
   return {
     id: null,
@@ -176,6 +184,7 @@ function shapeV7Direction(d, name, inst_pref, pop_pref, energy_range, genre_weig
     bpm_range: { min: 0, max: 300 },
     instrumentalness_preference: inst_pref,
     popularity_preference: pop_pref,
+    ...(pop_pref === 'hard' ? { popularity_fallback: 'soft' } : {}),
     energy_range,
     genre_weights,
     v7_source: { direction_id: d.id || null, title_en: d.title_en || null, admin_pick: !!d.admin_pick },
@@ -300,7 +309,7 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
 
   // 2. Carry-through prefs + requested genres + genre weights from the taste
   //    profile, and the tiers' energy windows.
-  const [{ inst_pref, pop_pref, approvedGenres, requestedGenres, energyLevelsTotal, genreWeights }, storedWindows] =
+  const [{ inst_pref, pop_pref, popTiers, approvedGenres, requestedGenres, energyLevelsTotal, genreWeights }, storedWindows] =
     await Promise.all([readProfilePrefs(businessId), readEnergyWindows(businessId)]);
   const requested = energyLevelsTotal
     ? requestedByTier(requestedGenres, approvedGenres, energyLevelsTotal)
@@ -317,7 +326,9 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   //    v7/generation/energy-windows.js — or the owner's own, moved by the
   //    taste chat), widened by 5 on each side only when the range is short of
   //    songs. Genre weights (the taste chat) scale how often a genre's songs
-  //    are drawn.
+  //    are drawn. "Well-known songs" can differ per tier (popularity_tiers,
+  //    the taste chat); with "only hits", a playlist whose unplayed hits can't
+  //    fill it plays hits first, then the rest.
   //    The admin console can pick a slot's direction for the day instead
   //    (business_v7_daily_picks, v7/generation/daily-picks.js); a picked
   //    slot's partner is then the direction least like the pick.
@@ -332,7 +343,7 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
 
   const shape = (tier) => (d, i) => shapeV7Direction(
     { ...d, genres: withRequested(d.genres, requested[tier]) },
-    tierPlaylistName(tier, i + 1), inst_pref, pop_pref, option1EnergyWindow(tier, storedWindows), genreWeights);
+    tierPlaylistName(tier, i + 1), inst_pref, tierPopularity(pop_pref, popTiers, tier), option1EnergyWindow(tier, storedWindows), genreWeights);
   const directions = [...high.map(shape('high')), ...low.map(shape('low'))];
 
   // 4. Per-playlist length (Roni's spec, 2026-09-24): HALF the day's opening

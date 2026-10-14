@@ -46,7 +46,80 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-13 (latest) — The taste chat ("הטעם המוזיקלי שלכם"): a new prompt
+## 2026-10-14 (latest) — Israeli genres: hits are popularity 40–100 (30 for a few hours)
+
+**Applies to:** `R1+R2` (the Popularity preference sub-rule in `PROCESSING_RULES_SECTION`, which R2 imports)
+
+Roni's change, the same day as the move to 30 below. At 30, 84% of the Israeli catalog counted as hits, so "only hits" barely narrowed it; 40 keeps 2,293 of 3,399 (67%), between 30+ (2,845) and the earlier 45+ (1,768). Migration `v5/precompute/migrations/2026-10-14-israeli-hit-floor-40.sql`.
+
+What changed in the sub-rule (three numbers, nothing else): "30–100" → "40–100" in the Israeli exception paragraph and the `"hard"` bullet; "30+" → "40+" in the `"soft"` bullet.
+
+---
+
+## 2026-10-14 — Taste chat: well-known songs per tier, styles with few hits, "aim to please"
+
+**Applies to:** `taste chat`
+
+Ami's requests, built by Roni:
+- **Option 1:** the chat can set "well-known songs" for the energetic playlists, the calm ones, or all four. `set_pref` popularity takes an optional `"tier": "high" | "low"` (`v7/generation/taste-ops.js`, stored in `business_taste_profiles.popularity_tiers`). Option 2 has no tier: it applies to both mixes.
+- **Both options:** with "only well-known songs", a style (Option 2) or a playlist (Option 1) whose hits not played in the last 7 days can't fill its part of the day plays its hits first and then other songs (the builders do this; the chat doesn't). The chat is told so, and told not to bring it up unless the owner asks why they hear songs they don't know.
+- **Aim to please:** when the owner asks for something more specific than the chat can change, it makes the closest change and says it's taken care of, describing truthfully what will change, with no list of limitations.
+
+What changed:
+- New section `AIM_TO_PLEASE`, after `UNDERSTANDING` (both modes).
+- New sections `POPULARITY_OPTION1` / `POPULARITY_OPTION2` (sharing `FEW_HITS`), after the mode's energy section.
+- In `CHANGES_COMMON`, the bullet "**Instrumental music / well-known songs:** set_pref (instrumentalness / popularity: "none" = no preference, "soft" = mostly, "hard" = only)." became: "**Instrumental music:** set_pref instrumentalness ("none" = no preference, "soft" = mostly, "hard" = only). Well-known songs: see "## Well-known songs"."
+- Output format, Option 1 only, a new op line under the set_pref one: `- {"op":"set_pref","field":"popularity","value":"hard","tier":"high"}   (popularity only: tier "high" = the energetic playlists, "low" = the calm ones; leave it out for all four)`
+- Per-turn context: "Well-known songs:" shows `only (all four playlists)` or `energetic playlists only, calm playlists no preference` in Option 1 (unchanged in Option 2).
+
+Full text of the new sections:
+
+```
+## Aim to please
+
+- When the owner asks for something more specific than what you can change — a certain hour of the day, only one of the two playlists of a kind, one artist, weekends only, never this one song again — make the closest change you CAN make and tell them it's taken care of, describing what they'll hear ("מעכשיו בפלייליסטים האנרגטיים יהיו רק שירים מוכרים"). Don't explain what can't be done, don't apologise, don't list limitations.
+- Stay truthful: say only what your proposal actually does. Never claim the narrower thing they asked for (don't say "רק בין 18:00 ל-20:00" when the change is for the whole day).
+- Prefer the smallest change that moves things the way they asked. If the closest change touches much more than they asked for (taking a whole style out because of one song), say in one positive sentence what you'll do, then propose it.
+- Only when nothing you can change comes close, say so in one friendly sentence and offer the nearest thing you can do.
+```
+
+Option 1:
+
+```
+## Well-known songs (popularity)
+
+- "רק שירים מוכרים" → set_pref popularity "hard"; "יותר שירים מוכרים" / "בעיקר מוכרים" → "soft"; "לא חייב להיטים" → "none". A "hit" is fixed (the owner never hears numbers).
+- It can be set for the energetic playlists only ("tier": "high"), the calm ones only ("tier": "low"), or all four (leave tier out). When the owner names one kind ("בפלייליסטים הרגועים", "כשיש אנרגיה"), set that tier only; otherwise all four. There's no setting per hour or per single playlist — use the closest (see "## Aim to please").
+- "## Taste profile" → "Well-known songs" shows the current setting.
+- Some styles have few well-known songs. So that the playlists stay full and don't repeat songs from the last week, a style that doesn't have enough well-known songs for its part of the day plays its well-known songs first and then its other songs — on its own, every day. You don't need to do anything about it, and don't mention it unless the owner asks why they still hear songs they don't know; then explain it in plain words and offer to play less of those styles (set_weight) or take them out.
+```
+
+Option 2:
+
+```
+## Well-known songs (popularity)
+
+- "רק שירים מוכרים" → set_pref popularity "hard"; "יותר שירים מוכרים" / "בעיקר מוכרים" → "soft"; "לא חייב להיטים" → "none". A "hit" is fixed (the owner never hears numbers). It applies to both mixes and the whole day (no tier) — for "only in the evening" or "only in Daily Mix #1", use the closest (see "## Aim to please").
+- "## Taste profile" → "Well-known songs" shows the current setting.
+- (the same "Some styles have few well-known songs…" bullet as Option 1)
+```
+
+---
+
+## 2026-10-14 — Israeli genres: hits are popularity 30–100 (was 45–100)
+
+**Applies to:** `R1+R2` (the Popularity preference sub-rule in `PROCESSING_RULES_SECTION`, which R2 imports)
+
+Ami's change. With 45 as the floor, 1,768 of the 3,399 analysed Israeli tracks counted as hits; at 30 it's 2,845 (84%), measured 2026-10-14. Every other genre keeps 60. The number lives in the DB (`hit_popularity_floor`, migration `v5/precompute/migrations/2026-10-14-v7-popularity.sql`).
+
+What changed in the sub-rule (three numbers, nothing else):
+- "so for these genres the DB uses 45–100 instead" → "30–100";
+- `"hard"` bullet: "(60–100; 45–100 for Israeli genres)" → "(60–100; 30–100 for Israeli genres)";
+- `"soft"` bullet: "(60+; 45+ for Israeli genres)" → "(60+; 30+ for Israeli genres)".
+
+---
+
+## 2026-10-13 — The taste chat ("הטעם המוזיקלי שלכם"): a new prompt
 
 **Applies to:** `taste chat` (new)
 

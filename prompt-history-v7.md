@@ -46,7 +46,23 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-14 (latest) — Israeli genres: hits are popularity 40–100 (30 for a few hours)
+## 2026-10-15 (latest) — 4 new genres; two of them join the Israeli exception
+
+**Applies to:** all v7 (source-of-truth edit; flows to R1 + R2 + taste profile + energy directions + level directions + event playlist + taste chat via imports). The R1 sub-rule edit applies to R1+R2.
+
+Cross-referenced from `prompt-history.md`'s 2026-10-15 entry (primary record). New genres: `Acoustic Blues`, `Future Funk`, `פופ ישראלי`, `היפ הופ ישראלי`. `GENRES.length` moves 132 → 136, so the taste profile now buckets 136 genres.
+
+**One prompt line changed:** the Popularity preference sub-rule in R1's `PROCESSING_RULES_SECTION` (R2 imports it) names the Israeli genres that use the 40–100 hit window. It now lists the two new ones too, matching the database's `hit_popularity_floor` (migration `2026-10-15-israeli-hit-floor-new-genres.sql`). The line now reads:
+
+```
+  **Exception — Israeli genres** (`בלדות ישראליות`, `פופ מזרחית`, `מזרחית ישנה`, `רוק ישראלי`, `שירי ארץ ישראל`, `שירי יום הזיכרון והשואה`, `פופ ישראלי`, `היפ הופ ישראלי`): Israeli tracks score lower on this global popularity scale, so for these genres the DB uses 40–100 instead. They have plenty of tracks in their own hit window — do NOT avoid them because the owner asked for hits.
+```
+
+**Not done (no family lists touched):** `היפ הופ ישראלי` is not in R1's "Hip Hop family" (`BEAT_PERCUSSION_RULE`), and `Future Funk` is not in any Funk family list. Future Funk is a sample-based electronic style, unlike the organic, horn-forward funk the Funk family describes, so it may not belong there.
+
+---
+
+## 2026-10-14 — Israeli genres: hits are popularity 40–100 (30 for a few hours)
 
 **Applies to:** `R1+R2` (the Popularity preference sub-rule in `PROCESSING_RULES_SECTION`, which R2 imports)
 

@@ -9,7 +9,7 @@
 // Job: take the sparse swipe-deck signal (up to 12 direction probes across
 // R1 + R2, plus per-direction like/dislike, plus per-track super-likes) and
 // extrapolate to a full-catalog taste profile. Output:
-//   - Every canonical genre (GENRES.length — 132 as of 2026-10-13) bucketed into approved /
+//   - Every canonical genre (GENRES.length — 136 as of 2026-10-15) bucketed into approved /
 //     conditional / excluded. The model only LISTS approved + conditional;
 //     excluded is computed here as "every canonical genre the model didn't
 //     list" (since 2026-09-24 — saves the output tokens the model used to

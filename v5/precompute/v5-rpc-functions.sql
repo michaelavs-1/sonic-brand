@@ -192,12 +192,12 @@ $$;
 -- Since 2026-10-11 the hit floor depends on the genre: 40 for the Israeli
 -- genres (45 until 2026-10-14, then briefly 30), 60 for every other one
 -- (hit_popularity_floor below; migrations 2026-10-11-israeli-hit-floor.sql,
--- 2026-10-14-v7-popularity.sql, 2026-10-14-israeli-hit-floor-40.sql). A track
--- found through two requested genres is a hit if it clears either genre's
--- floor.
+-- 2026-10-14-v7-popularity.sql, 2026-10-14-israeli-hit-floor-40.sql,
+-- 2026-10-15-israeli-hit-floor-new-genres.sql). A track found through two
+-- requested genres is a hit if it clears either genre's floor.
 
--- Same definition as in migrations/2026-10-14-israeli-hit-floor-40.sql — keep
--- the two identical. A new Israeli genre must be added here too.
+-- Same definition as in migrations/2026-10-15-israeli-hit-floor-new-genres.sql
+-- — keep the two identical. A new Israeli genre must be added here too.
 CREATE OR REPLACE FUNCTION hit_popularity_floor(p_genre text)
 RETURNS int
 LANGUAGE sql IMMUTABLE
@@ -209,7 +209,9 @@ AS $$
             'מזרחית ישנה',
             'רוק ישראלי',
             'שירי ארץ ישראל',
-            'שירי יום הזיכרון והשואה'
+            'שירי יום הזיכרון והשואה',
+            'פופ ישראלי',
+            'היפ הופ ישראלי'
         ) THEN 40
         ELSE 60
     END

@@ -10,7 +10,7 @@ The codebase contains multiple parallel "versions" that coexist. **v7 is the cur
 | Version | State | Where |
 |---|---|---|
 | v6 | **Reachable at `/v6` only — the root moved to v7 on 2026-09-28 — and NO v6 accounts exist** (all deleted 2026-09-24); its daily cron is hard-disabled. Signups at `/v6` would still create v6 accounts, which get no daily playlists. Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. Full v6 docs: [docs/v6-reference.md](docs/v6-reference.md). | `v6/`, `api/v6/` |
-| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 132-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built and switched on per environment by `V7_PAYMENTS_ENABLED` — on in Development, **off in Production** (the step there is the old placeholder) (see [docs/v7-payments.md](docs/v7-payments.md)). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
+| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 136-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built and switched on per environment by `V7_PAYMENTS_ENABLED` — on in Development, **off in Production** (the step there is the old placeholder) (see [docs/v7-payments.md](docs/v7-payments.md)). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
 | v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anthropic`, `anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend still runs standalone. `v5/ami-prompt-dashboard/` lives here but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
 | v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
 | v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). | `v3/`, `v2/` |
@@ -95,7 +95,7 @@ Stage 2 (only if fewer than 3 R1 picks):
 [owner swipes refined deck]
        ↓
 Stage 3: v7/generation/taste-profile.js
-         → full-catalog (132-genre) bucketing + per-user energy scale + carry-through prefs
+         → full-catalog (136-genre) bucketing + per-user energy scale + carry-through prefs
          label='v7-taste-profile'
        ↓
 [registration (email + password; a registered email is stopped here) → payment (Hyp iframe; placeholder while
@@ -153,7 +153,7 @@ Energy calibration:
   - **Safety net:** if the model still leaves level 1 without an approved genre, `normalizeTasteProfile` shifts every level down and shrinks N (never below 2). This keeps Option 1's calm tier from coming out empty.
   - Tests: `node --test scripts/test-taste-profile-normalize.mjs`.
 
-Hard schema invariant: every one of the 132 canonical genres must land in EXACTLY ONE bucket. `normalizeTasteProfile` in `v7/generation/taste-profile.js` guarantees this by construction — `excluded_genres` = every canonical genre not in approved or conditional (any `excluded_genres` the model sends anyway is ignored); approved wins over conditional on duplicates; case drift is canonicalised via a lowercase→canonical map; invented genres (e.g. "Slow Funk") are dropped; energy levels clamped to `[1..N]`.
+Hard schema invariant: every one of the 136 canonical genres must land in EXACTLY ONE bucket. `normalizeTasteProfile` in `v7/generation/taste-profile.js` guarantees this by construction — `excluded_genres` = every canonical genre not in approved or conditional (any `excluded_genres` the model sends anyway is ignored); approved wins over conditional on duplicates; case drift is canonicalised via a lowercase→canonical map; invented genres (e.g. "Slow Funk") are dropped; energy levels clamped to `[1..N]`.
 
 **Requested genres (Ami, 2026-10-05).** `requested_genres` = the genres the owner asked for explicitly:
 - **Sources:** every super-liked genre (added in code, from the swipe deck's list) + every genre named in the musical emphases or Round 2 text (listed by the model, rule `REQUESTED_GENRES_RULE`). Exact genres: "R&B" → `Rnb`, not `French RnB`.
@@ -185,7 +185,7 @@ Removed 2026-09-23. v7's homogeneity axes (energy / instrumentation / register /
 
 ### v7 persists a taste profile, NOT `business_directions`
 
-v7 does NOT write `business_directions` (v6's per-direction table). Instead, signup persists the flat taste profile to **`business_taste_profiles`**, the chosen delivery mode to **`business_v7_settings`**, and (Option 1 only) energy-tiered directions to **`business_v7_directions`** — three new tables (see DATA MODEL). Consequences: v6's daily-gen cron, direction-edit chat, and admin API all read `business_directions` and see nothing for v7 businesses — which is correct (v6's cron is shut off; v7 has its own cron; the Home tab's chat is v7's own taste chat since 2026-10-13). The admin API's v7 view is a future item.
+v7 does NOT write `business_directions` (v6's per-direction table). Instead, signup persists the flat taste profile to **`business_taste_profiles`**, the chosen delivery mode to **`business_v7_settings`**, and (Option 1 only) energy-tiered directions to **`business_v7_directions`** — three new tables (see DATA MODEL). Consequences: v6's daily-gen cron and direction-edit chat read `business_directions` and see nothing for v7 businesses — which is correct (v6's cron is shut off; v7 has its own cron; the Home tab's chat is v7's own taste chat since 2026-10-13). The internal admin API was rebuilt for v7 on 2026-10-13 and reads the v7 tables (v6's `business_directions` only appears there as `legacy_v6`); see § INTERNAL ADMIN API.
 
 ### v7 daily runtime (Option 1 / Option 2) — BUILT
 
@@ -330,7 +330,7 @@ The Home tab's chat makes a one-off playlist for something happening **today**. 
   - Trash deletes the row, which frees a slot.
 - **How the playlist is made** (`event-playlist.js`, classifier prompt `v7/generation/event-playlist-prompt.js`):
   - **Model:** Gemini (v7 `ai-provider.js` constants, label `v7-event-playlist`) reads the brief. It returns genres + a tempo range + instrumental / popularity preferences.
-  - **Genres:** `genre_source:'daily'` (the owner agreed in the chat to use their daily styles; the chat asks when they named no styles) → only the taste profile's approved genres. `'event'` → any of the 132. No pairing rules — Roni: those are for day-to-day cohesion.
+  - **Genres:** `genre_source:'daily'` (the owner agreed in the chat to use their daily styles; the chat asks when they named no styles) → only the taste profile's approved genres. `'event'` → any of the 136. No pairing rules — Roni: those are for day-to-day cohesion.
   - **Preferences:** start from the taste profile; the brief can override them.
   - **Tracks:** `v5_direction_tracks` random draw, ~223 like v6 (`closedDayTargetTracks`), floor 5. It leaves out every track in the business's live playlists today (daily + special).
   - **Spotify and rows:** playlist on Rubin "<business> · <name> · dd.mm.yyyy" (IL date), `created_playlists` ledger, and a `business_playlists` row (`event_id`, ico 🎪, `track_genres`).
@@ -476,7 +476,7 @@ sonic-brand/
 │       ├── musical-directions.js           ← R1 diagnostic taste probes (8, 4+4 split). label='v7-onboarding'.
 │       ├── refined-directions.js           ← R2 refinement (4 probes, fires when R1 picks < 3).
 │       │                                      label='v7-onboarding-refined'. Imports R1 sub-constants.
-│       ├── taste-profile.js                ← Full 132-genre bucketing + dynamic 2-6 energy levels.
+│       ├── taste-profile.js                ← Full 136-genre bucketing + dynamic 2-6 energy levels.
 │       │                                      Runs once after R1/R2 resolve, before signup. Output:
 │       │                                      approved/conditional/excluded + energy_levels_total +
 │       │                                      per-genre energy_level + inst_pref/pop_pref carry-through.
@@ -516,7 +516,7 @@ sonic-brand/
 │   │                                          Closing after opening, or after midnight by 06:00; ≤ 20h a day.
 │   ├── password-rules.js                   ← v7 password rule (browser + server): passwordProblem, PASSWORD_RULES_TEXT.
 │   │                                          Mirrors the Supabase Auth password settings.
-│   └── genre-universe.js                   ← THE canonical genre list. Exports GENRES (array, 132 entries),
+│   └── genre-universe.js                   ← THE canonical genre list. Exports GENRES (array, 136 entries),
 │                                              GENRE_SET, and GENRE_UNIVERSE_SECTION (formatted prompt block).
 │                                              Every consumer (v5/v6/v7 musical-directions.js,
 │                                              v6/generation/genre-list.js) re-exports or imports from here.
@@ -863,7 +863,7 @@ v6-only mechanisms (the onboarding state machine, prefetching, the progressive s
 
 ### Genre list — `shared/genre-universe.js`
 
-Shared canonical menu, currently 132 entries. As of 2026-09-23 the list lives in **`shared/genre-universe.js`** — one source of truth. Every consumer (v5 / v6 / v7 musical-directions.js, v6/generation/genre-list.js, transitively the v6 + v7 event-playlist classifier prompts and the direction-edit chat prompt) imports or re-exports from there. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`. Late-Aug / early-Sep churn: `Latin Funk` and `Greek Funk` added (Greek Funk seeded from the 2 world-funk playlists that got reassigned during the world-funk purge); `World Funk` and `Brit Funk` fully removed from the DB (playlists + exclusive tracks purged); `Thai Molam Funk` renamed to `Thai Molam` to match Ami's sheet update; `Alternative R&B`, `Hawaii ukulele music`, `Musica Tropical` added on 2026-09-02 after their sheet seeds digested cleanly. **2026-09-26** — 8 more added after clean Round 1 + Round 2 digestion: `Afro Cuban Jazz`, `Doo-Wop`, `Electronic R&B`, `French Touch`, `Italian Folk`, `Mo Town`, `Soft Pop Hits`, `Surf Rock` (4,390 total OK tracks across the group). **2026-10-13** — 8 more: `Andean Chill`, `Brazilian Funk`, `French Musette`, `Hip House`, `Jangle pop`, `Latin DownTempo`, `Latin RnB`, `Trip Hop` (3,914 OK tracks across the group). See § PROMPT EDITING PROTOCOL for the current invariant.
+Shared canonical menu, currently 136 entries. As of 2026-09-23 the list lives in **`shared/genre-universe.js`** — one source of truth. Every consumer (v5 / v6 / v7 musical-directions.js, v6/generation/genre-list.js, transitively the v6 + v7 event-playlist classifier prompts and the direction-edit chat prompt) imports or re-exports from there. Kept in sync with the exact strings stored in `playlist_genres.genre` in Supabase — the RPCs lowercase-match. Grew from 73 → 105 across 2026-08 as Ami added new genres to Data Box Tab 2 and RapidAPI batch runs digested their seed playlists into `track_analyses`. Late-Aug / early-Sep churn: `Latin Funk` and `Greek Funk` added (Greek Funk seeded from the 2 world-funk playlists that got reassigned during the world-funk purge); `World Funk` and `Brit Funk` fully removed from the DB (playlists + exclusive tracks purged); `Thai Molam Funk` renamed to `Thai Molam` to match Ami's sheet update; `Alternative R&B`, `Hawaii ukulele music`, `Musica Tropical` added on 2026-09-02 after their sheet seeds digested cleanly. **2026-09-26** — 8 more added after clean Round 1 + Round 2 digestion: `Afro Cuban Jazz`, `Doo-Wop`, `Electronic R&B`, `French Touch`, `Italian Folk`, `Mo Town`, `Soft Pop Hits`, `Surf Rock` (4,390 total OK tracks across the group). **2026-10-13** — 8 more: `Andean Chill`, `Brazilian Funk`, `French Musette`, `Hip House`, `Jangle pop`, `Latin DownTempo`, `Latin RnB`, `Trip Hop` (5,508 OK tracks across the group by 2026-10-15; the 3,914 recorded when they were added was cut short, see `prompt-history.md`). **2026-10-15** — 4 more: `Acoustic Blues`, `Future Funk`, `פופ ישראלי`, `היפ הופ ישראלי` (2,214 OK tracks when added, while the error retry was still running). See § PROMPT EDITING PROTOCOL for the current invariant.
 
 ### Playlist auto-expiry
 
@@ -1182,11 +1182,11 @@ Default `'none'`.
 - `'none'` — unchanged (atmosphere window applies as before).
 
 **Israeli genres: hits are 40+, not 60+ (2026-10-11; 45 until 2026-10-14, then 30 for a few hours).** Spotify's popularity is global and Israel is a small market, so at 60+ only 8% of Israeli tracks counted as hits (232 of 2,749; `רוק ישראלי` 7 of 326).
-- **The rule:** the six Israeli genres (`בלדות ישראליות`, `פופ מזרחית`, `מזרחית ישנה`, `רוק ישראלי`, `שירי ארץ ישראל`, `שירי יום הזיכרון והשואה`) use **40** (Roni, 2026-10-14). From 2026-10-11 it was 45, the median of their catalog; Ami asked for 30 on 2026-10-14, which let 84% count as hits, so Roni settled on 40 the same day. Of their 3,399 analysed tracks, 30+ = 2,845, **40+ = 2,293 (67%)**, 45+ = 1,768, 60+ = 257 (measured 2026-10-14). Every other genre keeps 60. It applies to both `'hard'` (filter) and `'soft'` (hits first).
+- **The rule:** the Israeli genres (`בלדות ישראליות`, `פופ מזרחית`, `מזרחית ישנה`, `רוק ישראלי`, `שירי ארץ ישראל`, `שירי יום הזיכרון והשואה`, plus `פופ ישראלי` and `היפ הופ ישראלי` since 2026-10-15) use **40** (Roni, 2026-10-14). From 2026-10-11 it was 45, the median of their catalog; Ami asked for 30 on 2026-10-14, which let 84% count as hits, so Roni settled on 40 the same day. Of the original six genres' 3,399 analysed tracks, 30+ = 2,845, **40+ = 2,293 (67%)**, 45+ = 1,768, 60+ = 257 (measured 2026-10-14). Every other genre keeps 60. It applies to both `'hard'` (filter) and `'soft'` (hits first).
 - **Where the numbers live:** the SQL function **`hit_popularity_floor(genre)`**, the only place they're written. A track's floor is that of the genre it was found through; a track found through two requested genres is a hit if it clears either floor. **A new Israeli genre must be added there too** (and in `v5/precompute/v5-rpc-functions.sql`, which carries the same definition).
 - **Functions that use it:** `v7_anchor_tracks` (swipe deck), `v6_direction_tracks_recent` (Option 1), `v7_timeline_pool` (Option 2), `v5_direction_tracks` (special playlists), `v7_energy_tracks` (Ami's test playlists). `v5_anchor_tracks` (v6 swipe deck only) still uses 60.
 - **The prompt:** v7 R1's sub-rule (imported by R2) names the exception, so the model doesn't avoid Israeli genres when hits are asked for. v6's prompt still says 60–100.
-- **Migrations:** [`2026-10-11-israeli-hit-floor.sql`](v5/precompute/migrations/2026-10-11-israeli-hit-floor.sql) (the floor function + every track function reading it), [`2026-10-14-v7-popularity.sql`](v5/precompute/migrations/2026-10-14-v7-popularity.sql) (the floor to 30 + `popularity_tiers`), then [`2026-10-14-israeli-hit-floor-40.sql`](v5/precompute/migrations/2026-10-14-israeli-hit-floor-40.sql) (the floor to 40). Check after: `node scripts/test-israeli-hit-floor.mjs` (read-only, reads `.env.local` itself).
+- **Migrations:** [`2026-10-11-israeli-hit-floor.sql`](v5/precompute/migrations/2026-10-11-israeli-hit-floor.sql) (the floor function + every track function reading it), [`2026-10-14-v7-popularity.sql`](v5/precompute/migrations/2026-10-14-v7-popularity.sql) (the floor to 30 + `popularity_tiers`), then [`2026-10-14-israeli-hit-floor-40.sql`](v5/precompute/migrations/2026-10-14-israeli-hit-floor-40.sql) (the floor to 40), then [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql) (the two new Israeli genres). Check after: `node scripts/test-israeli-hit-floor.mjs` (read-only, reads `.env.local` itself).
 
 **Only hits where there are enough (v7, Ami 2026-10-14).** A strict hits-only draw starved niche styles: 37 of the 132 genres have fewer than 25 hits, and an Option 1 calm playlist of three niche styles came out at 17 songs instead of 129 (measured 2026-10-14). Now, with `'hard'`:
 - **Option 1, per playlist:** `planOption1` marks a hits-only direction `popularity_fallback: 'soft'`. `fetchTracksWithHistory` (v6 `_daily-builder.js`; opt-in, so v6 is unchanged) draws hits only, and when the hits not served in the last 7 days can't fill the playlist, it redraws it as `'soft'` (hits first, then the rest). Recorded in `expansion.direction.popularity {preference, applied}`.
@@ -1308,7 +1308,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 
 ### Track pool coverage
 
-**135,845 successfully-analyzed tracks** (`status = ok`) in `track_analyses` as of 2026-10-13 (128,652 on 2026-09-28, ~121k on 2026-09-08); the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, Israeli genres, Japanese Folk through early September; the 8 genres added 2026-09-26 — Afro Cuban Jazz, Doo-Wop, Electronic R&B, French Touch, Italian Folk, Mo Town, Soft Pop Hits, Surf Rock; the 8 added 2026-10-13 — Andean Chill, Brazilian Funk, French Musette, Hip House, Jangle pop, Latin DownTempo, Latin RnB, Trip Hop). About 16,300 more sat at `status = 'error'` on 2026-10-08, waiting for `--retry-errors` runs. This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses WHERE status = 'ok'` in Supabase (from a script, use the service key: the anon key's count returned a bare 500 on 2026-10-13, likely its 3s timeout). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (132 entries as of 2026-10-13, `shared/genre-universe.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
+**135,845 successfully-analyzed tracks** (`status = ok`) in `track_analyses` as of 2026-10-13 (128,652 on 2026-09-28, ~121k on 2026-09-08); the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, Israeli genres, Japanese Folk through early September; the 8 genres added 2026-09-26 — Afro Cuban Jazz, Doo-Wop, Electronic R&B, French Touch, Italian Folk, Mo Town, Soft Pop Hits, Surf Rock; the 8 added 2026-10-13 — Andean Chill, Brazilian Funk, French Musette, Hip House, Jangle pop, Latin DownTempo, Latin RnB, Trip Hop; the 4 added 2026-10-15 — Acoustic Blues, Future Funk, פופ ישראלי, היפ הופ ישראלי). About 16,300 more sat at `status = 'error'` on 2026-10-08, waiting for `--retry-errors` runs. This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses WHERE status = 'ok'` in Supabase (from a script, use the service key: the anon key's count returned a bare 500 on 2026-10-13, likely its 3s timeout). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (136 entries as of 2026-10-15, `shared/genre-universe.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
 
 ---
 
@@ -1614,6 +1614,13 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 | `TRACK_ANALYSIS_RAPIDAPI_KEY` | `v4/precompute/batch.mjs`, `api/v4/track-analysis.js` | RapidAPI plan quota tracked in `.rapidapi-call-count.json`. The *automated cron* is off (ami-cron-tick killed 2026-08-13) but the CLI batch worker `node v4/precompute/batch.mjs` is still run manually to digest new genres as Ami adds them. Key rotated 2026-08-25 after a paid-tier upgrade — the old key kept returning provider-side errors on the higher tier; new key resolved it. Rotated again 2026-09-24 when the plan went back from Ultra to Pro (same lesson: a tier change → a new key). Track analysis only runs locally (the batch worker on Roni's machine reads the key from `.env.local`); nothing in the cloud runs it on a schedule. Regen a key at RapidAPI dashboard → your app → security. |
 | `RAPIDAPI_BILLING_CYCLE_DAY` | Precompute batch | Day of month billing resets |
 
+**Script-only overrides** (read by scripts under `scripts/`, never set in Vercel):
+- `DEV_PORT` / `DEV_BASE` — the `vercel dev` address for the walkthroughs and regenerate / backfill scripts (default `127.0.0.1:3000`).
+- `TEST_BASE_URL` — the resilience / alert tests.
+- `GEMINI_MODEL` / `GEMINI_THINKING_LEVEL` — `test-gemini.mjs`.
+- `SCRIPT_SPOTIFY_*` — `build-today-oneoff.mjs`.
+- `BIZ_DESC` / `ATMOSPHERES` / `OPENAI_MODEL` / `ANTHROPIC_MODEL` — `benchmark-directions.mjs`.
+
 **Also configured in external dashboards:**
 - **Resend API key** — the value stored under `SUPABASE_AUTH` above is
   a Resend key. Also mirrored into Supabase Dashboard → Auth → SMTP
@@ -1663,7 +1670,7 @@ Ten prompts (musical directions, the v7 prompts built on them, v7's special-play
 **v7 (runtime built)** — tracked in `prompt-history-v7.md`:
 - **v7 Round 1** — `v7/generation/musical-directions.js`. Diagnostic taste probes (see § V7 ARCHITECTURE). What Ami's dashboard tunes against.
 - **v7 Round 2** — `v7/generation/refined-directions.js`. Imports shared sub-constants from v7 R1.
-- **v7 Taste profile** — `v7/generation/taste-profile.js`. Full-catalog bucketing (every genre in `shared/genre-universe.js` — 132 as of 2026-10-13; the prompt reads the count from the list) + per-user energy scale.
+- **v7 Taste profile** — `v7/generation/taste-profile.js`. Full-catalog bucketing (every genre in `shared/genre-universe.js` — 136 as of 2026-10-15; the prompt reads the count from the list) + per-user energy scale.
 - **v7 Energy directions** — `v7/generation/energy-directions.js`. Option-1 energy-tiered directions from `approved_genres`. `Applies to: energy directions`.
 - **v7 Level directions** — `v7/generation/level-directions.js`. Option-2 per-energy-level direction libraries from `approved_genres`. `Applies to: level directions`.
 - **v7 Event chat** — `v7/generation/event-chat-prompt.js`. The special-playlists chat (today only, 2 per day, styles question). `Applies to: event chat`.
@@ -1773,7 +1780,11 @@ Older knobs still in use:
 - **Tab 1** "לפי מקומות" (gid `0`): business types → genres. Read by `api/v4/databox.js`.
 - **Tab 2** "לפי ז׳אנרים" (gid `1199564828`): genre → up to 15 playlist links, data from row 7. Read by `api/v4/databox-genres.js`.
 - **"What did Ami add?"** = compare Tab 2 with `playlist_genres` (playlists not yet in the DB) and with `shared/genre-universe.js` (genres not in the prompts). Then refresh the baseline with `node v4/precompute/snapshot-databox.mjs` (needs `vercel dev`), so the next check can diff against it.
-- **As of 2026-10-13 (afternoon):** four genres are on the sheet with nothing ingested yet: `Acoustic Blues` (9 playlists), `Future Funk` (8; was "Futre Funk" until Ami fixed it), `פופ ישראלי` (12) and `היפ הופ ישראלי` (11). The two Israeli ones will also need adding to `hit_popularity_floor` when they join the genre list (see "Israeli genres" under Popularity preference).
+- **Four genres being digested (2026-10-13 → 15):** `Acoustic Blues` (9 playlists), `Future Funk` (8; was "Futre Funk" until Ami fixed it), `פופ ישראלי` (12) and `היפ הופ ישראלי` (11), plus one new playlist each under `Late Night jazz` and `בלדות ישראליות` (42 playlists in all).
+  - **Steps 1–2 of "Digesting newly added genres" (below) ran on 2026-10-13 / 14.** Every sheet playlist is now in the DB.
+  - **Step 3 (the error retry) hadn't finished on 2026-10-15.** OK / failed tracks at that point: Acoustic Blues 334 / 229, Future Funk 483 / 846, פופ ישראלי 535 / 59, היפ הופ ישראלי 856 / 436.
+  - **All four joined `shared/genre-universe.js` on 2026-10-15** (Roni), with step 3 still running. The two Israeli ones joined `hit_popularity_floor` in migration [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql), which must be run before their 40+ hit rule applies.
+  - **Counting a genre's tracks:** read `playlist_tracks` with paging (`pgrSelectAll`), not `pgrSelectIn` by `playlist_id`. Each `pgrSelectIn` request stops at 1,000 rows, so genres with long playlists come out short. That happened to Jangle pop, Brazilian Funk and Trip Hop on 2026-10-13, and to Future Funk and היפ הופ ישראלי on 2026-10-15.
 
 `v4/precompute/dry-run-fill.mjs` — plans new playlists from Data Box Tab 2 (needs `vercel dev`):
 - `--target-playlists=N|max` — fill each genre up to N playlists (default 5), or `max` = every playlist the sheet lists for it.
@@ -1833,7 +1844,7 @@ Originally a punch list from the 2026-09-23 v7 prompt-authoring session. Most of
 
 ### RESOLVED — Downstream persistence
 
-v7 does NOT reuse `business_directions`. Signup persists the flat taste profile to the new **`business_taste_profiles`** table (plus `business_v7_settings` and, for Option 1, `business_v7_directions`) — effectively option (b) from the original write-up, but WITHOUT refactoring v6's readers: v6's daily cron is shut off, and v6's direction-chat / admin API simply see no v7 rows (acceptable for now). See § V7 ARCHITECTURE + DATA MODEL. Remaining sub-item: the internal admin API has no v7 view yet.
+v7 does NOT reuse `business_directions`. Signup persists the flat taste profile to the new **`business_taste_profiles`** table (plus `business_v7_settings` and, for Option 1, `business_v7_directions`) — effectively option (b) from the original write-up, but WITHOUT refactoring v6's readers: v6's daily cron is shut off, and v6's direction-chat simply sees no v7 rows (acceptable for now). See § V7 ARCHITECTURE + DATA MODEL. The internal admin API got its v7 view on 2026-10-13 (§ INTERNAL ADMIN API).
 
 ### RESOLVED — Playlist builder for v7
 

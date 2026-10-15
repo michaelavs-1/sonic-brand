@@ -32,7 +32,24 @@ history matters for debugging old rows.
 
 ---
 
-## 2026-10-13 (latest) — 8 new genres added to shared/genre-universe.js
+## 2026-10-15 (latest) — 4 new genres added to shared/genre-universe.js
+
+**Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
+
+Ami added these to Data Box Tab 2 between 2026-10-07 and 2026-10-13 ("Future Funk" was "Futre Funk" until he fixed the typo). All their sheet playlists were ingested by 2026-10-14. Roni added them while the 6-retry error run was still working through their failed tracks, so the counts below (2026-10-15 morning) will grow. Inserted alphabetically, with the two Israeli ones at the end of the Israeli block:
+
+- `Acoustic Blues` (335 OK tracks · 9 playlists)
+- `Future Funk` (486 OK · 8 playlists; 843 still failed when added)
+- `פופ ישראלי` (535 OK · 12 playlists)
+- `היפ הופ ישראלי` (858 OK · 11 playlists)
+
+**Correction to the 2026-10-13 entry below:** its counts for `Jangle pop`, `Brazilian Funk` and `Trip Hop` were cut short. The ad-hoc count read each genre's playlist contents in one request, and the database returns at most 1,000 rows per request. With every row read, on 2026-10-15 (after more of the error retries): Jangle pop 2,046 OK of 2,059 tracks, Brazilian Funk 747 of 780, Trip Hop 932 of 936. The other five genres were under 1,000 rows and were counted correctly.
+
+`GENRES.length` moves from 132 → 136. The two Israeli genres also joined the Israeli hit floor (popularity 40+ counts as a hit): migration `v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql` + `v5-rpc-functions.sql`. v6's prompt still names no Israeli exception, as before. Cross-referenced in `prompt-history-v7.md` at the same date.
+
+---
+
+## 2026-10-13 — 8 new genres added to shared/genre-universe.js
 
 **Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
 

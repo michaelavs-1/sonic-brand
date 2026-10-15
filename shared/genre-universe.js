@@ -30,6 +30,7 @@ export const GENRES = [
   '80s Pop',
   "90's pop party",
   'Acid Jazz',
+  'Acoustic Blues',
   'African Highlife',
   'Afro Cuban Jazz',
   'Afro Funk',
@@ -79,6 +80,7 @@ export const GENRES = [
   'French Touch',
   'French Ye Ye',
   'Funk',
+  'Future Funk',
   'German Hip Hop',
   'Greek Funk',
   'Grunge',
@@ -153,13 +155,15 @@ export const GENRES = [
   'Grime & Drill',
   // Israeli genres: a "hit" here is popularity 40+, not 60+. A new Israeli
   // genre must also go into the SQL function hit_popularity_floor
-  // (v5/precompute/migrations/2026-10-14-israeli-hit-floor-40.sql).
+  // (latest: v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql).
   'בלדות ישראליות',
   'פופ מזרחית',
   'מזרחית ישנה',
   'רוק ישראלי',
   'שירי ארץ ישראל',
   'שירי יום הזיכרון והשואה',
+  'פופ ישראלי',
+  'היפ הופ ישראלי',
 ];
 
 export const GENRE_SET = new Set(GENRES);

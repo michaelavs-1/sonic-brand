@@ -967,16 +967,23 @@ async function runGenreUndo() {
 // Full track_analyses row from api/v4/ami-track-lookup.js: typed audio-feature
 // columns rendered as a key/value grid, plus the raw_analysis jsonb blob in a
 // collapsed <details> so Ami can see everything RapidAPI returned without it
-// dominating the card by default.
+// dominating the card by default. Loudness has no typed column, so it's read
+// from raw_analysis (RapidAPI sends it as text, e.g. "-10 dB").
 function renderTrackAnalysis(a) {
-    const typedKeys = [
-        'popularity', 'tempo', 'energy', 'danceability',
-        'valence', 'acousticness', 'instrumentalness',
-        'status', 'analyzed_at',
+    let raw = a.raw_analysis;
+    if (typeof raw === 'string') {
+        try { raw = JSON.parse(raw); } catch { raw = null; }
+    }
+    const fields = [
+        ['popularity', a.popularity], ['tempo', a.tempo], ['energy', a.energy],
+        ['danceability', a.danceability], ['valence', a.valence],
+        ['acousticness', a.acousticness], ['instrumentalness', a.instrumentalness],
+        ['loudness', raw?.loudness || null],
+        ['status', a.status], ['analyzed_at', a.analyzed_at],
     ];
-    const cells = typedKeys
-        .filter((k) => a[k] !== null && a[k] !== undefined)
-        .map((k) => `<div><span class="k">${escapeHtml(k)}:</span><span class="v">${escapeHtml(String(a[k]))}</span></div>`)
+    const cells = fields
+        .filter(([, v]) => v !== null && v !== undefined)
+        .map(([k, v]) => `<div><span class="k">${escapeHtml(k)}:</span><span class="v">${escapeHtml(String(v))}</span></div>`)
         .join('');
 
     let rawHtml = '';

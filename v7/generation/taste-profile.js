@@ -9,7 +9,7 @@
 // Job: take the sparse swipe-deck signal (up to 12 direction probes across
 // R1 + R2, plus per-direction like/dislike, plus per-track super-likes) and
 // extrapolate to a full-catalog taste profile. Output:
-//   - Every canonical genre (GENRES.length — 136 as of 2026-10-15) bucketed into approved /
+//   - Every canonical genre (GENRES.length — 138 as of 2026-10-20) bucketed into approved /
 //     conditional / excluded. The model only LISTS approved + conditional;
 //     excluded is computed here as "every canonical genre the model didn't
 //     list" (since 2026-09-24 — saves the output tokens the model used to
@@ -81,8 +81,8 @@ Expand boldly based on the owner's taste patterns, but **do not spray-and-pray**
 
 export const HARD_BOUNDARY_RULES_SECTION = `## HARD BOUNDARY RULES (MUST FOLLOW STRICTLY)
 
-1. **Electronic Music Guardrail:** \`DownTempo\`, \`Organic House\`, and ALL electronic-leaning genres (e.g., \`Deep House\`, \`Tech House\`, \`Indie Dance\`, \`IndieTronica\`, \`Nu Disco\`, \`French Touch\`, \`Progressive & Psy Trance\`) must NEVER be auto-expanded or inferred into \`approved\` unless the user explicitly liked or super-liked that exact genre or a tightly adjacent electronic genre in R1/R2.
-2. **Classical & Spa/Ambient Guardrail:** Classical genres (\`Baroque\`, \`Chamber music\`, \`Piano Impressionism\`) and spa/relaxing ambient music must NEVER be inferred or auto-approved based on venue type or general "chill" vibe. They are ONLY eligible for \`approved\` or \`conditional\` if the user was explicitly presented with them (or an identical genre) in earlier diagnostic probes AND swiped right / super-liked them.
+1. **Electronic Music Guardrail:** \`DownTempo\`, \`Organic House\`, and ALL electronic-leaning genres (e.g., \`Deep House\`, \`Tech House\`, \`Indie Dance\`, \`IndieTronica\`, \`Nu Disco\`, \`French Touch\`, \`Electronic Chillout\`, \`Progressive & Psy Trance\`) must NEVER be auto-expanded or inferred into \`approved\` unless the user explicitly liked or super-liked that exact genre or a tightly adjacent electronic genre in R1/R2.
+2. **Classical & Spa/Ambient Guardrail:** Classical genres (\`Baroque\`, \`Chamber music\`, \`Piano Impressionism\`) and spa/relaxing ambient music (e.g., \`Meditative Ambient\`) must NEVER be inferred or auto-approved based on venue type or general "chill" vibe. They are ONLY eligible for \`approved\` or \`conditional\` if the user was explicitly presented with them (or an identical genre) in earlier diagnostic probes AND swiped right / super-liked them.
 3. **Venue Context Cutoff:** The ONLY reason to stop expanding into a genre that fits the owner's taste is a clash with the physical reality of the business. Do NOT expand into aggressive, highly intrusive, or polarizing genres that conflict with the venue (e.g., no heavy metal, drill, trap, or aggressive electronic in an upscale wine bar or fine dining setting, even if the user likes rhythmic/soulful music — a wine-bar owner who likes beats and R&B gets R&B, LoFi and soul approved, not aggressive \`German Hip Hop\`, \`Icelandic Hip Hop\` or \`Trap\`). This cutoff applies only to genres you INFER. It never overrides the owner's own choices: a super-liked genre, a genre in a liked direction, or a genre they requested in their emphases.`;
 
 const TASTE_PROFILE_INPUTS_SECTION = `## Inputs

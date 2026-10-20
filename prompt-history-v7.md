@@ -46,7 +46,28 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-15 (latest) — 4 new genres; two of them join the Israeli exception
+## 2026-10-20 (latest) — 2 new genres; both named in the taste profile's guardrails
+
+**Applies to:** all v7 (source-of-truth edit; flows to every v7 prompt via imports). The guardrail edit applies to the taste profile and the taste chat, which imports `HARD_BOUNDARY_RULES_SECTION`.
+
+Cross-referenced from `prompt-history.md`'s 2026-10-20 entry (primary record). New genres: `Electronic Chillout`, `Meditative Ambient`. `GENRES.length` moves 136 → 138, so the taste profile now buckets 138 genres.
+
+**Two guardrail lines changed** in the taste profile's `HARD_BOUNDARY_RULES_SECTION`, so the model treats the new genres like their families and never infers them for a "chill" venue:
+- the Electronic Music Guardrail's example list gains `Electronic Chillout`;
+- the Classical & Spa/Ambient Guardrail now names `Meditative Ambient` as its example of "spa/relaxing ambient music".
+
+The two lines now read:
+
+```
+1. **Electronic Music Guardrail:** `DownTempo`, `Organic House`, and ALL electronic-leaning genres (e.g., `Deep House`, `Tech House`, `Indie Dance`, `IndieTronica`, `Nu Disco`, `French Touch`, `Electronic Chillout`, `Progressive & Psy Trance`) must NEVER be auto-expanded or inferred into `approved` unless the user explicitly liked or super-liked that exact genre or a tightly adjacent electronic genre in R1/R2.
+2. **Classical & Spa/Ambient Guardrail:** Classical genres (`Baroque`, `Chamber music`, `Piano Impressionism`) and spa/relaxing ambient music (e.g., `Meditative Ambient`) must NEVER be inferred or auto-approved based on venue type or general "chill" vibe. They are ONLY eligible for `approved` or `conditional` if the user was explicitly presented with them (or an identical genre) in earlier diagnostic probes AND swiped right / super-liked them.
+```
+
+**Not done:** R1's `BEAT_PERCUSSION_RULE` and the energy / level direction prompts list drumless examples (`Late Night jazz`, `Piano Impressionism`, `Chamber music`) that don't include `Meditative Ambient`. It is drumless, so those rules already cover it in spirit.
+
+---
+
+## 2026-10-15 — 4 new genres; two of them join the Israeli exception
 
 **Applies to:** all v7 (source-of-truth edit; flows to R1 + R2 + taste profile + energy directions + level directions + event playlist + taste chat via imports). The R1 sub-rule edit applies to R1+R2.
 

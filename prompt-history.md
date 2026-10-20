@@ -32,7 +32,20 @@ history matters for debugging old rows.
 
 ---
 
-## 2026-10-15 (latest) — 4 new genres added to shared/genre-universe.js
+## 2026-10-20 (latest) — 2 new genres added to shared/genre-universe.js
+
+**Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
+
+Ami added these to Data Box Tab 2 on 2026-10-15 / 2026-10-16. All their sheet playlists were digested by 2026-10-20, the 6-retry error run included. Inserted alphabetically:
+
+- `Electronic Chillout` (1,231 OK tracks · 8 playlists; 6 still failed). The sheet spells it "electronic chillout", in lower case. Case doesn't matter for matching (the DB stores genres in lower case), so the list uses title case like its neighbours.
+- `Meditative Ambient` (1,925 OK · 10 playlists; 7 still failed)
+
+`GENRES.length` moves from 136 → 138, and the sheet, the DB and the list now hold the same 138 genres. v6's prompt has no family lists that name them. Cross-referenced in `prompt-history-v7.md` at the same date, together with the v7 taste-profile guardrails that now name both.
+
+---
+
+## 2026-10-15 — 4 new genres added to shared/genre-universe.js
 
 **Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
 

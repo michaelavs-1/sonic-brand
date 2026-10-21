@@ -107,8 +107,12 @@ const state = { dashboard: null };
 // Every change of the playlist type goes through here, so the taste chat's
 // placeholder follows it.
 function setDeliveryModeState(mode) {
+  const changed = state.deliveryMode !== mode;
   state.deliveryMode = mode;
   syncTastePlaceholder(mode);
+  // The cards are drawn before the type is read on load; the energy circles
+  // (Option 1 only) need it, so redraw once it's known.
+  if (changed && state.dashboard && !state.generating) renderPlaylists();
 }
 
 // Chat state for the special-playlists panel. `messages` is the visible

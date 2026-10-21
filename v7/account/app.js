@@ -63,8 +63,8 @@ import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
 // the per-playlist edit / trash paths, which v7 rows never show (no direction_id).
 import { openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=03102026a';
 import { mountTasteChat } from './taste-chat.js?v=13102026b';
-import { generateEnergyDirections } from '../generation/energy-directions.js?v=05102026a';
-import { generateLevelDirections } from '../generation/level-directions.js?v=28092026a';
+import { generateEnergyDirections } from '../generation/energy-directions.js?v=21102026a';
+import { generateLevelDirections } from '../generation/level-directions.js?v=21102026a';
 import { pickLevelDirections, levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
 import { setWaitText, WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
 import { mountHypPayment, ensureHypPaymentStyles } from '../hyp-payment.js?v=06102026a';

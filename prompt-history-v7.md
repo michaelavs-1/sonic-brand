@@ -46,7 +46,184 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-20 (latest) — 2 new genres; both named in the taste profile's guardrails
+## 2026-10-21 (latest) — Taste profile: precision first + energy floors; Ami's isolation rules in the daily-playlist recipes
+
+**Applies to:** taste profile + energy directions + level directions + taste chat (the taste chat imports `CORE_PHILOSOPHY_SECTION` and both `COHERENCE_SECTION`s, so it follows every change here).
+
+Second half of Ami's 2026-10-21 edit (the R1+R2 half is the entry below). His taste-profile copy predates 2026-10-20, so his changes were applied on top of the live text (the guardrails keep `Electronic Chillout` and `Meditative Ambient`; the genre count stays computed). His 4-playlists prompt was identical to the live one.
+
+**Taste profile — `CORE_PHILOSOPHY_SECTION`:** "maximalist expansion" (2026-09-30) → "precision first": approve only high-confidence genres; when in doubt, conditional or excluded. Example 3 (Groove/Soul) is gone, Example 2 no longer lists Cha Cha Cha / Peruvian Cumbia / Samba-Choro. Ami's "truly optional" reads "truly suitable".
+
+**Taste profile — Deduction Logic:** tight-cluster neighbours and bridge genres are approved only with all four axes / strong, unambiguous evidence (was: 2–3 axes, or "would genuinely enjoy"); untouched genres are judged conservatively (was: "expand boldly", no signal → conditional); the "no signal → conditional" reminder in the intro was dropped.
+
+**Taste profile — Energy Step 3** ("Floor Rule for Rhythmic & Groove Genres" → "Energy Floor Restrictions"). Ami's new floors, reworded with Roni (2026-10-21) so they hold on every scale size: Ami's "levels 1 or 2" / "level 3 or higher" became "the bottom two / top two levels", which on a 2- or 3-level scale mean only the bottom / top level.
+- House: always in the top two levels. Calm electronic genres may sit at the bottom: Ami named DownTempo (+ French / Latin); Roni added `LoFi Beats`, `Trip Hop`, `Electronic Chillout`. Other electronic genres are not restricted.
+- `Electronic R&B`: always in the top two levels (it left the groove family's list).
+- R&B exception (Ami): standard R&B may sit in the bottom two levels when the top two are full of clearly more energetic genres.
+- The floors give way only when the owner has nothing calmer (Roni; the sentence Ami had dropped, widened to house), which matches `normalizeTasteProfile`'s level shift.
+
+**Daily-playlist recipes** (Option 1 `energy-directions.js` and Option 2 `level-directions.js` `COHERENCE_SECTION`s). Roni: Ami's R1 rules apply here too. Same changes in both:
+- the old Strict Pop Isolation Rule → **Pure Pop Isolation Rule** (Ami's Rule 0.1 list + Bedroom Pop / Cantopop / Soft Pop Hits / Britpop; City Pop exception without DownTempo);
+- new **Electronic R&B Isolation Rule** and **DownTempo & LoFi Independence** (Rules 0 and 0.2, worded for recipes; the "Probe" sentences dropped);
+- **House & Techno Containment** lost its DownTempo exception and names Electronic R&B as allowed;
+- the fusion rule gains "Never across the isolation rules … always win over fusion";
+- Option 1's Requested Genres override names the new rules. Numbering: Option 1 §11–§14 + Titles §15; Option 2 §10–§13 + Titles §14.
+- Rule 0.3 (sound over geography) was not copied: the recipes' fusion rule already says the same thing (blend regional genres that share the same energy and feel).
+
+**Existing accounts** keep their stored taste profiles and recipes until regenerated.
+
+Full text — taste profile:
+
+```
+## CORE PHILOSOPHY: PRECISION-FIRST & HIGHLY TARGETED EXPANSION
+
+Your goal is **PRECISION AND ACCURACY ABOVE ALL**. Do not try to pad or inflate the approved list with broad guesses. Every single approved genre must be a highly logical, deeply contextual, and safe fit for both the business owner's verified musical taste and their specific venue type.
+
+Analyze the user's inputs — business description, atmosphere, musical emphases, swipes, and super-likes — to deduce only the genres that are truly suitable, relevant, and enjoyable for them.
+
+- **Strict Relevance over Volume:** Quality and fit beat quantity. It is far better to have a compact, perfectly tailored list of `approved` genres than a broad list containing edge cases the owner might dislike.
+- **Evidence-Based Deductions Only:** Expand only into genres that share a direct, obvious bridge or tight cluster connection with what the user explicitly liked or requested.
+  * *Example 1 (LoFi + R&B/Jazz Synergy):* User liked `LoFi Bossa` AND liked `Alternative R&B` / `Neo Soul` / a jazz genre (e.g. `Jazz (Standards)`) → Approve `LoFi Beats` and `JazzHop`.
+  * *Example 2 (World Rhythms + Soul Synergy):* User liked `Bossa Nova`, `Gypsy jazz`, and `Latin Funk` → Approve logical extensions like `Bolero`, `Fado`, `Samba`, etc., provided they align with the venue's mood.
+- **When in Doubt, Downgrade or Exclude:** If a genre is plausible but you lack strong signal or suspect the owner might find it off-putting, place it in `conditional` or leave it `excluded`. Reserve `approved` strictly for high-confidence matches.
+```
+
+```
+### 1. Aggregate positive signal per genre
+
+Positive signal sources, strongest → weakest:
+- **Super-liked genre.** The owner super-liked a specific track drawn from this genre. Strongest positive signal. → `approved`.
+- **Genre appears in a liked direction.** → `approved`, unless a stronger negative signal overrides.
+- **Musical emphases explicitly requested this genre or its family.** → `approved`.
+- **Tight-cluster neighbour.** The genre shares energy tier, instrumentation family, cultural register, and mood with a super-liked or liked genre. → `approved` ONLY if all four axes match and it fits the venue context perfectly; otherwise → `conditional`.
+- **Cross-pattern & thematic synergy.** The genre shares clear cultural, aesthetic, or musical intersections with the owner's liked genres, or bridges two distinct things they liked. → `approved` ONLY if the evidence is strong and unambiguous; otherwise → `conditional`.
+```
+
+```
+### 4. Untouched genres (never appeared in any R1/R2 direction)
+
+For genres the user was never presented with — be highly selective and conservative:
+- **Direct, high-confidence match:** Shares an obvious, tight-cluster connection with liked genres AND perfectly matches the venue context → `approved`.
+- **Moderate confidence match:** Plausible connection or distant relative to liked styles, but lacks direct validation → `conditional`.
+- **Weak or no signal:** Any genre without a strong, demonstrable link to the user's explicit likes or business context → `conditional` (if safe) or `excluded` (if irrelevant/risky).
+```
+
+```
+### Step 3: Energy Floor Restrictions (STRICT ENFORCEMENT)
+
+The **top two levels** are the highest and next-to-highest level (on a scale of 2 or 3 levels: only the top level). The **bottom two levels** are the lowest and next-to-lowest level (on a scale of 2 or 3 levels: only the lowest level).
+
+- **House Genres Floor:** Every House genre (`Deep House`, `Tech House`, `Organic House`, `Soulful House`, `Afro House`, `Jazz House`, `Hip House`) MUST sit in the top two levels — never lower. Calm electronic genres are not House and may sit in the bottom two levels: `DownTempo`, `French DownTempo`, `Latin DownTempo`, `LoFi Beats`, `Trip Hop`, and `Electronic Chillout`.
+- **Electronic R&B Floor:** `Electronic R&B` is strictly a high-energy style and MUST sit in the top two levels.
+- **Rhythmic & Groove Genres Floor:** Rhythmic, groove-driven genres carry inherent bounce: the R&B family (`Rnb`, `Alternative R&B`, `French RnB`, `Japanese RnB`, `Korean RnB`, `Latin RnB`), `Neo Soul`, `Acid Jazz`, `AfroBeats`, and the Funk family (`Funk`, `Afro Funk`, `Italian Funk`, `French Funk`, `Greek Funk`, `Latin Funk`, `Arabic Funk`, `Brazilian Funk`). They ALWAYS sit above the owner's calmer approved genres (acoustic, ballads, jazz, bossa and the like) — mid-to-high on the scale, never in the bottom two levels while calmer APPROVED genres exist to fill those levels.
+  * **R&B Energy Level Exception:** Standard non-electronic R&B genres (`Rnb`, `Alternative R&B`, `French RnB`, `Japanese RnB`, `Korean RnB`, `Latin RnB`) **CAN** sit in the bottom two levels IF the top two levels are already heavily populated with distinctly higher-energy genres (e.g., House styles, `Nu Disco`, `Future Funk`, `Electronic R&B`, high-tempo Dance, etc.). In such high-energy profiles, standard R&B naturally sits on the lower end of the user's relative energy spectrum.
+- **When the floors give way:** Only when the owner has no calmer approved genre (e.g. a profile built only around house and dance music, or around R&B, funk and club music) does the calmest of these genres take Level 1. The lowest level must never be left without an approved genre.
+```
+
+Full text — Option 1 (Option 2's §10–§13 are the same text with § numbers shifted by one):
+
+```
+### 11. Pure Pop Isolation Rule
+
+- **Pure Pop genres:** `Modern Pop`, `80s Pop`, `90's pop party`, `Female Pop`, `Alternative pop`, `Electro Pop`, `K-Pop`, `Bedroom Pop`, `Cantopop`, `Soft Pop Hits`, `Britpop`. (`Jangle pop`, `פופ ישראלי` and `פופ מזרחית` are not Pure Pop: they follow their scene, indie or regional pairing logic.)
+- **Isolation:** Never mix Pure Pop genres with non-pop niche or structural genres in the same direction (e.g., DO NOT pair `Modern Pop` with `Deep House`, `Indie Rock`, `Funk`, or Jazz).
+- **Allowed Pairings:** Pure Pop genres may ONLY share a direction with:
+  1. Other Pure Pop genres of the same era/energy (e.g., `Modern Pop` + `Female Pop` + `Electro Pop`).
+  2. Mainstream commercial siblings *only if* the mood/energy explicitly demands it (e.g., `Electro Pop` + `IndieTronica` / `Nu Disco`).
+- **City Pop Exception:** `Japanese City Pop` and `Chinese City Pop` are NOT Pure Pop. They may be mixed with fitting non-pop genres (such as Funk or Disco) based on energy cohesion — but never with DownTempo or LoFi genres (§13).
+
+### 12. Electronic R&B Isolation Rule
+
+- **`Electronic R&B` is not an R&B genre for pairing purposes:** treat it strictly as an energetic, fast, clubby electronic/dance genre.
+- It MUST NEVER share a direction with `Rnb`, `Alternative R&B`, `French RnB`, `Japanese RnB`, `Korean RnB`, or `Neo Soul`.
+- It may ONLY be paired with `Afro House`, `Deep House`, `Soulful House`, `Tech House`, `Jazz House`, `Organic House`, `Nu Disco`, or `Indie Dance`.
+
+### 13. DownTempo & LoFi Independence
+
+- DownTempo and LoFi are distinct sounds with different listeners: liking one does NOT imply liking the other.
+- **DownTempo genres** (`DownTempo`, `French DownTempo`, `Latin DownTempo`) may ONLY share a direction with each other — never with LoFi genres, Pop, standard acoustic/live genres, or any four-on-the-floor electronic/dance genre (including `French Touch`, `Deep House`, `Organic House`, `Tech House`, `Soulful House`, `Jazz House`, `Nu Disco`, and `Indie Dance`).
+- **LoFi genres** (`LoFi Beats`, `Desi LoFi`, `LoFi Bossa`) may ONLY share a direction with each other — never with DownTempo genres, Pop, standard acoustic/live genres, or any four-on-the-floor electronic/dance genre (including `French Touch`).
+- `French Touch` is strictly an energetic House/Dance genre: never with a DownTempo or LoFi genre.
+
+### 14. House & Techno Containment Rule
+
+- **Strict House/Techno Enclosure:** NO House or Techno genre may EVER be paired with non-House/Techno genres — DownTempo and LoFi genres included (§13).
+- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy (`Electronic R&B` counts as one — §12).
+```
+
+---
+
+## 2026-10-21 — Ami's isolation rules: Electronic R&B, pure pop, DownTempo / LoFi, sound over geography
+
+**Applies to:** R1+R2 (all four rules and the House change live in `ENERGY_PAIRING_SECTION`, which Round 2 imports).
+
+Ami's edit of the R1 prompt (Google Doc, 2026-10-21). He worked from a copy older than 2026-10-11, so only his changes were applied on top of the live text: the Israeli 40+ hit exception and everything after the first line of Beat & Percussion stay as they were. Roni's calls: the new rules win over the old ones they contradict; Bedroom Pop, Cantopop, Soft Pop Hits and Britpop join the pure-pop list; City Pop keeps its exception; the third example in Rule 0.3 (`Bossa Nova` + `Samba-Choro` + `LoFi Bossa`) broke Rule 0.2, so it was replaced.
+
+**Four new sub-constants**, placed first in `ENERGY_PAIRING_SECTION`: `ELECTRONIC_RNB_RULE`, `PURE_POP_RULE`, `DOWNTEMPO_LOFI_RULE`, `SOUND_OVER_GEOGRAPHY_RULE`. Ami's text, except:
+- Rule 0.1's list gains `Bedroom Pop`, `Cantopop`, `Soft Pop Hits`, `Britpop` (Roni), and the City Pop exception moves here from the old Pop rule, without DownTempo (Rule 0.2 forbids it);
+- Rule 0.3's third example is now `Rnb` + `French RnB` + `Japanese RnB` + `Korean RnB`, and "even if they are from the same scene or region" reads "even if they come from different countries or scenes" (what all three examples show).
+
+**Removed:** `POP_ISOLATION_RULE` (old §3), replaced by Rule 0.1. It isolated פופ מזרחית too, banned pop with electronic dance, and let City Pop pair with DownTempo.
+
+**Changed:** `HOUSE_TECHNO_RULE` is now §3. Its DownTempo exception is gone (Rule 0.2), and it names `Electronic R&B` as an electronic dance style house may pair with (Rule 0).
+
+**Task workflow** (R1's `ROUND1_TASK_WORKFLOW` and R2's `REFINED_TASK_WORKFLOW`): the list of rules each direction must satisfy gains "Critical Rules 0–0.3 …" and loses "Pop Isolation Rule".
+
+Full text of the new and changed sub-constants:
+
+```
+### CRITICAL RULE 0: ELECTRONIC R&B ABSOLUTE ISOLATION
+- **Electronic R&B IS NOT AN R&B GENRE FOR CLUSTERING PURPOSES.** Treat `Electronic R&B` strictly as an energetic, fast, clubby electronic/dance genre.
+- **ABSOLUTE PROHIBITION:** `Electronic R&B` MUST NEVER, UNDER ANY CIRCUMSTANCES, BE PLACED IN THE SAME DIRECTION/CLUSTER AS ANY OF THE FOLLOWING: `Rnb`, `Alternative R&B`, `French RnB`, `Japanese RnB`, `Korean RnB`, `Neo Soul`.
+- **PERMITTED PAIRINGS:** `Electronic R&B` can ONLY be paired with: `Afro House`, `Deep House`, `Soulful House`, `Tech House`, `Jazz House`, `Organic House`, `Nu Disco`, or `Indie Dance`.
+```
+
+```
+### CRITICAL RULE 0.1: PURE POP GENRE ISOLATION & CLUSTERING
+- **PURE POP DIRECTORY:** Genres defined strictly as Pure Pop for this isolation rule include: `Modern Pop`, `80s Pop`, `90's pop party`, `Female Pop`, `Alternative pop`, `Electro Pop`, `K-Pop`, `Bedroom Pop`, `Cantopop`, `Soft Pop Hits`, and `Britpop`.
+  *(Note: `Jangle pop`, `פופ ישראלי`, and `פופ מזרחית` are excluded from this strict Pop isolation rule and follow their respective scene, indie, or regional clustering logic.)*
+- **ISOLATION RULE:** Never mix Pure Pop genres with non-pop niche or structural genres within the same cluster (e.g., DO NOT pair `Modern Pop` with `Deep House`, `Indie Rock`, `Funk`, or `Jazz`).
+- **PERMITTED PAIRINGS:** Pure Pop genres may ONLY be clustered with:
+  1. Other Pure Pop genres of the same era/energy (e.g., `Modern Pop` + `Female Pop` + `Electro Pop`).
+  2. Mainstream commercial siblings *only if* the target mood/energy explicitly demands it (e.g., `Electro Pop` + `IndieTronica` / `Nu Disco`).
+- If an individual direction is designated as a "Pop Probe", all genres in that direction must belong to the Pure Pop family.
+- **City Pop Exception:** `Japanese City Pop` and `Chinese City Pop` are NOT Pure Pop. They may be clustered with fitting non-pop genres (such as Funk or Disco) based on energy cohesion — but never with DownTempo or LoFi genres (Rule 0.2).
+```
+
+```
+### CRITICAL RULE 0.2: STRICT DOWNTEMPO & LOFI INDEPENDENCE
+- **DISTINCT SOUND VECTORS:** DownTempo and LoFi are distinct musical aesthetics with different listener profiles. Liking a LoFi track does NOT imply liking DownTempo, and vice versa.
+- **ALL DOWNTEMPO GENRES:** `DownTempo`, `French DownTempo`, `Latin DownTempo`. (ALL THREE must strictly follow the DownTempo isolation rule.)
+- **ALL LOFI GENRES:** `LoFi Beats`, `Desi LoFi`, `LoFi Bossa`. (ALL THREE must strictly follow the LoFi isolation rule.)
+- **ISOLATION & PAIRING RULES:**
+  1. **Strict DownTempo Isolation (applies to `DownTempo`, `French DownTempo`, and `Latin DownTempo`):** Any genre containing "DownTempo" in its name may ONLY be paired with other DownTempo genres from this exact family (e.g., `DownTempo` + `French DownTempo`, or `DownTempo` + `Latin DownTempo`). They MUST NEVER be mixed with LoFi genres, Pop, standard Acoustic/Live genres, or ANY Four-on-the-Floor Electronic/Dance genres — including `French Touch`, `Deep House`, `Organic House`, `Tech House`, `Soulful House`, `Jazz House`, `Nu Disco`, and `Indie Dance`.
+  2. **Strict LoFi Isolation (applies to `LoFi Beats`, `Desi LoFi`, and `LoFi Bossa`):** Any genre containing "LoFi" in its name may ONLY be paired with other LoFi genres from this exact family. They MUST NEVER be mixed with DownTempo genres (whether standard, French, or Latin), Pop, standard Acoustic/Live genres, or ANY Four-on-the-Floor Electronic/Dance genres (including `French Touch`).
+- **SPECIFIC FRENCH TOUCH RULE:** `French Touch` is strictly an energetic House/Dance genre. It MUST NEVER be paired with `French DownTempo`, `DownTempo`, `Latin DownTempo`, or any LoFi genre.
+- If a direction is created as a "DownTempo Probe" or a "LoFi Probe", all genres within that cluster must strictly belong to that single family.
+```
+
+```
+### CRITICAL RULE 0.3: SOUND HOMOGENEITY OVER GEOGRAPHIC LABELS
+- **SOUND-FIRST PRINCIPLE:** Structural music identity (energy, instrumentation, tempo, mood) ALWAYS takes precedence over geographic or linguistic tags.
+- **WHAT IS FORBIDDEN:** Combining genres from *completely different musical families* (e.g., Jazz, Funk, RnB, House, Folk) simply because they share a national prefix (e.g., DO NOT pair `French Jazz` + `French Funk` + `French RnB`).
+- **WHAT IS ALLOWED & ENCOURAGED:** Clustering regional genres that share the **same sound, rhythm, and vibe**, even if they come from different countries or scenes.
+  - *VALID EXAMPLES:*
+    - `Cha Cha Cha` + `Peruvian Cumbia` + `Latin Boogaloo` + `Salsa` (all share Latin dance rhythm, upbeat energy, and percussion family).
+    - `Latin Funk` + `Afro Funk` + `Greek Funk` + `Italian Funk` (all share Funk groove and instrumentation).
+    - `Rnb` + `French RnB` + `Japanese RnB` + `Korean RnB` (all share polished, vocal-forward contemporary R&B — this is where `French RnB` belongs, not next to `French Jazz` or `French Funk`).
+- **THE HOMOGENEITY TEST:** Ask: *"If a listener enjoys the first track in this cluster, will they seamlessly enjoy the rest?"* If the genres share a musical DNA (like Latin tropical/dance styles), YES. If they jump across incompatible genres (like acoustic Jazz to energetic Funk), NO.
+```
+
+```
+### 3. House & Techno Containment Rule
+
+- **Strict House/Techno Enclosure:** NO House or Techno genre may EVER be paired with non-House/Techno genres. This includes DownTempo and LoFi genres (Rule 0.2).
+- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy (`Electronic R&B` counts as one — Rule 0).
+```
+
+---
+
+## 2026-10-20 — 2 new genres; both named in the taste profile's guardrails
 
 **Applies to:** all v7 (source-of-truth edit; flows to every v7 prompt via imports). The guardrail edit applies to the taste profile and the taste chat, which imports `HARD_BOUNDARY_RULES_SECTION`.
 

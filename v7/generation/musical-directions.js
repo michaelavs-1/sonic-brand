@@ -23,8 +23,8 @@
 //     injectPlaces — the processing rule goes at the end of that block)
 //
 // Rules kept from v6 (acoustic-compatibility, not diversity — still valid):
-//   - Pop Isolation Rule (v6 §5, verbatim)
-//   - House & Techno Containment Rule (v6 §6, verbatim)
+//   - House & Techno Containment Rule (v6 §6; its DownTempo exception was
+//     dropped 2026-10-21 for Ami's Rule 0.2)
 //   - Instrumentalness preference classification (verbatim)
 //   - Popularity preference classification (verbatim)
 //   - Japanese Folk Restriction (verbatim)
@@ -60,6 +60,9 @@
 //     rule under HOMOGENEITY_SECTION
 //
 // Rules NEW for v7:
+//   - Ami's Critical Rules 0–0.3 (2026-10-21): Electronic R&B isolation, Pure
+//     Pop isolation (replaced v6's Pop Isolation Rule), DownTempo & LoFi
+//     independence, sound over geographic labels
 //   - Cluster Homogeneity (same energy / instrumentation / cultural register
 //     / mood — tight enough that liking one implies liking the rest). Tempo
 //     was dropped 2026-09-23 (bpm_range removal).
@@ -151,12 +154,50 @@ The 8 clusters must represent distinctly different musical archetypes. Any two c
 
 **Overlapping genres across clusters are allowed.** If a genre legitimately sits at the intersection of two archetypes (e.g. \`Bossa Nova\` in both a "late-night jazz" cluster and a "sultry acoustic" cluster), it may appear in both. When the owner likes two clusters that share a genre, the overlap becomes a stronger genre-level taste signal downstream — a feature, not a duplicate.`;
 
-// ---------- Retained acoustic-compatibility rules ----------
+// ---------- Pairing rules ----------
 //
-// These are byte-identical to v6's equivalents. Kept in v7 as an independent
-// copy so v7 has no runtime dependency on v6/generation/musical-directions.js.
-// If Ami later tweaks one of these rules and both v6 and v7 should get it,
-// promote the sub-constant to shared/ the same way GENRE_UNIVERSE_SECTION was.
+// v7's own copies (no runtime dependency on v6/generation/musical-directions.js).
+// Beat & Percussion and Jazz were rewritten for v7 on 2026-09-23; House comes
+// from v6.
+//
+// Ami's isolation rules (2026-10-21). They come first and win over anything
+// below that contradicts them (Roni): no DownTempo with house or City Pop any
+// more, Electro Pop may meet IndieTronica / Nu Disco, פופ מזרחית is no longer
+// pop-isolated.
+export const ELECTRONIC_RNB_RULE = `### CRITICAL RULE 0: ELECTRONIC R&B ABSOLUTE ISOLATION
+- **Electronic R&B IS NOT AN R&B GENRE FOR CLUSTERING PURPOSES.** Treat \`Electronic R&B\` strictly as an energetic, fast, clubby electronic/dance genre.
+- **ABSOLUTE PROHIBITION:** \`Electronic R&B\` MUST NEVER, UNDER ANY CIRCUMSTANCES, BE PLACED IN THE SAME DIRECTION/CLUSTER AS ANY OF THE FOLLOWING: \`Rnb\`, \`Alternative R&B\`, \`French RnB\`, \`Japanese RnB\`, \`Korean RnB\`, \`Neo Soul\`.
+- **PERMITTED PAIRINGS:** \`Electronic R&B\` can ONLY be paired with: \`Afro House\`, \`Deep House\`, \`Soulful House\`, \`Tech House\`, \`Jazz House\`, \`Organic House\`, \`Nu Disco\`, or \`Indie Dance\`.`;
+
+export const PURE_POP_RULE = `### CRITICAL RULE 0.1: PURE POP GENRE ISOLATION & CLUSTERING
+- **PURE POP DIRECTORY:** Genres defined strictly as Pure Pop for this isolation rule include: \`Modern Pop\`, \`80s Pop\`, \`90's pop party\`, \`Female Pop\`, \`Alternative pop\`, \`Electro Pop\`, \`K-Pop\`, \`Bedroom Pop\`, \`Cantopop\`, \`Soft Pop Hits\`, and \`Britpop\`.
+  *(Note: \`Jangle pop\`, \`פופ ישראלי\`, and \`פופ מזרחית\` are excluded from this strict Pop isolation rule and follow their respective scene, indie, or regional clustering logic.)*
+- **ISOLATION RULE:** Never mix Pure Pop genres with non-pop niche or structural genres within the same cluster (e.g., DO NOT pair \`Modern Pop\` with \`Deep House\`, \`Indie Rock\`, \`Funk\`, or \`Jazz\`).
+- **PERMITTED PAIRINGS:** Pure Pop genres may ONLY be clustered with:
+  1. Other Pure Pop genres of the same era/energy (e.g., \`Modern Pop\` + \`Female Pop\` + \`Electro Pop\`).
+  2. Mainstream commercial siblings *only if* the target mood/energy explicitly demands it (e.g., \`Electro Pop\` + \`IndieTronica\` / \`Nu Disco\`).
+- If an individual direction is designated as a "Pop Probe", all genres in that direction must belong to the Pure Pop family.
+- **City Pop Exception:** \`Japanese City Pop\` and \`Chinese City Pop\` are NOT Pure Pop. They may be clustered with fitting non-pop genres (such as Funk or Disco) based on energy cohesion — but never with DownTempo or LoFi genres (Rule 0.2).`;
+
+export const DOWNTEMPO_LOFI_RULE = `### CRITICAL RULE 0.2: STRICT DOWNTEMPO & LOFI INDEPENDENCE
+- **DISTINCT SOUND VECTORS:** DownTempo and LoFi are distinct musical aesthetics with different listener profiles. Liking a LoFi track does NOT imply liking DownTempo, and vice versa.
+- **ALL DOWNTEMPO GENRES:** \`DownTempo\`, \`French DownTempo\`, \`Latin DownTempo\`. (ALL THREE must strictly follow the DownTempo isolation rule.)
+- **ALL LOFI GENRES:** \`LoFi Beats\`, \`Desi LoFi\`, \`LoFi Bossa\`. (ALL THREE must strictly follow the LoFi isolation rule.)
+- **ISOLATION & PAIRING RULES:**
+  1. **Strict DownTempo Isolation (applies to \`DownTempo\`, \`French DownTempo\`, and \`Latin DownTempo\`):** Any genre containing "DownTempo" in its name may ONLY be paired with other DownTempo genres from this exact family (e.g., \`DownTempo\` + \`French DownTempo\`, or \`DownTempo\` + \`Latin DownTempo\`). They MUST NEVER be mixed with LoFi genres, Pop, standard Acoustic/Live genres, or ANY Four-on-the-Floor Electronic/Dance genres — including \`French Touch\`, \`Deep House\`, \`Organic House\`, \`Tech House\`, \`Soulful House\`, \`Jazz House\`, \`Nu Disco\`, and \`Indie Dance\`.
+  2. **Strict LoFi Isolation (applies to \`LoFi Beats\`, \`Desi LoFi\`, and \`LoFi Bossa\`):** Any genre containing "LoFi" in its name may ONLY be paired with other LoFi genres from this exact family. They MUST NEVER be mixed with DownTempo genres (whether standard, French, or Latin), Pop, standard Acoustic/Live genres, or ANY Four-on-the-Floor Electronic/Dance genres (including \`French Touch\`).
+- **SPECIFIC FRENCH TOUCH RULE:** \`French Touch\` is strictly an energetic House/Dance genre. It MUST NEVER be paired with \`French DownTempo\`, \`DownTempo\`, \`Latin DownTempo\`, or any LoFi genre.
+- If a direction is created as a "DownTempo Probe" or a "LoFi Probe", all genres within that cluster must strictly belong to that single family.`;
+
+export const SOUND_OVER_GEOGRAPHY_RULE = `### CRITICAL RULE 0.3: SOUND HOMOGENEITY OVER GEOGRAPHIC LABELS
+- **SOUND-FIRST PRINCIPLE:** Structural music identity (energy, instrumentation, tempo, mood) ALWAYS takes precedence over geographic or linguistic tags.
+- **WHAT IS FORBIDDEN:** Combining genres from *completely different musical families* (e.g., Jazz, Funk, RnB, House, Folk) simply because they share a national prefix (e.g., DO NOT pair \`French Jazz\` + \`French Funk\` + \`French RnB\`).
+- **WHAT IS ALLOWED & ENCOURAGED:** Clustering regional genres that share the **same sound, rhythm, and vibe**, even if they come from different countries or scenes.
+  - *VALID EXAMPLES:*
+    - \`Cha Cha Cha\` + \`Peruvian Cumbia\` + \`Latin Boogaloo\` + \`Salsa\` (all share Latin dance rhythm, upbeat energy, and percussion family).
+    - \`Latin Funk\` + \`Afro Funk\` + \`Greek Funk\` + \`Italian Funk\` (all share Funk groove and instrumentation).
+    - \`Rnb\` + \`French RnB\` + \`Japanese RnB\` + \`Korean RnB\` (all share polished, vocal-forward contemporary R&B — this is where \`French RnB\` belongs, not next to \`French Jazz\` or \`French Funk\`).
+- **THE HOMOGENEITY TEST:** Ask: *"If a listener enjoys the first track in this cluster, will they seamlessly enjoy the rest?"* If the genres share a musical DNA (like Latin tropical/dance styles), YES. If they jump across incompatible genres (like acoustic Jazz to energetic Funk), NO.`;
 
 export const BEAT_PERCUSSION_RULE = `### 1. Beat & Percussion Pairing (Groove-Family Disambiguation)
 
@@ -177,24 +218,20 @@ export const JAZZ_ISOLATION_RULE = `### 2. Jazz Isolation Rule
 - All Jazz genres (\`Jazz (Standards)\`, \`Late Night jazz\`, \`Smooth Jazz\`, \`Swing Jazz\`, \`French Jazz\`, \`Gypsy jazz\`, \`JazzHop\`) MUST NEVER be paired with dancing, energetic, or heavy beat-driven genres (RnB, Hip Hop, Funk, Pop, Dance).
 - Allowed Jazz Pairings: Only with other Jazz genres, \`Bossa Nova\`, or \`Fado\` (Exceptions: \`Ethio-Jazz\`, \`Acid Jazz\`, and \`Jazz House\`).`;
 
-export const POP_ISOLATION_RULE = `### 3. Strict Pop Isolation Rule
+// The old Strict Pop Isolation rule (§3) was replaced by Rule 0.1 on 2026-10-21.
+export const HOUSE_TECHNO_RULE = `### 3. House & Techno Containment Rule
 
-- **Pop Isolation:** ALL Pop genres (including \`Bedroom Pop\`, \`Modern Pop\`, \`Female Pop\`, \`80s Pop\`, \`90's pop party\`, \`Electro Pop\`, \`Alternative Pop\`, \`K-Pop\`, \`פופ מזרחית\`, \`Cantopop\`) must NEVER be mixed with non-pop, niche, esoteric, acoustic, or electronic dance genres.
-- **Pop-Only Pairs:** Pop sub-genres can ONLY be paired with other Pop sub-genres of matching energy tiers.
-- **City Pop Exception:** City Pop sub-genres (\`Japanese City Pop\` and \`Chinese City Pop\`) are explicitly **EXEMPT** from the Pop Isolation rule and may be mixed with appropriate non-pop genres (such as Funk, Disco, or DownTempo) based on energy cohesion.`;
+- **Strict House/Techno Enclosure:** NO House or Techno genre may EVER be paired with non-House/Techno genres. This includes DownTempo and LoFi genres (Rule 0.2).
+- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy (\`Electronic R&B\` counts as one — Rule 0).`;
 
-export const HOUSE_TECHNO_RULE = `### 4. House & Techno Containment Rule
-
-- **Strict House/Techno Enclosure:** With the sole exception of DownTempo (and French DownTempo), NO House or Techno genre may EVER be paired with non-House/Techno genres.
-- **Allowed Pairings:** Genres like Deep House, Tech House, Afro House, Soulful House, Organic House, or Jazz House can ONLY be paired with other House genres or pure electronic dance styles of identical energy.`;
-
-// Composed section — heading is unchanged from v6 so the Places injection
-// anchor `## Energy & Pairing Constraints` in injectPlaces() still finds it.
 export const ENERGY_PAIRING_SECTION = [
   '## Energy & Pairing Constraints',
+  ELECTRONIC_RNB_RULE,
+  PURE_POP_RULE,
+  DOWNTEMPO_LOFI_RULE,
+  SOUND_OVER_GEOGRAPHY_RULE,
   BEAT_PERCUSSION_RULE,
   JAZZ_ISOLATION_RULE,
-  POP_ISOLATION_RULE,
   HOUSE_TECHNO_RULE,
 ].join('\n\n');
 
@@ -204,9 +241,9 @@ const ROUND1_TASK_WORKFLOW = `## Task Workflow
 2. **Build 8 Diagnostic Clusters:** Create up to 8 tightly-clustered directions from the surviving genres, ensuring maximal diversity across the 8 probes. Allocate only 1 probe to each explicitly requested style, using the rest to map other potential taste areas. Each direction must satisfy every rule above:
    - Cluster Homogeneity & Broad Inter-Direction Diversity (single unified vibe per cluster; clusters as different from each other as the business allows)
    - Direction Distinctness (8 different archetypes; overlapping genres between clusters are allowed)
+   - Critical Rules 0–0.3 (Electronic R&B isolation, Pure Pop isolation, DownTempo & LoFi independence, sound over geographic labels)
    - Beat & Percussion Pairing
    - Jazz Isolation Rule
-   - Pop Isolation Rule
    - House & Techno Containment Rule
    - Japanese Folk Restriction (from Processing Rules)
    Each direction must include:

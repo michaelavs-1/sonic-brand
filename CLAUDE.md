@@ -70,6 +70,13 @@ v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoi
   - **Variety:** the widest variety the business allows *between* directions, never within one.
   - **Descriptions:** `description_he` is the sound, then a sentence starting with "בודק…" (always masculine: the direction is the subject), 15–30 words. Owners see it on the swipe card.
   - **Google Places rule:** it now sits at the end of `### Processing Rules:` (`injectPlaces`). Until then it landed under Direction Distinctness in R1 and under Homogeneity in R2.
+- **Ami's isolation rules (2026-10-21).** Four "critical rules" now open R1's pairing section (R2 shares it). They win over the older rules they contradict (Roni). Details in `prompt-history-v7.md`.
+  - **Rule 0, Electronic R&B:** club music; never with the regular R&B genres or Neo Soul, only with house, Nu Disco or Indie Dance.
+  - **Rule 0.1, pure pop:** Modern Pop, 80s Pop, 90's pop party, Female Pop, Alternative pop, Electro Pop, K-Pop, Bedroom Pop, Cantopop, Soft Pop Hits and Britpop go only with each other (Electro Pop may meet IndieTronica / Nu Disco). It replaced the old pop rule, so פופ מזרחית is no longer pop-isolated. City Pop keeps its exception (with Funk or Disco), but not with DownTempo.
+  - **Rule 0.2, DownTempo and LoFi:** each family goes only with itself. House lost its old "except DownTempo" permission.
+  - **Rule 0.3, sound over geography:** group genres that sound alike, not ones that share a country.
+  - **Rules 0–0.2 also apply to the daily-playlist recipes** (Option 1 and Option 2, and so to the taste chat's recipe edits). Rule 0.3 isn't copied there: the recipes' fusion rule already says the same thing.
+  - **Existing accounts keep their old recipes until regenerated.** On 2026-10-21, 17 of 135 Option 1 recipes and 14 of 83 Option 2 recipes broke the new rules, mostly LoFi or DownTempo paired with other genres.
 
 ### The three v7 prompt stages
 
@@ -133,23 +140,27 @@ Output shape (after `normalizeTasteProfile` — the model itself does NOT emit `
 }
 ```
 
-Bucketing rules (in the prompt). Since 2026-09-30 the prompt approves **as many genres as the owner would genuinely enjoy** (Ami's "maximalist expansion"; history in `prompt-history-v7.md`):
+Bucketing rules (in the prompt). Since 2026-10-21 the prompt is **precision first**: approve only high-confidence genres, and when in doubt make it conditional or leave it out (Ami; from 2026-09-30 it was the opposite, "approve as many genres as the owner would enjoy"; history in `prompt-history-v7.md`). Expect fewer approved genres per new owner (the 13 existing profiles have a median of 32):
 - **approved** — any of:
   - a genre in a liked direction, a super-liked genre, or one requested in emphases;
-  - a tight-cluster neighbour of one (all 4 axes, or 2–3 axes if the owner would enjoy it);
-  - a "cross-pattern" genre that bridges two things the owner liked (e.g. LoFi Bossa + R&B/jazz → LoFi Beats, JazzHop).
+  - a tight-cluster neighbour of one, only when all 4 axes match and it fits the venue perfectly;
+  - a "cross-pattern" genre that bridges two things the owner liked (e.g. LoFi Bossa + R&B/jazz → LoFi Beats, JazzHop), only on strong, unambiguous evidence.
 - **Hard boundaries on inferred genres:**
   - electronic genres only if the owner liked an identical or adjacent electronic genre;
   - classical / spa only if presented in the probes and liked;
   - never expand into genres that clash with the venue (the Venue Context Cutoff stops EXPANSION only — the owner's own choices are never cut).
-- **conditional** — a less-certain neighbour or bridge; OR mixed signals; OR untouched with no signal. **DATA ONLY in v7's initial cut** — first playlist builder ignores this bucket. Kept because the signal is real and the model is already reasoning over the full catalog.
+- **conditional** — a less-certain neighbour or bridge; OR mixed signals; OR untouched with a weak signal that's safe (a risky or irrelevant one is excluded). **DATA ONLY in v7's initial cut** — first playlist builder ignores this bucket. Kept because the signal is real and the model is already reasoning over the full catalog.
 - **excluded** — appears only in disliked directions with no positive counterweight; OR explicitly banned in emphases; OR Japanese Folk restriction triggers. The model expresses this by LEAVING THE GENRE OUT of both lists (since 2026-09-24 — saves ~500 output tokens per onboarding vs. having it re-list ~70 genres).
 
 Energy calibration:
 - `energy_levels_total` is DYNAMIC per user (2..6). Narrow spread of taste → N=2. Very wide spread (chamber music AND dubstep both in the profile) → N=6. Prefer the smallest N that meaningfully distinguishes operational contexts.
 - Each approved/conditional genre gets an `energy_level` 1..N. **RELATIVE to the user's own range**, not absolute. Hip Hop is level N for a mostly-chill user; level 3 for a rave user who also picked Dubstep. Same-energy genres get the same level.
 - Excluded genres get no level.
-- **Groove floor (2026-09-30):** the R&B family, Neo Soul, Acid Jazz, AfroBeats and the Funk family sit above the owner's calmer APPROVED genres. They take level 1 only when there's no calmer approved genre, so the lowest level is never empty.
+- **Energy floors (2026-10-21, Ami + Roni).** "Top two levels" = the highest and next-to-highest; "bottom two" = the lowest and next-to-lowest. On a 2- or 3-level scale, both mean a single level (the top / the bottom).
+  - **House** (Deep, Tech, Organic, Soulful, Afro, Jazz, Hip House) and **Electronic R&B** always sit in the top two levels.
+  - **Calm electronic genres** may sit at the bottom: DownTempo (+ French / Latin), LoFi Beats, Trip Hop, Electronic Chillout. Other electronic genres aren't restricted.
+  - **Groove genres** (the R&B family, Neo Soul, Acid Jazz, AfroBeats, the Funk family; since 2026-09-30) sit above the owner's calmer approved genres, never in the bottom two levels. Exception: standard R&B may go down there when the top two levels are full of clearly more energetic genres.
+  - **They all give way** only when the owner has nothing calmer: the calmest of them takes level 1, so the lowest level is never empty.
   - **Safety net:** if the model still leaves level 1 without an approved genre, `normalizeTasteProfile` shifts every level down and shrinks N (never below 2). This keeps Option 1's calm tier from coming out empty.
   - Tests: `node --test scripts/test-taste-profile-normalize.mjs`.
 
@@ -191,7 +202,7 @@ v7 does NOT write `business_directions` (v6's per-direction table). Instead, sig
 
 After signup, `/v7/account` shows a first-login **delivery-mode gate**, labelled "סוג פלייליסטים יומיים" in the UI (`set-delivery-mode.js` writes `business_v7_settings.delivery_mode` + `updated_at`). **As soon as the owner picks a type in the gate, the dashboard builds TODAY's set** (`checkV7ModeGate` returns true → `runGenerateDaily` → `api/v7/account/generate-daily.js`; expires 2h after today's close, or next 04:00 IL on a closed day / after closing). From tomorrow the v7 cron builds. Two duplicate guards: the cron skips a business as `mode-just-set` (silent) for 15 min after `updated_at`, so it can't race the in-flight first build; and the endpoint returns 409 if a live daily set already exists for the current business day (IL, overnight-aware) or another build for the business is running. If the first build fails entirely, the next cron tick builds.
 - **Option 1 — 4 playlists/day.** On selecting option1, a **library of energy-tiered directions** — as many as the genres support, up to 30, no minimum — is generated (`v7/generation/energy-directions.js`, `label='v7-energy-directions'`, since 2026-09-28) and stored in `business_v7_directions`.
-  - **Each direction** is a curated, internally coherent blend in the style of the v6 onboarding directions: 4–6 genres, following v6's energy / jazz / cross-cultural / pop / house pairing rules (copied into the prompt, not imported). It sits wholly in the HIGH or the LOW tier.
+  - **Each direction** is a curated, internally coherent blend in the style of the v6 onboarding directions: 4–6 genres, following v6's energy / jazz / cross-cultural / house pairing rules (copied into the prompt, not imported) plus Ami's isolation rules from R1 since 2026-10-21 (pure pop, Electronic R&B, DownTempo & LoFi; see "Design shift from v6"). It sits wholly in the HIGH or the LOW tier.
   - **Requested genres** (since 2026-10-05) are in every direction of their tier, overriding those pairing rules; the rest of each direction varies. The normalizer adds any the model leaves out.
   - **Across the library,** directions sound different from one another, and genres may repeat across directions without limit.
   - **Tier sizes:** tiers are sized roughly in proportion to their approved genres, with at least 2 per tier. A tier with few genres gets fewer directions, never padding. Measured on the 6 Option-1 accounts (2026-09-28 regeneration): 6 approved genres → 9 directions, 14 → 12, 19 → 16, 27 → 17, 32 → 19, 40 → 19; 19–52s in the browser.
@@ -482,7 +493,7 @@ sonic-brand/
 │       │                                      per-genre energy_level + inst_pref/pop_pref carry-through.
 │       │                                      label='v7-taste-profile'. NO Places injection (the venue only
 │       │                                      cuts inferred genres, via the description; 2026-09-30).
-│       │                                      Maximalist expansion + hard boundaries + groove floor.
+│       │                                      Precision first (2026-10-21) + hard boundaries + energy floors.
 │       ├── level-directions.js             ← Option-2 per-energy-level direction libraries from approved_genres.
 │       │                                      label='v7-level-directions'. No forced pairings; rotated daily
 │       │                                      (pickLevelDirections in timeline-assembler.js) (2026-09-28).
@@ -1186,7 +1197,7 @@ Default `'none'`.
 - **Where the numbers live:** the SQL function **`hit_popularity_floor(genre)`**, the only place they're written. A track's floor is that of the genre it was found through; a track found through two requested genres is a hit if it clears either floor. **A new Israeli genre must be added there too** (and in `v5/precompute/v5-rpc-functions.sql`, which carries the same definition).
 - **Functions that use it:** `v7_anchor_tracks` (swipe deck), `v6_direction_tracks_recent` (Option 1), `v7_timeline_pool` (Option 2), `v5_direction_tracks` (special playlists), `v7_energy_tracks` (Ami's test playlists). `v5_anchor_tracks` (v6 swipe deck only) still uses 60.
 - **The prompt:** v7 R1's sub-rule (imported by R2) names the exception, so the model doesn't avoid Israeli genres when hits are asked for. v6's prompt still says 60–100.
-- **Migrations:** [`2026-10-11-israeli-hit-floor.sql`](v5/precompute/migrations/2026-10-11-israeli-hit-floor.sql) (the floor function + every track function reading it), [`2026-10-14-v7-popularity.sql`](v5/precompute/migrations/2026-10-14-v7-popularity.sql) (the floor to 30 + `popularity_tiers`), then [`2026-10-14-israeli-hit-floor-40.sql`](v5/precompute/migrations/2026-10-14-israeli-hit-floor-40.sql) (the floor to 40), then [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql) (the two new Israeli genres). Check after: `node scripts/test-israeli-hit-floor.mjs` (read-only, reads `.env.local` itself).
+- **Migrations:** [`2026-10-11-israeli-hit-floor.sql`](v5/precompute/migrations/2026-10-11-israeli-hit-floor.sql) (the floor function + every track function reading it), [`2026-10-14-v7-popularity.sql`](v5/precompute/migrations/2026-10-14-v7-popularity.sql) (the floor to 30 + `popularity_tiers`), then [`2026-10-14-israeli-hit-floor-40.sql`](v5/precompute/migrations/2026-10-14-israeli-hit-floor-40.sql) (the floor to 40), then [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql) (the two new Israeli genres). All four RUN by 2026-10-20 (`hit_popularity_floor` returns 40 for both new genres). Check after: `node scripts/test-israeli-hit-floor.mjs` (read-only, reads `.env.local` itself).
 
 **Only hits where there are enough (v7, Ami 2026-10-14).** A strict hits-only draw starved niche styles: 37 of the 132 genres have fewer than 25 hits, and an Option 1 calm playlist of three niche styles came out at 17 songs instead of 129 (measured 2026-10-14). Now, with `'hard'`:
 - **Option 1, per playlist:** `planOption1` marks a hits-only direction `popularity_fallback: 'soft'`. `fetchTracksWithHistory` (v6 `_daily-builder.js`; opt-in, so v6 is unchanged) draws hits only, and when the hits not served in the last 7 days can't fill the playlist, it redraws it as `'soft'` (hits first, then the rest). Recorded in `expansion.direction.popularity {preference, applied}`.
@@ -1400,7 +1411,7 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
 - `ami-atmospheres-scan.js` — sheet → Supabase upsert for atmospheres (writes `atmospheres.name`, `ranges`, `row_in_sheet`)
 - `ami-status.js`, `ami-logs.js` — poll scan progress
 - `ami-toggle-*.js` — manage skip flags
-- **Track cleanup** (`ami-track-lookup.js` / `-delete.js` / `-restore.js`) — reversible removal of one track. Lookup parses bare id / URL / URI / mobile-share short link and reports playlist_tracks state PLUS the track's full `track_analyses` row (all typed audio-feature columns — tempo, popularity, energy, instrumentalness, valence, danceability, acousticness, etc. — added 2026-09-01 so Ami can eyeball why a specific track ended up somewhere it shouldn't have). The card also shows loudness (e.g. "-10 dB"; since 2026-10-15), which has no column and is read from `raw_analysis`. Delete archives the track's rows into `deleted_tracks` before removing them. Restore replays the archive and drops the archive row.
+- **Track cleanup** (`ami-track-lookup.js` / `-delete.js` / `-restore.js`) — reversible removal of one track. Lookup parses bare id / URL / URI / mobile-share short link and reports playlist_tracks state PLUS the track's full `track_analyses` row (all typed audio-feature columns — tempo, popularity, energy, instrumentalness, valence, danceability, acousticness, etc. — added 2026-09-01 so Ami can eyeball why a specific track ended up somewhere it shouldn't have). The card also shows loudness (e.g. "-10 dB"; since 2026-10-15), which has no column and is read from `raw_analysis` (7 of ~138k analysed tracks lack it; the line is then hidden). The same blob also holds key / mode, liveness, speechiness and duration, which the card doesn't show. Delete archives the track's rows into `deleted_tracks` before removing them. Restore replays the archive and drops the archive row.
 - **Track genre editor** (Ami, 2026-10-05 — `ami-track-genres.js`, logic in `api/v4/_track-genres.js`). Inside Track cleanup, Ami takes a track out of some of its genres and puts it into others; Save applies the change, Undo reverses the last one.
   - **How genres are stored.** A track is in a genre because it sits in a playlist tagged with that genre. Removing a genre drops the track from those playlists. A playlist with two genres (8 of 1,024 on 2026-10-05) is dropped too, and the genre the track keeps comes back through a manual placement.
   - **Manual placements.** Adding a genre puts the track in that genre's **manual playlist**, `playlist_id = 'manual:<genre>'`. It exists only in our DB, is tagged in `playlist_genres`, and every track RPC reads it like any other playlist. Genres can only be added to a track with a usable analysis.
@@ -1775,13 +1786,16 @@ Older knobs still in use:
 - **Join the two with `; if ($?) { … }`, not a plain `;`.** If the planner fails (e.g. `vercel dev` isn't running), a plain `;` runs batch on the OLD plan. On 2026-10-06 that made step 2 below silently re-run step 1's finished plan.
 - **Resuming a stopped batch = batch alone, same flags.** It skips tracks that already have a status. Don't re-run `dry-run-fill` to resume: batch writes the plan's `playlist_genres` rows at its START, so a new fill plan comes out empty for those playlists.
 - **Plans expire after 24h** (`FRESHNESS_HOURS`: "FATAL Execution plan is …h old (max 24h)"). To resume after that, use `dry-run-orphans.mjs` (scoped with `--include-genres`; add `--include-errors` for an error run). It rebuilds the list from the DB, so it only contains what's still missing or failed.
+- **`dry-run-orphans` looks frozen at "Fetching playlist_tracks..." for several minutes.** It reads the whole `playlist_tracks` table (208,575 rows on 2026-10-19, 1,000 per request) and then `track_analyses` (162,597), printing nothing until each is done: about 8–10 minutes in all. It isn't stuck; wait for the row count.
+- **Which steps need `vercel dev`:** only `dry-run-fill` (and `snapshot-databox`, `playlist-scan`), and only while the planner builds its plan. `dry-run-orphans` and `batch.mjs` don't. Once the batch has started, VS Code and `vercel dev` can be closed.
+- **Running outside VS Code:** the same lines work in a separate Windows Terminal window, started from the project folder (the scripts write their plan and progress under `v4/precompute/state/`). Closing that window or Ctrl+C stops the batch, and so does the PC sleeping (the error run of 2026-10-18 stopped after 728 of 2,164 tracks that way), so set sleep to Never for long runs. Everything the batch prints also goes to `v4/precompute/state/batch.log`.
 
 **The Data Box sheet** ("Test Test Test - Data Box", id `1AkMEsptNZFavFDpjbWnbAomhND9Ub004MFD7cICeXr8`, public CSV export) has two tabs:
 - **Tab 1** "לפי מקומות" (gid `0`): business types → genres. Read by `api/v4/databox.js`.
 - **Tab 2** "לפי ז׳אנרים" (gid `1199564828`): genre → up to 15 playlist links, data from row 7. Read by `api/v4/databox-genres.js`.
 - **"What did Ami add?"** = compare Tab 2 with `playlist_genres` (playlists not yet in the DB) and with `shared/genre-universe.js` (genres not in the prompts). Then refresh the baseline with `node v4/precompute/snapshot-databox.mjs` (needs `vercel dev`), so the next check can diff against it.
 - **State on 2026-10-20: the sheet, the DB and the genre list match.** All 138 sheet genres are in `shared/genre-universe.js`, every sheet playlist is in the DB (Spotify's own `37i9dQZF1D…` playlists are skipped), and the DB has no playlist or genre the sheet doesn't list. No track is waiting for a first analysis. The two latest genres, `Electronic Chillout` and `Meditative Ambient` (Ami, 2026-10-15 / 16), joined the list on 2026-10-20 after all three steps below.
-  - **Earlier rounds:** the 4 genres added 2026-10-15 (`Acoustic Blues`, `Future Funk`, `פופ ישראלי`, `היפ הופ ישראלי`) finished their error retry by 2026-10-16. The two Israeli ones joined `hit_popularity_floor` in migration [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql), which must be run before their 40+ hit rule applies.
+  - **Earlier rounds:** the 4 genres added 2026-10-15 (`Acoustic Blues`, `Future Funk`, `פופ ישראלי`, `היפ הופ ישראלי`) finished their error retry by 2026-10-16. The two Israeli ones joined `hit_popularity_floor` in migration [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql), RUN by 2026-10-20.
   - **Spelling:** the list doesn't have to match the sheet's case (the sheet has "Desi Lofi", "Jazzhop" and "electronic chillout"; the list has `Desi LoFi`, `JazzHop` and `Electronic Chillout`). Matching ignores case, but the spelling must be the same.
   - **Counting a genre's tracks:** read `playlist_tracks` with paging (`pgrSelectAll`), not `pgrSelectIn` by `playlist_id`. Each `pgrSelectIn` request stops at 1,000 rows, so genres with long playlists come out short. That happened to Jangle pop, Brazilian Funk and Trip Hop on 2026-10-13, and to Future Funk and היפ הופ ישראלי on 2026-10-15.
 
@@ -1803,7 +1817,7 @@ node v4/precompute/dry-run-orphans.mjs --exclude-genres="samba-choro"
 node v4/precompute/batch.mjs --max-rapidapi-calls=1000000 --max-error-retries=0 --no-storm-abort
 ```
 
-**Digesting newly added genres** (the workflow used for the genres added 2026-09-26 and 2026-10-13). Run each line in Roni's own terminal — these take hours:
+**Digesting newly added genres** (the workflow used for the genres added 2026-09-26, 2026-10-13, 2026-10-15 and 2026-10-20). Run each line in Roni's own terminal — these take hours:
 ```powershell
 # 1. First 2 playlists per new genre, fail-fast (needs vercel dev)
 node v4/precompute/dry-run-fill.mjs --target-playlists=2 --genres="genre a,genre b"; if ($?) { node v4/precompute/batch.mjs --max-rapidapi-calls=50000 --max-error-retries=0 --no-storm-abort }

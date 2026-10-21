@@ -131,9 +131,9 @@ const REFINED_TASK_WORKFLOW = `## Task Workflow (Round 2)
    - Cluster Homogeneity & Broad Inter-Direction Diversity (single unified vibe per cluster — energy / instrumentation / cultural register / mood; clusters as different from each other as Round 2 allows)
    - Direction Distinctness & Overlap (Round 2) — 4 different taste vectors; overlapping genres allowed
    - Requested styles — one cluster each, with different companion genres than in Round 1 (Learning steps 4 and 6)
+   - Critical Rules 0–0.3 (Electronic R&B isolation, Pure Pop isolation, DownTempo & LoFi independence, sound over geographic labels)
    - Beat & Percussion Pairing
    - Jazz Isolation Rule
-   - Pop Isolation Rule
    - House & Techno Containment Rule
    - Japanese Folk Restriction (from Processing Rules)
 3. **Super-liked genre bias:** Ensure super-liked genres (or their neighbours from Learning step 3) appear in at least one of your 4 output clusters. If multiple super-liked genres are supplied, prefer to spread them across separate output clusters when the homogeneity rules allow — do NOT force every super-liked genre into a single cluster.

@@ -654,6 +654,69 @@
       min-width: 0
     }
 
+    /* "Today only" energy for one playlist (4 a day; energy-nudge.js, 2026-10-21):
+       three circles — calmer on the left, more energetic on the right. */
+    .nrg-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 7px;
+      font-size: 11.5px;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+
+    .nrg-dots {
+      display: inline-flex;
+      gap: 6px;
+    }
+
+    .nrg-dot {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      border: 1.5px solid var(--border-2);
+      background: transparent;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 0;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color .15s, background .15s;
+    }
+
+    .nrg-dot:hover:not(:disabled) {
+      border-color: var(--accent);
+    }
+
+    .nrg-dot.on {
+      background: var(--accent);
+      border-color: var(--accent);
+      cursor: default;
+    }
+
+    .nrg-dot:disabled:not(.on) {
+      opacity: .35;
+      cursor: default;
+    }
+
+    .nrg-dot svg {
+      display: block;
+    }
+
+    .nrg-dot.plain {
+      color: var(--muted);
+    }
+
+    .nrg-note .pl-inline-spinner {
+      margin-inline-start: 6px;
+    }
+
     .slot .s-title {
       font-size: 14.5px;
       font-weight: 800
@@ -923,6 +986,8 @@
     .v7-mode-card .v7-mode-title {
       font-size: 15px;
       font-weight: 800;
+      /* The titles run to two lines since 2026-10-21 (Ami's wording). */
+      line-height: 1.35;
       margin: 0 0 5px
     }
 
@@ -3501,8 +3566,7 @@
             <p class="muted sub" style="margin:6px 0 12px">ספרו לצ׳אט מה אתם חושבים על המוזיקה היומית: מה יש יותר מדי או
               פחות מדי, מה בא לכם להוסיף, שירים שאתם אוהבים, או מתי המוזיקה אנרגטית או רגועה מדי.</p>
             <div id="tasteChatMessages" class="chat-messages" aria-live="polite"></div>
-            <textarea class="input" id="tasteChatInput" rows="3" maxlength="1500"
-              placeholder="לדוגמה: יש לי יותר מדי R&amp;B / חסרים לי מקצבים אפריקאיים / הצהריים אנרגטיים מדי"></textarea>
+            <textarea class="input" id="tasteChatInput" rows="3" maxlength="1500"></textarea>
             <button class="btn" id="tasteChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
                 <path d="M12 2L22 12H17V22H7V12H2Z" />
               </svg></button>
@@ -3662,11 +3726,11 @@
           <p class="muted sub" style="margin:6px 0 12px">כמה פלייליסטים ליום ואיך האנרגיה מתחלקת. אפשר לשנות בכל עת.</p>
           <div class="v7-mode-cards">
             <button class="v7-mode-card" id="deliveryOpt1" type="button" data-mode="option1">
-              <div class="v7-mode-title">4 פלייליסטים ביום</div>
+              <div class="v7-mode-title">4 פלייליסטים לפי רמות אנרגיה לשליטה מלאה</div>
               <p class="v7-mode-desc">2 אנרגטיים ו־2 רגועים — בוחרים לפי מצב הרוח לאורך היום.</p>
             </button>
             <button class="v7-mode-card" id="deliveryOpt2" type="button" data-mode="option2">
-              <div class="v7-mode-title">2 פלייליסטים ביום</div>
+              <div class="v7-mode-title">2 פלייליסטים ארוכים שילוו את כל שעות הפעילות וישתנו מעצמם</div>
               <p class="v7-mode-desc">אנרגיה שמשתנה לאורך היום — אתם קובעים מתי רגוע ומתי אנרגטי.</p>
             </button>
           </div>
@@ -3806,6 +3870,19 @@
        choice: remove (calls /api/v6/account/delete-event and re-renders
        events) or cancel. No "edit" option here — the events chat flow is
        delete + re-chat by design (see CLAUDE.md → Special event playlists). -->
+  <!-- "Today only" energy for one playlist: confirm before the songs are swapped
+       (openNudgeConfirm in app.js). -->
+  <div class="gd-overlay hide" id="nudgeModal">
+    <div class="gd-modal">
+      <h3 id="nudgeTitle"></h3>
+      <p id="nudgeText"></p>
+      <div class="gd-actions">
+        <button class="btn" id="nudgeGo" type="button">כן, לשנות</button>
+        <button class="btn-ghost" id="nudgeCancel" type="button">ביטול</button>
+      </div>
+    </div>
+  </div>
+
   <div class="gd-overlay hide" id="trashEventModal">
     <div class="gd-modal">
       <h3>למחוק את האירוע?</h3>
@@ -3852,11 +3929,11 @@
       <p>אפשר לשנות את הבחירה בכל עת דרך עמוד הפרופיל.</p>
       <div class="v7-mode-cards">
         <button class="v7-mode-card" id="v7ModeOption1" type="button">
-          <div class="v7-mode-title">4 פלייליסטים חדשים מדי יום</div>
+          <div class="v7-mode-title">4 פלייליסטים לפי רמות אנרגיה לשליטה מלאה</div>
           <p class="v7-mode-desc">2 אנרגטיים ו־2 רגועים — בוחרים לפי מצב הרוח לאורך היום.</p>
         </button>
         <button class="v7-mode-card" id="v7ModeOption2" type="button">
-          <div class="v7-mode-title">2 פלייליסטים חדשים מדי יום</div>
+          <div class="v7-mode-title">2 פלייליסטים ארוכים שילוו את כל שעות הפעילות וישתנו מעצמם</div>
           <p class="v7-mode-desc">אנרגיה שמשתנה לאורך היום — אתם קובעים מתי רגוע ומתי אנרגטי.</p>
         </button>
       </div>
@@ -3906,7 +3983,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=21102026a"></script>
+  <script type="module" src="/v7/account/app.js?v=21102026h"></script>
 </body>
 
 </html>

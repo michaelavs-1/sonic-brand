@@ -46,7 +46,7 @@ const opt2 = () => stateFromRows({ mode: 'option2', profile: PROFILE, settings: 
 test('stateFromRows: keys, defaults, weights snapped, requested ⊆ approved', () => {
   const s = opt1();
   assert.deepEqual(s.option1Dirs.map((d) => d.key), ['H1', 'H2', 'C1', 'C2']);
-  assert.deepEqual(s.windows, { high: [50, 80], low: [20, 50] });
+  assert.deepEqual(s.windows, { high: [50, 80], low: [30, 60] });
   assert.deepEqual(s.weights, { Funk: 1.5 }, '1.4 snaps to 1.5, 1 is dropped');
   assert.deepEqual(s.requested, ['Rnb']);
   const t = opt2();
@@ -106,7 +106,7 @@ test('Option 1 windows: shift keeps width, clamps at the scale, overlap is fine'
   assert.equal(applyOps(opt2(), [{ op: 'shift_window', tier: 'high', delta: 5 }]).dropped[0].reason, 'Option 1 only');
   assert.deepEqual(stateToRows(s, 'b').settings, { energy_windows: null });
   assert.deepEqual(stateToRows(applyOps(s, [{ op: 'shift_window', tier: 'low', delta: 5 }]).state, 'b').settings,
-    { energy_windows: { high: [50, 80], low: [25, 55] } });
+    { energy_windows: { high: [50, 80], low: [35, 65] } });
 });
 
 test('Option 2 ranges: own range, back to default = null, validation', () => {

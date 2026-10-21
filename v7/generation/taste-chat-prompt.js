@@ -23,12 +23,20 @@ import { GENRE_UNIVERSE_SECTION } from '../../shared/genre-universe.js';
 import { COHERENCE_SECTION as OPTION1_COHERENCE } from './energy-directions.js';
 import { COHERENCE_SECTION as OPTION2_COHERENCE } from './level-directions.js';
 import { CORE_PHILOSOPHY_SECTION, HARD_BOUNDARY_RULES_SECTION } from './taste-profile.js';
-import { WEIGHT_STEPS, rangeOf, popularityOfTier } from './taste-ops.js';
+import { WEIGHT_STEPS, rangeOf, popularityOfTier, applyOps, canonicalGenre } from './taste-ops.js';
 
 export const TASTE_CHAT_STATES = ['gathering', 'confirming', 'suggesting', 'off_topic'];
 // What the deck results message starts with (the client sends it; the prompt
 // tells the model how to read it).
 export const DECK_RESULTS_PREFIX = '[תוצאות ההאזנה]';
+
+// The chat input's placeholder, per delivery mode (owner's dashboard + Ami's
+// bench). Option 1 has no times of day, only energetic / calm playlists.
+const PLACEHOLDERS = {
+  option1: 'לדוגמה: יש לי יותר מדי R&B / חסרים לי מקצבים אפריקאיים / הפלייליסטים הרגועים רגועים מדי',
+  option2: 'לדוגמה: יש לי יותר מדי R&B / חסרים לי מקצבים אפריקאיים / הצהריים אנרגטיים מדי',
+};
+export const tasteChatPlaceholder = (mode) => PLACEHOLDERS[mode] || PLACEHOLDERS.option1;
 
 const INTRO = `You are the music assistant inside Rubin's dashboard for a business owner (a café, bar, restaurant, shop…). Rubin builds this business's DAILY playlists automatically from the owner's taste profile. In this chat — "הטעם המוזיקלי שלכם" — the owner tells you what they think of their daily music: what they hear too much or too little of, what they'd like to add, songs they love, music that feels too energetic or too calm. You work out what they mean and change their taste profile and the playlists' behind-the-scenes setup accordingly. Your changes affect the daily playlists from now on. (One-off playlists for a special occasion today belong to the other chat on the page, "צריכים משהו אחר היום?".)`;
 
@@ -65,6 +73,8 @@ Whenever you need to know which song the owner means — a song they love, a son
 const UNDERSTANDING = `## Understanding what the owner means
 
 - Map the owner's words to genres in their profile. "Too much R&B" → look at every R&B-family genre they have (e.g. \`Rnb\`, \`Alternative R&B\`, \`French RnB\`, \`Neo Soul\`), their weights, how many recipes include them, and their share under "## What actually played" — and work out what's really dominating before you propose anything.
+- **"## Who this owner is"** (when present) is Rubin's running portrait of this owner, kept from earlier conversations: what they love and avoid, and what their own words have meant. Use it to understand them, especially words they've used before. Anything they say in this conversation wins over it.
+- **Feel words are not genres** (Ami, 2026-10-21). Words like "פאנקי / פאנקית", "ג'אזי", "רוקי", "לטיני", "גרובי", "שמח" usually describe how the music feels — rhythm, drums, groove, energy — not the genre with that name. "יותר פאנקי" means more groove and beat (drums, bass, a danceable rhythm), which can come from several of the genres the owner already has. Work out which of their genres deliver that feel and raise those, or adjust the energy. If it's unclear whether they mean the feel or the style itself, ask one short question ("הכוונה לסגנון הפאנק עצמו, או למוזיקה קצבית וגרובית יותר?"). Never make a genre requested (set_requested), or add it to every recipe, because of a feel word — only when the owner names the style itself.
 - If it's genuinely unclear which genres or which playlists they mean, ask ONE short question. Don't ask about anything the context already tells you.
 - If a request contradicts what they asked for during onboarding (their "Musical emphases") or a change made earlier in this chat ("## Changes made through this chat"), point it out in one sentence and do what they now ask once they confirm. The newest request wins.`;
 
@@ -93,6 +103,7 @@ Every change is a list of ops in a proposal (exact shapes under "## Output forma
 
 const ENERGY_OPTION1 = `## Energy (this owner has the 4 daily playlists)
 
+- **Just today, one playlist:** under each of the 4 playlists on the Home tab there are three circles (calmer / as usual / more energetic) that change THAT playlist's energy for today only, once a day for one playlist (see "## Today's playlists" for whether it's used). When the owner's complaint is about one playlist today ("הפלייליסט האנרגטי היום חזק מדי"), tell them about the circles in one sentence ("העיגולים מתחת לפלייליסט") and offer the lasting change below only if they want it from now on. Don't propose shift_window in that reply unless they asked for a lasting change. When they already used today's change, offer the lasting change.
 - "The energetic playlists are too energetic" → shift_window tier "high", delta -10; "not energetic enough" → +10. The same for the calm playlists with tier "low".
 - Check "## Changes made through this chat": if the last shift of that tier went the other way (they overshot), use half the step: 5; if that overshot too, smaller still (3, then 2, then 1). Otherwise 10 again.
 - One tier per change. The two windows may overlap; there are no other limits.
@@ -175,7 +186,10 @@ Ops (each one an object with "op" + its fields):
 - {"op":"allow_track","spotify_id":"<id from ## Songs the owner linked>","genre":"Bossa Nova"}
 - {"op":"undo"}   (alone)`;
 
-export function buildTasteChatSystemPrompt(mode) {
+// The part Ami's dashboard lets him edit (its "צ'אט הטעם" tab, 2026-10-21):
+// everything except the recipe coherence rules and taste rules (imported from
+// their own prompts, edited there), the genre list and the output format.
+export function tasteChatEditableSection(mode) {
   const m = mode === 'option2' ? 'option2' : 'option1';
   return [
     INTRO,
@@ -188,11 +202,16 @@ export function buildTasteChatSystemPrompt(mode) {
     m === 'option2' ? ENERGY_OPTION2 : ENERGY_OPTION1,
     m === 'option2' ? POPULARITY_OPTION2 : POPULARITY_OPTION1,
     CONFIRMING,
-    coherence(m),
-    TASTE_RULES,
-    GENRE_UNIVERSE_SECTION,
-    OUTPUT(m),
   ].join('\n\n');
+}
+
+export function assembleTasteChatSystemPrompt(editable, mode) {
+  const m = mode === 'option2' ? 'option2' : 'option1';
+  return [editable, coherence(m), TASTE_RULES, GENRE_UNIVERSE_SECTION, OUTPUT(m)].join('\n\n');
+}
+
+export function buildTasteChatSystemPrompt(mode) {
+  return assembleTasteChatSystemPrompt(tasteChatEditableSection(mode), mode);
 }
 
 // ---------- the per-turn context ----------
@@ -209,6 +228,7 @@ const popularityLine = (s) => {
 
 // ctx (built by api/v7/account/_taste-context.js):
 //   business { name, description, emphases }
+//   portrait  the owner's musical portrait (Hebrew text) or null — 2026-10-21
 //   mode, state (taste-ops state)
 //   now { weekday, date, time, phase, open, close }       phase: before-open | open | after-close | closed
 //   played [{ genre, share }]                              last 7 days, share 0..1
@@ -223,6 +243,7 @@ export function formatTasteContext(ctx) {
   const out = [];
   const b = ctx.business || {};
   out.push(`## Business\n- Name: ${b.name || '—'}\n- Description: ${b.description || '—'}\n- Musical emphases from onboarding: ${b.emphases || '—'}\n- Daily playlists: ${s.mode === 'option2' ? '2 mixes following the energy curve ("Daily Mix #1/#2")' : '4 playlists ("אנרגיה גבוהה #1/#2", "אנרגיה רגועה #1/#2")'}`);
+  if (ctx.portrait) out.push(`## Who this owner is (Rubin's portrait from earlier conversations)\n${ctx.portrait}`);
 
   const n = ctx.now || {};
   const phase = { 'before-open': 'before opening', open: 'open now', 'after-close': 'after closing', closed: 'closed today' }[n.phase] || n.phase || '—';
@@ -265,7 +286,8 @@ export function formatTasteContext(ctx) {
   }
 
   if (ctx.today?.option1?.length) {
-    out.push(`## Today's playlists\n${ctx.today.option1.map((p) => `- ${p.label}: recipe ${p.recipe || '?'} (${p.genres.join(', ')})`).join('\n')}`);
+    const nudgedToday = ctx.today.option1.some((p) => p.nudged);
+    out.push(`## Today's playlists\n${ctx.today.option1.map((p) => `- ${p.label}: recipe ${p.recipe || '?'} (${p.genres.join(', ')})${p.nudged ? ` — the owner made it ${p.nudged} for today only (the circles)` : ''}`).join('\n')}\n${nudgedToday ? "Today's one change with the circles is used." : "Today's one change with the circles is still available."}`);
   } else if (ctx.today?.option2?.length) {
     out.push(`## Today's mixes\n${ctx.today.option2.map((m) => {
       const pn = m.planned_now;
@@ -331,4 +353,44 @@ export function normalizeTasteReply(parsed, { mode }) {
   }
   const offer_new_mix = mode === 'option2' && parsed?.offer_new_mix === true;
   return { reply_he, state, proposal, suggestions, timeline_hint, offer_new_mix };
+}
+
+// What the owner sees when nothing in a proposal can be applied.
+export const COULD_NOT_PREPARE = 'לא הצלחתי להכין את השינוי הזה. תוכלו לנסח שוב, במילים קצת אחרות?';
+
+// Check a normalized reply against the state. Mutates `reply`.
+//   proposal → only the ops that apply (+ new_genres for the sample step);
+//   suggestions → only catalog genres that aren't approved or turned down.
+export function vetReply(reply, state, { linkedTracks, hasUndoable }) {
+  const notes = [];
+  if (reply.proposal) {
+    const ops = reply.proposal.ops;
+    if (ops.some((o) => o.op === 'undo')) {
+      if (hasUndoable) reply.proposal.ops = [{ op: 'undo' }];
+      else { notes.push('undo with nothing to undo'); reply.proposal = null; }
+    } else {
+      const dry = applyOps(state, ops, { linkedTracks });
+      if (dry.dropped.length) notes.push(`dropped: ${JSON.stringify(dry.dropped)}`);
+      if (!dry.applied.length || !dry.changed) reply.proposal = null;
+      else {
+        const approvedBefore = new Set(state.approved.map((a) => a.genre));
+        reply.proposal.ops = dry.applied;
+        reply.proposal.new_genres = [...new Set(dry.applied
+          .filter((o) => o.op === 'add_genre' || o.op === 'set_requested')
+          .map((o) => canonicalGenre(o.genre))
+          .filter((g) => g && !approvedBefore.has(g)))];
+      }
+    }
+    if (!reply.proposal) { reply.state = 'gathering'; reply.reply_he = COULD_NOT_PREPARE; }
+  }
+  if (reply.suggestions) {
+    const approved = new Set(state.approved.map((a) => a.genre));
+    const seen = new Set();
+    reply.suggestions = reply.suggestions
+      .map((x) => ({ ...x, genre: canonicalGenre(x.genre) }))
+      .filter((x) => x.genre && !approved.has(x.genre) && !state.rejected.includes(x.genre) && !seen.has(x.genre) && seen.add(x.genre))
+      .map((x) => ({ ...x, energy_level: Math.min(state.N, Math.max(1, x.energy_level || Math.ceil(state.N / 2))), label_he: x.label_he || x.genre }));
+    if (!reply.suggestions.length) { notes.push('no usable suggestions'); reply.suggestions = null; reply.state = 'gathering'; }
+  }
+  return notes;
 }

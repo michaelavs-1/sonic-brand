@@ -182,7 +182,10 @@ try {
   r = await admin('POST', 'directions', { business_id: businessId, action: 'remove_genre', direction: 'H1', genre: 'Afro Funk' });
   ok(r.status === 200 && !r.data.directions.find((d) => d.key === 'H1').genres.includes('Afro Funk'), 'remove Afro Funk from H1');
 
+  // Ami's pairing rules (2026-10-21): DownTempo goes only with DownTempo.
   r = await admin('POST', 'directions', { business_id: businessId, action: 'new_direction', tier: 'low', genres: ['Rnb', 'DownTempo'], title_en: 'Test low' });
+  ok(r.status === 400 && /DownTempo only with DownTempo/.test(JSON.stringify(r.data.dropped)), 'a direction that breaks a pairing rule → 400 with the rule', JSON.stringify(r.data));
+  r = await admin('POST', 'directions', { business_id: businessId, action: 'new_direction', tier: 'low', genres: ['Rnb'], title_en: 'Test low' });
   ok(r.status === 200 && r.data.directions.some((d) => d.title_en === 'Test low' && d.energy_tier === 'low'), 'new calm direction');
   const newKey = r.data.directions?.find((d) => d.title_en === 'Test low')?.key;
   r = await admin('POST', 'directions', { business_id: businessId, action: 'delete_direction', direction: newKey });
@@ -204,6 +207,22 @@ try {
   }
   r = await admin('POST', 'directions', { business_id: businessId, action: 'remove_genre', direction: 'H9', genre: 'Funk' });
   ok(r.status === 400, 'unknown direction key → 400');
+
+  // --- 3b. Ami's taste chat bench (2026-10-21): load a business, save a change ---
+  console.log('\n[3b] taste bench');
+  r = await admin('GET', `taste-bench?id=${businessId}`);
+  ok(r.status === 200 && r.data.mode === 'option1' && r.data.ctx?.state?.approved?.length > 0 && Array.isArray(r.data.ctx?.changes),
+    'context loaded (the chat\'s own context for this business)', JSON.stringify(r.data).slice(0, 200));
+  r = await admin('POST', 'taste-bench', { business_id: businessId, ops: [{ op: 'undo' }] });
+  ok(r.status === 400, 'undo is not saved from the bench');
+  r = await admin('POST', 'taste-bench', { business_id: businessId, ops: [{ op: 'set_weight', genre: 'Not A Genre', weight: 2 }] });
+  ok(r.status === 409 && r.data.dropped?.length === 1, 'a change that can\'t apply → 409 with the reason');
+  r = await admin('POST', 'taste-bench', { business_id: businessId, ops: [{ op: 'set_weight', genre: 'Funk', weight: 1.5 }], summary_he: 'בדיקה' });
+  ok(r.status === 200 && r.data.applied?.length === 1, 'saved to the profile', JSON.stringify(r.data));
+  const weights = (await pgr('GET', 'business_taste_profiles', { query: { business_id: `eq.${businessId}`, select: 'genre_weights' } }))[0]?.genre_weights;
+  ok(weights?.Funk === 1.5, `the weight is in the real profile (${JSON.stringify(weights)})`);
+  const benchLog = await pgr('GET', 'business_taste_changes', { query: { business_id: `eq.${businessId}`, select: 'summary_he,source', order: 'applied_at.desc', limit: '1' } });
+  ok(/Ami's bench/.test(benchLog[0]?.summary_he || '') && (!migrated || benchLog[0]?.source === 'admin'), 'logged as an admin change');
 
   // --- 4a. the owner's build endpoint after the move to _run-daily-build.js ---
   // (no Spotify: today is closed, so "replace today" is refused before
@@ -293,6 +312,37 @@ try {
   ok(r.status === 200 && listed?.active === true && listed.uses_paid === 0 && typeof r.data.coupons_enabled === 'boolean', 'listed with usage counts');
   r = await admin('PATCH', 'coupons', { code: coupon, active: false });
   ok(r.status === 200 && r.data.coupon?.active === false, 'switched off');
+
+  // --- 6. Ami's taste bench: save a playlist-type switch (last: it changes the business's type) ---
+  console.log('\n[6] taste bench: type switch');
+  r = await admin('GET', `taste-bench?id=${businessId}`);
+  const fromMode = r.data?.mode;
+  const toMode = fromMode === 'option2' ? 'option1' : 'option2';
+  const N = r.data?.ctx?.state?.N || 4;
+  const appr = r.data?.ctx?.state?.approved || [];
+  const library = toMode === 'option2'
+    ? [...new Set(appr.map((a) => a.energy_level))].map((L) => ({ energy_level: L, title_en: `Level ${L}`, genres: appr.filter((a) => a.energy_level === L).map((a) => a.genre).slice(0, 3) }))
+    : ['high', 'low'].map((tier) => ({ energy_tier: tier, title_en: tier, genres: appr.filter((a) => (a.energy_level > N / 2 ? 'high' : 'low') === tier).map((a) => a.genre).slice(0, 4) }));
+  r = await admin('POST', 'taste-bench', { business_id: businessId, ops: [], switch: { mode: toMode, library } });
+  ok(r.status === 200 && r.data.switched === toMode, `switch ${fromMode} → ${toMode} saved`, JSON.stringify(r.data).slice(0, 200));
+  const st = (await pgr('GET', 'business_v7_settings', { query: { business_id: `eq.${businessId}`, select: 'delivery_mode,timeline' } }))[0];
+  ok(st?.delivery_mode === toMode && (toMode === 'option1' || st?.timeline?.groups?.length > 0), `the business is on ${toMode}${toMode === 'option2' ? ', with an energy timeline' : ''}`);
+  const libRows = toMode === 'option2'
+    ? await pgr('GET', 'business_v7_level_directions', { query: { business_id: `eq.${businessId}`, active: 'is.true', select: 'energy_level,genres,profile_key' } })
+    : await pgr('GET', 'business_v7_directions', { query: { business_id: `eq.${businessId}`, active: 'is.true', select: 'energy_tier,genres' } });
+  ok(libRows.length > 0 && libRows.every((x) => toMode === 'option1' || x.profile_key), `its ${toMode} library is written (${libRows.length} recipes)`);
+  const audit = await pgr('GET', 'business_settings_changes', { query: { business_id: `eq.${businessId}`, field: 'eq.delivery_mode', select: 'before,after' } });
+  ok(audit.some((a) => a.before === fromMode && a.after === toMode), "the switch is audited like the owner's own");
+  // And back to Option 2 (the path that writes an energy timeline).
+  if (toMode === 'option1') {
+    const back = [...new Set(appr.map((a) => a.energy_level))]
+      .map((L) => ({ energy_level: L, title_en: `Level ${L}`, genres: appr.filter((a) => a.energy_level === L).map((a) => a.genre).slice(0, 3) }));
+    r = await admin('POST', 'taste-bench', { business_id: businessId, ops: [], switch: { mode: 'option2', library: back } });
+    const st2 = (await pgr('GET', 'business_v7_settings', { query: { business_id: `eq.${businessId}`, select: 'delivery_mode,timeline' } }))[0];
+    const lv2 = await pgr('GET', 'business_v7_level_directions', { query: { business_id: `eq.${businessId}`, active: 'is.true', select: 'profile_key' } });
+    ok(r.status === 200 && st2?.delivery_mode === 'option2' && st2?.timeline?.groups?.length > 0 && lv2.length > 0 && lv2.every((x) => x.profile_key),
+      `back to option2: timeline (${st2?.timeline?.groups?.length} groups) + level library (${lv2.length} recipes)`);
+  }
 } catch (e) {
   console.error('\nERROR', e.message);
   failed++;

@@ -62,11 +62,12 @@ import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
 // card is the taste chat since 2026-10-13. Its exports are still referenced by
 // the per-playlist edit / trash paths, which v7 rows never show (no direction_id).
 import { openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=03102026a';
-import { mountTasteChat } from './taste-chat.js?v=13102026b';
-import { generateEnergyDirections } from '../generation/energy-directions.js?v=21102026a';
-import { generateLevelDirections } from '../generation/level-directions.js?v=21102026a';
+import { mountTasteChat, resetTasteChat, ensurePortrait, syncTastePlaceholder } from './taste-chat.js?v=21102026c';
+import { generateEnergyDirections } from '../generation/energy-directions.js?v=21102026b';
+import { generateLevelDirections } from '../generation/level-directions.js?v=21102026b';
 import { pickLevelDirections, levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
 import { setWaitText, WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
+import { nudgeOptions } from '../generation/energy-windows.js?v=21102026a';
 import { mountHypPayment, ensureHypPaymentStyles } from '../hyp-payment.js?v=06102026a';
 import { PASSWORD_RULES_TEXT, passwordProblem } from '/shared/password-rules.js?v=28092026a';
 
@@ -102,6 +103,13 @@ let meta = {};
 // the rest of the render / event-management code doesn't need to know
 // where the data comes from.
 const state = { dashboard: null };
+
+// Every change of the playlist type goes through here, so the taste chat's
+// placeholder follows it.
+function setDeliveryModeState(mode) {
+  state.deliveryMode = mode;
+  syncTastePlaceholder(mode);
+}
 
 // Chat state for the special-playlists panel. `messages` is the visible
 // transcript; `proposed` is the last confirming-state summary Gemini
@@ -553,6 +561,7 @@ async function enterDashboardInner() {
   if (pickedModeNow && !hasPlaylistsForToday()) runGenerateDaily();
 
   // The Home tab's "הטעם המוזיקלי שלכם" chat (taste-chat.js; idempotent).
+  syncTastePlaceholder(state.deliveryMode);
   mountTasteChat({
     supabase: sb,
     getBusiness: () => business,
@@ -564,6 +573,10 @@ async function enterDashboardInner() {
     },
   });
   loadTastePrefs();
+  startChatDayReset();
+  // The owner's musical portrait: the first version from the onboarding
+  // answers if there's none yet (background; the server skips it otherwise).
+  ensurePortrait();
 
   // Background expansion of any onboarding playlists that are still at
   // sample size. The endpoint streams progress and updateCountInRow ticks
@@ -704,7 +717,7 @@ async function checkV7ModeGate() {
     console.warn('v7 mode gate read failed:', e?.message || e);
     return false;
   }
-  state.deliveryMode = mode;
+  setDeliveryModeState(mode);
   if (mode === 'option1') {
     // Option 1 is only buildable once energy-tiered directions exist. If a
     // previous build failed (or the tab closed mid-build), flag it so the
@@ -753,7 +766,7 @@ async function checkV7ModeGate() {
       opt2.disabled = true;
       try {
         await setDeliveryMode(choice);
-        state.deliveryMode = choice;
+        setDeliveryModeState(choice);
         // Option 1 needs energy-tiered directions before the cron can build.
         // Generate + persist them now (best-effort) while keeping the owner on
         // the gate with a spinner, so a mid-generation tab close is unlikely.
@@ -799,7 +812,7 @@ async function checkV7ModeGate() {
         context: 'gate',
         onSave: async (timeline) => {
           const data = await setDeliveryMode('option2', timeline);
-          state.deliveryMode = 'option2';
+          setDeliveryModeState('option2');
           state.timeline = data.timeline || timeline;
           return {};
         },
@@ -1471,7 +1484,7 @@ function renderDeliverySection() {
     paint('option1'); // optimistic — the ✓ moves at once
     try {
       const data = await setDeliveryMode('option1');
-      state.deliveryMode = 'option1';
+      setDeliveryModeState('option1');
       // 2 → 1: ask about today's playlists RIGHT AWAY — the same question as
       // the 1 → 2 switch — not after the directions build below (a Gemini
       // call of ~a minute), which also must not swallow the question if it
@@ -1496,7 +1509,7 @@ function renderDeliverySection() {
       if (replaceNow) runReplaceToday();
     } catch (e) {
       console.error('renderDeliverySection option1:', e);
-      state.deliveryMode = prev;
+      setDeliveryModeState(prev);
       paint(prev);
       setMsg('שגיאה בשמירה — נסו שוב', 'err');
     } finally {
@@ -1525,7 +1538,7 @@ function renderDeliverySection() {
         context: 'switch',
         onSave: async (timeline) => {
           const data = await setDeliveryMode('option2', timeline);
-          state.deliveryMode = 'option2';
+          setDeliveryModeState('option2');
           state.timeline = data.timeline || timeline;
           state.energyBuildFailed = false;
           return data;
@@ -2440,8 +2453,138 @@ function buildPlaylistRow(p) {
     row.append(open);
   }
   if (showBar) updateExpandBar(row, p.trackCount || 0);
+  const ns = nudgeState(p);
+  if (ns) row.querySelector('.s-info').append(buildNudgeRow(p, ns));
   return row;
 }
+
+// ---------- "today only" energy for one playlist (4 a day; Ami + Roni, 2026-10-21) ----------
+// Three circles under each of the 4 daily playlists: calmer / as usual / more
+// energetic — the windows from nudgeOptions (v7/generation/energy-windows.js):
+// the playlist's usual window ±10, or, at an end of the scale, the usual one
+// there and two steps the other way. A tap asks once, then
+// api/v7/account/energy-nudge.js swaps that playlist's songs in place, for
+// today only. One change a day per business, across all 4; tomorrow's
+// playlists are back to usual. A permanent change goes through the taste chat.
+const nudge = { busyId: null, usedDayStart: null, pending: null };
+const NUDGE_WORDS = { '-2': 'הרבה פחות אנרגטי', '-1': 'קצת פחות אנרגטי', 0: 'כרגיל', 1: 'קצת יותר אנרגטי', 2: 'הרבה יותר אנרגטי' };
+// Drawn icons (not text) so they sit exactly in the middle of the circle.
+const NUDGE_ICONS = {
+  1: '<path d="M7 12h10M12 7v10"/>',
+  2: '<path d="M3.5 12h7M7 8.5v7M13.5 12h7M17 8.5v7"/>',
+  '-1': '<path d="M7 12h10"/>',
+  '-2': '<path d="M4 12h6M14 12h6"/>',
+  dot: '<circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/>',
+};
+const nudgeIcon = (key) => `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">${NUDGE_ICONS[key]}</svg>`;
+const nudgeDayStart = () => businessWindowAt(bmeta().hours).dayStartIso;
+
+function nudgeUsedToday() {
+  const since = nudgeDayStart();
+  if (nudge.usedDayStart === since) return true;
+  return (bmeta().playlists || []).some((p) => playlistIsLive(p) && !p.eventId
+    && Date.parse(p.expansion?.direction?.energy_nudge?.at || 0) >= Date.parse(since));
+}
+
+// { windows, usualIndex, currentIndex } for a card that gets the circles, else null.
+function nudgeState(p) {
+  if (state.deliveryMode !== 'option1' || state.generating || !p.url) return null;
+  if (!OPTION1_DAILY_TITLES.includes(undatedLabel(p.label))) return null;
+  const d = p.expansion?.direction;
+  const cur = [Number(d?.energy_range?.min), Number(d?.energy_range?.max)];
+  if (!Number.isFinite(cur[0]) || !Number.isFinite(cur[1])) return null;
+  const u = d.energy_nudge?.usual;
+  const { windows, usualIndex } = nudgeOptions(u ? [u.min, u.max] : cur);
+  const currentIndex = windows.findIndex((w) => w[0] === cur[0] && w[1] === cur[1]);
+  return currentIndex < 0 ? null : { windows, usualIndex, currentIndex };
+}
+
+function buildNudgeRow(p, ns) {
+  const used = nudgeUsedToday();
+  const row = document.createElement('div');
+  row.className = 'nrg-row';
+  const label = document.createElement('span');
+  label.textContent = 'אנרגיה להיום';
+  const dots = document.createElement('div');
+  dots.className = 'nrg-dots';
+  dots.dir = 'ltr';   // calmer on the left, more energetic on the right
+  ns.windows.forEach((_, i) => {
+    const k = i - ns.usualIndex;
+    const on = i === ns.currentIndex;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `nrg-dot${on ? ' on' : ''}`;
+    // + / − while the change is available; a dot on the usual circle, and on
+    // every empty circle once today's change is used.
+    if (!on) b.innerHTML = nudgeIcon(k && !used ? k : 'dot');
+    if (!on && (used || !k)) b.classList.add('plain');
+    const words = `${NUDGE_WORDS[k]}${on ? ' (עכשיו)' : ''}`;
+    b.title = words;
+    b.setAttribute('aria-label', words);
+    b.disabled = on || used || !!nudge.busyId;
+    if (!b.disabled) b.addEventListener('click', () => openNudgeConfirm(p, i, k));
+    dots.append(b);
+  });
+  const note = document.createElement('span');
+  note.className = 'nrg-note';
+  if (nudge.busyId === p.id) note.innerHTML = `מעדכנים${WAIT_DOTS_HTML}<span class="pl-inline-spinner" aria-label="מעדכנים"></span>`;
+  else if (used && !p.expansion?.direction?.energy_nudge) note.textContent = 'השינוי של היום נוצל';
+  row.append(label, dots, note);
+  return row;
+}
+
+function openNudgeConfirm(p, choice, k) {
+  nudge.pending = { p, choice };
+  const name = undatedLabel(p.label);
+  const more = k > 0;
+  $('nudgeTitle').textContent = `${Math.abs(k) > 1 ? 'הרבה' : 'קצת'} ${more ? 'יותר' : 'פחות'} אנרגטי, רק להיום?`;
+  $('nudgeText').textContent = `נעדכן את "${name}" לאנרגיה ${more ? 'גבוהה' : 'רגועה'} יותר. מחר הוא יחזור להיות כרגיל. אפשר לשנות רק פלייליסט אחד, פעם אחת ביום. לשינוי קבוע נסו את צ'אט הטעם המוזיקלי.`;
+  $('nudgeModal').classList.remove('hide');
+}
+
+function closeNudgeConfirm() {
+  nudge.pending = null;
+  $('nudgeModal').classList.add('hide');
+}
+
+async function confirmNudge() {
+  const pending = nudge.pending;
+  closeNudgeConfirm();
+  if (!pending || nudge.busyId) return;
+  const { p, choice } = pending;
+  nudge.busyId = p.id;
+  renderPlaylists();
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) throw new Error('לא מחוברים');
+    const r = await fetch('/api/v7/account/energy-nudge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ businessId: business?.id, spotifyId: p.id, choice }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (data?.code === 'nudge-used') nudge.usedDayStart = nudgeDayStart();
+    if (!r.ok || !data?.ok) throw new Error(data?.error || 'משהו השתבש — נסו שוב.');
+    nudge.usedDayStart = nudgeDayStart();
+    const fresh = data.playlist;
+    state.dashboard = {
+      ...(state.dashboard || {}),
+      playlists: (bmeta().playlists || []).map((x) => (x.id === fresh.spotify_id
+        ? { ...x, trackCount: fresh.track_count, expansion: fresh.expansion } : x)),
+    };
+    toast('הפלייליסט עודכן, רק להיום');
+  } catch (e) {
+    console.error('energy-nudge:', e);
+    toast(String(e.message || 'משהו השתבש — נסו שוב.').slice(0, 120));
+  } finally {
+    nudge.busyId = null;
+    renderPlaylists();
+  }
+}
+
+$('nudgeGo')?.addEventListener('click', confirmNudge);
+$('nudgeCancel')?.addEventListener('click', closeNudgeConfirm);
+$('nudgeModal')?.addEventListener('click', (e) => { if (e.target?.id === 'nudgeModal') closeNudgeConfirm(); });
 
 // ---- inline direction rename on Home tab playlist rows ----
 // Clicking a row's .s-label span calls enterRenameMode, which replaces the
@@ -3491,6 +3634,51 @@ async function finalizeAndSaveEvent(goBtn) {
     goBtn.innerHTML = origHtml;
     toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
   }
+}
+
+// Both Home-tab chats start each day empty (Ami, 2026-10-21). A page left
+// open overnight clears them at 04:00 IL (the special-playlists day), and the
+// model forgets yesterday's messages too (a new sessionStartAt), as on a page
+// load. Checked by a timer and whenever the page comes back on screen — a
+// phone can sleep through the timer. A chat mid-reply is cleared on the next
+// check instead.
+const chatDay = { taste: prevIl4amIso(), event: prevIl4amIso() };
+let chatDayTimer = null;
+let chatDayStarted = false;
+
+function resetEventChat() {
+  if (chatState.busy) return false;
+  chatState.messages = [];
+  chatState.proposed = null;
+  SESSION_START_AT_ISO = new Date().toISOString();
+  $('chatMessages').innerHTML = '';
+  const ci = $('chatInput');
+  if (ci && !ci.value.trim()) {
+    ci.rows = 3;
+    ci.classList.remove('compact');
+    ci.setAttribute('placeholder', CHAT_PLACEHOLDER);
+  }
+  return true;
+}
+
+function resetChatsIfNewDay() {
+  clearTimeout(chatDayTimer);
+  const today = prevIl4amIso();
+  if (chatDay.taste !== today && resetTasteChat()) chatDay.taste = today;
+  if (chatDay.event !== today && resetEventChat()) chatDay.event = today;
+  const pending = chatDay.taste !== today || chatDay.event !== today;
+  chatDayTimer = setTimeout(resetChatsIfNewDay,
+    pending ? 30000 : Math.max(1000, Date.parse(nextIl4amIso()) - Date.now() + 1000));
+}
+
+function startChatDayReset() {
+  if (chatDayStarted) return;
+  chatDayStarted = true;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') resetChatsIfNewDay();
+  });
+  window.addEventListener('pageshow', resetChatsIfNewDay);
+  resetChatsIfNewDay();
 }
 
 $('chatSend')?.addEventListener('click', sendChatMessage);

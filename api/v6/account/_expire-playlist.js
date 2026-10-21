@@ -46,7 +46,7 @@ function isGone(err) {
   return false;
 }
 
-async function postSpotify(origin, action, body) {
+export async function postSpotify(origin, action, body) {
   const r = await fetch(`${origin}/api/new/spotify`, {
     method:  'POST',
     headers: {

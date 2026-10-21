@@ -296,6 +296,18 @@ Examples of required phrasing:
   - NO specific city names, beverage brands, or generic clichés ("כמו לשבת ב...").
 - **Language Integrity:** Clear, direct, professional Hebrew spoken as a peer to a business owner.`;
 
+// The phrase the onboarding's "הכל מוכן!" screen shows before sign-up (Ami,
+// 2026-10-21): "רובין בנה ל<name>, <phrase> שלכם, פרופיל מוזיקה." R1 only
+// (it always runs and is done long before that screen; R2 doesn't ask).
+export const VENUE_PHRASE_SECTION = `## Rules for the Venue Phrase (\`venue_phrase_he\`)
+
+Alongside the directions, return one short Hebrew phrase that describes the business itself, the way Robin introduces it back to the owner. The owner sees it in this sentence: "רובין בנה ל<business name>, <venue_phrase_he> שלכם, פרופיל מוזיקה."
+
+- The type of business with the definite article, plus exactly ONE adjective drawn from the owner's description and your understanding of the place (e.g. "המסעדה הסקסית", "בית הקפה השכונתי", "הבר האינטימי", "חנות הבגדים האורבנית"). Never two adjectives ("המסעדה הסקסית והאינטימית" is wrong).
+- Natural, correct Hebrew: every adjective agrees with the noun in gender and number and takes the definite article too ("הבר השכונתי", never "הבר שכונתית").
+- Warm and flattering, never negative or judgmental. Base it on what the owner wrote; don't invent details.
+- No business name, no quotes, no emoji, and no "שלכם" (the sentence adds it).`;
+
 // Composed editable prompt — Ami's dashboard would import this if we hook up
 // a v7 prompt-tuning dashboard later.
 export const EDITABLE_PROMPT_SECTION = [
@@ -310,6 +322,7 @@ export const EDITABLE_PROMPT_SECTION = [
   OUTPUT_LANGUAGE_SECTION,
   TITLE_RULES_SECTION,
   HEBREW_DESCRIPTION_SECTION,
+  VENUE_PHRASE_SECTION,
 ].join('\n\n');
 
 const ROUND1_OUTPUT_FORMAT = `## Output format
@@ -328,7 +341,8 @@ Normal case:
       "popularity_preference": "none"
     }
     // ... up to 8 directions
-  ]
+  ],
+  "venue_phrase_he": "Hebrew phrase: the type of business + one adjective (see Rules for the Venue Phrase)"
 }
 
 The \`instrumentalness_preference\` field is one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Instrumentalness preference" sub-rule under Processing Rules for when to use each. Default is \`"none"\`.
@@ -516,6 +530,21 @@ function normalizePopPref(raw) {
   return POP_PREFS.has(v) ? v : 'none';
 }
 
+// The "הכל מוכן!" screen's phrase, or null when it's missing or unusable (the
+// screen then leaves it out). Surrounding quotes and a trailing "שלכם" are
+// dropped (an apostrophe inside a word, as in ג'אז, stays), and so is a second
+// adjective joined with "וה…" — one adjective only (Roni, 2026-10-21).
+// Exported for Ami's dashboard.
+export function normalizeVenuePhrase(raw) {
+  if (typeof raw !== 'string') return null;
+  const s = raw.replace(/\s+/g, ' ').trim()
+    .replace(/^["'״׳“”„]+|["'״׳“”„.,!]+$/g, '').trim()
+    .replace(/\s*שלכם$/, '').trim()
+    .replace(/(\s+וה\S+)+$/, '').trim();
+  if (!/[֐-׿]/.test(s) || s.length > 40 || s.split(' ').length > 6) return null;
+  return s;
+}
+
 // House-heavy clusters get demoted to the tail of their page — house directions
 // tend to be niche fits, so owners see the safer probes first. Same rule as v6.
 function containsHouseGenre(d) {
@@ -594,5 +623,5 @@ export async function generateMusicalDirections({ bizName, bizDesc, atmospheres,
     }
   })();
 
-  return { directions: page1, page2Promise };
+  return { directions: page1, page2Promise, venuePhrase: normalizeVenuePhrase(parsed1.venue_phrase_he) };
 }

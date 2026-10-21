@@ -44,6 +44,7 @@
 import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION, GENRES, GENRE_SET } from '../../shared/genre-universe.js';
 import { tierOfLevel, requestedByTier, withRequested } from './option1-draw.js';
+import { enforceIsolation } from './pairing-rules.js';
 export { GENRE_UNIVERSE_SECTION };
 
 // Gemini counts thinking tokens against the output cap. A 30-direction
@@ -350,7 +351,8 @@ function canonicalize(genreString) {
 // - A direction whose tier + genre set repeats an earlier one.
 // - Everything past MAX_DIRECTIONS (30).
 // Adds any requested genre of the direction's tier the model left out (the
-// "in every direction of its tier" rule). Emits console.warns (never
+// "in every direction of its tier" rule). Fixes recipes that break the
+// clear-cut isolation rules (pairing-rules.js, 2026-10-21). Emits console.warns (never
 // hard-errors) for dropped genres, a tier with fewer than 2 directions.
 export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGenres = []) {
   if (!parsed || typeof parsed !== 'object') return null;
@@ -403,6 +405,31 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGe
       : '(untitled)';
 
     directions.push({ energy_tier: tier, title_en: title, genres });
+  }
+
+  // Ami's clear-cut isolation rules (Electronic R&B; DownTempo / LoFi), which
+  // Gemini sometimes breaks: fixed per tier, requested genres exempt; genres
+  // taken out get a recipe of their own when no other recipe plays them.
+  const isolationNotes = [];
+  for (const tier of ['high', 'low']) {
+    const at = directions.map((d, i) => (d.energy_tier === tier ? i : -1)).filter((i) => i >= 0);
+    if (!at.length) continue;
+    const res = enforceIsolation(at.map((i) => directions[i]), requested[tier]);
+    at.forEach((i, k) => { directions[i] = res.recipes[k]; });
+    for (const a of res.added) directions.push({ energy_tier: tier, title_en: a.title_en, genres: withRequested(a.genres, requested[tier]) });
+    isolationNotes.push(...res.notes.map((n) => `${tier}: ${n}`));
+  }
+  if (isolationNotes.length) {
+    const seen = new Set();
+    const unique = directions.filter((d) => {
+      const key = `${d.energy_tier}|${[...d.genres].sort().join('|')}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (unique.length > MAX_DIRECTIONS) console.warn(`[v7 energy-directions] ${unique.length - MAX_DIRECTIONS} recipe(s) past the cap of ${MAX_DIRECTIONS} dropped after the isolation fixes`);
+    directions.splice(0, directions.length, ...unique.slice(0, MAX_DIRECTIONS));
+    console.warn('[v7 energy-directions] isolation rules fixed:', isolationNotes.join(' | '));
   }
 
   if (dropped.length) {

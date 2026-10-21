@@ -18,13 +18,16 @@
 // (hooks.askReplace — the same modal step as the Profile tab).
 //
 // Messages are persisted server-side; the on-screen transcript and the
-// model's memory both start fresh on every page load (sessionStartAt).
+// model's memory both start fresh on every page load (sessionStartAt), and
+// at 04:00 IL on a page left open (resetTasteChat).
 
 import { WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
+import { tasteChatPlaceholder } from '../generation/taste-chat-prompt.js?v=21102026a';
 
 const $ = (id) => document.getElementById(id);
 const DECK_RESULTS_PREFIX = '[תוצאות ההאזנה]';   // = taste-chat-prompt.js
-const PLACEHOLDER = 'לדוגמה: יש לי יותר מדי R&B / חסרים לי מקצבים אפריקאיים / הצהריים אנרגטיים מדי';
+// The input's placeholder follows the playlist type (syncTastePlaceholder).
+let placeholderMode = null;
 
 const PLAY_ICON = '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><path d="M8.2 5.6v12.8L19 12z"/></svg>';
 const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="30" height="30" fill="currentColor" aria-hidden="true"><rect x="6.6" y="5.6" width="3.9" height="12.8" rx="1.2"/><rect x="13.5" y="5.6" width="3.9" height="12.8" rx="1.2"/></svg>';
@@ -38,7 +41,7 @@ let sb = null;
 let getBusiness = () => null;
 let hooks = {};
 let mounted = false;
-const SESSION_START_AT_ISO = new Date().toISOString();
+let SESSION_START_AT_ISO = new Date().toISOString();
 const heard = new Set();          // genres the owner heard in the deck this session (no second sample)
 let busy = false;
 
@@ -131,6 +134,11 @@ async function send(text, { visibleText } = {}) {
     thinking.classList.remove('thinking');
     thinking.textContent = (reply.reply_he || '').trim() || '(אין תשובה)';
     renderActions(thinking, data.assistantMessage?.id, reply);
+    // A success (a change the owner can confirm) → the portrait is rewritten
+    // in the background from the messages that led to it.
+    if (reply.proposal?.ops?.length && data.assistantMessage?.id) {
+      updatePortrait({ action: 'chat', messageId: data.assistantMessage.id }).catch(() => {});
+    }
   } catch (e) {
     console.error('taste-chat:', e);
     thinking.classList.remove('thinking');
@@ -375,6 +383,52 @@ function openDeck(suggestions, btn) {
 
 // ---------- mount ----------
 
+// The owner's musical portrait (2026-10-21; api/v7/account/taste-portrait.js).
+// Background only — never awaited by the chat, and keepalive so a request
+// still finishes if the owner closes the page right after.
+async function updatePortrait(body) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token || !getBusiness()?.id) return;
+  await fetch('/api/v7/account/taste-portrait', {
+    method: 'POST',
+    keepalive: true,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ businessId: getBusiness().id, sessionStartAt: SESSION_START_AT_ISO, ...body }),
+  });
+}
+
+// The first version, from the onboarding answers, when the business has none
+// yet (the server skips it otherwise). Called once on the dashboard's load.
+export function ensurePortrait() {
+  updatePortrait({ action: 'init' }).catch(() => {});
+}
+
+// A new day (04:00 IL, called by the dashboard — Ami, 2026-10-21): yesterday's
+// messages leave the screen and the model starts fresh, as on a page load.
+// Not while a turn is in flight; the dashboard tries again later.
+export function resetTasteChat() {
+  if (busy) return false;
+  SESSION_START_AT_ISO = new Date().toISOString();
+  heard.clear();
+  const box = $('tasteChatMessages');
+  if (box) box.innerHTML = '';
+  const input = $('tasteChatInput');
+  if (input && !input.value.trim()) {
+    input.rows = 3;
+    input.classList.remove('compact');
+    input.setAttribute('placeholder', tasteChatPlaceholder(placeholderMode));
+  }
+  return true;
+}
+
+// The dashboard calls this whenever the playlist type is set or changes.
+// Leaves the input alone once a conversation has shrunk it.
+export function syncTastePlaceholder(mode) {
+  placeholderMode = mode || null;
+  const input = $('tasteChatInput');
+  if (input && !input.classList.contains('compact')) input.setAttribute('placeholder', tasteChatPlaceholder(placeholderMode));
+}
+
 export function mountTasteChat(opts) {
   sb = opts.supabase;
   getBusiness = opts.getBusiness || getBusiness;
@@ -382,7 +436,7 @@ export function mountTasteChat(opts) {
   if (mounted) return;
   mounted = true;
   const input = $('tasteChatInput');
-  if (input && !input.getAttribute('placeholder')) input.setAttribute('placeholder', PLACEHOLDER);
+  if (input && !input.classList.contains('compact')) input.setAttribute('placeholder', tasteChatPlaceholder(placeholderMode));
   const go = () => {
     const text = (input.value || '').trim();
     if (!text || busy) return;

@@ -46,7 +46,139 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-21 (latest) — Taste profile: precision first + energy floors; Ami's isolation rules in the daily-playlist recipes
+## 2026-10-21 (latest) — Taste chat: the "today only" energy circles
+
+**Applies to:** taste chat (Option 1 only).
+
+Ami + Roni: under each of the 4 daily playlists the owner now has three circles (calmer / as usual / more energetic) that change THAT playlist's energy for today only, once a day for one playlist (`api/v7/account/energy-nudge.js`). The chat should send a one-playlist, today-only complaint there, instead of moving the whole tier's window for good.
+
+**`ENERGY_OPTION1`** — a new first bullet:
+
+```
+- **Just today, one playlist:** under each of the 4 playlists on the Home tab there are three circles (calmer / as usual / more energetic) that change THAT playlist's energy for today only, once a day for one playlist (see "## Today's playlists" for whether it's used). When the owner's complaint is about one playlist today ("הפלייליסט האנרגטי היום חזק מדי"), tell them about the circles in one sentence ("העיגולים מתחת לפלייליסט") and offer the lasting change below only if they want it from now on. Don't propose shift_window in that reply unless they asked for a lasting change. When they already used today's change, offer the lasting change.
+```
+
+**Context** (`formatTasteContext`, from `_taste-context.js`): under "## Today's playlists", a playlist the owner changed today gets " — the owner made it more energetic / calmer for today only (the circles)", and a last line says "Today's one change with the circles is used." or "… is still available."
+
+Same day, not a prompt change: Option 1's default calm window is now 30–60 (was 20–50; `OPTION1_ENERGY_WINDOWS` in `v7/generation/energy-windows.js`).
+
+## 2026-10-21 — New prompt: the owner's musical portrait; the taste chat reads it
+
+**Applies to:** taste chat + the new taste portrait prompt (`v7/generation/taste-portrait-prompt.js`, label `v7-taste-portrait`).
+
+Roni: a short summary of who each owner is musically, kept up to date, so the taste chat understands them from one conversation to the next (Ami's "פאנקי" case). Decisions:
+- written from the taste chat only;
+- rewritten after every success (the chat and the owner understood each other and the chat offered the confirm button), from the messages that led to it;
+- in Hebrew;
+- written for the existing accounts too (`scripts/_v7-backfill-taste-portraits.mjs`).
+
+The first version comes from the onboarding answers, on the dashboard's first load. It's stored in `business_taste_portraits`, and every version is kept.
+
+**Taste chat:** `formatTasteContext` adds "## Who this owner is (Rubin's portrait from earlier conversations)" after "## Business" when there is one. A new first bullet in `UNDERSTANDING` tells the chat how to use it:
+
+```
+- **"## Who this owner is"** (when present) is Rubin's running portrait of this owner, kept from earlier conversations: what they love and avoid, and what their own words have meant. Use it to understand them, especially words they've used before. Anything they say in this conversation wins over it.
+```
+
+**The portrait prompt** (`TASTE_PORTRAIT_SYSTEM_PROMPT`, low thinking; the user message is built by `buildPortraitUserMessage` from the business, the current portrait, the onboarding answers and the transcript):
+
+```
+You keep a short musical portrait of one business owner for Rubin, a tool that builds the daily playlists of a café, bar, restaurant or shop. Rubin's music chat ("הטעם המוזיקלי שלכם") reads the portrait before every reply, so it understands this owner from one conversation to the next: what they love, what they avoid, and above all what they mean by their own words.
+
+You receive the current portrait (or none yet) and new material: the owner's onboarding answers, or a conversation in that chat that just ended in agreement (the owner and the chat understood each other and the chat proposed a change). Return the updated portrait.
+
+## Rules
+
+- Hebrew, plain and short: at most about 150 words. Short lines under these headings, in this order; leave out a heading that has nothing under it:
+  העסק: / אוהבים: / פחות או בכלל לא: / כשהם אומרים: / אנרגיה ושעות: / ביקשו לאחרונה:
+- "כשהם אומרים" is the most important part: the owner's own words and what they turned out to mean (e.g. "פאנקי" = מוזיקה קצבית עם תופים, לא סגנון הפאנק עצמו). Record a meaning only when the conversation made it clear.
+- Keep what is still true from the current portrait. When the new material contradicts it, the newer statement wins: rewrite that line, don't keep both.
+- Write about tastes and wishes, not settings: never weights, levels, recipe keys, numbers or the names of internal steps. Genre names are fine when the owner used them or they help, but don't list the whole taste profile — the chat sees the profile separately.
+- Only what the owner said or clearly showed. Don't invent and don't guess motives.
+- "ביקשו לאחרונה": the last 2–3 changes they agreed to, one short line each, newest first.
+- Refer to the owner in the plural ("אוהבים", "ביקשו") or as the business ("המקום").
+
+## Output
+
+A single JSON object and nothing else: {"portrait_he": "..."} — line breaks as \n.
+```
+
+**Tried before saving anything (2026-10-21):** פרא (onboarding + 12 chat messages) and פלור (onboarding only), 5–7s each, 72–85 words. For פרא it recorded "אנרגיה גבוהה = מוזיקה קצבית ומרימה עם תופים", and its last three agreed changes.
+
+---
+
+## 2026-10-21 — Taste chat: editable / fixed split for Ami's dashboard
+
+**Applies to:** taste chat (structural, byte-identical output).
+
+`buildTasteChatSystemPrompt(mode)` is now `assembleTasteChatSystemPrompt(tasteChatEditableSection(mode), mode)`, joining the same sections in the same order:
+- **Editable** (`tasteChatEditableSection`): INTRO, HOW_OPTION1/2, LANGUAGE, SONG_LINKS, UNDERSTANDING, AIM_TO_PLEASE, CHANGES_COMMON, ENERGY_OPTION1/2, POPULARITY_OPTION1/2, CONFIRMING.
+- **Fixed** (`assembleTasteChatSystemPrompt`): the coherence rules, TASTE_RULES, the genre list and OUTPUT.
+
+Ami's dashboard edits the editable part in its new "צ'אט הטעם המוזיקלי" tab. The event chat and classifier prompts are edited whole there (their own tab).
+
+---
+
+## 2026-10-21 — Taste chat: feel words are not genres
+
+**Applies to:** taste chat.
+
+Ami asked פרא's chat (2026-10-15) for funkier energetic playlists, meaning more groove and drums. The chat made `Funk` a requested genre, which puts it in every energetic playlist every day. New bullet in `UNDERSTANDING` ("## Understanding what the owner means"), before the "ask ONE short question" bullet:
+
+```
+- **Feel words are not genres** (Ami, 2026-10-21). Words like "פאנקי / פאנקית", "ג'אזי", "רוקי", "לטיני", "גרובי", "שמח" usually describe how the music feels — rhythm, drums, groove, energy — not the genre with that name. "יותר פאנקי" means more groove and beat (drums, bass, a danceable rhythm), which can come from several of the genres the owner already has. Work out which of their genres deliver that feel and raise those, or adjust the energy. If it's unclear whether they mean the feel or the style itself, ask one short question ("הכוונה לסגנון הפאנק עצמו, או למוזיקה קצבית וגרובית יותר?"). Never make a genre requested (set_requested), or add it to every recipe, because of a feel word — only when the owner names the style itself.
+```
+
+---
+
+## 2026-10-21 — Venue phrase: one adjective only
+
+**Applies to:** Round 1.
+
+Roni: the phrase keeps to one adjective. The first version allowed "one or two descriptive words", and Gemini wrote "המסעדה הסקסית והאינטימית".
+
+- `VENUE_PHRASE_SECTION`'s first bullet now asks for exactly one adjective and gives two adjectives as the wrong example (full text below). The output format's description of `venue_phrase_he` says the same.
+- `normalizeVenuePhrase` also drops a trailing second adjective joined with "וה…", in case Gemini adds one anyway.
+- **Tried on the same 2 samples:** "המסעדה הסקסית", "בית הקפה השכונתי".
+
+```
+## Rules for the Venue Phrase (`venue_phrase_he`)
+
+Alongside the directions, return one short Hebrew phrase that describes the business itself, the way Robin introduces it back to the owner. The owner sees it in this sentence: "רובין בנה ל<business name>, <venue_phrase_he> שלכם, פרופיל מוזיקה."
+
+- The type of business with the definite article, plus exactly ONE adjective drawn from the owner's description and your understanding of the place (e.g. "המסעדה הסקסית", "בית הקפה השכונתי", "הבר האינטימי", "חנות הבגדים האורבנית"). Never two adjectives ("המסעדה הסקסית והאינטימית" is wrong).
+- Natural, correct Hebrew: every adjective agrees with the noun in gender and number and takes the definite article too ("הבר השכונתי", never "הבר שכונתית").
+- Warm and flattering, never negative or judgmental. Base it on what the owner wrote; don't invent details.
+- No business name, no quotes, no emoji, and no "שלכם" (the sentence adds it).
+```
+
+---
+
+## 2026-10-21 — R1 also returns a short phrase for the business ("הכל מוכן!" screen)
+
+**Applies to:** Round 1 (R2 has its own output format and doesn't ask for it).
+
+Ami's new onboarding screen before sign-up says "רובין בנה ל<name>, <phrase> שלכם, פרופיל מוזיקה." Roni: Round 1 gives the phrase. It always runs and is done long before that screen; the taste profile has only just started there.
+
+- **New sub-constant `VENUE_PHRASE_SECTION`**, last in `EDITABLE_PROMPT_SECTION` (full text below).
+- **Output format** (`ROUND1_OUTPUT_FORMAT`, fixed section): a top-level `"venue_phrase_he"` next to `"directions"`. Both page calls return it; the onboarding uses page 1's.
+- **Code:** `normalizeVenuePhrase` drops surrounding quotes and a trailing "שלכם", and returns null when the phrase has no Hebrew, is over 40 characters or over 6 words; the screen then leaves it out. `generateMusicalDirections` returns it as `venuePhrase`.
+- **Tried on 2 sample businesses (2026-10-21):** "המסעדה הסקסית והאינטימית", "בית הקפה השכונתי והרגוע".
+
+```
+## Rules for the Venue Phrase (`venue_phrase_he`)
+
+Alongside the directions, return one short Hebrew phrase that describes the business itself, the way Robin introduces it back to the owner. The owner sees it in this sentence: "רובין בנה ל<business name>, <venue_phrase_he> שלכם, פרופיל מוזיקה."
+
+- 2–4 words: the type of business with the definite article, plus one or two descriptive words drawn from the owner's description and your understanding of the place (e.g. "המסעדה הסקסית", "בית הקפה השכונתי", "הבר האינטימי", "חנות הבגדים האורבנית").
+- Natural, correct Hebrew: every adjective agrees with the noun in gender and number and takes the definite article too ("הבר השכונתי", never "הבר שכונתית").
+- Warm and flattering, never negative or judgmental. Base it on what the owner wrote; don't invent details.
+- No business name, no quotes, no emoji, and no "שלכם" (the sentence adds it).
+```
+
+---
+
+## 2026-10-21 — Taste profile: precision first + energy floors; Ami's isolation rules in the daily-playlist recipes
 
 **Applies to:** taste profile + energy directions + level directions + taste chat (the taste chat imports `CORE_PHILOSOPHY_SECTION` and both `COHERENCE_SECTION`s, so it follows every change here).
 

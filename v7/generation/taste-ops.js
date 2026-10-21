@@ -30,6 +30,7 @@ import { tierOfLevel, tierPopularity } from './option1-draw.js';
 import { normLevels } from './energy-timeline.js';
 import { OPTION1_ENERGY_WINDOWS, levelEnergyWindow } from './energy-windows.js';
 import { levelProfileKey } from './timeline-assembler.js';
+import { splitRecipe, enforceIsolation } from './pairing-rules.js';
 
 export const WEIGHT_STEPS = [0.25, 0.5, 1, 1.5, 2];
 export const MAX_OPTION1_DIRECTIONS = 30;   // = MAX_DIRECTIONS in energy-directions.js
@@ -157,6 +158,35 @@ export function stateFromRows({ mode, profile, settings = null, option1Rows = []
   };
 }
 
+// The state switched to the other playlist type, with that type's library
+// (Ami's dashboard bench, 2026-10-21: "switch the business to option X").
+// libraryRows: Option 1 [{ energy_tier, title_en, genres }] / Option 2
+// [{ energy_level, title_en, genres }], in order. Keys are given the way
+// stateFromRows gives them, so the bench and the server agree on them; the
+// result is tidied like any change (finalize).
+export function withMode(state, mode, libraryRows = []) {
+  const s = clone(state);
+  s.mode = mode === 'option2' ? 'option2' : 'option1';
+  const genresOf = (r) => uniq((Array.isArray(r?.genres) ? r.genres : []).map(canonicalGenre).filter(Boolean));
+  const rows = Array.isArray(libraryRows) ? libraryRows : [];
+  if (s.mode === 'option1') {
+    const counters = { high: 0, low: 0 };
+    s.option1Dirs = ['high', 'low'].flatMap((tier) => rows.filter((r) => r?.energy_tier === tier)
+      .map((r) => ({ key: `${tier === 'high' ? 'H' : 'C'}${++counters[tier]}`, energy_tier: tier, title_en: String(r.title_en || ''), genres: genresOf(r) })));
+  } else {
+    const perLevel = new Map();
+    s.levelDirs = rows
+      .map((r) => ({ r, L: Math.min(s.N, Math.max(1, Math.round(Number(r?.energy_level) || 0))) }))
+      .filter(({ r }) => Number.isFinite(Number(r?.energy_level)))
+      .sort((a, b) => a.L - b.L)
+      .map(({ r, L }) => {
+        perLevel.set(L, (perLevel.get(L) || 0) + 1);
+        return { key: `L${L}-${perLevel.get(L)}`, energy_level: L, title_en: String(r.title_en || ''), genres: genresOf(r), energy_range: null };
+      });
+  }
+  return applyOps(s, []).state;
+}
+
 // What undo restores and the change log stores: every part the ops can touch.
 export function snapshotOf(state) {
   const { approved, conditional, requested, rejected, weights, inst, pop, popTiers = null, windows, option1Dirs, levelDirs, allowed } = state;
@@ -189,6 +219,19 @@ const findDir = (s, key) => library(s).find((d) => d.key === String(key || '').t
 const fitsDir = (s, dir, g) => (s.mode === 'option2'
   ? levelOfGenre(s, g) === dir.energy_level
   : tierOf(s, g) === dir.energy_tier);
+
+// Ami's clear-cut isolation rules (pairing-rules.js, 2026-10-21): Electronic
+// R&B only with house / Nu Disco / Indie Dance, DownTempo only with DownTempo,
+// LoFi only with LoFi. Option 1's requested genres don't count — they sit in
+// every recipe of their tier. An op that would make a recipe break one is
+// refused with the rule as its reason (the admin console shows it; the chat
+// drops the op).
+const isolationExempt = (s) => (s.mode === 'option1' ? s.requested : []);
+function newIsolationBreak(s, before, after) {
+  const was = splitRecipe(before, isolationExempt(s)).out.length;
+  const now = splitRecipe(after, isolationExempt(s)).out;
+  return now.length > was ? `would break a pairing rule (${now[now.length - 1].why})` : null;
+}
 
 function nextKey(s, { tier, level }) {
   if (s.mode === 'option2') {
@@ -288,7 +331,11 @@ const HANDLERS = {
     const g = canonicalGenre(op.genre);
     if (!g || !isApproved(s, g)) return 'not one of the approved genres';
     if (!fitsDir(s, d, g)) return s.mode === 'option2' ? 'genre is at another energy level' : 'genre is in the other energy tier';
-    if (!d.genres.includes(g)) d.genres.push(g);
+    if (!d.genres.includes(g)) {
+      const why = newIsolationBreak(s, d.genres, [...d.genres, g]);
+      if (why) return why;
+      d.genres.push(g);
+    }
     return null;
   },
 
@@ -309,6 +356,8 @@ const HANDLERS = {
       if (s.levelDirs.filter((d) => d.energy_level === L).length >= MAX_LEVEL_DIRECTIONS) return 'that level already has the most recipes allowed';
       const fit = genres.filter((g) => levelOfGenre(s, g) === L);
       if (!fit.length) return 'no approved genre of that level';
+      const why = newIsolationBreak(s, [], fit);
+      if (why) return why;
       s.levelDirs.push({ key: nextKey(s, { level: L }), energy_level: L, title_en: String(op.title_en || '').slice(0, 120), genres: fit, energy_range: null });
       return null;
     }
@@ -317,6 +366,8 @@ const HANDLERS = {
     if (s.option1Dirs.length >= MAX_OPTION1_DIRECTIONS) return 'the library already has the most recipes allowed';
     const fit = genres.filter((g) => tierOf(s, g) === tier);
     if (!fit.length) return 'no approved genre of that tier';
+    const why = newIsolationBreak(s, [], fit);
+    if (why) return why;
     s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: String(op.title_en || '').slice(0, 120), genres: fit });
     return null;
   },
@@ -411,6 +462,7 @@ export const OP_NAMES = Object.keys(HANDLERS);
 //     gets a recipe of its own (Option 1: requested genres are exempt — every
 //     playlist of their tier gets them at build time);
 //   - Option 1: a tier with approved genres but no recipe gets one with them;
+//   - the current mode's recipes follow the isolation rules (pairing-rules.js);
 //   - requested / weights / rejected / conditional stay consistent.
 function finalize(s, ctx) {
   const lv = new Map(s.approved.map((a) => [a.genre, a.energy_level]));
@@ -455,6 +507,37 @@ function finalize(s, ctx) {
       }
     }
   }
+
+  // The isolation rules on the current mode's library: catches what no op
+  // checks (the "all genres" recipe above, a library from before the rules).
+  // Same fix as the generators' normalizers — the larger side stays, genres
+  // taken out get a recipe of their own if no other recipe plays them.
+  const groups = s.mode === 'option2'
+    ? [...new Set(s.levelDirs.map((d) => d.energy_level))].map((L) => ({ L, dirs: s.levelDirs.filter((d) => d.energy_level === L) }))
+    : ['high', 'low'].map((tier) => ({ tier, dirs: s.option1Dirs.filter((d) => d.energy_tier === tier) }));
+  let fixed = false;
+  for (const { L, tier, dirs } of groups) {
+    if (!dirs.length) continue;
+    const res = enforceIsolation(dirs, isolationExempt(s));
+    if (!res.notes.length) continue;
+    fixed = true;
+    dirs.forEach((d, k) => { d.genres = res.recipes[k].genres; });
+    for (const a of res.added) {
+      if (s.mode === 'option2') {
+        if (s.levelDirs.filter((d) => d.energy_level === L).length >= MAX_LEVEL_DIRECTIONS) break;
+        s.levelDirs.push({ key: nextKey(s, { level: L }), energy_level: L, title_en: a.title_en, genres: a.genres, energy_range: null });
+      } else {
+        if (s.option1Dirs.length >= MAX_OPTION1_DIRECTIONS) break;
+        s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: a.title_en, genres: a.genres });
+      }
+    }
+    ctx.notes.push(...res.notes.map((n) => `pairing rules: ${n}`));
+  }
+  if (fixed) {
+    if (s.mode === 'option2') s.levelDirs = clean(s.levelDirs, (d, g) => lv.get(g) === d.energy_level);
+    else s.option1Dirs = clean(s.option1Dirs, (d, g) => tierOfLevel(lv.get(g), s.N) === d.energy_tier);
+  }
+
   s.requested = s.requested.filter((g) => lv.has(g));
   for (const g of Object.keys(s.weights)) if (!lv.has(g)) delete s.weights[g];
   s.rejected = uniq(s.rejected.filter((g) => !lv.has(g)));

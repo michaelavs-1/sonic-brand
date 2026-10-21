@@ -2,7 +2,8 @@
 //
 // Every analysed track has an energy value 0–100 (track_analyses.energy). The
 // daily builders take a playlist's songs from inside an energy window:
-//   Option 1 — the high-energy playlists 50–80, the calm ones 20–50.
+//   Option 1 — the high-energy playlists 50–80, the calm ones 30–60 (20–50
+//              until 2026-10-21).
 //   Option 2 — each level of the owner's energy scale gets a range from
 //              LEVEL_ENERGY_WINDOWS: 20–80 split into N ranges whose
 //              neighbours overlap by 20 points (Ami's 4-level proposal of
@@ -28,7 +29,7 @@ export const ENERGY_WIDEN_STEP = 5;
 
 export const OPTION1_ENERGY_WINDOWS = Object.freeze({
   high: Object.freeze({ min: 50, max: 80 }),
-  low:  Object.freeze({ min: 20, max: 50 }),
+  low:  Object.freeze({ min: 30, max: 60 }),
 });
 
 // [min, max] per level (index 0 = level 1), keyed by the owner's number of
@@ -63,4 +64,37 @@ export function levelEnergyWindow(level, N) {
   const L = Math.min(rows.length, Math.max(1, Math.round(Number(level) || 1)));
   const [min, max] = rows[L - 1];
   return { min, max };
+}
+
+// ---------- "today only" energy for one Option 1 playlist (Ami + Roni, 2026-10-21) ----------
+// Under each of the 4 daily playlists the owner sees three circles: calmer /
+// as usual / more energetic. A tap swaps the songs of THAT playlist, for today
+// only, to a window one step (ENERGY_NUDGE_STEP) away from its usual one; one
+// change a day per business (api/v7/account/energy-nudge.js). The usual window
+// is the playlist's own (the default, or the owner's as moved by the chat).
+
+export const ENERGY_NUDGE_STEP = 10;
+
+// The three circles' windows, calmest first, and which one is the usual.
+// Normally usual −10 / usual / usual +10. A usual window that can't move a full
+// step one way (within 10 of 0 or 100) sits at that end, and the other two are
+// one and two steps the other way.
+//   usual — { min, max } or [min, max]
+// → { windows: [[min, max] ×3], usualIndex: 0 | 1 | 2 }
+export function nudgeOptions(usual) {
+  const lo = Math.round(Number(Array.isArray(usual) ? usual[0] : usual?.min));
+  const hi = Math.round(Number(Array.isArray(usual) ? usual[1] : usual?.max));
+  const S = ENERGY_NUDGE_STEP;
+  const at = (k) => [lo + k * S, hi + k * S];
+  if (hi + S > 100) return { windows: [at(-2), at(-1), at(0)], usualIndex: 2 };
+  if (lo - S < 0) return { windows: [at(0), at(1), at(2)], usualIndex: 0 };
+  return { windows: [at(-1), at(0), at(1)], usualIndex: 1 };
+}
+
+// The playlist after a change: the songs kept (in their order) with the new
+// ones put in at random places.
+export function mergeAtRandom(kept, fresh, rand = Math.random) {
+  const out = [...kept];
+  for (const id of fresh) out.splice(Math.floor(rand() * (out.length + 1)), 0, id);
+  return out;
 }

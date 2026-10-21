@@ -29,11 +29,13 @@ export const GEMINI_THINKING_LEVEL  = 'high';             // 'low' | 'medium' | 
 //   onboardingSessionId: optional — passed to Gemini proxy for spend attribution
 //                        during onboarding (backfilled to business_id on signup).
 // Returns { text, usage, elapsed, provider }.
+// history (Gemini only, optional): earlier turns, [{ role: 'user' | 'model', text }]
+// — Ami's chat test benches (2026-10-21). thinkingLevel overrides the default.
 export async function callModel({
   system, userMessage, maxTokens = 4000, cache = false, label = 'call',
-  businessId = null, onboardingSessionId = null,
+  businessId = null, onboardingSessionId = null, history = null, thinkingLevel = null,
 }) {
-  if (PROVIDER === 'gemini')    return callGemini   ({ system, userMessage, maxTokens, label, businessId, onboardingSessionId });
+  if (PROVIDER === 'gemini')    return callGemini   ({ system, userMessage, maxTokens, label, businessId, onboardingSessionId, history, thinkingLevel });
   if (PROVIDER === 'anthropic') return callAnthropic({ system, userMessage, maxTokens, cache, label });
   throw new Error(`ai-provider: unknown PROVIDER "${PROVIDER}"`);
 }
@@ -75,7 +77,7 @@ async function callAnthropic({ system, userMessage, maxTokens, cache, label }) {
   return { text, usage: data?.usage || null, elapsed, provider: 'anthropic' };
 }
 
-async function callGemini({ system, userMessage, maxTokens, label, businessId, onboardingSessionId }) {
+async function callGemini({ system, userMessage, maxTokens, label, businessId, onboardingSessionId, history = null, thinkingLevel = null }) {
   const t0 = Date.now();
   const r = await fetch('/api/v6/gemini', {
     method:  'POST',
@@ -83,9 +85,10 @@ async function callGemini({ system, userMessage, maxTokens, label, businessId, o
     body:    JSON.stringify({
       model:                  MODEL_GEMINI,
       max_output_tokens:      maxTokens,
-      thinking_level:         GEMINI_THINKING_LEVEL,
+      thinking_level:         thinkingLevel || GEMINI_THINKING_LEVEL,
       system,
       user:                   userMessage,
+      ...(Array.isArray(history) && history.length ? { history } : {}),
       label,
       business_id:            businessId || null,
       onboarding_session_id:  onboardingSessionId || null,

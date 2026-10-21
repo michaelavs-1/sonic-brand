@@ -23,7 +23,7 @@
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=23092026a';
 import { runEmphasesStep } from '/v7/emphases.js?v=03102026a';
 import { runHoursSelection } from '/v7/hours-selector.js?v=29092026a';
-import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=21102026a';
+import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=21102026b';
 import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=21102026a';
 import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=21102026a';
 // derivePopularityWindow was removed 2026-09-02 — atmospheres no longer
@@ -45,13 +45,15 @@ import {
 } from '/v7/preview.js?v=28092026a';
 // v7 has NO per-direction playlist build at onboarding — directions are
 // diagnostic probes, not playlist seeds. After the swipe deck the flow goes
-// registration → payment → taste-profile (the point where directions dissolve
-// into a flat genre profile). These three screens live in v7/result.js.
+// "הכל מוכן!" → registration → payment → taste-profile (the point where
+// directions dissolve into a flat genre profile). These screens live in
+// v7/result.js.
 import {
+  runReadyStep,
   runRegistrationStep,
   runPaymentStep,
   runTasteProfileBar,
-} from '/v7/result.js?v=06102026a';
+} from '/v7/result.js?v=21102026a';
 import { WAIT_DOTS_HTML } from '/v7/wait-dots.js?v=28092026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
@@ -110,6 +112,9 @@ const state = {
   longestMinutes: 0,          // longest open window across days — feeds daily-playlist target
   directions: null,
   page2Promise: null,
+  // Round 1's short phrase for the business ("המסעדה הסקסית"), shown on the
+  // "הכל מוכן!" screen before sign-up (2026-10-21). null = left out.
+  venuePhrase: null,
   picked: null,
   results: null,
   // ---- v7-only signal accumulation ----
@@ -211,6 +216,7 @@ function invalidateFrom(step) {
   // step 3 pre-fills the textarea.
   if (step <= 3) {
     state.directions = null;
+    state.venuePhrase = null;
     state.page2Promise = null;
     // round2Emphases is feedback on a specific R1 outcome — clear
     // whenever directions regenerate so it doesn't leak stale context
@@ -760,6 +766,7 @@ async function goToStep(start) {
           && selectedAtmos.every((a) => state.selectedAtmos.includes(a));
         if (!sameAtmos) {
           state.directions = null;
+          state.venuePhrase = null;
           state.page2Promise = null;
           state.picked = null;
           state.results = null;
@@ -787,6 +794,7 @@ async function goToStep(start) {
         // Gemini needs to re-run with the new signal.
         if (emphases !== state.musicalEmphases) {
           state.directions = null;
+          state.venuePhrase = null;
           state.page2Promise = null;
           state.picked = null;
           state.results = null;
@@ -902,6 +910,7 @@ async function goToStep(start) {
           }
           state.directions = dResult.directions;
           state.page2Promise = dResult.page2Promise;
+          state.venuePhrase = dResult.venuePhrase || null;
         }
 
         const picked = await abortable(runDirectionPreviewFlow({
@@ -1105,6 +1114,10 @@ async function goToStep(start) {
       // the sign-up funnel. Each helper renders into .screen-card and resolves
       // when the owner advances.
       else if (s === 6) {
+        // "הכל מוכן!" (Ami, 2026-10-21): Robin introduces the business back
+        // to the owner (Round 1's venue phrase) before the sign-up funnel. The
+        // progress bar stays up here; the taste profile builds behind it.
+        await abortable(runReadyStep({ bizName: state.bizName, venuePhrase: state.venuePhrase }), signal);
         hideFlowProgress();
 
         // A4 — registration: email + password. No account is created here

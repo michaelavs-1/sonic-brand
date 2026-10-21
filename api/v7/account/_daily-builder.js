@@ -20,7 +20,7 @@
        "אנרגיה רגועה #1/#2") with 2 directions per tier — the first random,
        the second the least like it, re-drawn every build/day (pickTierPair).
        The tier's requested genres go into both. Half-day target each. Songs
-       from the tier's energy range (high 50–80, low 20–50). "Well-known
+       from the tier's energy range (high 50–80, low 30–60). "Well-known
        songs" per tier (the taste chat, 2026-10-14); "only hits" falls back
        to hits-first for a playlist without enough unplayed hits.
        → { directions, target, expiryIso, labelDate, reason }  (directions [] +
@@ -125,7 +125,7 @@ async function readEnergyWindows(businessId) {
 // exist, and the read still works before those migrations.
 // popTiers (2026-10-14): Option 1's per-tier "well-known songs"
 // (popularity_tiers, set by the taste chat), null = both follow pop_pref.
-async function readProfilePrefs(businessId) {
+export async function readProfilePrefs(businessId) {
   const none = { inst_pref: 'none', pop_pref: 'none', popTiers: null, approvedGenres: [], requestedGenres: [], energyLevelsTotal: null, genreWeights: null };
   try {
     const rows = await pgrSelect('business_taste_profiles',
@@ -322,7 +322,7 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   //    playlists (withRequested — the library already has them; this covers
   //    libraries built before the rule). The TRACKS inside each direction also
   //    rotate day to day (fetchTracksWithHistory's random draw + 7-day dedup).
-  //    Each tier's songs come from its energy range (high 50–80, low 20–50,
+  //    Each tier's songs come from its energy range (high 50–80, low 30–60,
   //    v7/generation/energy-windows.js — or the owner's own, moved by the
   //    taste chat), widened by 5 on each side only when the range is short of
   //    songs. Genre weights (the taste chat) scale how often a genre's songs

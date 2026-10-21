@@ -24,6 +24,7 @@ import { ilPartsFromDate } from '../../../v7/generation/playlist-length.js';
 import { rangeOf } from '../../../v7/generation/taste-ops.js';
 import { replaceStatus } from './_replace-status.js';
 import { songNames } from './_spotify-links.js';
+import { latestPortrait } from './_taste-portrait.js';
 
 const PLAYED_DAYS = 7;
 const PLAYED_TOP = 16;
@@ -80,7 +81,7 @@ export async function buildTasteContext({ businessId, biz, state, settings, hour
   };
 
   const since = new Date(now.getTime() - PLAYED_DAYS * 86400000).toISOString();
-  const [rows, changeRows, replace] = await Promise.all([
+  const [rows, changeRows, replace, portrait] = await Promise.all([
     pgrSelect('business_playlists', { business_id: `eq.${businessId}`, event_id: 'is.null', created_at: `gte.${since}` },
       { select: 'spotify_id,label,genres,track_ids,track_genres,expansion,created_at,expires_at', order: 'created_at.desc', limit: 60, useService: true }).catch(() => []),
     // '*': `source` (2026-10-13) when the column exists. Changes made in the
@@ -89,6 +90,9 @@ export async function buildTasteContext({ businessId, biz, state, settings, hour
       { select: '*', order: 'applied_at.desc', limit: 8, useService: true })
       .then((rs) => (rs || []).filter((c) => c.source !== 'admin')).catch(() => []),
     hours ? replaceStatus({ businessId, hours, now }).catch(() => null) : Promise.resolve(null),
+    // The owner's musical portrait (2026-10-21) — read alongside the rest, so
+    // it adds no wait. Null without the migration.
+    latestPortrait(businessId),
   ]);
   const live = (rows || []).filter((r) => !r.expires_at || Date.parse(r.expires_at) > now.getTime());
 
@@ -121,7 +125,11 @@ export async function buildTasteContext({ businessId, biz, state, settings, hour
   } else if (state.mode === 'option1') {
     today.option1 = live.filter((r) => r.expansion?.direction).map((r) => {
       const genres = Array.isArray(r.genres) ? r.genres : [];
-      return { label: r.label, recipe: option1Key(state, genres), genres };
+      // The owner's "today only" energy change (the circles, energy-nudge.js).
+      const d = r.expansion.direction;
+      const nudged = d.energy_nudge?.usual && d.energy_range
+        ? (Number(d.energy_range.min) > Number(d.energy_nudge.usual.min) ? 'more energetic' : 'calmer') : null;
+      return { label: r.label, recipe: option1Key(state, genres), genres, nudged };
     });
   }
 
@@ -175,6 +183,7 @@ export async function buildTasteContext({ businessId, biz, state, settings, hour
 
   return {
     business: { name: biz?.name || '', description: biz?.business_description || '', emphases: biz?.musical_emphases || '' },
+    portrait: portrait?.portrait_he || null,
     mode: state.mode,
     state,
     now: nowCtx,

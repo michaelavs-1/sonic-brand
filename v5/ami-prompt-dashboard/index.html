@@ -717,12 +717,863 @@
         font-size: 12px;
       }
     }
+
+    /* Tabs (2026-10-21) */
+    .tabs {
+      display: flex;
+      gap: 6px;
+      margin: 0 0 18px;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .tabs button {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 10px 14px;
+      cursor: pointer;
+    }
+
+    .tabs button.on {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* Taste chat bench (2026-10-21) */
+    #tabTaste [hidden] {
+      display: none !important;
+    }
+
+    .tc-key {
+      display: flex;
+      gap: 10px;
+    }
+
+    .tc-key .txt {
+      flex: 1;
+    }
+
+    .tc-note {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 8px;
+    }
+
+    .tc-select {
+      width: 100%;
+      background: var(--bg-2);
+      border: 1px solid var(--border-2);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      outline: none;
+    }
+
+    .tc-select:focus {
+      border-color: var(--accent);
+    }
+
+    .tc-business {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .tc-line {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .tc-switched {
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .tc-loading {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 12px;
+    }
+
+    .tc-error {
+      color: #ff8080;
+      font-size: 13px;
+      margin-top: 10px;
+    }
+
+    .tc-prompt + .tc-prompt {
+      margin-top: 22px;
+      padding-top: 18px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Only one prompt on screen (a business is chosen): no divider. */
+    .tc-prompt[hidden] + .tc-prompt {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: 0;
+    }
+
+    .tc-prompt-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .btn .sb-spinner {
+      width: 13px;
+      height: 13px;
+      margin-inline-end: 8px;
+    }
+
+    /* A button working (spinner): readable, not greyed out like a disabled one. */
+    button.btn.is-busy:disabled {
+      opacity: .85;
+      cursor: progress;
+    }
+
+    /* The taste chat bench's chat — the owner's chat look (v7/account/index.html
+       .chat-messages / .chat-bubble / .typing-dots / .chat-actions / .taste-note /
+       #tasteChatInput / #tasteChatSend), colours copied from that page. */
+    .oc {
+      --oc-accent: #f0a73f;
+      --oc-accent-2: #d98a1f;
+      --oc-bg-2: #0f1c26;
+      --oc-border-2: rgba(255, 255, 255, .16);
+      --oc-teal-soft: #57a3bd;
+    }
+
+    .oc-messages {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 560px;
+      overflow-y: auto;
+    }
+
+    .oc-messages:not(:empty) {
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 13px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .oc-bubble {
+      max-width: 88%;
+      padding: 10px 14px;
+      border-radius: 16px;
+      line-height: 1.45;
+      font-size: 14px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .oc-bubble.user {
+      align-self: flex-start;
+      background: rgba(255, 138, 61, 0.20);
+      color: #fff;
+      border-top-right-radius: 4px;
+    }
+
+    .oc-bubble.assistant {
+      align-self: flex-end;
+      background: rgba(255, 255, 255, 0.06);
+      color: #f1f1f1;
+      border-top-left-radius: 4px;
+    }
+
+    .oc-bubble.assistant.thinking {
+      opacity: 0.9;
+    }
+
+    .oc-sep {
+      align-self: center;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .typing-dots {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+      padding: 3px 0;
+    }
+
+    .typing-dots > span {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.4;
+      animation: typing-bounce 1.2s infinite ease-in-out both;
+    }
+
+    .typing-dots > span:nth-child(2) {
+      animation-delay: 0.15s;
+    }
+
+    .typing-dots > span:nth-child(3) {
+      animation-delay: 0.30s;
+    }
+
+    @keyframes typing-bounce {
+      0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.4;
+      }
+
+      30% {
+        transform: translateY(-4px);
+        opacity: 1;
+      }
+    }
+
+    /* What the bench adds under a reply: what would change, in plain words. */
+    .oc-info {
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px dashed rgba(255, 255, 255, .14);
+      font-size: 13px;
+      line-height: 1.6;
+      color: #c9d3d8;
+      white-space: normal;
+    }
+
+    .oc-info ul {
+      margin: 4px 0 0;
+      padding-inline-start: 18px;
+    }
+
+    .oc-info .no {
+      color: #ff9b8a;
+    }
+
+    .oc-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+
+    .oc-btn {
+      cursor: pointer;
+      border: none;
+      border-radius: 13px;
+      padding: 8px 14px;
+      font-size: 13px;
+      font-weight: 800;
+      font-family: inherit;
+      background: linear-gradient(135deg, var(--oc-accent), var(--oc-accent-2));
+      color: #1b1508;
+      box-shadow: 0 4px 18px rgba(240, 167, 63, .28);
+    }
+
+    .oc-note {
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--oc-teal-soft);
+    }
+
+    .oc-input {
+      width: 100%;
+      background: var(--oc-bg-2);
+      border: 1px solid var(--oc-border-2);
+      border-radius: 13px;
+      padding: 13px 14px;
+      color: var(--text);
+      font-size: 16px;
+      font-family: inherit;
+      outline: none;
+      resize: vertical;
+      min-height: 74px;
+      line-height: 1.6;
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    .oc-input:focus {
+      border-color: var(--oc-accent);
+      box-shadow: 0 0 0 3px rgba(240, 167, 63, .12);
+    }
+
+    .oc-input.compact {
+      min-height: 0;
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+
+    .oc-send {
+      width: 100%;
+      cursor: pointer;
+      border: none;
+      border-radius: 13px;
+      padding: 13px 16px;
+      font-size: 15px;
+      font-weight: 800;
+      font-family: inherit;
+      margin-top: 10px;
+      background: linear-gradient(135deg, var(--oc-accent), var(--oc-accent-2));
+      color: #1b1508;
+      box-shadow: 0 4px 18px rgba(240, 167, 63, .28);
+    }
+
+    .oc-send:disabled {
+      opacity: .5;
+      cursor: default;
+      box-shadow: none;
+    }
+
+    .send-arrow {
+      width: 15px;
+      height: 15px;
+      vertical-align: -2px;
+      fill: currentColor;
+    }
+
+    .oc-msg {
+      text-align: center;
+      margin: 8px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+      min-height: 18px;
+    }
+
+    .oc-msg.ok {
+      color: var(--accent);
+    }
+
+    .oc-msg.err {
+      color: #ff8080;
+    }
+
+    /* Business card head: title + sign-out link. */
+    .tc-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+    }
+
+    .tc-link {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font: inherit;
+      font-size: 13px;
+      cursor: pointer;
+      padding: 0;
+    }
+
+    .tc-link:hover {
+      color: var(--text);
+      text-decoration: underline;
+    }
+
+    /* The business's profile (tcProfileCard). */
+    .tcp-section + .tcp-section {
+      margin-top: 18px;
+    }
+
+    .tcp-h {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .tcp-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 8px 0;
+      border-top: 1px solid var(--border);
+    }
+
+    .tcp-h + .tcp-row {
+      border-top: 0;
+    }
+
+    .tcp-label {
+      flex: 0 0 120px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      padding-top: 3px;
+    }
+
+    .tcp-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tcp-chip {
+      font-size: 12.5px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .07);
+      white-space: nowrap;
+    }
+
+    .tcp-chip .mark {
+      color: #f5c518;
+      margin-inline-start: 4px;
+    }
+
+    .tcp-sub {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 6px;
+    }
+
+    #tabTaste details.tcp-more {
+      margin-top: 14px;
+    }
+
+    #tabTaste details.tcp-more summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* Special-playlists bench: the count + "new chat" row. */
+    .ec-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin: 4px 0 14px;
+    }
+
+    .ec-row label {
+      margin: 0;
+    }
+
+    .ec-row .ec-count {
+      width: 72px;
+      margin: 0;
+    }
+
+    .ec-row .btn {
+      margin-inline-start: auto;
+    }
+
+    .oc-btn:disabled {
+      opacity: .7;
+      cursor: default;
+    }
+
+    /* The taste chat bench's sample songs + genre deck (#tcModal), copied from
+       the owner's page (v7/account/index.html .dp-*), with its orange accent. */
+    #tcModal {
+      --dp-accent: #f0a73f;
+      --dp-accent-2: #d98a1f;
+    }
+
+    .dp-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 130;
+      background: rgba(6, 12, 17, .72);
+      backdrop-filter: blur(6px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+    }
+
+    .dp-overlay[hidden] {
+      display: none;
+    }
+
+    .dp-modal {
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border-2);
+      border-radius: 22px;
+      padding: 18px 16px 16px;
+      max-width: 380px;
+      width: 100%;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .dp-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .dp-head .dp-title {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.3;
+    }
+
+    .dp-close {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 6px;
+    }
+
+    .dp-close:hover {
+      color: var(--text);
+    }
+
+    .dp-desc {
+      font-size: 12.5px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .dp-desc:empty {
+      display: none;
+    }
+
+    .dp-card {
+      background: var(--card);
+      border: 1px solid var(--border-2);
+      border-radius: 18px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+
+    .dp-art-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 14px;
+      background: #0d1822;
+    }
+
+    .dp-art {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      border-radius: 14px;
+    }
+
+    .dp-art-ph {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 56px;
+      color: var(--muted);
+      border-radius: 14px;
+    }
+
+    .dp-play {
+      position: absolute;
+      bottom: 10px;
+      right: 10px;
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: var(--dp-accent);
+      color: #1b1508;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 6px 18px rgba(240, 167, 63, .38);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .dp-title-row {
+      text-align: center;
+      direction: ltr;
+    }
+
+    .dp-track-name {
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dp-track-artist {
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .dp-swap {
+      background: rgba(29, 185, 84, .12);
+      border: 1px solid rgba(29, 185, 84, .5);
+      color: #1DB954;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-family: inherit;
+      font-size: 12.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      align-self: center;
+    }
+
+    .dp-swap:hover {
+      background: rgba(29, 185, 84, .2);
+    }
+
+    .dp-swap svg {
+      width: 14px;
+      height: 14px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .dp-progress {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      width: 100%;
+    }
+
+    .dp-prog-bar {
+      position: relative;
+      height: 14px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+    }
+
+    .dp-prog-track {
+      position: relative;
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.10);
+      border-radius: 3px;
+    }
+
+    .dp-prog-fill {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 0;
+      width: 0%;
+      background: var(--dp-accent);
+      border-radius: 3px;
+    }
+
+    .dp-prog-thumb {
+      position: absolute;
+      top: 50%;
+      left: 0%;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--dp-accent);
+      transform: translate(-50%, -50%);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .dp-prog-bar:hover .dp-prog-thumb {
+      opacity: 1;
+    }
+
+    .dp-timestamps {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10.5px;
+      color: var(--muted);
+      direction: ltr;
+      font-variant-numeric: tabular-nums;
+      padding: 0 2px;
+    }
+
+    .dp-hidden-embed {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0.01;
+      pointer-events: none;
+      overflow: hidden;
+    }
+
+    .dp-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .dp-btn {
+      flex: 1;
+      cursor: pointer;
+      border: none;
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 13.5px;
+      font-weight: 800;
+      font-family: inherit;
+      background: linear-gradient(135deg, var(--dp-accent), var(--dp-accent-2));
+      color: #1b1508;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .dp-btn.ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border-2);
+      font-weight: 700;
+    }
+
+    .dp-btn.ghost:hover {
+      color: var(--text);
+      border-color: var(--text);
+    }
+
+    .dp-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 30px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .dp-empty {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13.5px;
+      line-height: 1.55;
+      padding: 20px 0;
+    }
+
+    /* Buttons inside a reply: the owner chat's look, side by side. */
+    .oc-btn.ghost {
+      background: transparent;
+      color: #c9d3d8;
+      border: 1px solid rgba(255, 255, 255, .16);
+      box-shadow: none;
+    }
+
+    /* Chat test benches (taste-chat-tab.js, event-chat-tab.js) */
+    .chat-log {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 12px 0;
+      max-height: 640px;
+      overflow-y: auto;
+    }
+
+    .chat-log:empty {
+      display: none;
+    }
+
+    .msg {
+      border-radius: 12px;
+      padding: 10px 12px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      max-width: 92%;
+    }
+
+    .msg.user {
+      align-self: flex-start;
+      background: rgba(29, 185, 84, .14);
+    }
+
+    .msg.bot {
+      align-self: flex-end;
+      background: rgba(255, 255, 255, .06);
+    }
+
+    .msg .meta {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border);
+      font-size: 12px;
+      color: var(--muted);
+      direction: ltr;
+      text-align: left;
+      white-space: pre-wrap;
+    }
+
+    .msg .meta b {
+      color: var(--text);
+    }
+
+    .msg .meta .ok {
+      color: var(--accent);
+    }
+
+    .msg .meta .bad {
+      color: #ff8080;
+    }
+
+    .msg .btn {
+      margin-top: 8px;
+    }
+
+    details.ctx summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13px;
+      margin-top: 10px;
+    }
   </style>
+  <!-- Spotify IFrame API for the taste chat bench's sample songs. It can finish
+       before the bench's module has loaded, so its "ready" call is caught here. -->
+  <script>window.onSpotifyIframeApiReady = function (api) { window.__sbIframeApi = api; };</script>
+  <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
 </head>
 
 <body>
   <div class="app">
     <h1>עורך פרומפט מוזיקלי</h1>
+
+    <!-- Tabs (2026-10-21): the onboarding prompts, the taste chat, the
+         special-playlists chat. Each tab keeps its own edits and results. -->
+    <nav class="tabs" id="tabs">
+      <button type="button" data-tab="onboarding" class="on">אונבורדינג</button>
+      <button type="button" data-tab="taste">צ'אט הטעם המוזיקלי</button>
+      <button type="button" data-tab="events">צ'אט פלייליסטים מיוחדים</button>
+    </nav>
+
+    <div class="tab-panel" id="tabOnboarding">
     <p class="subtitle">
       עורך את הפרומפטים שהולכים למודל: פרומפט הכיוונים המוזיקליים (שלב 1) ופרומפט פרופיל הטעם (שלב 3). שלב 4 מראה מה
       נבנה מפרופיל הטעם לכל סוג פלייליסטים יומיים. שינויים כאן משפיעים רק על הריצה הזו — לא נשמר לפרודקשן.
@@ -866,9 +1717,161 @@
       <!-- Option 1 only: test playlists per direction (test-playlists.js) -->
       <div id="testPlaylistsHost"></div>
     </div>
+    </div><!-- /tabOnboarding -->
+
+    <!-- ===== Taste chat tab (taste-chat-tab.js) ===== -->
+    <div class="tab-panel" id="tabTaste" hidden>
+      <p class="subtitle">
+        הצ'אט "הטעם המוזיקלי שלכם". בוחרים עסק אמיתי, משנים את הפרומפט ומדברים עם הצ'אט כמו בעל העסק.
+      </p>
+      <div class="card">
+        <div class="tc-head">
+          <div class="card-title">עסק</div>
+          <button class="tc-link" id="tcLogout" type="button" hidden>יציאה</button>
+        </div>
+        <div id="tcKeyRow" hidden>
+          <label for="tcKey">מפתח גישה</label>
+          <div class="tc-key">
+            <input type="password" class="txt" id="tcKey" autocomplete="off" placeholder="המפתח של לוח הניהול">
+            <button class="btn btn-primary" id="tcKeySave" type="button">כניסה</button>
+          </div>
+        </div>
+        <div id="tcPicker" hidden>
+          <select class="tc-select" id="tcUser"></select>
+          <div class="tc-business" id="tcBusiness" hidden>
+            <div class="tc-line" id="tcUserLine"></div>
+            <div class="tc-switched" id="tcSwitched" hidden></div>
+            <button class="btn btn-secondary" id="tcSwitch" type="button"></button>
+          </div>
+        </div>
+        <div class="tc-loading" id="tcLoading"><span class="sb-spinner"></span><span id="tcLoadingText">טוען…</span></div>
+        <div class="tc-error" id="tcError" hidden></div>
+      </div>
+      <div class="card" id="tcProfileCard" hidden>
+        <div class="card-title" id="tcProfileTitle"></div>
+        <div class="card-hint" id="tcProfileHint" hidden>כולל שינויים שנוסו כאן ועוד לא נשמרו בפרופיל.</div>
+        <div id="tcProfile"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">הפרומפט</div>
+        <div class="card-hint" id="tcPromptHint"></div>
+        <div class="tc-prompt" data-opt="option1">
+          <div class="tc-prompt-title">אפשרות 1 — 4 פלייליסטים</div>
+          <textarea class="txt prompt" id="tcPromptOption1" spellcheck="false"></textarea>
+          <div class="btn-row"><button class="btn btn-yellow" type="button" data-copy="tcPromptOption1">📋 העתק</button></div>
+        </div>
+        <div class="tc-prompt" data-opt="option2">
+          <div class="tc-prompt-title">אפשרות 2 — 2 מיקסים</div>
+          <textarea class="txt prompt" id="tcPromptOption2" spellcheck="false"></textarea>
+          <div class="btn-row"><button class="btn btn-yellow" type="button" data-copy="tcPromptOption2">📋 העתק</button></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">שיחה</div>
+        <div class="card-hint">
+          "אישור" בתשובה מנסה את השינוי רק כאן, כדי שההודעה הבאה (והפרופיל למעלה) יראו אותו. לפרופיל האמיתי של העסק הוא נכנס רק ב"שמירה בפרופיל".
+        </div>
+        <div class="btn-row" style="margin-bottom:14px">
+          <button class="btn btn-primary" id="tcSave" type="button" disabled>שמירה בפרופיל</button>
+          <button class="btn btn-secondary" id="tcNewChat" type="button">שיחה חדשה</button>
+        </div>
+        <div class="oc">
+          <div class="oc-messages" id="tcLog" aria-live="polite"></div>
+          <textarea class="oc-input" id="tcInput" rows="3" maxlength="1500"
+            placeholder="לדוגמה: יש לי יותר מדי R&amp;B / חסרים לי מקצבים אפריקאיים / הצהריים אנרגטיים מדי"></textarea>
+          <button class="oc-send" id="tcSend" type="button">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L22 12H17V22H7V12H2Z" /></svg></button>
+          <p class="oc-msg" id="tcStatus"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- The taste chat bench's sample songs + genre deck (taste-chat-tab.js); one card at a time. -->
+    <div class="dp-overlay" id="tcModal" role="dialog" aria-modal="true" aria-labelledby="tmTitle" hidden>
+      <div class="dp-modal">
+        <div class="dp-head">
+          <div class="dp-title" id="tmTitle"></div>
+          <button class="dp-close" id="tmClose" type="button" aria-label="סגור">×</button>
+        </div>
+        <div class="dp-desc" id="tmDesc"></div>
+        <div id="tmBody"></div>
+        <div class="dp-actions" id="tmActions"></div>
+      </div>
+    </div>
+
+    <!-- ===== Special-playlists chat tab (event-chat-tab.js) ===== -->
+    <div class="tab-panel" id="tabEvents" hidden>
+      <p class="subtitle">
+        הצ'אט "צריכים משהו אחר היום?" — פלייליסט חד-פעמי למשהו שקורה היום. שני פרומפטים: הצ'אט עצמו, ו"יצירת הפלייליסט", שהופך
+        את התיאור שהצ'אט כותב לז'אנרים, טמפו והעדפות. בלי ספוטיפיי ובלי לקוח אמיתי.
+      </p>
+      <div class="card" id="ecLoading"><div class="tc-loading" style="margin-top:0"><span class="sb-spinner"></span><span>טוען…</span></div></div>
+      <div class="card">
+        <div class="card-title">פרומפט הצ'אט</div>
+        <div class="card-hint">מפענח מה הלקוח רוצה ומגיש תיאור לפרומפט יצירת הפלייליסט</div>
+        <textarea class="txt prompt" id="ecChatPrompt" spellcheck="false"></textarea>
+        <div class="btn-row">
+          <button class="btn btn-yellow" id="ecCopyChat" type="button">📋 העתק</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">פרומפט יצירת הפלייליסט</div>
+        <div class="card-hint">מקבל את התיאור מהצ'אט ומחליט איך הפלייליסט יישמע: ז'אנרים, טווח BPM והעדפות</div>
+        <div class="warn"><b>אזהרה: לא לשנות את רשימת הז'אנרים — היא מצטרפת אוטומטית מהמערכת.</b></div>
+        <textarea class="txt prompt" id="ecPlaylistPrompt" spellcheck="false"></textarea>
+        <div class="btn-row">
+          <button class="btn btn-yellow" id="ecCopyPlaylist" type="button">📋 העתק</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">שיחה</div>
+        <div class="card-hint">
+          שם העסק נלקח מלשונית האונבורדינג. כשהצ'אט מציע פלייליסט, "הכן פלייליסט" מריץ את פרומפט יצירת הפלייליסט ומראה מה ייכנס
+          לפלייליסט (בלי ספוטיפיי), ואז הצ'אט מתחיל מחדש כמו אצל בעל העסק. כשבעל העסק בוחר בסגנונות היומיים שלו, הז'אנרים
+          נלקחים מפרופיל הטעם בשלב 3.
+        </div>
+        <div class="ec-row">
+          <label for="ecMadeToday">פלייליסטים שכבר נוצרו היום</label>
+          <select class="tc-select ec-count" id="ecMadeToday">
+            <option value="0">0</option><option value="1">1</option><option value="2">2</option>
+          </select>
+          <button class="btn btn-secondary" id="ecNewChat" type="button">שיחה חדשה</button>
+        </div>
+        <div class="oc">
+          <div class="oc-messages" id="ecLog" aria-live="polite"></div>
+          <textarea class="oc-input" id="ecInput" rows="3" maxlength="500"
+            placeholder="לדוגמה: הערב יש לנו מסיבת יום הולדת - פופ שמח וקליל..."></textarea>
+          <button class="oc-send" id="ecSend" type="button">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2L22 12H17V22H7V12H2Z" /></svg></button>
+          <p class="oc-msg" id="ecStatus"></p>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=21102026a"></script>
+  <script>
+    // Tab switching lives here, not in app.js: a module runs only after all its
+    // imports have downloaded, and after a hard refresh the tabs did nothing
+    // until then. app.js listens for "ami-tab" (and reads window.amiTab).
+    (function () {
+      var PANELS = { onboarding: 'tabOnboarding', taste: 'tabTaste', events: 'tabEvents' };
+      function show(tab) {
+        if (!PANELS[tab]) tab = 'onboarding';
+        for (var name in PANELS) document.getElementById(PANELS[name]).hidden = name !== tab;
+        var buttons = document.querySelectorAll('#tabs button[data-tab]');
+        for (var i = 0; i < buttons.length; i++) buttons[i].classList.toggle('on', buttons[i].dataset.tab === tab);
+        window.amiTab = tab;
+        try { localStorage.setItem('ami-dashboard-tab', tab); } catch (e) { /* private mode */ }
+        window.dispatchEvent(new CustomEvent('ami-tab', { detail: tab }));
+      }
+      document.getElementById('tabs').addEventListener('click', function (e) {
+        var b = e.target.closest('button[data-tab]');
+        if (b) show(b.dataset.tab);
+      });
+      var saved = 'onboarding';
+      try { saved = localStorage.getItem('ami-dashboard-tab') || 'onboarding'; } catch (e) { /* private mode */ }
+      show(saved);
+    })();
+  </script>
+  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=21102026p"></script>
 </body>
 
 </html>

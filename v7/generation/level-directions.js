@@ -37,6 +37,7 @@
 import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION, GENRES } from '../../shared/genre-universe.js';
 import { normLevels } from './energy-timeline.js';
+import { enforceIsolation } from './pairing-rules.js';
 
 // Gemini counts thinking tokens against the output cap (thinking=high used
 // 2.6k–10k in the 2026-09-28 test), so use Gemini's hard cap like Option 1.
@@ -340,6 +341,34 @@ export function normalizeLevelDirections(parsed, approvedGenres, n) {
     perLevel.set(L, (perLevel.get(L) || 0) + 1);
     const title = typeof d.title_en === 'string' && d.title_en.trim().length ? d.title_en.trim() : '(untitled)';
     directions.push({ energy_level: L, title_en: title, genres });
+  }
+
+  // Ami's clear-cut isolation rules (Electronic R&B; DownTempo / LoFi), which
+  // Gemini sometimes breaks: fixed per level; genres taken out get a direction
+  // of their own when no other direction of the level plays them.
+  const isolationNotes = [];
+  for (let L = 1; L <= n; L++) {
+    const at = directions.map((d, i) => (d.energy_level === L ? i : -1)).filter((i) => i >= 0);
+    if (!at.length) continue;
+    const res = enforceIsolation(at.map((i) => directions[i]));
+    at.forEach((i, k) => { directions[i] = res.recipes[k]; });
+    for (const a of res.added) directions.push({ energy_level: L, title_en: a.title_en, genres: a.genres });
+    isolationNotes.push(...res.notes.map((note) => `L${L}: ${note}`));
+  }
+  if (isolationNotes.length) {
+    const seen = new Set();
+    const count = new Map();
+    const unique = directions.filter((d) => {
+      const key = `${d.energy_level}|${[...d.genres].sort().join('|')}`;
+      if (seen.has(key) || (count.get(d.energy_level) || 0) >= MAX_PER_LEVEL) return false;
+      seen.add(key);
+      count.set(d.energy_level, (count.get(d.energy_level) || 0) + 1);
+      return true;
+    });
+    directions.splice(0, directions.length, ...unique);
+    perLevel.clear();
+    for (const [L, c] of count) perLevel.set(L, c);
+    console.warn('[v7 level-directions] isolation rules fixed:', isolationNotes.join(' | '));
   }
 
   if (dropped.length) {

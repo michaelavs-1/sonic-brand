@@ -129,6 +129,12 @@
     "api/v7/account/taste-apply.js": {
       "maxDuration": 30
     },
+    "api/v7/account/taste-portrait.js": {
+      "maxDuration": 60
+    },
+    "api/v7/account/energy-nudge.js": {
+      "maxDuration": 60
+    },
     "api/v7/ami/test-playlist.js": {
       "maxDuration": 60
     },

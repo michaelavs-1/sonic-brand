@@ -207,6 +207,9 @@ login. Below it, the tabs:
   - "נדחו בצ'אט" (rejected);
   - "לא נבחרו" (excluded: the count, then the list);
   - "הסבר המודל" (`reasoning_en`).
+- **"הפורטרט המוזיקלי"** (`portrait.text`, Hebrew), open by default: what the
+  taste chat "remembers" about the owner. Show when it was last updated and
+  from what (`source`), with earlier versions collapsed (`portrait_history`).
 
 **Tab 4 — כיוונים** (items 5, 10), from `/directions` (5.3):
 
@@ -583,7 +586,13 @@ whether they really paid.
   "popularity_preference": "soft",
   "popularity_tiers": null,
   "reasoning_en": "…",
-  "updated_at": "…"
+  "updated_at": "…",
+  "portrait": { "text": "העסק:
+…
+
+אוהבים:
+…", "source": "chat", "updated_at": "…", "versions": 3 },
+  "portrait_history": [{ "text": "…", "source": "chat", "message_id": "…", "created_at": "…" }]
 }
 ```
 
@@ -594,6 +603,14 @@ whether they really paid.
 - `conditional_genres` — "maybe" genres. **Not used** to build playlists.
 - `excluded_genres` — every other genre in the catalog (132 in all).
 - `rejected_genres` — genres the owner turned down in the taste chat.
+- `portrait` (since 2026-10-21) — a short Hebrew portrait of the owner's
+  musical taste: what they love, what they avoid, what their own words mean.
+  The taste chat reads it on every reply.
+  - `source`: `onboarding` = the first version, from the onboarding answers;
+    `chat` = rewritten after the chat and the owner agreed on a change;
+    `backfill` = written for an account from before portraits existed.
+  - `null` until the first version is written.
+  - `portrait_history` holds every version, newest first.
 - Preferences (`none` / `soft` / `hard`):
   - `instrumentalness_preference` — prefer, or only allow, songs without vocals;
   - `popularity_preference` — prefer, or only allow, well-known songs;
@@ -870,6 +887,19 @@ tier / level, which changes other playlists — confirm with the admin first.
 playlist of its tier when the playlists are built, so removing it from a
 direction doesn't stop it playing. The response warns about this.
 
+**Pairing rules (since 2026-10-21).** Some genres may only share a
+direction with certain others:
+
+- `Electronic R&B`: only with house genres, `Nu Disco` or `Indie Dance`;
+- `DownTempo`, `French DownTempo`, `Latin DownTempo`: only with each other;
+- `LoFi Beats`, `Desi LoFi`, `LoFi Bossa`: only with each other.
+
+An `add_genre`, `replace_genre` or `new_direction` that would break one of
+these is refused: `400`, with the rule in `dropped[].reason`, e.g.
+`"would break a pairing rule (LoFi only with LoFi)"`. Show that reason to the
+admin. Requested genres (Option 1) don't count, since every direction of
+their tier holds them anyway.
+
 **Undo.** Reverts the newest admin change, but only while it's also the
 newest change overall. If the owner changed something through the taste
 chat after it, you get `409` `nothing-to-undo`: undoing would also wipe out
@@ -1075,6 +1105,17 @@ The AI (Google Gemini) cost of the whole site.
 - The response's `notes` say all this in short.
 
 ---
+
+### 5.7. `/api/internal/taste-bench` — not for the console
+
+Used by Ami's prompt dashboard (its taste chat test bench, 2026-10-21). Your
+dashboard doesn't need it. It loads the taste chat's context for one business
+(GET `?id=`) and saves what Ami tried there (POST): taste changes, and sometimes a
+switch of the playlist type. A switch is audited like the owner's own (`settings_changes`
+`delivery_mode`). They're logged
+like your direction edits (`business_taste_changes` with `source: "admin"`,
+`admin_actions` `taste:bench_save`), so they appear in a business's
+`taste_chat` changes and `admin_actions`.
 
 ## 6. Example client code
 

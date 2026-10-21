@@ -135,7 +135,9 @@ function opsFor(state, body) {
       if (dir.genres.includes(inn)) return { error: `${inn} is already in ${dir.key}` };
       const placed = placeGenre(state, dir, inn, body);
       if (placed.error) return { error: placed.error };
-      return { ops: [...placed.ops, { op: 'dir_add', dir: dir.key, genre: inn }, { op: 'dir_remove', dir: dir.key, genre: out }], warnings: requestedNote(out) };
+      // Remove first: the pairing-rule check on dir_add then sees the recipe
+      // without the genre being replaced.
+      return { ops: [...placed.ops, { op: 'dir_remove', dir: dir.key, genre: out }, { op: 'dir_add', dir: dir.key, genre: inn }], warnings: requestedNote(out) };
     }
     case 'new_direction': {
       const genres = [...new Set((Array.isArray(body.genres) ? body.genres : []).map(canonicalGenre).filter(Boolean))];

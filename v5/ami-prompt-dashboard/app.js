@@ -50,7 +50,8 @@
 import {
   EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt,
-} from '/v7/generation/musical-directions.js?v=21102026a';
+  normalizeVenuePhrase,
+} from '/v7/generation/musical-directions.js?v=21102026b';
 import {
   EDITABLE_PROMPT_SECTION as TASTE_EDITABLE_PROMPT_SECTION,
   assembleSystemPrompt as assembleTasteSystemPrompt,
@@ -58,8 +59,10 @@ import {
   normalizeTasteProfile,
 } from '/v7/generation/taste-profile.js?v=21102026a';
 import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=20092026a';
-import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=13102026a';
+import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=21102026a';
 import { renderTestPlaylists } from './test-playlists.js?v=30092026b';
+import { mountTasteChatTab, onTasteTabShown } from './taste-chat-tab.js?v=21102026l';
+import { mountEventChatTab } from './event-chat-tab.js?v=21102026c';
 
 // Match v6 production. Gemini 3.6-flash's hard output-token cap is 65536;
 // values above that are silently clamped by Google. Under thinkingLevel
@@ -166,6 +169,23 @@ els.promptEditor.value      = EDITABLE_PROMPT_SECTION;
 els.tastePromptEditor.value = TASTE_EDITABLE_PROMPT_SECTION;
 els.playlistEditors.option1.value = DEFAULT_EDITABLE.option1;
 els.playlistEditors.option2.value = DEFAULT_EDITABLE.option2;
+
+// ---------- Tabs (2026-10-21): אונבורדינג / צ'אט הטעם / צ'אט פלייליסטים מיוחדים ----------
+// The special-playlists tab uses this tab's business name and taste profile
+// (step 3); the taste chat tab loads real businesses (taste-chat-tab.js).
+const chatSource = () => ({
+  profile: tasteRun?.profile || null,
+  inputs: tasteRun?.inputs || r1Run?.inputs || null,
+  option1: playlistState.option1.result?.directions || [],
+  option2: playlistState.option2.result?.directions || [],
+});
+mountTasteChatTab();
+mountEventChatTab({ getSource: chatSource });
+// The tabs themselves switch in an inline script in index.html, so they work
+// before this module (and everything it imports) has loaded.
+const onTab = (tab) => { if (tab === 'taste') onTasteTabShown(); };
+window.addEventListener('ami-tab', (e) => onTab(e.detail));
+onTab(window.amiTab);
 
 // Load atmosphere checkboxes. As in v7 production, the checked names only
 // become an "Atmospheres: ..." line in the user message, next to the
@@ -368,7 +388,9 @@ async function onGenerate() {
     }
 
     const directions = prepareDirections(parsed.directions);
-    renderResult(formatDirections(directions), usage, elapsed);
+    // The phrase the onboarding's "הכל מוכן!" screen shows (2026-10-21).
+    const phrase = normalizeVenuePhrase(parsed.venue_phrase_he);
+    renderResult(`משפט העסק (מסך "הכל מוכן!"): ${phrase || '(לא הוחזר)'}\n\n${formatDirections(directions)}`, usage, elapsed);
     setStatus(`הוחזרו ${directions.length} כיוונים בזמן ${(elapsed / 1000).toFixed(1)} שניות`, 'ok');
     if (directions.length) {
       r1Run = { directions, inputs: { bizName, bizDesc, atmospheres: atmos, musicalEmphases } };
@@ -744,7 +766,7 @@ async function onGeneratePlaylistDirections() {
       return;
     }
     const text = option === 'option1' ? formatOption1(run.profile, r) : formatOption2(run.profile, r);
-    st.result = { text, usage: r.usage, elapsed: r.elapsed };
+    st.result = { text, usage: r.usage, elapsed: r.elapsed, directions: r.directions };
     if (option === 'option1') st.result.testsEl = renderTestPlaylists({ directions: r.directions, profile: run.profile });
     setPlaylistStatus(option, `הוחזרו ${r.directions.length} כיוונים בזמן ${(r.elapsed / 1000).toFixed(1)} שניות`, 'ok');
   } catch (err) {

@@ -22,6 +22,7 @@
 
 import { pgrSelect, pgrPatch } from '../../v5/supabase-client.js';
 import { buildOneDailyPlaylist } from '../../v6/account/_daily-builder.js';
+import { postSpotify } from '../../v6/account/_expire-playlist.js';
 import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.js';
 import { logDailyBuilds } from './_build-log.js';
 import { planOption1, planOption2, attachTrackGenres, insertPlaylistRows } from './_daily-builder.js';
@@ -37,6 +38,8 @@ const INTER_PLAYLIST_STAGGER_MS = 3000;   // same as _daily-builder.js BUILD_STA
 // The admin console's rebuilds are audited under their own field, so they
 // don't count toward the owner's REPLACE_CAP.
 export const ADMIN_REPLACE_FIELD = 'daily_playlists_replaced_by_admin';
+// Added to an old playlist's Spotify name when "replace now" replaces it.
+const REPLACED_SUFFIX = ' (הוחלף)';
 
 const NOTHING_TO_BUILD = {
   'no-directions':          'הכנת הפלייליסטים שלכם לא הושלמה — לחצו על "השלימו עכשיו" בדף הבית',
@@ -181,6 +184,23 @@ export async function runDailyBuild(opts, { beforeStream = () => {}, send }) {
 
     const plannedTitles = new Set(slots.map((s) => s.title));
     const pendingOld = new Map(oldRows.map((r) => [r.spotify_id, r]));
+    // The old playlists' names on Spotify (the ledger has them).
+    const spotifyName = new Map();
+    if (oldRows.length) {
+      try {
+        const led = await pgrSelect('created_playlists',
+          { spotify_id: `in.(${oldRows.map((r) => `"${r.spotify_id}"`).join(',')})` },
+          { select: 'spotify_id,name', useService: true });
+        for (const l of led || []) spotifyName.set(l.spotify_id, l.name);
+      } catch (e) {
+        console.warn(`${tag} reading the old playlists' names failed:`, e.message);
+      }
+    }
+    // Each old playlist leaves the dashboard as its replacement lands. On
+    // Spotify (Ami, 2026-10-21 — owners who saved the playlists saw 8 with the
+    // same names until closing + 2h) it's renamed "… (הוחלף)" right away and
+    // handed to the next hourly expire sweep (:30), so it's gone within the
+    // hour. Its songs keep playing until then.
     const hideOld = async (rows) => {
       if (!rows.length) return;
       const nowIso = new Date().toISOString();
@@ -192,6 +212,19 @@ export async function runDailyBuild(opts, { beforeStream = () => {}, send }) {
           hidden.push(r.spotify_id);
         } catch (e) {
           console.warn(`${tag} hiding old playlist ${r.spotify_id} failed:`, e.message);
+        }
+        try {
+          await pgrPatch('created_playlists', { spotify_id: `eq.${r.spotify_id}` }, { expires_at: nowIso });
+        } catch (e) {
+          console.warn(`${tag} handing old playlist ${r.spotify_id} to the expire sweep failed:`, e.message);
+        }
+        const name = spotifyName.get(r.spotify_id);
+        if (name && !name.endsWith(REPLACED_SUFFIX)) {
+          try {
+            await postSpotify(origin, 'update_playlist', { playlist_id: r.spotify_id, name: `${name}${REPLACED_SUFFIX}` });
+          } catch (e) {
+            console.warn(`${tag} renaming old playlist ${r.spotify_id} failed:`, e.message);
+          }
         }
         pendingOld.delete(r.spotify_id);
       }

@@ -90,7 +90,7 @@ export default async function handler(req, res) {
     const [
       owner, lib, placeRows, hoursRows, playlistRows, openRows, superLiked, tasteChat, tasteChanges,
       events, eventChats, deletedEvents, checkouts, settingsChanges, buildLog, geminiRows, backlog,
-      adminActions, picks, v6Directions, v6Changes,
+      adminActions, picks, v6Directions, v6Changes, portraits,
     ] = await Promise.all([
       fetchAuthUser(business.owner_id),
       readLibrary(id),
@@ -130,6 +130,8 @@ export default async function handler(req, res) {
       selectOrEmpty('business_direction_changes', by, {
         select: 'id,kind,direction_id,before,after,playlist_action,message_id_first,message_id_last,applied_at', order: 'applied_at.desc',
       }),
+      // The owner's musical portrait, every version, newest first (2026-10-21).
+      selectOrEmpty('business_taste_portraits', by, { select: 'id,portrait_he,source,message_id,created_at', order: 'created_at.desc' }),
     ]);
 
     const hours = hoursRows[0]?.hours || null;
@@ -252,6 +254,11 @@ export default async function handler(req, res) {
         popularity_tiers:            profile.popularity_tiers || null,   // Option 1 per tier (2026-10-14)
         reasoning_en:                profile.reasoning_en,
         updated_at:                  profile.updated_at || null,
+        // The taste chat reads the newest version every turn (2026-10-21).
+        portrait:                    portraits[0]
+          ? { text: portraits[0].portrait_he, source: portraits[0].source, updated_at: portraits[0].created_at, versions: portraits.length }
+          : null,
+        portrait_history:            portraits.map((r) => ({ text: r.portrait_he, source: r.source, message_id: r.message_id, created_at: r.created_at })),
       } : null,
       delivery: {
         mode:           lib.mode,

@@ -5,6 +5,7 @@
 // per-direction example playlists to show here.
 //
 // Flow (all render into .screen-card and resolve when the owner advances):
+//   runReadyStep({ bizName, venuePhrase }) -> Promise<void>              ("הכל מוכן!", 2026-10-21)
 //   runRegistrationStep({ initialValue, initialPassword }) -> Promise<{ email, password }> (A4)
 //   runPaymentStep({ email, businessName, onboardingSessionId, paidCheckoutId })
 //                                                          -> Promise<checkoutId> (A5)
@@ -26,6 +27,10 @@ import { mountHypPayment, checkoutStatus } from '/v7/hyp-payment.js?v=06102026a'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_BAR_MS = 2000; // let the "dissolving" bar breathe even when the call is already resolved
+
+// The brand logo (the mascot), copied from the first screen at load, before the
+// steps replace that screen's content. The "הכל מוכן!" screen shows it big.
+const LOGO = document.querySelector('.brand-logo-orbit')?.cloneNode(true) || null;
 
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
@@ -61,6 +66,45 @@ function existingSessionEmail() {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* =========================================================================
+   A3.5 — "הכל מוכן!" (Ami, 2026-10-21): right after the last swipe, before
+   registration. "רובין בנה ל<name>, <phrase> שלכם, פרופיל מוזיקה." — the
+   phrase is Round 1's venue_phrase_he (e.g. "המסעדה הסקסית"); without it
+   the sentence skips it. The taste profile is still being built behind this
+   screen; the bar after payment waits for it.
+   Resolves when the owner clicks "סיימו את ההרשמה".
+   ========================================================================= */
+export function runReadyStep({ bizName = '', venuePhrase = null } = {}) {
+  return new Promise((resolve) => {
+    const card = getCard();
+    const name = String(bizName || '').trim();
+    const gold = (t) => el('span', { class: 'ready-gold' }, t);
+    // "לפרא", but "ל־Cafe Louise" for a name that doesn't start in Hebrew.
+    const to = /^[֐-׿]/.test(name) ? 'ל' : 'ל־';
+    const built = el('span', {});
+    if (name && venuePhrase) built.append('רובין בנה ', to, gold(name), ', ', gold(venuePhrase), ' ', el('b', {}, 'שלכם'), ', פרופיל מוזיקה.');
+    else if (name) built.append('רובין בנה ', to, gold(name), ' פרופיל מוזיקה.');
+    else built.append('רובין בנה לכם פרופיל מוזיקה.');
+
+    const goBtn = el('button', { class: 'btn btn-primary btn-block', type: 'button' }, 'סיימו את ההרשמה');
+    goBtn.addEventListener('click', () => resolve(), { once: true });
+
+    const logo = LOGO ? LOGO.cloneNode(true) : null;
+    card.replaceChildren(
+      el('h1', { class: 'ready-title' }, 'הכל מוכן!'),
+      el('p', { class: 'ready-sub' }, 'הצלחה!'),
+      logo ? el('div', { class: 'ready-logo' }, logo) : null,
+      el('p', { class: 'ready-text' },
+        built,
+        el('br'),
+        'כדי להתחיל לקבל כל יום פלייליסטים מותאמים אישית - סיימו את ההרשמה',
+      ),
+      goBtn,
+    );
+    goBtn.focus();
+  });
+}
 
 /* =========================================================================
    A4 — Registration: email + password. No account is created here (signup
@@ -176,9 +220,9 @@ export function runRegistrationStep({ initialValue = '', initialPassword = '' } 
     }
 
     card.replaceChildren(
-      el('h1', {}, 'הכל מוכן! הירשמו עכשיו'),
+      el('h1', {}, 'הרשמה'),
       el('p', { class: 'subtitle', style: 'margin-bottom:12px' },
-        'השאירו אימייל ובחרו סיסמה כדי לשמור את הפרופיל המוזיקלי שלכם ולהתחיל לקבל פלייליסטים יומיים.'),
+        'שמרו את הפרופיל המוזיקלי שלכם והתחילו לקבל פלייליסטים יומיים'),
       form,
     );
     emailInput.focus();

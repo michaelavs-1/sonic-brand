@@ -36,8 +36,10 @@ import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.j
 import { readTasteState } from './_taste-state.js';
 import { buildTasteContext } from './_taste-context.js';
 import { findSpotifyLinks, resolveSongLink } from './_spotify-links.js';
-import { buildTasteChatSystemPrompt, formatTasteContext, normalizeTasteReply } from '../../../v7/generation/taste-chat-prompt.js';
-import { applyOps, canonicalGenre } from '../../../v7/generation/taste-ops.js';
+import { buildTasteChatSystemPrompt, formatTasteContext, normalizeTasteReply, vetReply } from '../../../v7/generation/taste-chat-prompt.js';
+// vetReply + COULD_NOT_PREPARE moved to taste-chat-prompt.js (2026-10-21) so Ami's
+// bench runs the same checks; re-exported here for scripts/test-taste-ops.mjs.
+export { vetReply, COULD_NOT_PREPARE } from '../../../v7/generation/taste-chat-prompt.js';
 
 const SERVICE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
@@ -49,7 +51,6 @@ const GEMINI_MODEL      = 'gemini-3.6-flash';
 const GEMINI_THINKING   = 'medium';
 const GEMINI_MAX_TOKENS = 12000;
 const MESSAGE_TAIL_LIMIT = 40;
-export const COULD_NOT_PREPARE = 'לא הצלחתי להכין את השינוי הזה. תוכלו לנסח שוב, במילים קצת אחרות?';
 
 const historyFromMessages = (messages) => messages.map((m) => ({
   role: m.role === 'assistant' ? 'model' : 'user',
@@ -82,43 +83,6 @@ const keepLinked = (t) => (t.spotify_id
   ? { spotify_id: t.spotify_id, title: t.title, artist: t.artist, duration_sec: t.duration_sec ?? null,
       catalog_genres: t.catalog_genres || [], energy: t.energy ?? null, analyzed: !!t.analyzed }
   : null);
-
-// Check a normalized reply against the state. Mutates `reply`.
-//   proposal → only the ops that apply (+ new_genres for the sample step);
-//   suggestions → only catalog genres that aren't approved or turned down.
-export function vetReply(reply, state, { linkedTracks, hasUndoable }) {
-  const notes = [];
-  if (reply.proposal) {
-    const ops = reply.proposal.ops;
-    if (ops.some((o) => o.op === 'undo')) {
-      if (hasUndoable) reply.proposal.ops = [{ op: 'undo' }];
-      else { notes.push('undo with nothing to undo'); reply.proposal = null; }
-    } else {
-      const dry = applyOps(state, ops, { linkedTracks });
-      if (dry.dropped.length) notes.push(`dropped: ${JSON.stringify(dry.dropped)}`);
-      if (!dry.applied.length || !dry.changed) reply.proposal = null;
-      else {
-        const approvedBefore = new Set(state.approved.map((a) => a.genre));
-        reply.proposal.ops = dry.applied;
-        reply.proposal.new_genres = [...new Set(dry.applied
-          .filter((o) => o.op === 'add_genre' || o.op === 'set_requested')
-          .map((o) => canonicalGenre(o.genre))
-          .filter((g) => g && !approvedBefore.has(g)))];
-      }
-    }
-    if (!reply.proposal) { reply.state = 'gathering'; reply.reply_he = COULD_NOT_PREPARE; }
-  }
-  if (reply.suggestions) {
-    const approved = new Set(state.approved.map((a) => a.genre));
-    const seen = new Set();
-    reply.suggestions = reply.suggestions
-      .map((x) => ({ ...x, genre: canonicalGenre(x.genre) }))
-      .filter((x) => x.genre && !approved.has(x.genre) && !state.rejected.includes(x.genre) && !seen.has(x.genre) && seen.add(x.genre))
-      .map((x) => ({ ...x, energy_level: Math.min(state.N, Math.max(1, x.energy_level || Math.ceil(state.N / 2))), label_he: x.label_he || x.genre }));
-    if (!reply.suggestions.length) { notes.push('no usable suggestions'); reply.suggestions = null; reply.state = 'gathering'; }
-  }
-  return notes;
-}
 
 export default async function handler(req, res) {
   setCors(req, res);

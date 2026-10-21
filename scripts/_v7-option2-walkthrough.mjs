@@ -18,8 +18,9 @@
  *      ledger rows expire close + 2h.
  *   4. update-timeline → replace.eligible true, 2 left.
  *   5. generate-daily replaceToday → new set; old rows hidden from the
- *      dashboard (business_playlists.expires_at ≤ now) but their ledger rows
- *      keep the original expiry (a phone still playing them isn't cut off).
+ *      dashboard (business_playlists.expires_at ≤ now), renamed "… (הוחלף)"
+ *      on Spotify and handed to the next :30 expire sweep (ledger expires_at
+ *      ≤ now, not deleted yet — the songs play until the sweep; 2026-10-21).
  *   6. two replaceToday calls at once → one is refused 'build-in-progress'.
  *   7. a 3rd replacement → 429 'replace-cap'.
  *
@@ -188,7 +189,7 @@ try {
   const old = await pgr('GET', 'business_playlists', { query: { spotify_id: `in.(${rows1.map((r) => r.spotify_id).join(',')})`, select: 'spotify_id,expires_at' } });
   ok(old.every((o) => Date.parse(o.expires_at) <= Date.now()), 'old rows hidden from the dashboard');
   const oldLedger = await pgr('GET', 'created_playlists', { query: { spotify_id: `in.(${rows1.map((r) => r.spotify_id).join(',')})`, select: 'expires_at,deleted_at' } });
-  ok(oldLedger.every((l) => Date.parse(l.expires_at) > Date.now() && !l.deleted_at), 'old ledger rows keep their close + 2h expiry (not cut off mid-song)');
+  ok(oldLedger.every((l) => Date.parse(l.expires_at) <= Date.now() && !l.deleted_at), 'old ledger rows handed to the next expire sweep (expires_at ≤ now, not deleted yet)');
 
   // 6. two replacements at once → build lock
   console.log('\n[6] concurrent replaceToday → build lock');

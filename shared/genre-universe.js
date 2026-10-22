@@ -120,6 +120,7 @@ export const GENRES = [
   'Meditative Ambient',
   'Mo Town',
   'Modern Pop',
+  'Morna',
   'Musica Tropical',
   'Neo Exotica',
   'Neo Soul',

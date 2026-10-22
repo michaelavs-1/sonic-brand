@@ -46,7 +46,15 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-21 (latest) — Taste chat: the "today only" energy circles
+## 2026-10-22 (latest) — 1 new genre, `Morna`
+
+**Applies to:** all v7 (source-of-truth edit; flows to every v7 prompt via imports)
+
+Cross-referenced from `prompt-history.md`'s 2026-10-22 entry (primary record). New genre: `Morna` (376 OK tracks, 7 playlists). `GENRES.length` moves 138 → 139, so the taste profile now buckets 139 genres. No prompt text changed: no family list or guardrail names it.
+
+---
+
+## 2026-10-21 — Taste chat: the "today only" energy circles
 
 **Applies to:** taste chat (Option 1 only).
 

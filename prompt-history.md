@@ -32,7 +32,17 @@ history matters for debugging old rows.
 
 ---
 
-## 2026-10-20 (latest) — 2 new genres added to shared/genre-universe.js
+## 2026-10-22 (latest) — `Morna` added to shared/genre-universe.js
+
+**Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
+
+Ami added `Morna` (Cape Verde's slow, acoustic song form) to Data Box Tab 2 with 7 playlists after 2026-10-20. Its playlists were digested on 2026-10-22: a fail-fast run of all 7, then the 6-retry error run. Result: 376 OK tracks of 383, 7 still failed. Inserted alphabetically between `Modern Pop` and `Musica Tropical`.
+
+`GENRES.length` moves from 138 → 139, and the sheet, the DB and the list hold the same 139 genres again. No prompt family list names it. Cross-referenced in `prompt-history-v7.md` at the same date.
+
+---
+
+## 2026-10-20 — 2 new genres added to shared/genre-universe.js
 
 **Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
 

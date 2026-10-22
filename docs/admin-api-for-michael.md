@@ -1,4 +1,4 @@
-# Rubin — Admin Dashboard: Build Brief + API Reference (v2, 2026-10-13)
+# Rubin — Admin Dashboard: Build Brief + API Reference (v2, 2026-10-13; updated 2026-10-22)
 
 > Give this document (or paste its contents) to your Claude / AI coding
 > assistant. It holds everything needed to build the admin dashboard: what
@@ -253,6 +253,9 @@ login. Below it, the tabs:
   - each cell shows what played (the direction title + its genres; Option 2
     per level), how many opens, a "הוחלף" tag on replaced playlists, and a
     link to Spotify;
+  - Option 1: a small tag when the owner changed that playlist's energy for
+    the day ("יותר אנרגטי היום" / "פחות אנרגטי היום", from
+    `played.energy.today_only`, see 5.2 `daily`);
   - this is the day-by-day view of items 5 and 6.
 - **Future days** (`planned`):
   - Option 1 cells nobody picked: "אקראי";
@@ -455,6 +458,18 @@ owner can also build or replace them from their dashboard (at most 2
 replacements a day). Playlists disappear from the owner's dashboard 2
 hours after closing.
 
+**"Today only" energy (Option 1, since 2026-10-21).** Under each of the 4
+playlists the owner has three circles: calmer / as usual / more energetic.
+Once a day, for one playlist, they can move it one step (two at the edge of
+the scale). The songs inside the SAME Spotify playlist are swapped: songs
+that fit the new range stay, the rest are replaced. Tomorrow it's back to
+usual; nothing in the taste profile changes.
+
+**Names.** Spotify playlist names carry the date ("<business> · אנרגיה
+גבוהה #1 · 21.10.2026"). Since 2026-10-22 the owner's dashboard shows the
+name only ("אנרגיה גבוהה #1"). In the API, `name` is the name and `label`
+keeps the date.
+
 ---
 
 ## 5. Endpoints
@@ -628,7 +643,7 @@ whether they really paid.
 
 ```json
 { "mode": "option1", "mode_set_at": "…", "timeline": null,
-  "energy_windows": { "high": [50, 80], "low": [20, 50], "custom": false } }
+  "energy_windows": { "high": [50, 80], "low": [30, 60], "custom": false } }
 ```
 
 - `timeline` — Option 2's energy curve:
@@ -636,6 +651,8 @@ whether they really paid.
   `m` = minutes from midnight; `e` = energy, 0–1.
 - `energy_windows` — Option 1 only: the range of song energy (0–100) each
   tier draws from. `custom: true` = the owner moved it through the taste chat.
+  The defaults are 50–80 (energetic) and 30–60 (calm; it was 20–50 until
+  2026-10-21).
 
 #### `directions` — item 5
 
@@ -667,7 +684,8 @@ whether they really paid.
     "name": "אנרגיה גבוהה #1", "label": "אנרגיה גבוהה #1 · 13.10.2026", "slot": "high-1",
     "track_count": 146, "created_at": "…", "expires_at": "…",
     "live": true, "replaced": false, "opens": 1,
-    "played": { "kind": "option1", "direction": { "direction_id": "…", "title_en": "Global Funk", "admin_pick": false }, "genres": ["Funk", "Afro Funk"] }
+    "played": { "kind": "option1", "direction": { "direction_id": "…", "title_en": "Global Funk", "admin_pick": false }, "genres": ["Funk", "Afro Funk"],
+                "energy": { "range": [60, 90], "today_only": { "usual": [50, 80], "direction": "more", "at": "…" } } }
   }]
 }]
 ```
@@ -687,6 +705,12 @@ whether they really paid.
     not played in the last week, so it played those first and then others;
     Option 2 `{preference: "hard", hits_first: [genre]}` — the styles that did
     that in this mix.
+  - `energy` (Option 1, since 2026-10-21; `null` for older playlists): the
+    range of song energy (0–100) the playlist was made from, `range`.
+    `today_only` is `null` unless the owner moved this playlist with the
+    energy circles today: then `usual` is the range it normally uses,
+    `direction` is `"more"` (more energetic) or `"calmer"`, and `at` is when.
+    `range` is then the new one. Option 2 mixes have no `energy` field.
 - `replaced` — taken off the owner's dashboard early, by the owner's
   "replace now" or a `rebuild_today`. The replacement is in the same day's
   list.
@@ -803,7 +827,10 @@ something happening today (2 a day at most).
 - `settings_changes` — owner changes to the name, opening hours, playlist
   type and energy curve, plus each "replace today's playlists". Fields:
   `{field, before, after, changed_at}`. Field
-  `daily_playlists_replaced_by_admin` = a `rebuild_today`.
+  `daily_playlists_replaced_by_admin` = a `rebuild_today`. Field
+  `daily_energy_nudge` (since 2026-10-21) = the owner moved one playlist's
+  energy for the day: `before` / `after` = `{playlist, window: [min, max]}`
+  (`after` also has `kept` and `added`, the songs kept and swapped in).
 - `build_log` — last 60 days: what happened each time the daily playlists
   were built, or why they weren't.
   - Fields: `{il_date, source, outcome, built, failed, detail}`.

@@ -45,8 +45,23 @@ export function playedOf(row) {
         : [],
     };
   }
-  const src = row?.expansion?.direction?.v7_source || null;
-  return { kind: 'option1', direction: src, genres: Array.isArray(row?.genres) ? row.genres : [], popularity: row?.expansion?.direction?.popularity || null };
+  const d = row?.expansion?.direction || null;
+  const src = d?.v7_source || null;
+  return { kind: 'option1', direction: src, genres: Array.isArray(row?.genres) ? row.genres : [], popularity: d?.popularity || null, energy: energyOf(d) };
+}
+
+// Option 1's song-energy window (2026-10-13), and the owner's "today only"
+// change with the energy circles (2026-10-21, api/v7/account/energy-nudge.js).
+//   → { range: [min, max], today_only: null | { usual: [min, max], direction: 'more' | 'calmer', at } }
+//   null for rows built before the windows existed.
+function energyOf(d) {
+  const lo = Number(d?.energy_range?.min), hi = Number(d?.energy_range?.max);
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  const u = d.energy_nudge?.usual;
+  const today_only = u && Number.isFinite(Number(u.min))
+    ? { usual: [Number(u.min), Number(u.max)], direction: lo > Number(u.min) ? 'more' : 'calmer', at: d.energy_nudge.at || null }
+    : null;
+  return { range: [lo, hi], today_only };
 }
 
 // Daily rows + click rows → [{ il_date, playlists: [...], opens_total }],

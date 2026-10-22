@@ -2357,7 +2357,7 @@ function renderPlaylists() {
         : '<span class="pl-inline-spinner" aria-label="בונים"></span>';
       row.innerHTML =
         `<div class="s-info">` +
-        `<div class="s-title">🎵 ${escHtml(title || 'פלייליסט')}</div>` +
+        `<div class="s-title">🎵 ${escHtml(undatedLabel(title) || 'פלייליסט')}</div>` +
         `<div class="s-meta">${metaText}${spinnerHtml}</div>` +
         `</div>`;
       wrap.append(row);
@@ -2388,6 +2388,8 @@ function buildPlaylistRow(p) {
     ? `<div class="pl-expand-bar" data-target="${target}" data-current="${p.trackCount || 0}"><div class="pl-expand-fill"></div></div>`
     : '';
   const spinnerHtml = showBar ? '<span class="pl-inline-spinner" aria-label="בונים"></span>' : '';
+  // The stored label carries the business day's date ("אנרגיה גבוהה #1 · 21.10.2026");
+  // the dashboard shows the name only (Roni, 2026-10-22). Spotify's name keeps the date.
   // p.ico / p.label originate from AI-generated direction data (Gemini /
   // Claude via musical-directions.js). Escape both before dropping them
   // into innerHTML — a prompt-injection that produces a `<script>` in a
@@ -2403,8 +2405,9 @@ function buildPlaylistRow(p) {
   const labelClass = canRename ? 's-label editable' : 's-label';
   row.innerHTML =
     `<div class="s-info">` +
-    `<div class="s-title">${escHtml(p.ico || '🎵')} <span class="${labelClass}">${escHtml(p.label || 'פלייליסט')}</span></div>` +
-    `<div class="s-meta"><span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}</div>` +
+    // The track count sits on the name's line (Roni, 2026-10-22).
+    `<div class="s-title">${escHtml(p.ico || '🎵')} <span class="${labelClass}" dir="auto">${escHtml(undatedLabel(p.label) || 'פלייליסט')}</span>` +
+    `<span class="s-count"> · <span class="pl-count">${p.trackCount || 0}</span> שירים${spinnerHtml}</span></div>` +
     barHtml +
     `</div>`;
   if (canRename) {

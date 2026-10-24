@@ -93,7 +93,6 @@ export function runReadyStep({ bizName = '', venuePhrase = null } = {}) {
     const logo = LOGO ? LOGO.cloneNode(true) : null;
     card.replaceChildren(
       el('h1', { class: 'ready-title' }, 'הכל מוכן!'),
-      el('p', { class: 'ready-sub' }, 'הצלחה!'),
       logo ? el('div', { class: 'ready-logo' }, logo) : null,
       el('p', { class: 'ready-text' },
         built,

@@ -13,8 +13,9 @@
          uses_failed, last_used_at }] }   newest first
 
    POST  { code, percent_off, note? }   create (code: 3–32 of A–Z 0–9 _ -,
-         stored uppercase; percent_off 1–99 — a 100% coupon would make a ₪0
-         first charge, which Hyp's docs don't cover, so it's refused until tested)
+         stored uppercase; percent_off 1–99 — never 100%: Hyp ignores a ₪0
+         first payment and charges the full monthly price instead (checked
+         2026-10-24 on the test terminal; see docs/v7-payments.md))
          → 201 { ok, coupon } | 409 code exists
    PATCH { code, active?, note? }      switch a code off/on, change its note.
          A used code can't be deleted (payments point at it) and its percent
@@ -81,7 +82,7 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const pct = Number(body.percent_off);
       if (!Number.isInteger(pct) || pct < 1 || pct > 99) {
-        return res.status(400).json({ error: 'percent_off: a whole number 1–99 (100% = a ₪0 first charge, not tested with Hyp yet)' });
+        return res.status(400).json({ error: 'percent_off: a whole number 1–99 (Hyp ignores a ₪0 first payment and would charge the full price)' });
       }
       const existing = await pgrSelect('payment_coupons', { code: `eq.${code}` }, { select: 'code', limit: 1, useService: true });
       if (existing?.length) return res.status(409).json({ error: `${code} already exists`, code: 'exists' });

@@ -53,7 +53,7 @@ import {
   runRegistrationStep,
   runPaymentStep,
   runTasteProfileBar,
-} from '/v7/result.js?v=24102026a';
+} from '/v7/result.js?v=24102026b';
 import { WAIT_DOTS_HTML } from '/v7/wait-dots.js?v=28092026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole

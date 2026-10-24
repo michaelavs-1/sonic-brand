@@ -46,7 +46,34 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-22 (latest) — 1 new genre, `Morna`
+## 2026-10-24 (latest) — Swipe-card descriptions never mention the client, and no "ליין-אפ"
+
+**Applies to:** R1+R2 (`HEBREW_DESCRIPTION_SECTION`, shared by both rounds).
+
+A swipe card read "מוזיקה אקוסטית חמה עם גיטרה ושירה רכה. בודק עד כמה הלקוח מתחבר לליין-אפ אקוסטי ואינטימי." — the model copied the prompt's own fourth example, whose formula placeholder also said "מול הלקוח". Roni: the phrasing can't mention the client, and "ליין-אפ" means nothing here. Added a rule against mentioning the client, rewrote the formula placeholder, replaced the example (which also used "ליין-אפ"), and added "ליין-אפ" to the forbidden transliterated English. Only these lines of the section changed:
+
+```
+The description never mentions the client, in any form: no "הלקוח", "בעל העסק", "אתם" or "שלכם". What follows "בודק" is the sound or style itself ("בודק חיבור ל…", "בודק פתיחות ל…"), never a person ("בודק עד כמה הלקוח מתחבר ל…" is wrong).
+
+Formula:
+`[תיאור הסאונד והאווירה של הכיוון]. בודק [איזה טעם, פתיחות או זיקה הכיוון בוחן].`
+```
+
+Fourth example, was "…בודק עד כמה הלקוח מתחבר לליין-אפ אקוסטי, אינטימי וחשוף.":
+
+```
+- "מוזיקה אקוסטית עדינה עם שירה רכה ורגועה. בודק זיקה לסאונד אקוסטי, אינטימי וחשוף."
+```
+
+Forbidden Vocabulary, transliterated English (was `(e.g., "פרקשן", "סינתיסייזר")`):
+
+```
+  - NO transliterated English (e.g., "פרקשן", "סינתיסייזר", "ליין-אפ").
+```
+
+---
+
+## 2026-10-22 — 1 new genre, `Morna`
 
 **Applies to:** all v7 (source-of-truth edit; flows to every v7 prompt via imports)
 

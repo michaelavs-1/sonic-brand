@@ -49,8 +49,6 @@ import {
 import { emailOps as notify, ilDate } from '../_ops-email.js';
 import { ilPartsFromDate } from '../../../v7/generation/playlist-length.js';
 
-const MAX_REASON = 1000;
-
 // The business row, only if this user owns it (doubles as the ownership check).
 async function readOwnedBusiness(businessId, userId) {
   const rows = await pgrSelect('businesses', { id: `eq.${businessId}`, owner_id: `eq.${userId}` }, {
@@ -142,7 +140,8 @@ export default async function handler(req, res) {
     if (action === 'cancel') {
       if (status !== 'active') return res.status(200).json({ ok: true, subscription: view(biz, checkout, now) });
 
-      const reason = String(req.body?.reason || '').trim().slice(0, MAX_REASON) || null;
+      // Kept whole, however long (Roni, 2026-10-24); it used to be cut at 1,000 characters.
+      const reason = String(req.body?.reason || '').trim() || null;
       const next = nextChargeDate(checkout.paid_at, now);
       const endsAt = ilMidnightIso(next);
       const ccode = await hypAgreement(checkout, true);

@@ -279,20 +279,22 @@ The description presented to the business owner must **explain what is being tes
 
 Write 1–2 concise, natural sentences (15–30 words total) in plain Hebrew. Format the text to describe the vibe/sound family, followed by an explicit statement starting with **"בודק..."** (Testing...). The direction is the subject of that statement ("הכיוון בודק פתיחות ל…"), so it is always the masculine "בודק" — never "בודקת" or "בודק/ת".
 
+The description never mentions the client, in any form: no "הלקוח", "בעל העסק", "אתם" or "שלכם". What follows "בודק" is the sound or style itself ("בודק חיבור ל…", "בודק פתיחות ל…"), never a person ("בודק עד כמה הלקוח מתחבר ל…" is wrong).
+
 Formula:
-\`[תיאור הסאונד והאווירה של הכיוון]. בודק [מה הטעם/פתיחות/זיקה שרוצים לבחון מול הלקוח].\`
+\`[תיאור הסאונד והאווירה של הכיוון]. בודק [איזה טעם, פתיחות או זיקה הכיוון בוחן].\`
 
 Examples of required phrasing:
 - "מגוון ז'אנרים כליים מבוססי ביט רך, מלטף ולא מסיח דעת. בודק פתיחות לסאונד אורבני-מודרני עדין."
 - "ג’אז אירופאי וקלאסי אלגנטי, על-זמני ומלא שיק. בודק חיבור לאווירת בר יין אירופאי קלאסי."
 - "גרוב עמוק, סקסי, חם ומלא נשמה. בודק פתיחות למקצבים שחורים רכים אך מנענעים."
-- "מוזיקה אקוסטית עדינה עם שירה רכה ורגועה. בודק עד כמה הלקוח מתחבר לליין-אפ אקוסטי, אינטימי וחשוף."
+- "מוזיקה אקוסטית עדינה עם שירה רכה ורגועה. בודק זיקה לסאונד אקוסטי, אינטימי וחשוף."
 
 ### Mandatory Hebrew Vocabulary Constraints:
 
 - **Instruments:** ONLY \`פסנתר\`, \`סינתים\`, and \`גיטרה\` may be named directly. For others, use family names (\`כלי נשיפה\`, \`כלי הקשה\`, \`כלי מיתר\`, \`שירה\`).
 - **Forbidden Vocabulary:**
-  - NO transliterated English (e.g., "פרקשן", "סינתיסייזר").
+  - NO transliterated English (e.g., "פרקשן", "סינתיסייזר", "ליין-אפ").
   - NO vague marketing fluff (e.g., "עומק הרמוני", "מרקם אקוסטי", "אנרגיה פנימית", "צלילים מהפנטים").
   - NO specific city names, beverage brands, or generic clichés ("כמו לשבת ב...").
 - **Language Integrity:** Clear, direct, professional Hebrew spoken as a peer to a business owner.`;

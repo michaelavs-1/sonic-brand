@@ -20,12 +20,12 @@
 // across navigation; downstream state is invalidated when an earlier step is
 // re-entered.
 
-import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=23092026a';
+import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=24102026a';
 import { runEmphasesStep } from '/v7/emphases.js?v=03102026a';
 import { runHoursSelection } from '/v7/hours-selector.js?v=29092026a';
-import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=21102026b';
-import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=21102026a';
-import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=21102026a';
+import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=24102026a';
+import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=24102026a';
+import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=24102026a';
 // derivePopularityWindow was removed 2026-09-02 — atmospheres no longer
 // derive a popularity window. Atmosphere strings still enter the prompt
 // as context (see buildUserMessage in musical-directions.js), but
@@ -42,7 +42,7 @@ import {
   showR2FailureScreen,
   showRestartOnboardingScreen,
   preparePreview,
-} from '/v7/preview.js?v=28092026a';
+} from '/v7/preview.js?v=24102026a';
 // v7 has NO per-direction playlist build at onboarding — directions are
 // diagnostic probes, not playlist seeds. After the swipe deck the flow goes
 // "הכל מוכן!" → registration → payment → taste-profile (the point where
@@ -60,7 +60,6 @@ import { WAIT_DOTS_HTML } from '/v7/wait-dots.js?v=28092026a';
 // experience starts truly from zero.
 if (new URLSearchParams(location.search).has('reset')) {
   Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k));
-  console.log('v7: session reset — starting fresh');
 }
 
 const $ = (id) => document.getElementById(id);
@@ -373,14 +372,12 @@ async function toggleDictation() {
   //   SecurityError /    → page is loaded over http:// on a mobile browser
   //     unavailable API    (e.g. LAN IP over vercel dev on the phone)
   if (!navigator.mediaDevices?.getUserMedia) {
-    console.error('dictation: getUserMedia unavailable — likely non-secure context');
     setDictMsg('הדפדפן חוסם גישה למיקרופון (נדרש HTTPS)', true);
     return;
   }
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
   catch (err) {
-    console.error('dictation: getUserMedia failed:', err.name, err.message);
     if (err.name === 'NotAllowedError') {
       // Two very different UX cases:
       //   'denied'    → browser has persistently blocked this origin, so
@@ -457,8 +454,7 @@ async function toggleDictation() {
       // dictating a valid description.
       ta.classList.remove('err');
       $('bizDescHint')?.replaceChildren();
-    } catch (err) {
-      console.error('dictation failed:', err);
+    } catch {
       setDictMsg('התמלול נכשל — נסו שוב', true);
     } finally {
       resetMicBtn();
@@ -626,12 +622,10 @@ async function maybeConfirmPlace(bizName, bizDesc) {
       body: JSON.stringify({ name: bizName, desc: bizDesc }),
     });
     data = await r.json().catch(() => ({}));
-  } catch (err) {
-    console.info('[v6 place-lookup] skipped: fetch failed', err);
+  } catch {
     return null;
   }
   if (!data?.found || !data.place) {
-    console.info('[v6 place-lookup] skipped:', data?.reason || 'unknown');
     return null;
   }
 
@@ -835,19 +829,13 @@ async function goToStep(start) {
               directions: r.directions,
               page2Promise: r.page2Promise,
             });
-          }).catch((e) => {
-            console.warn('preparePreview failed:', e);
-            return emptyPreparedPreview();
-          });
+          }).catch(() => emptyPreparedPreview());
         } else if (state.directions && !preparedPromise) {
           // Cached directions from a prior run — start prep synchronously.
           preparedPromise = preparePreview({
             directions: state.directions,
             page2Promise: state.page2Promise,
-          }).catch((e) => {
-            console.warn('preparePreview failed:', e);
-            return emptyPreparedPreview();
-          });
+          }).catch(() => emptyPreparedPreview());
         }
 
         // Opening hours picker. Runs in the foreground; the Gemini call +
@@ -884,18 +872,12 @@ async function goToStep(start) {
               directions: r.directions,
               page2Promise: r.page2Promise,
             });
-          }).catch((e) => {
-            console.warn('preparePreview failed:', e);
-            return emptyPreparedPreview();
-          });
+          }).catch(() => emptyPreparedPreview());
         } else if (state.directions && !preparedPromise) {
           preparedPromise = preparePreview({
             directions: state.directions,
             page2Promise: state.page2Promise,
-          }).catch((e) => {
-            console.warn('preparePreview failed:', e);
-            return emptyPreparedPreview();
-          });
+          }).catch(() => emptyPreparedPreview());
         }
 
         // If Gemini hasn't returned yet, show a progress bar until it does.
@@ -995,7 +977,6 @@ async function goToStep(start) {
               }), signal);
             } catch (e) {
               if (e?.name === 'AbortError') return;
-              console.warn('refined-directions call failed:', e);
               refinedResult = { error: 'matcher_error', reasoning_en: e.message };
             }
 
@@ -1022,11 +1003,8 @@ async function goToStep(start) {
                 previewSucceeded = true;
               } catch (e) {
                 if (e?.name === 'AbortError') return;
-                console.warn('R2 preview failed:', e.message);
                 refinedPicked = null;
               }
-            } else {
-              console.warn('R2 Gemini skipped:', refinedResult?.error || 'no directions', refinedResult?.reasoning_en || '');
             }
 
             if (previewSucceeded) break;
@@ -1101,7 +1079,6 @@ async function goToStep(start) {
           onboardingSessionId: state.onboardingSessionId,
         }).catch((e) => {
           // Surface as a structured error the taste-profile bar can retry.
-          console.warn('generateTasteProfile failed:', e);
           return { error: 'matcher_error', reasoning_en: e?.message || String(e) };
         });
 
@@ -1206,7 +1183,6 @@ async function goToStep(start) {
     }
   } catch (err) {
     if (err?.name === 'AbortError') return;
-    console.error('v7 error:', err);
     showError(err?.message || 'תקלה לא צפויה.');
   }
 }

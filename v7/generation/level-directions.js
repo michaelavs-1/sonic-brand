@@ -38,6 +38,7 @@ import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION, GENRES } from '../../shared/genre-universe.js';
 import { normLevels } from './energy-timeline.js';
 import { enforceIsolation } from './pairing-rules.js';
+import { serverWarn } from './server-log.js';
 
 // Gemini counts thinking tokens against the output cap (thinking=high used
 // 2.6k–10k in the 2026-09-28 test), so use Gemini's hard cap like Option 1.
@@ -312,7 +313,7 @@ export function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphase
 // - Duplicate genres within a direction; directions left with no genre.
 // - A direction whose level + genre set repeats an earlier one.
 // - Everything past MAX_PER_LEVEL in a level.
-// console.warns (never errors) for dropped genres and for a level with 2+
+// Warns (server and scripts only, never errors) for dropped genres and for a level with 2+
 // genres that came back with fewer than 2 directions.
 export function normalizeLevelDirections(parsed, approvedGenres, n) {
   if (!parsed || typeof parsed !== 'object') return null;
@@ -368,17 +369,17 @@ export function normalizeLevelDirections(parsed, approvedGenres, n) {
     directions.splice(0, directions.length, ...unique);
     perLevel.clear();
     for (const [L, c] of count) perLevel.set(L, c);
-    console.warn('[v7 level-directions] isolation rules fixed:', isolationNotes.join(' | '));
+    serverWarn('[v7 level-directions] isolation rules fixed:', isolationNotes.join(' | '));
   }
 
   if (dropped.length) {
-    console.warn('[v7 level-directions] dropped genres that are not approved at that level:', dropped.join(', '));
+    serverWarn('[v7 level-directions] dropped genres that are not approved at that level:', dropped.join(', '));
   }
   for (let L = 1; L <= n; L++) {
     const genreCount = approved.filter((a) => a.energy_level === L).length;
     const count = perLevel.get(L) || 0;
-    if (genreCount && !count) console.warn(`[v7 level-directions] level ${L} has ${genreCount} genres but no direction`);
-    else if (genreCount >= 2 && count < 2) console.warn(`[v7 level-directions] level ${L} returned fewer than 2 directions:`, count);
+    if (genreCount && !count) serverWarn(`[v7 level-directions] level ${L} has ${genreCount} genres but no direction`);
+    else if (genreCount >= 2 && count < 2) serverWarn(`[v7 level-directions] level ${L} returned fewer than 2 directions:`, count);
   }
   return { directions };
 }

@@ -57,6 +57,7 @@
 
 import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION, GENRES, GENRE_SET } from '../../shared/genre-universe.js';
+import { serverWarn } from './server-log.js';
 export { GENRE_UNIVERSE_SECTION };
 
 // Same output cap as R1/R2. The response can grow — ~120 approved+conditional
@@ -472,7 +473,7 @@ export function normalizeTasteProfile(parsed, { superLikedGenres = [] } = {}) {
     ...(Array.isArray(superLikedGenres) ? superLikedGenres : []),
   ]);
   const forced = forceRequestedIntoApproved(approved, conditional, requested, energyLevelsTotal);
-  if (forced.length) console.warn('[v7 taste-profile] requested genres the model had not approved — approved now:', forced.join(', '));
+  if (forced.length) serverWarn('[v7 taste-profile] requested genres the model had not approved — approved now:', forced.join(', '));
 
   const listed = new Set([...approved, ...conditional].map((e) => e.genre));
   const excludedList = GENRES.filter((g) => !listed.has(g));

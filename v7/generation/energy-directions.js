@@ -45,6 +45,7 @@ import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION, GENRES, GENRE_SET } from '../../shared/genre-universe.js';
 import { tierOfLevel, requestedByTier, withRequested } from './option1-draw.js';
 import { enforceIsolation } from './pairing-rules.js';
+import { serverWarn } from './server-log.js';
 export { GENRE_UNIVERSE_SECTION };
 
 // Gemini counts thinking tokens against the output cap. A 30-direction
@@ -352,8 +353,8 @@ function canonicalize(genreString) {
 // - Everything past MAX_DIRECTIONS (30).
 // Adds any requested genre of the direction's tier the model left out (the
 // "in every direction of its tier" rule). Fixes recipes that break the
-// clear-cut isolation rules (pairing-rules.js, 2026-10-21). Emits console.warns (never
-// hard-errors) for dropped genres, a tier with fewer than 2 directions.
+// clear-cut isolation rules (pairing-rules.js, 2026-10-21). Warns (server and scripts
+// only, never hard-errors) for dropped genres, a tier with fewer than 2 directions.
 export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGenres = []) {
   if (!parsed || typeof parsed !== 'object') return null;
 
@@ -427,26 +428,26 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGe
       seen.add(key);
       return true;
     });
-    if (unique.length > MAX_DIRECTIONS) console.warn(`[v7 energy-directions] ${unique.length - MAX_DIRECTIONS} recipe(s) past the cap of ${MAX_DIRECTIONS} dropped after the isolation fixes`);
+    if (unique.length > MAX_DIRECTIONS) serverWarn(`[v7 energy-directions] ${unique.length - MAX_DIRECTIONS} recipe(s) past the cap of ${MAX_DIRECTIONS} dropped after the isolation fixes`);
     directions.splice(0, directions.length, ...unique.slice(0, MAX_DIRECTIONS));
-    console.warn('[v7 energy-directions] isolation rules fixed:', isolationNotes.join(' | '));
+    serverWarn('[v7 energy-directions] isolation rules fixed:', isolationNotes.join(' | '));
   }
 
   if (dropped.length) {
-    console.warn('[v7 energy-directions] dropped genres that are not approved for that tier:', dropped.join(', '));
+    serverWarn('[v7 energy-directions] dropped genres that are not approved for that tier:', dropped.join(', '));
   }
   if (added) {
-    console.warn(`[v7 energy-directions] added ${added} requested genre(s) the model left out of a direction of their tier`);
+    serverWarn(`[v7 energy-directions] added ${added} requested genre(s) the model left out of a direction of their tier`);
   }
   // Only warn for tiers that produced at least one direction — a completely
   // empty tier just means the user had no approved genres in that half.
   const highCount = directions.filter((x) => x.energy_tier === 'high').length;
   const lowCount = directions.filter((x) => x.energy_tier === 'low').length;
   if (highCount >= 1 && highCount < 2) {
-    console.warn('[v7 energy-directions] HIGH tier returned fewer than 2 directions:', highCount);
+    serverWarn('[v7 energy-directions] HIGH tier returned fewer than 2 directions:', highCount);
   }
   if (lowCount >= 1 && lowCount < 2) {
-    console.warn('[v7 energy-directions] LOW tier returned fewer than 2 directions:', lowCount);
+    serverWarn('[v7 energy-directions] LOW tier returned fewer than 2 directions:', lowCount);
   }
 
   return { directions };

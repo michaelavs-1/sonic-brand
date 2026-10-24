@@ -10,6 +10,9 @@
 //   - (future) v7's own Ami prompt-tuning surface if we set one up
 //
 // No URL override — provider is set here and only here. Redeploy to change.
+
+import { serverWarn } from './server-log.js';
+
 export const PROVIDER               = 'gemini';           // 'anthropic' | 'gemini'
 export const MODEL_ANTHROPIC        = 'claude-sonnet-4-6';
 export const MODEL_GEMINI           = 'gemini-3.6-flash';
@@ -23,7 +26,7 @@ export const GEMINI_THINKING_LEVEL  = 'high';             // 'low' | 'medium' | 
 //   maxTokens:           output cap (default 4000)
 //   cache:               true → apply Anthropic ephemeral cache to the system prompt.
 //                        No-op for Gemini. Default false.
-//   label:               string used in the console log line AND gemini_call_log.label
+//   label:               string stored as gemini_call_log.label
 //                        (v7 callers pass 'v7-onboarding' / 'v7-onboarding-refined').
 //   businessId:          optional — passed to Gemini proxy for spend attribution.
 //   onboardingSessionId: optional — passed to Gemini proxy for spend attribution
@@ -36,11 +39,11 @@ export async function callModel({
   businessId = null, onboardingSessionId = null, history = null, thinkingLevel = null,
 }) {
   if (PROVIDER === 'gemini')    return callGemini   ({ system, userMessage, maxTokens, label, businessId, onboardingSessionId, history, thinkingLevel });
-  if (PROVIDER === 'anthropic') return callAnthropic({ system, userMessage, maxTokens, cache, label });
+  if (PROVIDER === 'anthropic') return callAnthropic({ system, userMessage, maxTokens, cache });
   throw new Error(`ai-provider: unknown PROVIDER "${PROVIDER}"`);
 }
 
-async function callAnthropic({ system, userMessage, maxTokens, cache, label }) {
+async function callAnthropic({ system, userMessage, maxTokens, cache }) {
   const t0 = Date.now();
   const systemBlock = cache
     ? [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }]
@@ -61,14 +64,6 @@ async function callAnthropic({ system, userMessage, maxTokens, cache, label }) {
     throw new Error(`anthropic ${r.status}: ${errBody.error?.message || errBody.error || r.statusText}`);
   }
   const data = await r.json();
-  if (data?.usage) {
-    console.log(`anthropic ${label} (${elapsed}ms):`, {
-      input:       data.usage.input_tokens,
-      cache_write: data.usage.cache_creation_input_tokens,
-      cache_read:  data.usage.cache_read_input_tokens,
-      output:      data.usage.output_tokens,
-    });
-  }
   if (data?.stop_reason === 'refusal') throw new Error('anthropic: model refused the request');
   const text = Array.isArray(data?.content)
     ? data.content.find((b) => b?.type === 'text')?.text
@@ -101,9 +96,6 @@ async function callGemini({ system, userMessage, maxTokens, label, businessId, o
     throw new Error(`gemini ${r.status}: ${msg}`);
   }
   const data = await r.json();
-  if (data?.usage) {
-    console.log(`gemini ${label} (${elapsed}ms):`, data.usage);
-  }
   const cand = Array.isArray(data?.candidates) ? data.candidates[0] : null;
   if (cand?.finishReason && cand.finishReason !== 'STOP' && cand.finishReason !== 'MAX_TOKENS') {
     throw new Error(`gemini: unexpected finishReason ${cand.finishReason}`);
@@ -124,7 +116,7 @@ export function parseJSONFromText(text) {
   try {
     return JSON.parse(body);
   } catch (err) {
-    console.warn('[v7 ai-provider] parse failed:', {
+    serverWarn('[v7 ai-provider] parse failed:', {
       message: err?.message,
       textLen: body.length,
       head:    body.slice(0, 120),

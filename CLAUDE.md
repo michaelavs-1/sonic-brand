@@ -249,7 +249,7 @@ The owner draws the day's energy as a curve through draggable dots (the editor a
   - **Wording:** owners never see "כיוונים מוזיקליים". The directions step is "מכינים את הפלייליסטים שלכם…" / "הכנת הפלייליסטים לא הושלמה" everywhere (gate, Profile, Home).
 - **Loading placeholders:** the dashboard draws today's cards with their final names the moment a build starts (`expectedDailySlots` in `v7/account/app.js` — names are fixed per type); the server's `plan` line then takes over.
 - **Order on the Home tab** (2026-10-13): always by the fixed names — אנרגיה גבוהה #1, #2, אנרגיה רגועה #1, #2; Daily Mix #1 before #2 (`DAILY_ORDER` / `sortPlaylistsByClicksDesc` in `v7/account/app.js`). Before, the list fell back to newest first, so #2, built seconds after #1, came first. Clicks only order rows without a fixed name.
-- **TEMPORARY testing log (Ami, 2026-09-24):** `DEBUG_TASTE_LOG` in `v7/account/app.js` prints the account's taste profile (genres by energy level), Option-1 directions / Option-2 timeline, the Option-2 level-direction library (whether it still fits the profile, and today's pick per mix), and today's playlists (Option 2: each mix's directions + consecutive level/genre stretches) to the browser console on every dashboard load. Turn off / delete when testing ends.
+- **No browser console output (2026-10-24, before the pilot).** Every `console.*` call was removed from the code v7's pages load, including Ami's temporary taste log (`DEBUG_TASTE_LOG`, which printed the account's taste profile, directions and today's playlists on every dashboard load; the admin console and Ami's taste bench show the same data). Modules that also run on the server or in scripts warn through `serverWarn` (`v7/generation/server-log.js`), which prints only outside the browser. Server code (`api/`) and scripts keep their logs. Keep it this way: no `console.*` in `v7/` browser code.
 - **Needs migration `v5/precompute/migrations/2026-09-24-v7-timeline-pool.sql`** (track_analyses.duration_sec + trigger + backfill, and the pool RPC).
 
 #### Option 2: level directions (2026-09-28)
@@ -566,6 +566,8 @@ sonic-brand/
 │       ├── energy-windows.js               ← Daily-playlist energy ranges (pure, browser + server; 2026-10-13): Option 1
 │       │                                      high 50–80 / low 30–60, Option 2 per level (20–80, overlaps of 20);
 │       │                                      nudgeOptions / mergeAtRandom for the energy circles (2026-10-21).
+│       ├── server-log.js                   ← serverWarn: warnings printed only outside the browser (server + scripts), for
+│       │                                      modules that run in both (2026-10-24). Bare imports only.
 │       ├── playlist-length.js              ← port of the v6 helper (server-reachable: bare imports). v7 has no
 │       │                                      popularity-window.js (unused copy deleted 2026-09-24).
 │       ├── event-chat-prompt.js            ← v7 special-playlists chat prompt (today only, 2/day, styles question) +

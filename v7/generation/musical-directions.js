@@ -77,6 +77,7 @@
 // loader treats query strings as part of the filename).
 import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION } from '../../shared/genre-universe.js';
+import { serverWarn } from './server-log.js';
 export { GENRE_UNIVERSE_SECTION };
 
 // Same output ceiling as v6 — Gemini 3.6-flash hard limit. Thinking-heavy
@@ -423,7 +424,7 @@ export function injectPlaces(editable) {
   const inputsAnchor = '\n\n### Processing Rules:';
   const inputsIdx = out.indexOf(inputsAnchor);
   if (inputsIdx < 0) {
-    console.warn('[v7 musical-directions] `### Processing Rules:` anchor missing — Places blocks NOT injected');
+    serverWarn('[v7 musical-directions] `### Processing Rules:` anchor missing — Places blocks NOT injected');
     return out;
   }
   out = out.slice(0, inputsIdx) + '\n' + PLACES_INPUT_BLOCK + out.slice(inputsIdx);

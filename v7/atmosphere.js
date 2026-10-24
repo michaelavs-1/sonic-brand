@@ -80,10 +80,9 @@ export async function runAtmosphereSelection({ atmosphereRows, prechecked = [] }
     try {
       const mod = await import(BUBBLE_MODULE);
       return await mod.runAtmosphereBubbles({ atmosphereRows, prechecked });
-    } catch (err) {
+    } catch {
       // CDN failure, older browser without needed APIs, etc. Fall back to
       // the grid rather than blocking the user.
-      console.warn('atmosphere-bubbles unavailable, falling back to grid:', err);
     }
   }
   return renderGridFallback({ atmosphereRows, prechecked });

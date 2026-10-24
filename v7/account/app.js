@@ -53,7 +53,7 @@ function clearNeedsNewPassword() {
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { computeTargetForToday, ilPartsFromDate, datedLabel, undatedLabel, prevIl4amIso, nextIl4amIso } from '../generation/playlist-length.js?v=03102026a';
 import {
-  reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf, levelOf, fmtHM,
+  reconcileTimeline, groupForDay, groupDaysLabel, businessWindowAt, normLevels, energyAtFn, windowOf,
   parseHM, nudgePoints,
 } from '../generation/energy-timeline.js?v=13102026a';
 import { TimelineEditor, energyColor } from './energy-timeline-editor.js?v=24092026a';
@@ -61,11 +61,11 @@ import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
 // direction-chat.js (v6's chat) is no longer mounted in v7 — the Home tab's
 // card is the taste chat since 2026-10-13. Its exports are still referenced by
 // the per-playlist edit / trash paths, which v7 rows never show (no direction_id).
-import { openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=03102026a';
-import { mountTasteChat, resetTasteChat, ensurePortrait, syncTastePlaceholder } from './taste-chat.js?v=21102026c';
-import { generateEnergyDirections } from '../generation/energy-directions.js?v=21102026b';
-import { generateLevelDirections } from '../generation/level-directions.js?v=21102026b';
-import { pickLevelDirections, levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
+import { openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=24102026a';
+import { mountTasteChat, resetTasteChat, ensurePortrait, syncTastePlaceholder } from './taste-chat.js?v=24102026a';
+import { generateEnergyDirections } from '../generation/energy-directions.js?v=24102026a';
+import { generateLevelDirections } from '../generation/level-directions.js?v=24102026a';
+import { levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
 import { setWaitText, WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
 import { nudgeOptions } from '../generation/energy-windows.js?v=21102026a';
 import { mountHypPayment, ensureHypPaymentStyles } from '../hyp-payment.js?v=06102026a';
@@ -187,11 +187,6 @@ async function loadDashboardData(businessId) {
     // to sort most-clicked first. See sortPlaylistsByClicksDesc below.
     sb.from('business_playlist_opens').select('spotify_id').eq('business_id', businessId),
   ]);
-  if (plRes.error)    console.warn('business_playlists load:',     plRes.error.message);
-  if (evRes.error)    console.warn('business_events load:',        evRes.error.message);
-  if (hoursRes.error) console.warn('business_hours load:',         hoursRes.error.message);
-  if (placeRes.error) console.warn('business_place load:',         placeRes.error.message);
-  if (opensRes.error) console.warn('business_playlist_opens load:', opensRes.error.message);
   const clicksBySpotifyId = new Map();
   for (const o of (opensRes.data || [])) {
     if (!o.spotify_id) continue;
@@ -536,7 +531,7 @@ async function enterDashboardInner() {
     // it identifies which biz the dashboard opens to and is tiny (uuid).
     meta = { ...meta, currentBizId: business.id };
     try { await sb.auth.updateUser({ data: { sonic: meta } }); }
-    catch (e) { console.warn('currentBizId write failed:', e?.message || e); }
+    catch {}
   }
 
   // Profile → מנוי + the Home tab's "subscription ended" banner. Started now,
@@ -550,7 +545,6 @@ async function enterDashboardInner() {
   await loadDashboardData(business.id);
   renderAll();
   show('dashView');
-  logTasteForTesting();   // TEMPORARY — Ami's testing (see DEBUG_TASTE_LOG)
   loadDailyStatus(dailyStatusPending);
 
   // v7 first-login gate: block the dashboard behind #v7ModeGate until the
@@ -586,118 +580,7 @@ async function enterDashboardInner() {
   // sample size. The endpoint streams progress and updateCountInRow ticks
   // the count live. Fire-and-forget so the dashboard is interactive
   // immediately.
-  expandPendingPlaylists().catch((e) => console.warn('expandPendingPlaylists:', e));
-}
-
-// ---------- TEMPORARY: taste log for Ami's testing (2026-09-24) ----------
-// On every dashboard load (login / refresh), print this account's musical
-// taste to the browser console (DevTools → Console): the taste profile's
-// genres by energy level, the Option-1 directions (each genre with its
-// level) or the Option-2 timeline (each dot with its level), and today's
-// playlists (Option 2: the level/genre runs through the day). Read-only,
-// owner-scoped reads. Set DEBUG_TASTE_LOG = false (or delete this block and
-// its call in enterDashboardInner) once testing is done.
-const DEBUG_TASTE_LOG = true;
-
-async function logTasteForTesting() {
-  if (!DEBUG_TASTE_LOG || !business) return;
-  try {
-    const [tpRes, setRes, dirRes, lvlRes] = await Promise.all([
-      sb.from('business_taste_profiles').select('*')   // '*': requested_genres only exists after the 2026-10-05 migration
-        .eq('business_id', business.id).maybeSingle(),
-      sb.from('business_v7_settings').select('delivery_mode,timeline').eq('business_id', business.id).maybeSingle(),
-      sb.from('business_v7_directions').select('energy_tier,rank,title_en,genres')
-        .eq('business_id', business.id).eq('active', true).order('energy_tier').order('rank'),
-      sb.from('business_v7_level_directions').select('id,energy_level,rank,title_en,genres,profile_key')
-        .eq('business_id', business.id).eq('active', true).order('energy_level').order('rank'),
-    ]);
-    const tp = tpRes.data;
-    const mode = setRes.data?.delivery_mode || null;
-    const N = normLevels(tp?.energy_levels_total);
-    const levelOfGenre = new Map((tp?.approved_genres || []).map((g) => [g.genre, g.energy_level]));
-    const withLevel = (g) => `${g} (${levelOfGenre.has(g) ? `L${levelOfGenre.get(g)}` : 'not approved'})`;
-
-    console.group(`%c[Rubin testing] ${business.name || business.id} — musical taste`, 'font-weight:bold;color:#f0a73f');
-    if (!tp) {
-      console.log('No taste profile saved for this business.');
-    } else {
-      console.log(`Energy levels: ${tp.energy_levels_total} (L1 = calmest … L${tp.energy_levels_total} = most energetic) · instrumental pref: ${tp.instrumentalness_preference} · popularity pref: ${tp.popularity_preference}`);
-      console.log('Approved genres (what playlists are built from), most energetic first:');
-      console.table([...(tp.approved_genres || [])]
-        .sort((a, b) => b.energy_level - a.energy_level || a.genre.localeCompare(b.genre))
-        .map((g) => ({ level: `L${g.energy_level}`, genre: g.genre })));
-      const byLevel = {};
-      for (const g of tp.approved_genres || []) (byLevel[`L${g.energy_level}`] ||= []).push(g.genre);
-      for (let L = N; L >= 1; L--) console.log(`  L${L}: ${(byLevel[`L${L}`] || []).join(', ') || '— (no genres at this level)'}`);
-      console.log(`Requested genres (super-liked or asked for in the emphases — Option 1 puts each in every playlist of its tier): ${(tp.requested_genres || []).map(withLevel).join(', ') || (Array.isArray(tp.requested_genres) ? 'none' : 'not recorded (signed up before 2026-10-05)')}`);
-      if ((tp.conditional_genres || []).length) {
-        console.groupCollapsed(`Conditional genres (${tp.conditional_genres.length}) — stored, NOT used for playlists`);
-        console.table(tp.conditional_genres.map((g) => ({ level: `L${g.energy_level}`, genre: g.genre, note: g.note_en })));
-        console.groupEnd();
-      }
-      console.log(`Excluded genres (${(tp.excluded_genres || []).length}): ${(tp.excluded_genres || []).join(', ')}`);
-      if (tp.reasoning_en) console.log(`Model reasoning: ${tp.reasoning_en}`);
-    }
-
-    console.log(`Daily playlist type: ${mode === 'option1' ? 'Option 1 — 4 playlists (2 high + 2 low energy)' : mode === 'option2' ? 'Option 2 — 2 mixes following the energy timeline' : 'not chosen yet'}`);
-    const dirs = dirRes.data || [];
-    if (dirs.length) {
-      console.log('Option 1 directions (each day 2 per tier: one at random, then the one least like it):');
-      console.table(dirs.map((d) => ({ tier: d.energy_tier, rank: d.rank, title: d.title_en, genres: (d.genres || []).map(withLevel).join(', ') })));
-    }
-    const tl = setRes.data?.timeline;
-    if (tl && bmeta().hours) {
-      const rec = reconcileTimeline(tl, bmeta().hours);
-      console.log('Option 2 energy timeline (dot → level on this profile\'s scale):');
-      for (const g of rec.groups) {
-        console.log(`  ${groupDaysLabel(g.days)} ${g.open}–${g.close}: ` + g.points.map((p) => `${fmtHM(p.m)} → ${p.e} (L${levelOf(p.e, N)})`).join(' · '));
-      }
-    }
-    const lvl = lvlRes.data || [];
-    if (lvl.length) {
-      const fits = tp && lvl.every((d) => d.profile_key === levelProfileKey(tp));
-      console.log(`Option 2 level directions (${lvl.length}; ${fits ? 'built from the current taste profile' : 'built from an OLDER taste profile — regenerated on the next switch to Option 2'}). Each day every level plays one of its directions per mix, then moves on to the next:`);
-      console.table(lvl.map((d) => ({ level: `L${d.energy_level}`, rank: d.rank, title: d.title_en, genres: (d.genres || []).join(', ') })));
-      if (bmeta().hours) {
-        const lib = new Map();
-        for (const d of lvl) (lib.get(d.energy_level) || lib.set(d.energy_level, []).get(d.energy_level)).push(d);
-        const isoDate = businessWindowAt(bmeta().hours, new Date()).isoDate;
-        const picks = pickLevelDirections(lib, isoDate);
-        console.log(`Today's picks (${isoDate}):`);
-        picks.forEach((m, i) => console.log(`  Daily Mix #${i + 1}: ` + [...m].sort((a, b) => a[0] - b[0]).map(([L, d]) => `L${L} ${d.title_en}`).join(' · ')));
-      }
-    }
-
-    const today = (bmeta().playlists || []).filter((p) => p && !p.eventId && playlistIsLive(p));
-    if (today.length) {
-      console.log(`Live daily playlists (${today.length}):`);
-      for (const p of today) {
-        const t = p.expansion?.v7_timeline;
-        if (!t || !Array.isArray(t.starts)) {
-          console.log(`  ${p.label} — ${p.trackCount} tracks — genres: ${(p.genres || []).map(withLevel).join(', ')}`);
-          continue;
-        }
-        // Option 2: collapse consecutive tracks with the same level + genre into runs.
-        const runs = [];
-        t.starts.forEach((start, i) => {
-          const last = runs[runs.length - 1];
-          if (last && last.level === t.levels[i] && last.genre === t.run_genres[i]) last.tracks++;
-          else runs.push({ from: fmtHM(start), level: t.levels[i], genre: t.run_genres[i], tracks: 1 });
-        });
-        console.groupCollapsed(`  ${p.label} — ${p.trackCount} tracks, ${fmtHM(t.window[0])}–${fmtHM(t.window[1])}, ${runs.length} genre runs`);
-        if (t.directions) {
-          console.log('  Directions per level: ' + Object.entries(t.directions).map(([L, d]) => `L${L} ${d.title_en} [${d.genres.join(', ')}]`).join(' · '));
-        } else {
-          console.log('  Every genre of each level (no level-direction library at build time).');
-        }
-        console.table(runs.map((r) => ({ from: r.from, level: `L${r.level}`, genre: r.genre, tracks: r.tracks })));
-        console.groupEnd();
-      }
-    }
-    console.groupEnd();
-  } catch (e) {
-    console.warn('[Rubin testing] taste log failed:', e?.message || e);
-  }
+  expandPendingPlaylists().catch(() => {});
 }
 
 // v7 first-login delivery-mode gate. Reads business_v7_settings.delivery_mode
@@ -717,8 +600,7 @@ async function checkV7ModeGate() {
       .maybeSingle();
     mode = data?.delivery_mode || null;
     state.timeline = data?.timeline || null;
-  } catch (e) {
-    console.warn('v7 mode gate read failed:', e?.message || e);
+  } catch {
     return false;
   }
   setDeliveryModeState(mode);
@@ -733,9 +615,7 @@ async function checkV7ModeGate() {
         .eq('business_id', business.id)
         .eq('active', true);
       state.energyBuildFailed = !count;
-    } catch (e) {
-      console.warn('v7 energy-directions check failed:', e?.message || e);
-    }
+    } catch {}
   }
   if (mode === 'option2') {
     // Option 2 still builds without its level directions (every genre of the
@@ -747,9 +627,7 @@ async function checkV7ModeGate() {
         .eq('business_id', business.id)
         .eq('active', true);
       if (!error) state.levelBuildFailed = !count;
-    } catch (e) {
-      console.warn('v7 level-directions check failed:', e?.message || e);
-    }
+    } catch {}
   }
   if (mode) return false;
 
@@ -792,8 +670,7 @@ async function checkV7ModeGate() {
         }
         gate.classList.add('hide');
         resolve();
-      } catch (e) {
-        console.error('setDeliveryMode:', e);
+      } catch {
         building?.classList.add('hide');
         if (err) { err.textContent = 'משהו השתבש. נסו שוב.'; err.classList.remove('hide'); }
         opt1.disabled = false;
@@ -1025,7 +902,6 @@ function openTimelineModal({ context, onSave, hint = null }) {
       try {
         result = await onSave(timeline);
       } catch (e) {
-        console.error('timeline save:', e);
         errEl.textContent = e?.message || 'שגיאה בשמירה — נסו שוב';
         errEl.classList.remove('hide');
         saveBtn.disabled = false;
@@ -1140,7 +1016,6 @@ async function buildEnergyDirections() {
       .eq('business_id', business.id)
       .maybeSingle();
     if (!tp?.approved_genres?.length) {
-      console.warn('buildEnergyDirections: no taste profile / approved genres — skipping');
       return false;
     }
 
@@ -1154,23 +1029,20 @@ async function buildEnergyDirections() {
       businessId: business.id,
     });
     if (result?.error || !Array.isArray(result?.directions) || !result.directions.length) {
-      console.warn('buildEnergyDirections: generation returned no directions', result?.error || '');
       return false;
     }
 
     const { data: { session } } = await sb.auth.getSession();
-    if (!session?.access_token) { console.warn('buildEnergyDirections: no session'); return false; }
+    if (!session?.access_token) return false;
     const r = await fetch('/api/v7/account/save-energy-directions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ business_id: business.id, directions: result.directions }),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.ok) { console.warn('buildEnergyDirections: persist failed', data?.error || r.status); return false; }
-    console.log(`buildEnergyDirections: saved ${data.count} directions`);
+    if (!r.ok || !data.ok) return false;
     return true;
-  } catch (e) {
-    console.warn('buildEnergyDirections failed:', e?.message || e);
+  } catch {
     return false;
   }
 }
@@ -1198,13 +1070,11 @@ async function ensureLevelDirections({ onGenerate } = {}) {
         .eq('active', true),
     ]);
     if (!tp?.approved_genres?.length) {
-      console.warn('ensureLevelDirections: no taste profile / approved genres — skipping');
       return { ok: false, generated: false };
     }
     const key = levelProfileKey(tp);
     const rows = stored?.error ? [] : (stored?.data || []);
     if (rows.length && rows.every((r) => r.profile_key === key)) {
-      console.log(`ensureLevelDirections: reusing the ${rows.length} stored directions (taste profile unchanged)`);
       return { ok: true, generated: false };
     }
 
@@ -1219,23 +1089,20 @@ async function ensureLevelDirections({ onGenerate } = {}) {
       businessId: business.id,
     });
     if (result?.error || !Array.isArray(result?.directions) || !result.directions.length) {
-      console.warn('ensureLevelDirections: generation returned no directions', result?.error || '');
       return { ok: false, generated: true };
     }
 
     const { data: { session } } = await sb.auth.getSession();
-    if (!session?.access_token) { console.warn('ensureLevelDirections: no session'); return { ok: false, generated: true }; }
+    if (!session?.access_token) return { ok: false, generated: true };
     const r = await fetch('/api/v7/account/save-level-directions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ business_id: business.id, directions: result.directions }),
     });
     const data = await r.json().catch(() => ({}));
-    if (!r.ok || !data.ok) { console.warn('ensureLevelDirections: persist failed', data?.error || r.status); return { ok: false, generated: true }; }
-    console.log(`ensureLevelDirections: saved ${data.count} directions`);
+    if (!r.ok || !data.ok) return { ok: false, generated: true };
     return { ok: true, generated: true };
-  } catch (e) {
-    console.warn('ensureLevelDirections failed:', e?.message || e);
+  } catch {
     return { ok: false, generated: false };
   }
 }
@@ -1250,9 +1117,7 @@ document.addEventListener('direction-change-applied', async (e) => {
     await loadDashboardData(business.id);
     renderPlaylistsTitle();
     renderPlaylists();
-  } catch (err) {
-    console.warn('post direction-change reload failed:', err);
-  }
+  } catch {}
 });
 
 // Businesses table read — includes onboarding_expanded (moved off user_metadata
@@ -1511,8 +1376,7 @@ function renderDeliverySection() {
       }
       setMsg(savedNote(prev === 'option2' ? data.replace : null, replaceNow), 'ok');
       if (replaceNow) runReplaceToday();
-    } catch (e) {
-      console.error('renderDeliverySection option1:', e);
+    } catch {
       setDeliveryModeState(prev);
       paint(prev);
       setMsg('שגיאה בשמירה — נסו שוב', 'err');
@@ -1645,8 +1509,7 @@ function loadSubscription() {
       const data = await subscriptionRequest('GET');
       state.subscription = data.paymentsEnabled ? (data.subscription || null) : null;
       rememberSubVisible(!!state.subscription);
-    } catch (e) {
-      console.warn('loadSubscription:', e?.message || e);
+    } catch {
       state.subscription = null;
     } finally {
       state.subscriptionLoaded = true;
@@ -1816,7 +1679,6 @@ $('subCancelConfirm')?.addEventListener('click', async () => {
     renderSubscriptionSection();
     setSubMsg(`המנוי בוטל. לא תחויבו יותר, והפלייליסטים ימשיכו עד ${heDate(data.subscription?.lastDay)}.`, 'ok');
   } catch (e) {
-    console.error('cancel subscription:', e);
     setSubMsg(e.message || 'משהו השתבש — נסו שוב', 'err');
   } finally {
     lockSubscriptionButtons(false);
@@ -1832,7 +1694,6 @@ $('subResume')?.addEventListener('click', async () => {
     renderSubscriptionSection();
     setSubMsg(`המנוי חודש ✓ החיוב הבא ב־${heDate(data.subscription?.nextChargeOn)}.`, 'ok');
   } catch (e) {
-    console.error('resume subscription:', e);
     setSubMsg(e.message || 'משהו השתבש — נסו שוב', 'err');
   } finally {
     lockSubscriptionButtons(false);
@@ -1914,8 +1775,7 @@ async function saveName() {
     renderBusiness();
     msg.style.color = 'var(--teal-soft)';
     msg.textContent = 'נשמר ✓';
-  } catch (e) {
-    console.error('saveName:', e);
+  } catch {
     msg.style.color = '#ff9b8a';
     msg.textContent = 'שגיאה בשמירה — נסו שוב';
   } finally {
@@ -1959,8 +1819,7 @@ async function savePassword(e) {
     $('currentPassword').value = '';
     $('nextPassword').value = '';
     setMsg('הסיסמה עודכנה ✓', 'ok');
-  } catch (err) {
-    console.error('savePassword:', err);
+  } catch {
     setMsg('שגיאה בשמירה — נסו שוב', 'err');
   } finally {
     btn.disabled = false;
@@ -2039,7 +1898,6 @@ async function saveHours() {
     msg.style.color = 'var(--teal-soft)';
     msg.textContent = 'נשמר ✓';
   } catch (e) {
-    console.error('saveHours:', e);
     msg.style.color = '#ff9b8a';
     // The server's hours check answers in Hebrew — show it as is.
     msg.textContent = /[\u0590-\u05FF]/.test(e?.message || '') ? e.message : 'שגיאה בשמירה — נסו שוב';
@@ -2182,8 +2040,7 @@ async function loadDailyStatus(pending) {
   clearTimeout(dailyStatusTimer);
   try {
     state.dailyStatus = await (pending || dailyStatusRequest('GET'));
-  } catch (e) {
-    console.warn('loadDailyStatus:', e?.message || e);
+  } catch {
     // Show the line without a reason rather than leave the box empty.
     if (!state.dailyStatus) state.dailyStatus = { reason: null, hasLive: false };
     if (!state.generating) renderPlaylists();
@@ -2581,7 +2438,6 @@ async function confirmNudge() {
     };
     toast('הפלייליסט עודכן, רק להיום');
   } catch (e) {
-    console.error('energy-nudge:', e);
     toast(String(e.message || 'משהו השתבש — נסו שוב.').slice(0, 120));
   } finally {
     nudge.busyId = null;
@@ -2717,7 +2573,6 @@ function enterRenameMode(labelEl, playlist) {
           detail: { businessId: business.id },
         }));
       } catch (err) {
-        console.warn('rename failed:', err);
         // ---- revert optimistic changes ----
         playlist.label = originalText;
         patchDirectionOptimistic(playlist.directionId, { title_en: originalText });
@@ -2745,7 +2600,7 @@ async function editDirectionFromCard(directionId) {
   if (!directionId) return;
   openDirectionsSection();
   try { await selectDirectionInChat(directionId); }
-  catch (e) { console.warn('editDirectionFromCard failed:', e); }
+  catch {}
 }
 
 // Trash icon on a playlist row → open the confirmation modal. The
@@ -2797,7 +2652,6 @@ async function confirmTrashDirectionRemove() {
     // and the row disappears naturally. No explicit re-render needed here.
     toast('הכיוון הוסר');
   } catch (e) {
-    console.error('confirmTrashDirectionRemove failed:', e);
     toast(String(e.message || 'שגיאה במחיקה'));
     // Restore the row buttons so the owner can retry.
     if (trashBtn) { trashBtn.disabled = false; trashBtn.innerHTML = origTrashHtml || ''; }
@@ -2866,8 +2720,7 @@ async function markOnboardingExpanded() {
   const { error } = await sb.from('businesses')
     .update({ onboarding_expanded: true })
     .eq('id', business.id);
-  if (error) console.warn('onboarding_expanded update failed:', error.message);
-  else business.onboarding_expanded = true;
+  if (!error) business.onboarding_expanded = true;
 }
 
 async function expandPendingPlaylists() {
@@ -2908,7 +2761,7 @@ async function expandPendingPlaylists() {
       const bar = row.querySelector('.pl-expand-bar');
       if (bar && bar.classList.contains('done')) bar.remove();
     });
-  } catch (e) { console.warn('post-expand dashboard refresh failed:', e); }
+  } catch {}
 }
 
 async function expandOne(playlist, token, target) {
@@ -2936,8 +2789,6 @@ async function expandOne(playlist, token, target) {
       }),
     });
     if (!r.ok) {
-      const err = await r.json().catch(() => ({}));
-      console.warn(`expand-playlist ${playlist.id} failed:`, err?.error || r.statusText);
       clearSpinner();
       return;
     }
@@ -2967,9 +2818,7 @@ async function expandOne(playlist, token, target) {
             const spinner = row.querySelector('.pl-inline-spinner');
             if (spinner) spinner.remove();
           }
-        } catch (e) {
-          console.warn('expand-playlist: bad ndjson line', line);
-        }
+        } catch { /* skip a bad ndjson line */ }
       }
     }
     // Fade the bar out shortly after completion so the row settles.
@@ -2984,8 +2833,7 @@ async function expandOne(playlist, token, target) {
       }, 800);
     }
     return finalCount;
-  } catch (err) {
-    console.warn(`expand-playlist ${playlist.id} threw:`, err);
+  } catch {
     clearSpinner();
   }
 }
@@ -3133,7 +2981,7 @@ async function runGenerateDaily({ replaceToday = false, openNow = false } = {}) 
         if (!line) continue;
         let msg;
         try { msg = JSON.parse(line); }
-        catch { console.warn('[generate-daily] bad ndjson line:', line.slice(0, 160)); continue; }
+        catch { continue; }
         if (!state.generating) continue; // safety: tab or state reset mid-stream
 
         if (msg.type === 'plan' && Array.isArray(msg.directions)) {
@@ -3167,7 +3015,6 @@ async function runGenerateDaily({ replaceToday = false, openNow = false } = {}) 
     else if (builtCount && failedCount)   toast(`נבנו ${builtCount} מתוך ${builtCount + failedCount} פלייליסטים`);
     else                                  toast('לא הצלחנו לבנות אף פלייליסט — נסו שוב');
   } catch (err) {
-    console.error('generate-daily failed:', err);
     await cleanupOnExit();
     toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
   }
@@ -3349,7 +3196,6 @@ async function buildEventPlaylist(ev) {
     renderEvents();
     toast('הפלייליסט מוכן ✓');
   } catch (err) {
-    console.error('event-playlist failed:', err);
     if (eventBuilds.has(ev.id)) eventBuilds.set(ev.id, 'failed');
     renderEvents();
     toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
@@ -3427,7 +3273,6 @@ async function confirmTrashEventRemove() {
       playlists: (bmeta().playlists || []).filter((p) => p.eventId !== id),
     };
   } catch (e) {
-    console.error('deleteEvent failed:', e);
     if (removed && !(bmeta().events || []).some((x) => x.id === id)) {
       const events = [...(bmeta().events || []), removed]
         .sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
@@ -3566,8 +3411,7 @@ async function sendChatMessage() {
       // on a description the user has since revised.
       chatState.proposed = null;
     }
-  } catch (err) {
-    console.error('event-chat failed:', err);
+  } catch {
     thinking.classList.remove('thinking');
     thinking.textContent = 'שגיאה בצ׳אט — נסו שוב.';
     // Roll back the user's turn from history so they can retry without
@@ -3636,7 +3480,6 @@ async function finalizeAndSaveEvent(goBtn) {
     ci.classList.remove('compact');
     ci.setAttribute('placeholder', CHAT_PLACEHOLDER);
   } catch (err) {
-    console.error('finalizeAndSaveEvent failed:', err);
     goBtn.disabled = false;
     goBtn.innerHTML = origHtml;
     toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));

@@ -195,8 +195,7 @@ async function bootOnce(businessId) {
   try {
     await reloadState(businessId);
     renderAll();
-  } catch (e) {
-    console.warn('[direction-chat] boot failed:', e.message);
+  } catch {
     setChatMsg('שגיאה בטעינת הצ׳אט — רעננו את הדף');
   }
 }
@@ -222,8 +221,6 @@ async function reloadState(businessId) {
       .order('applied_at', { ascending: false })
       .limit(50),
   ]);
-  if (dirRes.error) console.warn('business_directions load:', dirRes.error.message);
-  if (chgRes.error) console.warn('business_direction_changes load:', chgRes.error.message);
   state = {
     ...state,
     directions: dirRes.data || [],
@@ -588,7 +585,6 @@ async function sendTurn() {
     }
     scrollTranscriptToBottom();
   } catch (err) {
-    console.error('[direction-chat] send failed:', err);
     pending.remove();
     thinking.remove();
     setChatMsg(String(err.message || 'שגיאה בצ׳אט'));
@@ -1112,8 +1108,7 @@ async function toggleSuperLike(superBtn, spotifyId) {
       const data = await r.json().catch(() => ({}));
       throw new Error(data?.error || `שגיאה ${r.status}`);
     }
-  } catch (e) {
-    console.warn('[direction-chat] super-like toggle failed:', e.message);
+  } catch {
     // Roll the optimistic UI back.
     superBtn.classList.toggle('saved', !willBeSaved);
     if (willBeSaved) modalSuperLiked.delete(spotifyId);
@@ -1259,7 +1254,6 @@ async function runApplyWithSpinnerBubble({ body, inProgressLabel, successLabel, 
     bubble.style.borderColor = 'rgba(87,163,189,.5)';
     await refreshAfterCommit();
   } catch (e) {
-    console.error('[direction-chat] apply failed:', e);
     bubble.textContent = String(e.message || 'שגיאה בעדכון הכיוון');
   }
 }
@@ -1286,9 +1280,7 @@ async function refreshAfterCommit() {
     // Do NOT rerender the transcript from scratch — the in-place mutated
     // bubble above is a synthetic (non-persisted) message and a full
     // rerender from DB would drop it. Card refresh is enough here.
-  } catch (e) {
-    console.warn('[direction-chat] post-commit reload failed:', e.message);
-  }
+  } catch {}
   document.dispatchEvent(new CustomEvent('direction-change-applied', {
     detail: { businessId: biz.id },
   }));

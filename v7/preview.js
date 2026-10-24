@@ -202,8 +202,7 @@ async function fetchAnchorTracks(specs) {
   };
   try {
     return await attempt();
-  } catch (e) {
-    console.warn('[v6 preview] anchor-tracks failed, retrying once in 2s:', e.message);
+  } catch {
     await new Promise((r) => setTimeout(r, 2000));
     return attempt();
   }
@@ -247,7 +246,7 @@ async function fetchTrackMeta(trackIds) {
           art: d.album?.images?.[1]?.url || d.album?.images?.[0]?.url || '',
         };
       }
-    } catch (err) { console.warn('get_track failed:', id, err); }
+    } catch { /* no metadata for this track */ }
   }));
   return meta;
 }
@@ -699,10 +698,9 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
           let byRank;
           try {
             byRank = await fetchAnchorTracks([spec]);
-          } catch (e) {
+          } catch {
             // Server-side failure. Don't block the swap — skip this genre so
             // walkCycle tries the next one.
-            console.warn(`swap: fetchAnchorTracks failed for genre "${spec.genre}" (attempt ${attempt + 1}):`, e?.message || e);
             return null;
           }
           const candidate = byRank[String(spec.rank)];
@@ -761,8 +759,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
           embedWrap.append(newMount);
           wireController(newMount);
           swap.innerHTML = SWAP_BUTTON_HTML;
-        } catch (err) {
-          console.warn('swap failed:', err);
+        } catch {
           swap.innerHTML = SWAP_BUTTON_HTML;
         } finally {
           swap.disabled = false;
@@ -977,92 +974,41 @@ export async function preparePreview({ directions, page2Promise }) {
     return next;
   };
 
-  // Diagnostic: log directions that came from the model vs. previews that
-  // actually rendered. Any gap = anchor-tracks returned no cached song for
-  // that direction's genre pool (directionsToPreviews silently drops).
-  const logPageOutcome = (label, dirs, previews, byRank) => {
-    const missing = (dirs || []).filter((d) => !byRank[String(d.rank)]);
-    const missingTitles = missing.map((d) => d.title_en || d.anchor_genre || '(no title)');
-    console.log(`[v6 preview] ${label}: model returned ${dirs.length}, previews rendered ${previews.length}` +
-      (missingTitles.length ? ` — ${missingTitles.length} dropped due to empty anchor pool: ${missingTitles.join(' | ')}` : ''));
-  };
-
   // Page 1: anchors → previews → metadata, chained together.
   const page1Ready = (async () => {
-    console.log('[v6 preview] page 1 model directions:', directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d) })));
     const { byRank, genreByRank } = await sequencedAnchors(directions);
     const previews = directionsToPreviews(directions, byRank, genreByRank);
-    logPageOutcome('page 1', directions, previews, byRank);
     const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
     return { previews, trackMeta };
-  })().catch((e) => {
-    console.warn('[v6 preview] page 1 pipeline failed (network / anchor-tracks throw / metadata throw):', e);
-    return { previews: [], trackMeta: {} };
-  });
+  })().catch(() => ({ previews: [], trackMeta: {} }));
 
   // Page 2: waits for Gemini's second call, then hits anchor-tracks (queued
   // behind page 1 via sequencedAnchors), then metadata. Runs concurrently
   // with page 1's metadata fetch — that's the whole point of the refactor.
-  //
-  // The 5 possible failure modes here, each with a distinct log line so
-  // Ami (or whoever's testing) can screenshot and we know exactly which
-  // one fired without having to reproduce:
-  //   1. Gemini's page 2 call throws (network / proxy 5xx / abort)
-  //        → "page 2 model call threw"
-  //   2. Gemini returns a valid response but with an error object
-  //        (matcher_error, off_topic, etc. — usually MAX_TOKENS →
-  //        unparseable → matcher_error before the raise to 65536)
-  //        → "page 2 model returned error"
-  //   3. Gemini returns fewer than 4 valid directions (some got filtered
-  //        by normalizeDirections for missing fields)
-  //        → "page 2 model returned fewer than 4 valid directions"
-  //   4. anchor-tracks returns no rows for any direction (all empty pools)
-  //        → logged by logPageOutcome, previews.length === 0
-  //   5. anchor-tracks throws (server / network error after the retry)
-  //        → "page 2 pipeline failed"
+  // Any failure (model call, model error, no directions, anchor-tracks)
+  // leaves page 2 empty.
   const page2Ready = page2Promise
     ? (async () => {
       let page2Result;
       try {
         page2Result = await page2Promise;
-      } catch (e) {
-        console.warn('[v6 preview] page 2 model call threw (network / proxy / abort):', e);
+      } catch {
         return { previews: [], trackMeta: {} };
       }
-      if (!page2Result) {
-        console.warn('[v6 preview] page 2 model returned null/undefined result');
+      if (!page2Result || page2Result.error
+          || !Array.isArray(page2Result.directions) || !page2Result.directions.length) {
         return { previews: [], trackMeta: {} };
       }
-      if (page2Result.error) {
-        console.warn(`[v6 preview] page 2 model returned error "${page2Result.error}" — ${page2Result.reasoning_en || '(no reason)'}`);
-        return { previews: [], trackMeta: {} };
-      }
-      if (!Array.isArray(page2Result.directions) || !page2Result.directions.length) {
-        console.warn('[v6 preview] page 2 model returned no directions at all (empty array or non-array)');
-        return { previews: [], trackMeta: {} };
-      }
-      if (page2Result.directions.length < 4) {
-        console.warn(`[v6 preview] page 2 model returned fewer than 4 valid directions (got ${page2Result.directions.length}) — some may have been dropped by normalizeDirections for missing required fields`);
-      }
-      console.log('[v6 preview] page 2 model directions:', page2Result.directions.map((d) => ({ rank: d.rank, title: d.title_en, genres: directionGenres(d) })));
       try {
         const { byRank, genreByRank } = await sequencedAnchors(page2Result.directions);
         const previews = directionsToPreviews(page2Result.directions, byRank, genreByRank);
-        logPageOutcome('page 2', page2Result.directions, previews, byRank);
         const trackMeta = previews.length ? await fetchTrackMeta(previews.map((p) => p.trackId)) : {};
         return { previews, trackMeta };
-      } catch (e) {
-        console.warn('[v6 preview] page 2 pipeline failed after model (anchor-tracks throw / metadata throw):', e);
+      } catch {
         return { previews: [], trackMeta: {} };
       }
     })()
     : Promise.resolve({ previews: [], trackMeta: {} });
-
-  // Once both pages settle, emit a single summary line so at-a-glance
-  // debugging is one grep away: `[v6 preview] SUMMARY page1=X/4 page2=Y/4`.
-  Promise.all([page1Ready, page2Ready]).then(([p1, p2]) => {
-    console.log(`[v6 preview] SUMMARY page1=${p1.previews.length}/4 page2=${p2.previews.length}/4 total=${p1.previews.length + p2.previews.length}/8`);
-  });
 
   return { page1Ready, page2Ready };
 }

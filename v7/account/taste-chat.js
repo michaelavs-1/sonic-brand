@@ -140,7 +140,6 @@ async function send(text, { visibleText } = {}) {
       updatePortrait({ action: 'chat', messageId: data.assistantMessage.id }).catch(() => {});
     }
   } catch (e) {
-    console.error('taste-chat:', e);
     thinking.classList.remove('thinking');
     thinking.textContent = e.code === 'not-ready' || e.code === 'subscription_ended' ? e.message : 'שגיאה בצ׳אט — נסו שוב.';
   } finally {
@@ -180,7 +179,6 @@ async function apply(btn, messageId) {
     hooks.onApplied?.();
     if (data.replace?.eligible && await hooks.askReplace?.(data.replace)) hooks.runReplaceToday?.();
   } catch (e) {
-    console.error('taste-apply:', e);
     if (e.code === 'already-applied' || e.code === 'nothing-to-change' || e.code === 'nothing-to-undo') { setStatus(btn, esc(e.message)); return; }
     btn.disabled = false;
     btn.textContent = 'נסו שוב';
@@ -356,7 +354,7 @@ function openDeck(suggestions, btn) {
     suggestions.forEach((s) => heard.add(s.genre));
     if (results.disliked.length) {
       authed('/api/v7/account/taste-apply', { businessId: getBusiness()?.id, action: 'reject', genres: results.disliked.map((s) => s.genre) })
-        .catch((e) => console.warn('taste reject:', e));
+        .catch(() => {});
     }
     const part = (name, list) => (list.length ? `${name}: ${list.map((s) => `${label(s)} (${s.genre})`).join(', ')}.` : '');
     const text = [DECK_RESULTS_PREFIX, part('סופר לייק', results.super), part('אהבתי', results.liked), part('לא בשבילי', results.disliked)].filter(Boolean).join(' ');

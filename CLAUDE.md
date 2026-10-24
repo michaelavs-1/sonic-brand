@@ -1342,6 +1342,8 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 
 ### Supabase tables
 
+**Grants for every new table (from 2026-10-30).** Supabase no longer grants new `public` tables to anyone automatically; without a grant the API returns `permission denied for table …`, **service role included**. In the same migration that creates (or drops and recreates) a table: always `grant select, insert, update, delete on public.<table> to service_role;`, and for each `bigserial`/`serial` column also `grant usage, select on sequence public.<table>_<column>_seq to service_role;`. Add `authenticated` (SELECT) only when an owner-scoped RLS policy lets the owner's session read it, and `anon` (SELECT) only for tables read with the anon key — directly (`rest/v1/<table>`) or inside an RPC called with the anon key, since a non-`security definer` function reads as its caller. "RLS on, no policies" tables get service_role only.
+
 **Reference / catalog (populated by Ami's scans + precompute):**
 - `atmospheres` — { name, ranges, row_in_sheet }. Populated by Ami's scan endpoint.
 - `biztype_genres` — { business_type, genre, column_letter, position_in_column }. Ami's other scan.

@@ -6,8 +6,7 @@
 // disliked) to generate 4 brand-new directions that should be tighter
 // matches to the owner's taste.
 //
-// Provider (Anthropic vs Gemini) is selected in ai-provider.js — same as
-// Round 1. Round-2 calls are labeled 'onboarding-refined' in gemini_call_log
+// Model settings live in ai-provider.js, same as Round 1. Round-2 calls are labeled 'onboarding-refined' in gemini_call_log
 // so the admin API can break them out from the Round-1 spend.
 //
 // Success return:
@@ -331,10 +330,6 @@ async function callRefined({ userMessage, label, onboardingSessionId }) {
     system: REFINED_SYSTEM_PROMPT,
     userMessage,
     maxTokens: MAX_TOKENS,
-    // Round 2's system prompt is stable across users, same as Round 1's,
-    // so Anthropic ephemeral cache kicks in if PROVIDER='anthropic'.
-    // No-op on Gemini.
-    cache: true,
     label,
     onboardingSessionId,
   });

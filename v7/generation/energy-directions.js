@@ -460,9 +460,6 @@ async function callEnergyDirections({ userMessage, label, businessId, onboarding
     system: SYSTEM_PROMPT,
     userMessage,
     maxTokens: MAX_TOKENS,
-    // System prompt is stable across users, so on Anthropic the ephemeral
-    // cache kicks in after the first call. No-op on Gemini.
-    cache: true,
     label,
     businessId,
     onboardingSessionId,

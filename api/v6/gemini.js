@@ -29,7 +29,7 @@ import { pgrInsert } from '../v5/supabase-client.js';
    the original single-turn shape is used (unaffects musical-directions).
 
    Response is Gemini's raw JSON, with an added top-level `usage` field
-   normalized from `usageMetadata` for parity with the anthropic proxy.
+   normalized from `usageMetadata`.
 */
 
 const ALLOWED_MODELS = new Set(['gemini-3.6-flash']);

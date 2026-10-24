@@ -499,7 +499,6 @@ async function callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, 
     system: SYSTEM_PROMPT,
     userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections }),
     maxTokens: MAX_TOKENS,
-    cache: true,
     label,
     onboardingSessionId,
   });

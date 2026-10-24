@@ -63,8 +63,8 @@ import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
 // the per-playlist edit / trash paths, which v7 rows never show (no direction_id).
 import { openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=24102026a';
 import { mountTasteChat, resetTasteChat, ensurePortrait, syncTastePlaceholder } from './taste-chat.js?v=24102026a';
-import { generateEnergyDirections } from '../generation/energy-directions.js?v=24102026a';
-import { generateLevelDirections } from '../generation/level-directions.js?v=24102026a';
+import { generateEnergyDirections } from '../generation/energy-directions.js?v=24102026b';
+import { generateLevelDirections } from '../generation/level-directions.js?v=24102026b';
 import { levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
 import { setWaitText, WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
 import { nudgeOptions } from '../generation/energy-windows.js?v=21102026a';

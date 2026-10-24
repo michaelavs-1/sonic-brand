@@ -342,7 +342,6 @@ async function callRefined({ userMessage, label, onboardingSessionId }) {
     system: REFINED_SYSTEM_PROMPT,
     userMessage,
     maxTokens: MAX_TOKENS,
-    cache: true,
     label,
     onboardingSessionId,
   });

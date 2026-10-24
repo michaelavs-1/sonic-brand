@@ -58,7 +58,7 @@ import {
   buildUserMessage as buildTasteUserMessage,
   normalizeTasteProfile,
 } from '/v7/generation/taste-profile.js?v=21102026a';
-import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=20092026a';
+import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=24102026a';
 import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=21102026a';
 import { renderTestPlaylists } from './test-playlists.js?v=24102026a';
 import { mountTasteChatTab, onTasteTabShown } from './taste-chat-tab.js?v=21102026l';

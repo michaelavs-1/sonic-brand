@@ -37,7 +37,7 @@ import { nextIl4amIso, prevIl4amIso, closedDayTargetTracks, ilPartsFromDate } fr
 import {
   EVENT_PLAYLIST_SYSTEM_PROMPT, buildEventPlaylistUserMessage, normalizeEventPlaylistParams,
 } from '../../../v7/generation/event-playlist-prompt.js';
-import { PROVIDER, MODEL_ANTHROPIC, MODEL_GEMINI, GEMINI_THINKING_LEVEL } from '../../../v7/generation/ai-provider.js';
+import { PROVIDER, MODEL_GEMINI, GEMINI_THINKING_LEVEL } from '../../../v7/generation/ai-provider.js';
 
 const SERVICE_KEY      = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
@@ -69,23 +69,6 @@ async function askModel(origin, system, userMessage, businessId) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(`gemini ${r.status}: ${j?.error?.message || j?.error || 'proxy failed'}`);
     return parseModelJson(geminiText(j));
-  }
-  if (PROVIDER === 'anthropic') {
-    const r = await fetch(`${origin}/api/v5/anthropic`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model:      MODEL_ANTHROPIC,
-        max_tokens: MODEL_MAX_TOKENS,
-        system:     [{ type: 'text', text: system }],
-        messages:   [{ role: 'user', content: userMessage }],
-      }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(`anthropic ${r.status}: ${j?.error?.message || j?.error || 'proxy failed'}`);
-    const text = Array.isArray(j?.content) ? j.content.find((b) => b?.type === 'text')?.text : null;
-    if (typeof text !== 'string') throw new Error('anthropic: no text block in response');
-    return parseModelJson(text);
   }
   throw new Error(`event-playlist: unknown PROVIDER "${PROVIDER}"`);
 }

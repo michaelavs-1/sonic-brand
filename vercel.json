@@ -18,9 +18,6 @@
     "api/v4/ami-cron-tick.js": {
       "maxDuration": 300
     },
-    "api/v5/anthropic.js": {
-      "maxDuration": 60
-    },
     "api/v5/anchor-tracks.js": {
       "maxDuration": 30
     },
@@ -399,50 +396,32 @@
       ]
     }
   ],
+  "redirects": [
+    { "source": "/v2", "destination": "/", "permanent": false },
+    { "source": "/v2/(.*)", "destination": "/", "permanent": false },
+    { "source": "/v3", "destination": "/", "permanent": false },
+    { "source": "/v3/(.*)", "destination": "/", "permanent": false },
+    { "source": "/v4", "destination": "/", "permanent": false },
+    { "source": "/v4/((?!ami$|ami/).*)", "destination": "/", "permanent": false },
+    { "source": "/v5", "destination": "/", "permanent": false },
+    { "source": "/v5/((?!ami-prompt-dashboard$|ami-prompt-dashboard/).*)", "destination": "/", "permanent": false },
+    { "source": "/v6", "destination": "/", "permanent": false },
+    { "source": "/v6/(.*)", "destination": "/", "permanent": false },
+    { "source": "/v7/test-timeline", "destination": "/", "permanent": false },
+    { "source": "/v7/test-timeline/(.*)", "destination": "/", "permanent": false }
+  ],
   "rewrites": [
     {
       "source": "/",
       "destination": "/v7/index.html"
     },
     {
-      "source": "/v2",
-      "destination": "/v2/index.html"
-    },
-    {
-      "source": "/v3",
-      "destination": "/v3/index.html"
-    },
-    {
-      "source": "/v4",
-      "destination": "/v4/index.html"
-    },
-    {
-      "source": "/v4/track-analysis",
-      "destination": "/v4/track-analysis/index.html"
-    },
-    {
-      "source": "/v4/random-song-from-db-genre",
-      "destination": "/v4/random-song-from-db-genre/index.html"
-    },
-    {
       "source": "/v4/ami",
       "destination": "/v4/ami/index.html"
     },
     {
-      "source": "/v5",
-      "destination": "/v5/index.html"
-    },
-    {
       "source": "/v5/ami-prompt-dashboard",
       "destination": "/v5/ami-prompt-dashboard/index.html"
-    },
-    {
-      "source": "/v6",
-      "destination": "/v6/index.html"
-    },
-    {
-      "source": "/v6/account",
-      "destination": "/v6/account/index.html"
     },
     {
       "source": "/v7",
@@ -451,10 +430,6 @@
     {
       "source": "/v7/account",
       "destination": "/v7/account/index.html"
-    },
-    {
-      "source": "/v7/test-timeline",
-      "destination": "/v7/test-timeline/index.html"
     }
   ]
 }

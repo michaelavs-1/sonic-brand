@@ -82,7 +82,7 @@ export function isInternal(req) {
   return !!key && req.headers['x-sonic-internal'] === key;
 }
 
-// Server-only endpoints (Spotify writes, the RapidAPI and Anthropic proxies):
+// Server-only endpoints (Spotify writes, the RapidAPI proxies):
 // only our own functions may call them. Fail-CLOSED like requireSiteOrInternal.
 export function requireInternal(req, res) {
   if (!process.env.INTERNAL_API_KEY) {

@@ -409,7 +409,6 @@ export async function generateLevelDirections({
       system: SYSTEM_PROMPT,
       userMessage,
       maxTokens: MAX_TOKENS,
-      cache: true,           // Anthropic only; no-op on Gemini
       label,
       businessId,
       onboardingSessionId,

@@ -2,7 +2,7 @@
 
    Usage in a handler:
      import { guard } from './ratelimit.js';   // or '../v6/ratelimit.js'
-     if (!await guard(req, res, 'anthropic', 10, 60)) return;
+     if (!await guard(req, res, 'gemini', 20, 60)) return;
 
    Behavior:
      - Fixed-window counter (Redis INCR + PEXPIRE-NX). Simple + atomic via

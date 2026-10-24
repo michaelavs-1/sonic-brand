@@ -4,8 +4,8 @@
    Flow:
      1. Verify Supabase JWT.
      2. Send the event description + canonical genre menu to the model
-        (Anthropic or Gemini, chosen by PROVIDER in ai-provider.js — same
-        A/B switch as the client-side musical-directions call). The model
+        (Gemini, with the model settings from v6/generation/ai-provider.js,
+        shared with the client-side musical-directions call). The model
         returns { genres: [...], bpm_range: { min, max } }.
      3. Query v5_direction_tracks RPC with those genres + BPM (no popularity
         window — event playlists aren't tied to an atmosphere selection).
@@ -27,15 +27,13 @@ import { nextIl4amIso, closedDayTargetTracks } from '../../../v6/generation/play
 import { requireBusinessOwner } from './_require-business-owner.js';
 import { setCors } from '../origin-guard.js';
 
-// Uses the same PROVIDER / MODEL_* / GEMINI_THINKING_LEVEL constants that
-// drive musical-directions on the client, so flipping PROVIDER in
-// ai-provider.js switches BOTH pipelines in lockstep. We import ONLY the
-// constants — the async functions in that module hit relative URLs that
-// don't work server-side. The model call happens via the same /api/v5/
-// anthropic and /api/v6/gemini proxies the client uses, reached through
-// selfOrigin (like the Spotify calls further down).
+// Uses the same PROVIDER / MODEL_GEMINI / GEMINI_THINKING_LEVEL constants that
+// drive musical-directions on the client. We import ONLY the constants — the
+// async functions in that module hit relative URLs that don't work
+// server-side. The model call goes through the same /api/v6/gemini proxy the
+// client uses, reached through selfOrigin (like the Spotify calls further down).
 import {
-  PROVIDER, MODEL_ANTHROPIC, MODEL_GEMINI, GEMINI_THINKING_LEVEL,
+  PROVIDER, MODEL_GEMINI, GEMINI_THINKING_LEVEL,
 } from '../../../v6/generation/ai-provider.js';
 
 const SUPABASE_URL      = process.env.SUPABASE_URL      || 'https://xhkqrxljncazvbgkmqex.supabase.co';
@@ -108,8 +106,7 @@ If the description is empty, nonsense, off-topic (not describing an event or mus
 
 { "error": "not_an_event" }`;
 
-// Robust to both proxy shapes (Anthropic-style content array or Gemini-style
-// candidates.parts) and to occasional stray text around the JSON body.
+// Robust to occasional stray text around the JSON body.
 function parseModelJson(text) {
   const trimmed = String(text || '').trim();
   const fenced  = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);
@@ -149,30 +146,6 @@ async function askModel(description, origin, businessId) {
       ? cand.content.parts.find((p) => typeof p?.text === 'string')?.text
       : null;
     if (typeof text !== 'string') throw new Error('gemini: no text part in response');
-    return parseModelJson(text);
-  }
-  if (PROVIDER === 'anthropic') {
-    const r = await fetch(`${origin}/api/v5/anthropic`, {
-      method:  'POST',
-      headers: {
-        'Content-Type':     'application/json',
-        'x-sonic-internal': INTERNAL_API_KEY,
-      },
-      body:    JSON.stringify({
-        model:      MODEL_ANTHROPIC,
-        max_tokens: MODEL_MAX_TOKENS,
-        system:     [{ type: 'text', text: SYSTEM_PROMPT }],
-        messages:   [{ role: 'user', content: description }],
-      }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      throw new Error(`anthropic ${r.status}: ${j?.error?.message || j?.error || 'proxy failed'}`);
-    }
-    const text = Array.isArray(j?.content)
-      ? j.content.find((b) => b?.type === 'text')?.text
-      : null;
-    if (typeof text !== 'string') throw new Error('anthropic: no text block in response');
     return parseModelJson(text);
   }
   throw new Error(`event-playlist: unknown PROVIDER "${PROVIDER}"`);
@@ -241,9 +214,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'description too short' });
     }
 
-    // 1) Model → genres + BPM. Provider (Anthropic / Gemini) picked by
-    //    PROVIDER in ai-provider.js so this endpoint tracks the same
-    //    switch as the client-side musical-directions call.
+    // 1) Model → genres + BPM, with the same model settings as the
+    //    client-side musical-directions call (ai-provider.js).
     const origin = selfOrigin(req);
     const parsed = await askModel(desc, origin, businessId);
     if (parsed?.error === 'not_an_event') {

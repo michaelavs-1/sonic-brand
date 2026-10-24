@@ -11,7 +11,7 @@
  *   1. generateMusicalDirections()  → real R1 8 probes (2 Gemini calls)
  *   2. simulate swipe (likes / dislikes / one super-liked genre + tally)
  *   3. one /api/v7/anchor-tracks call for a full 4-card page (v7_anchor_tracks RPC)
- *   4. generateTasteProfile()       → real flat 116-genre profile (1 Gemini call)
+ *   4. generateTasteProfile()       → real flat full-catalog profile (1 Gemini call)
  *   5. POST /api/v7/account/signup (+ taste profile, email skipped via the
  *      internal key) → { business_id }, NO session (verification required)
  *   6. test-only owner session via admin generate_link + verify (stands in
@@ -88,6 +88,7 @@ async function authAdmin(method, path) {
 // ---- dynamic import of the v7 client modules (they use relative /api fetch) ----
 const mdUrl = pathToFileURL(join(repoRoot, 'v7', 'generation', 'musical-directions.js')).href;
 const tpUrl = pathToFileURL(join(repoRoot, 'v7', 'generation', 'taste-profile.js')).href;
+const guUrl = pathToFileURL(join(repoRoot, 'shared', 'genre-universe.js')).href;
 
 const stamp     = Date.now();
 const testEmail = `test-v7walk-${stamp}@example.invalid`;
@@ -175,7 +176,8 @@ let userId = null, businessId = null;
     if (tp.error) throw new Error(`taste profile failed: ${tp.error} ${tp.reasoning_en || ''}`);
     const profile = tp.profile;
     const coverage = profileCoverage(profile);
-    ok(coverage.size === 116, `all 116 genres bucketed (sum = ${coverage.size})`, `${coverage.size}`);
+    const { GENRES } = await import(guUrl);   // the catalog grows; never hard-code its size
+    ok(coverage.size === GENRES.length, `all ${GENRES.length} genres bucketed (sum = ${coverage.size})`, `${coverage.size}`);
     ok(profile.energy_levels_total >= 2 && profile.energy_levels_total <= 6, `energy_levels_total in [2..6] (${profile.energy_levels_total})`, `${profile.energy_levels_total}`);
     console.log(`  approved ${profile.approved_genres.length} / conditional ${profile.conditional_genres.length} / excluded ${profile.excluded_genres.length}  · N=${profile.energy_levels_total}`);
 

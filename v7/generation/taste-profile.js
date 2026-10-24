@@ -509,9 +509,6 @@ async function callTasteProfile({ userMessage, label, onboardingSessionId }) {
     system: SYSTEM_PROMPT,
     userMessage,
     maxTokens: MAX_TOKENS,
-    // System prompt is stable across users (~3-4k tokens), so on Anthropic
-    // the ephemeral cache kicks in after the first call. No-op on Gemini.
-    cache: true,
     label,
     onboardingSessionId,
   });

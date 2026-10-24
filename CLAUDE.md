@@ -5,15 +5,15 @@
 
 ## ⚠️ READ FIRST — VERSION LANDSCAPE
 
-The codebase contains multiple parallel "versions" that coexist. **v7 is the current active version** — it's what the user is iterating on. Since 2026-09-28 the site root (`/`) serves **v7** (deployed — see the rewrite note under Live URLs); v6 is still reachable at `/v6` but has no accounts. Others are kept but see the notes:
+The codebase contains multiple parallel "versions" that coexist. **v7 is the current active version** — it's what the user is iterating on. Since 2026-09-28 the site root (`/`) serves **v7** (deployed — see the rewrite note under Live URLs). Since 2026-10-24 no page of another version is served: `/v2`–`/v6` are redirected to `/` since 2026-10-24 (§ KEY MECHANISMS → "Who can call what"), except Ami's two dashboards (`/v4/ami`, and `/v5/ami-prompt-dashboard` behind the admin key). Their code stays in the repo and much of it still runs on the server. Notes per version:
 
 | Version | State | Where |
 |---|---|---|
-| v6 | **Reachable at `/v6` only — the root moved to v7 on 2026-09-28 — and NO v6 accounts exist** (all deleted 2026-09-24); its daily cron is hard-disabled. Signups at `/v6` would still create v6 accounts, which get no daily playlists. Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. Full v6 docs: [docs/v6-reference.md](docs/v6-reference.md). | `v6/`, `api/v6/` |
+| v6 | **Pages not served since 2026-10-24 (`/v6` redirects to `/`; the root moved to v7 on 2026-09-28), and NO v6 accounts exist** (all deleted 2026-09-24); its daily cron is hard-disabled. Its signup endpoint can still be called directly and would create a v6 account, which gets no daily playlists. Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. Full v6 docs: [docs/v6-reference.md](docs/v6-reference.md). | `v6/`, `api/v6/` |
 | **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 139-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built and switched on per environment by `V7_PAYMENTS_ENABLED` — on in Development, **off in Production** (the step there is the old placeholder) (see [docs/v7-payments.md](docs/v7-payments.md)). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
-| v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anthropic`, `anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend still runs standalone. `v5/ami-prompt-dashboard/` lives here but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
-| v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
-| v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). | `v3/`, `v2/` |
+| v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend isn't served since 2026-10-24 (and couldn't generate any more: it called `/api/v5/anthropic`, removed the same day). `v5/ami-prompt-dashboard/` lives here (admin key required, see § AMI'S DASHBOARD) but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
+| v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. Only `/v4/ami` is served since 2026-10-24. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
+| v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). Not served since 2026-10-24. | `v3/`, `v2/` |
 
 **Brand rename:** old name "Robin" still appears throughout; new name is "Rubin". Use "Rubin" in new code.
 
@@ -28,7 +28,7 @@ AI-powered Spotify playlist builder for physical businesses (cafés, bars, resta
 **Live URLs:**
 - https://robin-music.com — **custom domain, DNS points at this Vercel project**. Primary user-facing URL.
 - https://sonic-brand.vercel.app — Vercel's assigned alias for the same deploy. Kept as a backup identity.
-- Both hostnames serve the same deploy. The root is a rewrite in `vercel.json` (not a Vercel-dashboard setting): **`"/" → "/v7/index.html"` since 2026-09-28** (was `/v6/index.html` from 2026-08-20), so either URL at the root lands on the v7 onboarding. v7's page only uses absolute `/v7/...` paths, so it works served at `/`; its own navigations still go to `/v7/...` URLs (account, logout → `/v7?intro=1`, restart → `/v7/?reset=1`), which is fine. v6 stays reachable at `/v6`. The legacy root `index.html` (v3 landing) was deleted on 2026-08-20; static-file precedence would otherwise beat the rewrite.
+- Both hostnames serve the same deploy. The root is a rewrite in `vercel.json` (not a Vercel-dashboard setting): **`"/" → "/v7/index.html"` since 2026-09-28** (was `/v6/index.html` from 2026-08-20), so either URL at the root lands on the v7 onboarding. v7's page only uses absolute `/v7/...` paths, so it works served at `/`; its own navigations still go to `/v7/...` URLs (account, logout → `/v7?intro=1`, restart → `/v7/?reset=1`), which is fine. `/v6` and the other old versions are redirected to `/` since 2026-10-24 (§ KEY MECHANISMS → "Who can call what"). The legacy root `index.html` (v3 landing) was deleted on 2026-08-20; static-file precedence would otherwise beat the rewrite.
 - Origin guard + magic-link redirect allowlist covers both plus this project's Vercel preview URLs (`sonic-brand-*.vercel.app`).
 
 **Repo:** https://github.com/michaelavs-1/sonic-brand
@@ -39,7 +39,7 @@ AI-powered Spotify playlist builder for physical businesses (cafés, bars, resta
 
 ## V6 (REFERENCE — SEE docs/v6-reference.md)
 
-v6 is reachable at `/v6` but has no accounts and no daily cron (see the version table). Its documentation moved to **[docs/v6-reference.md](docs/v6-reference.md)** on 2026-10-03, unchanged, to keep this file focused on v7. It covers:
+v6's pages aren't served since 2026-10-24, and it has no accounts and no daily cron (see the version table). Its documentation moved to **[docs/v6-reference.md](docs/v6-reference.md)** on 2026-10-03, unchanged, to keep this file focused on v7. It covers:
 - the v6 onboarding pipeline, account dashboard, direction-edit chat, Profile tab and signup;
 - v6-only mechanisms: the onboarding state machine, prefetching, the progressive swipe deck, the scrubbable playback bar, the v6 musical-directions and Round 2 prompts, and the v6 daily cron;
 - the legacy `auth.users.raw_user_meta_data.sonic` blob, the `v6/` file subtree, and the 2026-08-01 / 2026-08-02 session summaries.
@@ -58,7 +58,7 @@ v6 is reachable at `/v6` but has no accounts and no daily cron (see the version 
 
 ## V7 ARCHITECTURE (runtime built + live-verified 2026-09-23)
 
-v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoints, signup, taste-profile bucketing, two daily-playlist delivery modes, and its own daily cron). It was built and live-end-to-end-verified on 2026-09-23 against `vercel dev` → prod Supabase. v6 is untouched and reachable at `/v6`; v7 is reached at `/v7` and, since 2026-09-28, at the site root `/`. The version split is enforced by `businesses.version` ('v6' default, 'v7' stamped at v7 signup): v6's daily cron is now shut off and v7's targets only `version='v7'` businesses (see § VERCEL DEPLOYMENT and the v7 cron mechanism). Ami still tunes the R1 prompt via the Ami dashboard (imports v7's prompt + ai-provider since 2026-09-23). A short list of intentionally-deferred decisions remains — see § OPEN QUESTIONS FOR V7 PIPELINE BUILD.
+v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoints, signup, taste-profile bucketing, two daily-playlist delivery modes, and its own daily cron). It was built and live-end-to-end-verified on 2026-09-23 against `vercel dev` → prod Supabase. v6's code is untouched but its pages aren't served (since 2026-10-24); v7 is reached at `/v7` and, since 2026-09-28, at the site root `/`. The version split is enforced by `businesses.version` ('v6' default, 'v7' stamped at v7 signup): v6's daily cron is now shut off and v7's targets only `version='v7'` businesses (see § VERCEL DEPLOYMENT and the v7 cron mechanism). Ami still tunes the R1 prompt via the Ami dashboard (imports v7's prompt + ai-provider since 2026-09-23). A short list of intentionally-deferred decisions remains — see § OPEN QUESTIONS FOR V7 PIPELINE BUILD.
 
 ### Design shift from v6
 
@@ -188,7 +188,7 @@ Hard schema invariant: every one of the 139 canonical genres must land in EXACTL
 
 ### Prompt stack
 
-All five v7 prompts (R1, R2, taste profile, Option-1 energy directions, Option-2 level directions) route through **`v7/generation/ai-provider.js`** — same shape as v6's (`PROVIDER='gemini' | 'anthropic'`, model `gemini-3.6-flash`, thinking `high`) but INDEPENDENT. Flipping v6's PROVIDER doesn't touch v7. Ami's dashboard (which imports from v7's ai-provider since 2026-09-23) follows v7's switch.
+All five v7 prompts (R1, R2, taste profile, Option-1 energy directions, Option-2 level directions) route through **`v7/generation/ai-provider.js`** — same shape as v6's (model `gemini-3.6-flash`, thinking `high`) but INDEPENDENT: changing v6's settings doesn't touch v7. Gemini is the only provider since 2026-10-24 (the Anthropic path and `/api/v5/anthropic` were removed); `PROVIDER` stays as a label. Ami's dashboard (which imports from v7's ai-provider since 2026-09-23) follows v7's settings.
 
 `gemini_call_log.label` values in use:
 - v6: `onboarding` (R1), `onboarding-refined` (R2), plus post-signup labels for event chat / direction-edit chat / preview-direction.
@@ -495,7 +495,7 @@ The Home tab's chat for the DAILY music. It replaced the dormant v6 "חידוד�
 
 ```
 sonic-brand/
-├── v6/                                     ← Legacy v6 UI (reachable at /v6, no accounts). Full subtree in docs/v6-reference.md.
+├── v6/                                     ← Legacy v6 UI (not served since 2026-10-24, no accounts). Full subtree in docs/v6-reference.md.
 ├── v7/                                     ← BUILT + LIVE-VERIFIED. Parallel runtime; served at `/` since 2026-09-28.
 │   ├── index.html                          ← Onboarding shell + v7 CSS
 │   ├── app.js                              ← Onboarding orchestrator: desc→places→atmospheres→emphases→hours
@@ -514,8 +514,9 @@ sonic-brand/
 │   │                                          waitNodes(text) turn every "…" / "..." into the animation and "
 " into <br>;
 │   │                                          WAIT_DOTS_HTML for innerHTML templates. Placeholders keep a plain "…".
-│   ├── test-timeline/index.html            ← SANDBOX (not linked from the app; /v7/test-timeline, served — ES-module
-│   │                                          imports don't load from file://). Runs the SAME editor + model as the
+│   ├── test-timeline/index.html            ← SANDBOX (not linked from the app; /v7/test-timeline). Redirected to / since
+│   │                                          2026-10-24, locally too: to use it, remove its two lines from vercel.json's
+│   │                                          "redirects" for the session (ES-module imports don't load from file://). Runs the SAME editor + model as the
 │   │                                          account (imports both), so it can't drift. Dev panel: sample hours
 │   │                                          (switching runs the real keep-clock-times reconciliation), N, time
 │   │                                          direction, 15-min "translation to playlist" strip, stored JSON.
@@ -755,7 +756,6 @@ sonic-brand/
 │   │                                          fallback) + buildOption1Batch / buildOption2Batch. Reuses v6
 │   │                                          _daily-builder primitives; v7 directions carry id:null + bpm_range{0,300}.
 │   ├── v5/
-│   │   ├── anthropic.js                    ← Anthropic Messages API proxy (uses ANTHROPIC_KEY)
 │   │   ├── anchor-tracks.js                ← Per-direction random preview track (BPM+popularity filter + inst_pref)
 │   │   ├── direction-tracks.js             ← Bulk fetch tracks matching genres + BPM + popularity + inst_pref
 │   │   ├── databox-atmospheres.js          ← Reads Supabase atmospheres table (NO CACHE — see optimization notes)
@@ -1045,11 +1045,10 @@ handler:
 
 ```js
 import { guard } from '../v6/ratelimit.js';
-if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
+if (!await guard(req, res, 'gemini', 20, 60)) return; // 20/min per IP
 ```
 
 **Current guards** (bucket name / limit / window seconds):
-- `/api/v5/anthropic` — 10/min (server-only since 2026-10-24, so in practice internal and never limited)
 - `/api/v6/gemini` — 20/min, plus the browser caps and the $20 daily ceiling (see "Who can call what")
 - `/api/v6/transcribe` — 10 per 10 min (was 20/min until 2026-10-24); `/api/v6/place-lookup` — 20/hour (was 20/min)
 - `/api/v5/anchor-tracks`, `direction-tracks`, `databox-atmospheres` — 60/min
@@ -1093,14 +1092,15 @@ double-prefix; mirror to `.env.local` for `vercel dev`):
 ### Who can call what (pre-pilot audit, 2026-10-24)
 
 The Origin check (`requireSite` / `requireSiteOrInternal` in `api/v6/origin-guard.js`) only stops casual abuse: curl can send any Origin. Anything that costs money or writes shared data needs a real key, a cap, or both. What the audit changed:
-- **Server-only** (`x-sonic-internal`, `requireInternal`): `/api/new/spotify` WRITE actions (create / add / replace / update / unfollow; reads stay site-or-internal), both RapidAPI proxies (`/api/v4/track-analysis`, `/api/new/track-analysis`), `/api/v5/anthropic`. Before, a visitor could empty or rename any customer playlist on Rubin's account, trip Spotify's quota pause for everyone, burn the monthly RapidAPI plan, or use Claude for free. The v4–v6 browser playlist builders can no longer create playlists (legacy; v7 builds on the server).
+- **Server-only** (`x-sonic-internal`, `requireInternal`): `/api/new/spotify` WRITE actions (create / add / replace / update / unfollow; reads stay site-or-internal), both RapidAPI proxies (`/api/v4/track-analysis`, `/api/new/track-analysis`). Before, a visitor could empty or rename any customer playlist on Rubin's account, trip Spotify's quota pause for everyone, or burn the monthly RapidAPI plan. The v4–v6 browser playlist builders can no longer create playlists (legacy; v7 builds on the server).
 - **Admin key** (`INTERNAL_ADMIN_API_KEY`): every `/api/v4/ami-*` endpoint (`api/v4/_ami-auth.js`; the internal key also passes, `ami-cron-tick` also takes `CRON_SECRET`) and POST `/api/v7/ami/test-playlist`. They had no check at all: anyone could delete catalog playlists and tracks. Ami's two dashboards send the key he enters once (see § AMI'S DASHBOARD).
 - **Spotify ids** are checked (22 base62 characters) before going into a URL path, in both Spotify proxies. A bad `playlist_id` answers Spotify's own "400 Invalid base62 id", which the expire cron treats as already gone.
 - **Gemini browser calls** (`/api/v6/gemini` without the internal key) are capped: output 32,768 tokens (the biggest real call used 14,884, thinking included), prompt 150,000 characters (system + user + history) → 413 `prompt_too_large`, and a **$20 daily ceiling** on their combined cost (`api/v6/_gemini-ceiling.js`, Redis key `gemini:browser-spend:<IL date>`, fail-open) → 429 `daily_limit` until midnight Israel time. An email goes out at $10 and at $20. A normal day is ~$0.30. Server calls are never capped or counted. The real fix, moving the five onboarding / playlist-type prompts to the server, is still open (§ OPEN QUESTIONS).
 - **Transcription** refuses audio over 3 MB (onboarding's recorder stops at 60s, ~1 MB) → 413.
 - **Origin allowlist** pinned to this project: `sonic-brand.vercel.app` + `sonic-brand-<9-char hash>-michaelavs-1s-projects.vercel.app` / `sonic-brand-git-<branch>-…` previews. localhost / 127.0.0.1 pass only outside production (`VERCEL_ENV`).
-- **Removed:** `api/v4/openai.js` (dead: it read the OpenAI key with the anon key, which RLS blocks).
+- **Removed:** `api/v4/openai.js` (dead: it read the OpenAI key with the anon key, which RLS blocks) and `api/v5/anthropic.js` (a free Claude for anyone; nothing used it since the switch to Gemini), with the Anthropic branches of both ai-providers and both event-playlist endpoints.
 - **Database** (migration [`2026-10-24-lock-down-businesses-and-functions.sql`](v5/precompute/migrations/2026-10-24-lock-down-businesses-and-functions.sql)): owners may UPDATE only `businesses.onboarding_expanded` (the `own_business` policy is FOR ALL, and they used to hold every table privilege, so they could un-cancel their subscription, set `paid_at`, insert or delete businesses). The server-only functions (`v7_timeline_pool`, `v7_track_genres`, `v6_direction_tracks_recent`, the scan-control ones) lost PUBLIC / anon / authenticated EXECUTE. A DROP + CREATE of one of them resets that: re-run the migration's block.
+- **Old version pages:** `/v2`–`/v6` and `/v7/test-timeline` redirect to `/` (vercel.json "redirects"), except `/v4/ami`. Ami's prompt dashboard needs the admin key for the page and all its files (`middleware.js`, HTTP Basic auth). See § VERCEL DEPLOYMENT. The old versions' API endpoints are still deployed: the ones only their pages used are a follow-up (§ OPEN QUESTIONS).
 - **Static files:** `.vercelignore` keeps CLAUDE.md, `docs/`, `scripts/`, the prompt histories, `v4/precompute/`, `v5/precompute/` and the rest of the tooling off the site (until 2026-10-24 they were all public). It also repeats every `.gitignore` entry. Before adding a folder, check nothing under `api/` imports from it (`lib/` stays: `api/v4/ami-scan.js` uses it).
 - **Browser:** v7 pages print nothing to the console (see § V7 ARCHITECTURE), and owners see only Hebrew error text: the onboarding error screen no longer shows the model's English reasoning or raw errors.
 - **Known, not changed** (decided 2026-10-24): accounts are free and open to anyone in Production while payments are off; the shared password on accounts created before 2026-09-29; the catalog tables are anon-readable; shipped code comments name the team; some v7 endpoints return raw database error text on failures (no secrets).
@@ -1476,13 +1476,13 @@ Belt-and-suspenders. `pgrRequest` catches errors whose message contains `"57014"
 
 | Feature | Model | Where selected | Rationale |
 |---|---|---|---|
-| v6 Musical directions (main flow) | `gemini-3.6-flash`, thinking=high | `v6/generation/ai-provider.js` `PROVIDER='gemini'` | Faster + cheaper than Sonnet at comparable quality once thinking=high is set; better JSON compliance with `responseMimeType`. Flip `PROVIDER` back to `'anthropic'` in that one file to revert. |
+| v6 Musical directions (main flow) | `gemini-3.6-flash`, thinking=high | `v6/generation/ai-provider.js` `PROVIDER='gemini'` | Faster + cheaper than Sonnet at comparable quality once thinking=high is set; better JSON compliance with `responseMimeType`. The Anthropic path was removed on 2026-10-24; going back would mean restoring `api/v5/anthropic.js` and the `callAnthropic` branch from git history. |
 | v7 Musical directions (R1 + R2 + taste-profile + energy-directions + level-directions) | `gemini-3.6-flash`, thinking=high | `v7/generation/ai-provider.js` `PROVIDER='gemini'` | INDEPENDENT of v6's switch. Same values today but decoupled — flipping v6's PROVIDER does not affect v7 or Ami's dashboard (which imports v7's ai-provider since 2026-09-23). Labels for `gemini_call_log`: `v7-onboarding`, `v7-onboarding-refined`, `v7-taste-profile`, `v7-energy-directions`, `v7-level-directions`. |
 | Event chat (special-events dashboard) | `gemini-3.6-flash`, thinking=low | hardcoded in `api/v6/account/event-chat.js` (v6) and `api/v7/account/event-chat.js` (v7) | Multi-turn JSON, low latency for a chat feel. Prompts in `v6/generation/event-chat-prompt.js` / `v7/generation/event-chat-prompt.js`. |
 | v7 taste chat ("הטעם המוזיקלי שלכם") | `gemini-3.6-flash`, thinking=medium, max_tokens=12000 | hardcoded in `api/v7/account/taste-chat.js` (label `v7-taste-chat`) | Medium, not low: the chat places genres by the coherence rules and works out what dominates, which low thinking did poorly in v6's chat. Prompt in `v7/generation/taste-chat-prompt.js`. |
 | Direction-edit chat (profile-tab) | `gemini-3.6-flash`, thinking=low, max_tokens=3000 | hardcoded in `api/v6/account/direction-chat.js` | Same rationale as event chat — multi-turn JSON, low latency. Prompt in `v6/generation/direction-edit-chat-prompt.js`. Kept distinct from the ai-provider switch used for musical directions. |
 | Event playlist genre+BPM extraction | `gemini-3.6-flash`, thinking=high | v6: `v6/generation/ai-provider.js` constants (`api/v6/account/event-playlist.js`); v7: `v7/generation/ai-provider.js` constants (`api/v7/account/event-playlist.js`, label `v7-event-playlist`) | One-shot classify. Was documented as Claude Haiku, but the code follows the ai-provider switch (corrected 2026-10-03). |
-| Voice transcription | Whisper (`whisper-1`) via OpenAI | `api/v6/transcribe.js` | No good Anthropic ASR yet. Uses `OPENAI_API_KEY` env var only — the legacy `app_settings.openai_key` fallback was removed during the 2026-08-14 security audit. |
+| Voice transcription | Whisper (`whisper-1`) via OpenAI | `api/v6/transcribe.js` | No good Anthropic ASR yet. Vercel has no `OPENAI_API_KEY`, so it reads `app_settings.openai_key` with the service key (see ENVIRONMENT VARIABLES). |
 | Rubin's Spotify writes | (not a model — Rubin's OAuth user token) | `api/new/spotify.js` | Single grandfathered Rubin app; token refreshed lazily. |
 
 ### Historical benchmarks
@@ -1522,7 +1522,7 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
 - `ami-cron-tick.js` — **cron schedule REMOVED from `vercel.json` on 2026-08-13**. Endpoint file kept so the batch worker can be revived, but no longer runs hourly. Was the driver for the RapidAPI-based track analysis pipeline; when we stopped needing it, keeping the hourly tick just consumed function invocations and served no purpose. Re-add `{"path": "/api/v4/ami-cron-tick", "schedule": "* * * * *"}` to `vercel.json crons` to bring it back.
 - `ami-sync-usage.js`, `ami-reorder.js` — housekeeping
 
-Ami also has a separate **prompt-tuning dashboard** at `/v5/ami-prompt-dashboard/`.
+Ami also has a separate **prompt-tuning dashboard** at `/v5/ami-prompt-dashboard/`. Since 2026-10-24 the whole folder is behind the admin key (`middleware.js`): the browser shows its own login box, any username, the key as the password. That's separate from the in-page `ami-admin-key` entry the taste-chat tab and test playlists use, so Ami enters the key twice.
 Since 2026-09-23 it imports `EDITABLE_PROMPT_SECTION` + `assembleSystemPrompt`
 from **`/v7/generation/musical-directions.js`** (was v5) and `callModel` +
 `PROVIDER` from **`/v7/generation/ai-provider.js`** (was v6). It lets Ami edit
@@ -1725,7 +1725,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 | Variable | Used by | Notes |
 |---|---|---|
-| `ANTHROPIC_KEY` | `api/v5/anthropic.js` (the event-playlist endpoints reach it only if an ai-provider is switched to Anthropic) | Sonnet 4.6. Anthropic path is on standby; Gemini is production. |
+| `ANTHROPIC_KEY` | Nothing on the site since 2026-10-24 (`api/v5/anthropic.js` removed). Only `scripts/benchmark-directions.mjs` reads it, from `.env.local`. | Delete it from Vercel. |
 | `GEMINI_API_KEY` | `api/v6/gemini.js` | Google `x-goog-api-key`. Powers musical directions + event chat. |
 | `OPENAI_API_KEY` | `api/v6/transcribe.js` | Not set in Vercel (checked 2026-10-24): transcription falls back to `app_settings.openai_key`, read with the service key (RLS blocks the anon key). |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Michael's app for CC reads | Hardcoded copy of client_id in v3/app.js for legacy OAuth |
@@ -1772,7 +1772,7 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 **Prod deploys are MANUAL:** `vercel --prod`. Pushing to `main` does NOT auto-deploy.
 
 `vercel.json` configures:
-- Function `maxDuration` per endpoint (30s default; 10–15s for small writes such as toggle-super-like, log-playlist-open, place-lookup and the v7 settings saves; 60s for anthropic + transcribe + v6 event-playlist + expand-playlist + the v6 chat / apply endpoints + v7 event-chat + `api/v7/ami/test-playlist.js`; 120s for `api/v7/account/event-playlist.js` (a build measured 42s on 2026-10-03) and `api/v7/account/taste-chat.js` (a medium-thinking Gemini turn + Spotify lookups); 30s for `taste-apply.js`; 60s for `taste-portrait.js` (one low-thinking Gemini call, 2026-10-21) and `energy-nudge.js` (one playlist's songs swapped); 15s for v7 save-event / delete-event; 300s for the cron entrypoints, both generate-daily endpoints, every `api/internal/*.js` (one glob entry; `daily-picks.js`'s `rebuild_today` builds today's playlists), and **`/api/v6/gemini`** — raised from 60s on 2026-09-24 because v7's taste-profile call generates ~8.6k–13k tokens (mostly thinking) at ~150 tok/s ≈ 57–88s, over the old limit. The proxy is shared by v6 and v7; the higher ceiling doesn't change normal calls)
+- Function `maxDuration` per endpoint (30s default; 10–15s for small writes such as toggle-super-like, log-playlist-open, place-lookup and the v7 settings saves; 60s for transcribe + v6 event-playlist + expand-playlist + the v6 chat / apply endpoints + v7 event-chat + `api/v7/ami/test-playlist.js`; 120s for `api/v7/account/event-playlist.js` (a build measured 42s on 2026-10-03) and `api/v7/account/taste-chat.js` (a medium-thinking Gemini turn + Spotify lookups); 30s for `taste-apply.js`; 60s for `taste-portrait.js` (one low-thinking Gemini call, 2026-10-21) and `energy-nudge.js` (one playlist's songs swapped); 15s for v7 save-event / delete-event; 300s for the cron entrypoints, both generate-daily endpoints, every `api/internal/*.js` (one glob entry; `daily-picks.js`'s `rebuild_today` builds today's playlists), and **`/api/v6/gemini`** — raised from 60s on 2026-09-24 because v7's taste-profile call generates ~8.6k–13k tokens (mostly thinking) at ~150 tok/s ≈ 57–88s, over the old limit. The proxy is shared by v6 and v7; the higher ceiling doesn't change normal calls)
 - **Cron schedule (two hourly crons, deliberately staggered)** — cut over to v7 on 2026-09-23:
   - `/api/cron/v7-generate-daily` at `0 * * * *` — the LIVE per-business daily playlist builder. Targets `version='v7'` businesses only; branches option1/option2 (see the v7 daily runtime mechanism in § V7 ARCHITECTURE).
   - `/api/cron/expire-playlists` at `30 * * * *` — sweeps expired ledger rows (rename + empty + unfollow on Rubin). Version-agnostic — sweeps both v6 and v7. Moved off `:00` on 2026-08-29 as part of the resilience layer so it can't overlap top-of-hour daily-gen writes.
@@ -1780,7 +1780,9 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
   - `/api/v4/ami-cron-tick` was **removed** from the cron schedule on 2026-08-13. Endpoint file still exists so it can be revived, but nothing schedules it now.
 - Cache headers: `no-cache` for `/` + `/index.html` + all `/vX/*` paths
 - Security headers (global): `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options: SAMEORIGIN`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy: geolocation=(), microphone=(self), camera=()` — added during the 2026-08-22 security audit
-- Rewrites: `/` → `/v7/index.html` (since 2026-09-28; was `/v6/index.html` from 2026-08-20, which replaced the deleted legacy root index.html), plus per-version paths `/v6`, `/v6/account`, `/v5`, `/v5/ami-prompt-dashboard`, `/v4`, `/v4/ami`, etc.
+- Rewrites: `/` → `/v7/index.html` (since 2026-09-28; was `/v6/index.html` from 2026-08-20, which replaced the deleted legacy root index.html), plus `/v7`, `/v7/account`, `/v4/ami`, `/v5/ami-prompt-dashboard`.
+- Redirects (2026-10-24): `/v2`, `/v3`, `/v4` (except `/v4/ami`), `/v5` (except `/v5/ami-prompt-dashboard`), `/v6` and `/v7/test-timeline`, with everything under them, go to `/`. Redirects run before static files, so they cover each version's scripts too. Each version needs two rules, the bare path and `/<path>/(.*)`: `:path*` misses a bare trailing slash, which would serve the folder's index.html.
+- Routing Middleware (`middleware.js`, 2026-10-24): HTTP Basic auth with the admin key on `/v5/ami-prompt-dashboard` and everything under it; nothing else invokes it.
 
 ### Cache busting
 
@@ -1843,9 +1845,10 @@ There is no cross-file drift to check anymore. Historical (pre-2026-09-23) conte
 
 ## COMMON TASKS
 
-### Run v6 locally
+### Run v7 locally
 1. `vercel dev` (reads cloud env)
-2. Open `http://127.0.0.1:3000/v6` (the root `/` serves v7 since 2026-09-28).
+2. Open `http://127.0.0.1:3000/` (v7). Old version pages redirect to `/` here too since 2026-10-24; to look at one, remove its lines from vercel.json's "redirects" for the session.
+3. Stopping it: Ctrl+C. A `vercel dev` started in the background can outlive its terminal and keep the port; `Get-NetTCPConnection -LocalPort 3000 -State Listen` shows the process to stop.
 
 ### Run the integration tests (Supabase-live, cleans up after itself)
 Same PowerShell env-load pattern as the purge scripts, then:
@@ -1888,7 +1891,7 @@ Supabase Dashboard → SQL Editor:
 DELETE FROM public.businesses WHERE owner_id = (SELECT id FROM auth.users WHERE email = 'test@you.com');
 DELETE FROM auth.users WHERE email = 'test@you.com';
 ```
-Also visit `/v6/?reset=1` to wipe the localStorage session (v7 onboarding + account apps honor `?reset=1` too — clears all `sb-*` keys).
+Also visit `/v7/?reset=1` to wipe the localStorage session (the v7 onboarding + account apps honor `?reset=1`: they clear all `sb-*` keys).
 
 ### Benchmark OpenAI vs Anthropic
 ```powershell
@@ -2016,6 +2019,10 @@ Onboarding (Round 1, Round 2, taste profile) and the playlist-type step (Option 
 - **Needs a full retest:** onboarding (both rounds, taste profile, signup), both playlist-type gates, Ami's dashboard. Deferred on 2026-10-24 so the pilot's day-one path wasn't rewritten the night before.
 - The new endpoint stays anonymous (onboarding happens before login), so the daily ceiling stays too.
 - Also deferred: v7 endpoints returning raw database error text on failures (`res.status(500).json({ error: e.message })`, ~20 places) — return a plain Hebrew error and keep the detail in Vercel's logs; validate the business id format before the ownership check.
+
+### OPEN — retire the API endpoints only the old pages used (2026-10-24)
+
+The old version pages stopped being served on 2026-10-24, but their endpoints are still deployed. Most are still used by v7 (the Gemini proxy, transcription, Places, v6's account endpoints that v7 calls) or need a login. A few served only the old pages; v6's `signup.js`, for example, still creates a v6 account if called directly (it gets no playlists). Retiring them needs each endpoint's callers mapped first (v7 browser code, v7 server code, crons, scripts, Ami's dashboards).
 
 ### `conditional_genres` bucket — DATA ONLY for v7 launch
 

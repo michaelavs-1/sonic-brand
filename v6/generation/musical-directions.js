@@ -9,7 +9,7 @@
 // while the user is listening to page-1 tracks, so the second page appears
 // instantly.
 //
-// Provider (Anthropic vs Gemini) is selected in ai-provider.js.
+// Model settings live in ai-provider.js (Gemini only since 2026-10-24).
 //
 // Success return:
 //   { directions:   [4 objects, ranks 1-4],
@@ -450,15 +450,12 @@ function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, plac
   return base;
 }
 
-// Provider-agnostic call. Caching is on: system prompt is stable across
-// users, so on Anthropic the ~2400-token prefix is served from the ephemeral
-// cache after the first call. No-op on Gemini.
+// One model call (Gemini, via ai-provider.js).
 async function callDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections, label, onboardingSessionId }) {
   const { text } = await callModel({
     system: SYSTEM_PROMPT,
     userMessage: buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, subset, priorDirections }),
     maxTokens: MAX_TOKENS,
-    cache: true,
     label,
     onboardingSessionId,
   });

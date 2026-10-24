@@ -42,9 +42,6 @@
     "api/v6/place-lookup.js": {
       "maxDuration": 15
     },
-    "api/v6/account/signup.js": {
-      "maxDuration": 30
-    },
     "api/v6/account/event-playlist.js": {
       "maxDuration": 60
     },

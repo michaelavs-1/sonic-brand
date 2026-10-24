@@ -80,7 +80,7 @@ import { pgrSelect, pgrUpsert, pgrPatch } from '../../v5/supabase-client.js';
 import { requireSite, isAllowedHost, setCors } from '../../v6/origin-guard.js';
 import { guard } from '../../v6/ratelimit.js';
 import { tasteProfileRow, upsertTasteProfileRow, isUsableTasteProfile } from './_taste-profile.js';
-import { PAYMENTS_ENABLED } from '../payment/_hyp.js';
+import { PAYMENTS_ENABLED, hypEnv } from '../payment/_hyp.js';
 import {
   adminHeaders, findUserByEmail, businessIdsOf, isVerified,
   createUser, setPassword, deleteUser,
@@ -252,16 +252,32 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // The Hyp payment that entitles this signup (see api/v7/payment/). It must be
 // paid; the first signup claims it (business_id), and after that only the
 // same email may reuse it — the check-email screen's resend re-posts it.
+// A payment opens one account, ever (2026-10-25): business_id is ON DELETE
+// SET NULL, so a deleted business used to leave its payment claimable again.
+// The database stamps claimed_at on the first link and keeps it (migration
+// 2026-10-25-payment-checkouts-claimed-at.sql). Until that runs, the checkout
+// is read without it and the reuse check is skipped.
+const CHECKOUT_COLS = 'id,order_no,status,email,business_id,claimed_at,paid_at,amount_first,amount_monthly,coupon_code,billing,hyp_env,hyp_hk_id';
 async function loadPaidCheckout(checkoutId, email) {
   const noPayment = { status: 402, error: 'לא מצאנו תשלום עבור ההרשמה הזו.' };
+  const used = { status: 409, error: 'התשלום הזה כבר שימש להרשמה אחרת.' };
   if (!UUID_RE.test(String(checkoutId || ''))) return noPayment;
-  const rows = await pgrSelect('payment_checkouts', { id: `eq.${checkoutId}` },
-    { select: 'id,order_no,status,email,business_id,paid_at,amount_first,amount_monthly,coupon_code,billing,hyp_env,hyp_hk_id', limit: 1, useService: true });
+  const read = (select) => pgrSelect('payment_checkouts', { id: `eq.${checkoutId}` },
+    { select, limit: 1, useService: true });
+  let rows;
+  try { rows = await read(CHECKOUT_COLS); }
+  catch (e) {
+    if (!/claimed_at/.test(e?.message || '')) throw e;
+    rows = await read(CHECKOUT_COLS.replace(',claimed_at', ''));
+  }
   const checkout = Array.isArray(rows) ? rows[0] : null;
   if (!checkout || checkout.status !== 'paid') return noPayment;
-  if (checkout.business_id && checkout.email !== email) {
-    return { status: 409, error: 'התשלום הזה כבר שימש להרשמה אחרת.' };
-  }
+  // Only a payment on the terminal this deployment charges on: a test-terminal
+  // payment (no real money) can't open a production account.
+  if (checkout.hyp_env !== hypEnv()) return noPayment;
+  if (checkout.business_id && checkout.email !== email) return used;
+  // Claimed before, by a business that has since been deleted.
+  if (!checkout.business_id && checkout.claimed_at) return used;
   return { checkout };
 }
 

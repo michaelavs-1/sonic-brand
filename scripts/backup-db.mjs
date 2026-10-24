@@ -69,6 +69,16 @@ const TABLES = [
   'business_taste_profiles',
   'business_v7_settings',
   'business_v7_directions',
+  // added 2026-10-24 (before deleting every account): the later v7 tables
+  'business_v7_level_directions',
+  'business_allowed_tracks',
+  'business_taste_changes',     // after business_direction_chats (message_id)
+  'business_taste_portraits',   // after business_direction_chats (message_id)
+  'business_v7_daily_picks',
+  'v7_daily_build_log',
+  'admin_actions',
+  'payment_coupons',            // before payment_checkouts (coupon_code)
+  'payment_checkouts',
 ];
 
 const PAGE = 1000;

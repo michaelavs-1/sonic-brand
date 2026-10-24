@@ -39,6 +39,7 @@ import {
     diffBiztypeGenres,
     applyBiztypeGenresDiff,
 } from '../../lib/apply-biztype-genres.js';
+import { requireAmi } from './_ami-auth.js';
 
 const norm = (s) => String(s || '').trim().toLowerCase();
 
@@ -273,6 +274,7 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
+    if (!requireAmi(req, res)) return;
     if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
 
     try {

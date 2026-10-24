@@ -2,15 +2,17 @@
    Anthropic Messages API proxy for the v5 pipeline.
    Key source: process.env.ANTHROPIC_KEY. No body-supplied keys.
 
-   Auth: requireSiteOrInternal — browsers on our site OR server-to-server
-   callers carrying `x-sonic-internal: INTERNAL_API_KEY`. Anonymous internet
-   traffic hits 403, so ANTHROPIC_KEY spend can only be caused by our own code.
+   Auth: server-only (`x-sonic-internal: INTERNAL_API_KEY`) since 2026-10-24.
+   It accepted browser calls before, and the Origin check is trivial to fake,
+   so anyone could use it as a free Claude. No browser code calls it while
+   the ai-provider switches point at Gemini; flipping one back to Anthropic
+   needs a browser path here first.
 
    Model + max_tokens are locked down server-side to prevent a compromised
    browser from asking for gpt-scale outputs on our dime.
 */
 
-import { requireSiteOrInternal, setCors } from '../v6/origin-guard.js';
+import { requireInternal, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
 
 const ALLOWED_MODELS = new Set([
@@ -26,7 +28,7 @@ export default async function handler(req, res) {
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
-  if (!requireSiteOrInternal(req, res)) return;
+  if (!requireInternal(req, res)) return;
   if (!await guard(req, res, 'anthropic', 10, 60)) return;
 
   const key = process.env.ANTHROPIC_KEY;

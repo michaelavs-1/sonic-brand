@@ -11,11 +11,22 @@ const ALLOWED_HOST_RE = /(^|\.)(sonic-brand\.com|robin-music\.com)$/i;
 // Vercel deploy allowlist. Restricted to *this* project so that a random
 // attacker's `attackerapp.vercel.app` doesn't pass — only the prod alias
 // `sonic-brand.vercel.app` and this project's preview URLs
-// (`sonic-brand-<hash>-<team>.vercel.app`) match.
+// (`sonic-brand-<9-char hash>-<team>.vercel.app`, branch previews
+// `sonic-brand-git-<branch>-<team>.vercel.app`) match. Pinned to the team
+// suffix since 2026-10-24: any `sonic-brand-*.vercel.app` used to pass, and
+// anyone can create a Vercel project named `sonic-brand-something`.
+const VERCEL_TEAM_SUFFIX = '-michaelavs-1s-projects.vercel.app';
+const PREVIEW_RE = /^sonic-brand-(?:[a-z0-9]{9}|git-[a-z0-9-]+)$/;
 function isSonicBrandVercelHost(h) {
   if (h === 'sonic-brand.vercel.app') return true;
-  return h.startsWith('sonic-brand-') && h.endsWith('.vercel.app');
+  if (!h.endsWith(VERCEL_TEAM_SUFFIX)) return false;
+  return PREVIEW_RE.test(h.slice(0, -VERCEL_TEAM_SUFFIX.length));
 }
+
+// localhost / 127.0.0.1 count as ours only outside production (vercel dev,
+// local browser testing). In production they would let any page served from
+// a visitor's own machine pass the Origin check.
+const LOCAL_ALLOWED = process.env.VERCEL_ENV !== 'production';
 
 function hostOf(raw) {
   try { return new URL(raw).host.toLowerCase(); } catch { return ''; }
@@ -31,7 +42,7 @@ export function isAllowedHost(host) {
   const hostOnly = h.split(':')[0]; // strip ":port"
   if (ALLOWED_HOST_RE.test(hostOnly)) return true;
   if (isSonicBrandVercelHost(hostOnly)) return true;
-  return hostOnly === 'localhost' || hostOnly === '127.0.0.1';
+  return LOCAL_ALLOWED && (hostOnly === 'localhost' || hostOnly === '127.0.0.1');
 }
 
 // True when the request came from our own site. Origin can be spoofed
@@ -64,6 +75,25 @@ export function setCors(req, res) {
   }
 }
 
+// True when the request carries the server-to-server key
+// (`x-sonic-internal: INTERNAL_API_KEY`). False when the key isn't configured.
+export function isInternal(req) {
+  const key = process.env.INTERNAL_API_KEY;
+  return !!key && req.headers['x-sonic-internal'] === key;
+}
+
+// Server-only endpoints (Spotify writes, the RapidAPI and Anthropic proxies):
+// only our own functions may call them. Fail-CLOSED like requireSiteOrInternal.
+export function requireInternal(req, res) {
+  if (!process.env.INTERNAL_API_KEY) {
+    res.status(500).json({ error: 'server misconfigured' });
+    return false;
+  }
+  if (isInternal(req)) return true;
+  res.status(403).json({ error: 'forbidden' });
+  return false;
+}
+
 // Browser-only endpoints (explain / transcribe / openai): must come from the site.
 // Returns true when allowed; otherwise writes a 403 and returns false.
 export function requireSite(req, res) {
@@ -82,7 +112,7 @@ export function requireSiteOrInternal(req, res) {
   if (fromSite(req)) return true;
   const key = process.env.INTERNAL_API_KEY;
   if (!key) {
-    res.status(500).json({ error: 'server misconfigured: INTERNAL_API_KEY not set' });
+    res.status(500).json({ error: 'server misconfigured' });
     return false;
   }
   if (req.headers['x-sonic-internal'] === key) return true;

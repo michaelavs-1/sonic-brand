@@ -21,6 +21,7 @@
 */
 
 import { pgrSelect, pgrSelectIn, pgrUpsert, pgrInsert, pgrPatch, pgrRpc, pgrCount } from './supabase-client.js';
+import { requireAmi } from './_ami-auth.js';
 
 // Push a single line to scan_logs. Fire-and-forget style — we swallow errors
 // so a hiccup in the log write can't crash the whole cron tick. The dashboard
@@ -199,7 +200,7 @@ async function callTrackAnalysisWithRetries(req, spotifyId, playlistCtx = {}) {
     while (true) {
         const r = await fetch(sameOriginUrl(req, '/api/v4/track-analysis'), {
             method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-sonic-internal': process.env.INTERNAL_API_KEY || '' },
             body:    JSON.stringify({ action: 'analyze_track', spotify_id: spotifyId }),
         });
 
@@ -370,6 +371,9 @@ export default async function handler(req, res) {
     // Vercel Cron sends POST from the platform. Also accept GET for manual
     // curl testing during local dev.
     if (req.method === 'OPTIONS') return res.status(200).end();
+    // Vercel Cron's Authorization: Bearer CRON_SECRET, or Ami's admin key.
+    if (!(process.env.CRON_SECRET && req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`)
+        && !requireAmi(req, res)) return;
     if (req.method !== 'POST' && req.method !== 'GET') {
         return res.status(405).json({ error: 'Method not allowed' });
     }

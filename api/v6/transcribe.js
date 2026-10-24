@@ -6,7 +6,14 @@ import { guard } from './ratelimit.js';
 
    POST { audio_base64, mime }  →  { text }
    Requires OPENAI_API_KEY; returns 503 without it.
+
+   Capped since 2026-10-24 (the Origin check is trivial to fake, so this was
+   free Whisper for anyone): audio up to MAX_AUDIO_BYTES → 413, and 10 clips
+   per 10 minutes per IP. Onboarding's recorder stops itself at 60s, about
+   1 MB at browsers' default quality.
 */
+
+const MAX_AUDIO_BYTES = 3 * 1024 * 1024;
 
 export const config = { api: { bodyParser: { sizeLimit: '6mb' } } };
 
@@ -48,7 +55,7 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireSite(req, res)) return; // pilot: block off-site abuse
-  if (!await guard(req, res, 'transcribe', 20, 60)) return;
+  if (!await guard(req, res, 'transcribe', 10, 600)) return;
 
   try {
     const OPENAI_API_KEY = process.env.OPENAI_API_KEY || (await getKeyFromSupabase());
@@ -59,6 +66,7 @@ export default async function handler(req, res) {
 
     const buf = Buffer.from(audio_base64, 'base64');
     if (buf.length < 2000) return res.status(400).json({ error: 'audio too short' });
+    if (buf.length > MAX_AUDIO_BYTES) return res.status(413).json({ error: 'audio too long' });
 
     const fd = new FormData();
     fd.append('file', new Blob([buf], { type: mime || 'audio/webm' }), `clip.${extFor(mime)}`);

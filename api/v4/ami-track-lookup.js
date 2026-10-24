@@ -33,6 +33,7 @@
 import { pgrSelect } from './supabase-client.js';
 import { loadTrackGenres, isManualPlaylist } from './_track-genres.js';
 import { GENRES } from '../../shared/genre-universe.js';
+import { requireAmi } from './_ami-auth.js';
 
 // Spotify's mobile share button (iOS + Android) hands out short links like
 // https://open.spotify.com/s/{shortcode}. The shortcode is NOT a 22-char
@@ -89,6 +90,7 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
+    if (!requireAmi(req, res)) return;
     if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
 
     try {

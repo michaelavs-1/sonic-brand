@@ -1,4 +1,4 @@
-import { requireSiteOrInternal, setCors } from '../v6/origin-guard.js';
+import { requireSiteOrInternal, isInternal, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
 import { sendAlert } from '../_alert.js';
 
@@ -414,6 +414,22 @@ export default async function handler(req, res) {
       'create_playlist', 'add_tracks', 'update_playlist',
       'replace_tracks', 'unfollow_playlist',
     ]);
+    // Writes act on Rubin's account, where every customer's playlists live,
+    // so only our own functions may make them (2026-10-24). They used to pass
+    // the Origin check, which anyone can fake: a visitor could empty, rename
+    // or unfollow any playlist, or trip Spotify's quota pause for everyone.
+    if (WRITE_ACTIONS.has(action) && !isInternal(req)) {
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    // Spotify ids are 22 base62 characters. Checked before the id goes into a
+    // URL path, so a crafted value can't reach another Spotify endpoint. The
+    // message keeps Spotify's own wording: the expire cron treats "400 …
+    // Invalid base62 id" as an already-gone playlist (_expire-playlist.js).
+    const { playlist_id } = req.body || {};
+    if (playlist_id !== undefined && !/^[A-Za-z0-9]{22}$/.test(String(playlist_id))) {
+      return res.status(400).json({ error: { status: 400, message: 'Invalid base62 id' } });
+    }
+
     if (SPOTIFY_WRITES_DISABLED && WRITE_ACTIONS.has(action)) {
       console.warn(`[spotify] WRITE BLOCKED (SPOTIFY_WRITES_DISABLED constant): ${action}`);
       return res.status(503).json({

@@ -14,6 +14,20 @@
 const API = '/api/v7/ami/test-playlist';
 const WAIT_MS = 20000;
 
+// Building needs the admin key (2026-10-24). Same localStorage entry as the
+// taste chat tab ('ami-admin-key'); asked for here if it isn't there yet.
+const KEY_STORE = 'ami-admin-key';
+function adminKey({ ask }) {
+  let k = '';
+  try { k = localStorage.getItem(KEY_STORE) || ''; } catch { /* private mode */ }
+  if (!k && ask) {
+    k = (window.prompt('מפתח הניהול (נשמר בדפדפן הזה):') || '').trim();
+    if (k) { try { localStorage.setItem(KEY_STORE, k); } catch { /* private mode */ } }
+  }
+  return k;
+}
+function forgetAdminKey() { try { localStorage.removeItem(KEY_STORE); } catch { /* private mode */ } }
+
 const CRON_NAMES_HE = {
   'v7-daily': 'הבנייה היומית של הפלייליסטים ללקוחות',
   expire:     'ניקוי הפלייליסטים שפג תוקפם',
@@ -76,14 +90,23 @@ async function build(payload, report) {
     report('בונים את הפלייליסט…', '');
     let r, data;
     try {
-      r = await fetch(API, {
+      const post = () => fetch(API, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminKey({ ask: true })}` },
         body: JSON.stringify(payload),
       });
+      r = await post();
+      if (r.status === 401 || r.status === 403) {   // no key, or a wrong one: ask once more
+        forgetAdminKey();
+        r = await post();
+      }
       data = await r.json().catch(() => ({}));
     } catch (e) {
       return { status: 0, data: { error: e.message || 'network error' } };
+    }
+    if (r.status === 401 || r.status === 403) {
+      forgetAdminKey();
+      return { status: r.status, data: { error: 'צריך את מפתח הניהול כדי לבנות פלייליסט' } };
     }
     if (r.status === 409 && data.code === 'cron-running') {
       report(cronMessage(data.cronsRunning || []), 'warn');

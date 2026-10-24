@@ -1,6 +1,7 @@
-import { requireSiteOrInternal, setCors } from './origin-guard.js';
+import { requireSiteOrInternal, isInternal, setCors } from './origin-guard.js';
 import { guard } from './ratelimit.js';
 import { computeCostUsd } from './gemini-pricing.js';
+import { BROWSER_DAILY_USD, browserSpendToday, addBrowserSpend } from './_gemini-ceiling.js';
 import { pgrInsert } from '../v5/supabase-client.js';
 /* /api/v6/gemini.js
    Google Gemini generateContent proxy for v6.
@@ -10,6 +11,12 @@ import { pgrInsert } from '../v5/supabase-client.js';
    callers carrying `x-sonic-internal: INTERNAL_API_KEY`. Model +
    max_output_tokens locked down server-side so a compromised browser
    can't ask for arbitrary spend.
+
+   Browser calls (no internal key) take whole prompts, and the Origin check
+   is trivial to fake, so since 2026-10-24 they're also capped: output at
+   BROWSER_MAX_OUTPUT_TOKENS, prompt size at BROWSER_MAX_PROMPT_CHARS, and
+   the day's spend at a ceiling (_gemini-ceiling.js) → 413 prompt_too_large /
+   429 daily_limit. Server calls are untouched.
 
    Request shape (client-side, kept small and provider-agnostic-ish):
      { model, system, user, history?, max_output_tokens?, thinking_budget? }
@@ -34,6 +41,12 @@ const ALLOWED_MODELS = new Set(['gemini-3.6-flash']);
 // Per-call spend is still bounded by the model's own cap + the /gemini
 // rate limit above (20/min per IP).
 const MAX_OUTPUT_TOKENS_CAP = 65536;
+// Browser calls: the biggest real call so far used 14,884 output tokens
+// (thinking included, v7 taste profile / Option 1 directions; measured
+// 2026-10-24 from gemini_call_log) — about half this cap. The biggest real
+// prompt was ~14.7k tokens, roughly 50k characters.
+const BROWSER_MAX_OUTPUT_TOKENS = 32768;
+const BROWSER_MAX_PROMPT_CHARS  = 150000;
 
 export default async function handler(req, res) {
   setCors(req, res);
@@ -59,6 +72,20 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: `model "${model}" not in allowlist` });
   }
 
+  const fromBrowser = !isInternal(req);
+  if (fromBrowser) {
+    const textLen = (t) => (typeof t === 'string' ? t.length : 0);
+    const promptChars = textLen(system) + textLen(user)
+      + (Array.isArray(history) ? history.reduce((n, turn) => n + textLen(turn?.text), 0) : 0);
+    if (promptChars > BROWSER_MAX_PROMPT_CHARS) {
+      return res.status(413).json({ error: 'prompt_too_large' });
+    }
+    if (await browserSpendToday() >= BROWSER_DAILY_USD) {
+      return res.status(429).json({ error: 'daily_limit' });
+    }
+  }
+  const outputCap = fromBrowser ? BROWSER_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS_CAP;
+
   // Build the contents sequence. Single-turn callers get the original
   // one-element array; multi-turn callers get history + final user turn.
   const contents = [];
@@ -74,7 +101,7 @@ export default async function handler(req, res) {
   const payload = {
     contents,
     generationConfig: {
-      maxOutputTokens:  Math.min(Number(max_output_tokens) || MAX_OUTPUT_TOKENS_CAP, MAX_OUTPUT_TOKENS_CAP),
+      maxOutputTokens:  Math.min(Number(max_output_tokens) || outputCap, outputCap),
       // Force pure JSON so we don't have to strip ```json fences.
       responseMimeType: 'application/json',
     },
@@ -152,6 +179,8 @@ export default async function handler(req, res) {
       // Gemini's own latency. Failures here must NEVER surface to the
       // client so we swallow with a warning.
       const usage = data?.usage;
+      const costUsd = usage ? computeCostUsd(model, usage) : 0;
+      if (fromBrowser) await addBrowserSpend(costUsd);
       if (usage) {
         const row = {
           model,
@@ -161,7 +190,7 @@ export default async function handler(req, res) {
           thinking_tokens:        usage.thinking || 0,
           total_tokens:           usage.total    || 0,
           cached_tokens:          usage.cached   || 0,
-          cost_usd:               computeCostUsd(model, usage),
+          cost_usd:               costUsd,
           business_id:            typeof business_id === 'string' ? business_id : null,
           onboarding_session_id:  typeof onboarding_session_id === 'string' ? onboarding_session_id : null,
           http_status:            r.status,

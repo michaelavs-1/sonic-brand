@@ -81,7 +81,7 @@ export function runReadyStep({ bizName = '', venuePhrase = null } = {}) {
     const name = String(bizName || '').trim();
     const gold = (t) => el('span', { class: 'ready-gold' }, t);
     // "לפרא", but "ל־Cafe Louise" for a name that doesn't start in Hebrew.
-    const to = /^[֐-׿]/.test(name) ? 'ל' : 'ל־';
+    const to = /^[\u0590-\u05FF]/.test(name) ? 'ל' : 'ל־';
     const built = el('span', {});
     if (name && venuePhrase) built.append('רובין בנה ', to, gold(name), ', ', gold(venuePhrase), ' ', el('b', {}, 'שלכם'), ', פרופיל מוזיקה.');
     else if (name) built.append('רובין בנה ', to, gold(name), ' פרופיל מוזיקה.');
@@ -584,7 +584,9 @@ function showCheckEmail({ email, resend }) {
       startCooldown();
     } catch (err) {
       msg.style.color = '#ff9b8a';
-      msg.textContent = String(err?.message || 'שליחה נכשלה — נסו עוד רגע');
+      // The server's messages are Hebrew; a raw technical error isn't shown.
+      const m = String(err?.message || '');
+      msg.textContent = /[\u0590-\u05FF]/.test(m) ? m : 'שליחה נכשלה — נסו עוד רגע';
       if (err?.status === 429) startCooldown();
       else { setWaiting(false); resendBtn.textContent = READY_LABEL; }
     }

@@ -27,6 +27,7 @@
 import { pgrSelect, pgrInsert, pgrPatch } from './supabase-client.js';
 import { MANUAL_PREFIX, loadTrackGenres, planGenreChange, applyGenrePlan, restoreTrackRows } from './_track-genres.js';
 import { GENRES } from '../../shared/genre-universe.js';
+import { requireAmi } from './_ami-auth.js';
 
 const CANONICAL = new Set(GENRES.map((g) => g.toLowerCase()));
 
@@ -35,6 +36,7 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
+    if (!requireAmi(req, res)) return;
     if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
 
     try {

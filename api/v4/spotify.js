@@ -67,6 +67,15 @@ export default async function handler(req, res) {
 
   try {
     const { action } = req.body || {};
+    // Spotify ids are 22 base62 characters. Checked before an id goes into a
+    // URL path (2026-10-24): a crafted value used to reach any Spotify GET
+    // endpoint with Michael's app token.
+    for (const field of ['playlist_id', 'track_id']) {
+      const v = req.body?.[field];
+      if (v !== undefined && !/^[A-Za-z0-9]{22}$/.test(String(v))) {
+        return res.status(400).json({ error: `invalid ${field}` });
+      }
+    }
 
     if (action === 'get_playlist_tracks') {
       const { playlist_id, offset = 0, limit = 50, fields, market } = req.body;

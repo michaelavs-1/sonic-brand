@@ -149,13 +149,16 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   if (!requireSite(req, res)) return;
-  if (!await guard(req, res, 'place-lookup', 20, 60)) return;
+  // 20 per hour per IP (was 20 a minute until 2026-10-24): one onboarding
+  // searches once or twice, and each search is billed by Google. Over the
+  // limit, onboarding just skips the "is this your business?" step.
+  if (!await guard(req, res, 'place-lookup', 20, 3600)) return;
 
   try {
     if (!KEY) return res.status(200).json({ found: false, reason: 'no_key' });
 
     const { name, desc } = req.body || {};
-    const q = [String(name || '').trim(), String(desc || '').trim().slice(0, 120)].filter(Boolean).join(' ');
+    const q = [String(name || '').trim().slice(0, 100), String(desc || '').trim().slice(0, 120)].filter(Boolean).join(' ');
     if (!q) return res.status(400).json({ error: 'name/desc required' });
 
     const sr = await fetch('https://places.googleapis.com/v1/places:searchText', {

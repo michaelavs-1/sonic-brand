@@ -53,7 +53,7 @@ import {
   runRegistrationStep,
   runPaymentStep,
   runTasteProfileBar,
-} from '/v7/result.js?v=21102026a';
+} from '/v7/result.js?v=24102026a';
 import { WAIT_DOTS_HTML } from '/v7/wait-dots.js?v=28092026a';
 
 // ?reset=1 — wipe any saved Rubin session (and local flow state) so the whole
@@ -887,7 +887,10 @@ async function goToStep(start) {
           if (!directionsSettled) showDirectionsLoading();
           const dResult = await abortable(directionsPromise, signal);
           if (dResult.error) {
-            showError(dResult.reasoning_en ? `סיבה: ${dResult.reasoning_en}` : undefined);
+            // The model's English reasoning (or a raw "gemini 500: …") used to
+            // be shown here. A technical failure gets its own message; the
+            // description-related codes keep showError's default.
+            showError(dResult.error === 'matcher_error' ? 'משהו השתבש אצלנו. נסו שוב בעוד כמה דקות.' : undefined);
             return;
           }
           state.directions = dResult.directions;
@@ -1183,7 +1186,9 @@ async function goToStep(start) {
     }
   } catch (err) {
     if (err?.name === 'AbortError') return;
-    showError(err?.message || 'תקלה לא צפויה.');
+    // Our own messages are Hebrew; anything else (a raw technical error) isn't shown.
+    const m = String(err?.message || '');
+    showError(/[\u0590-\u05FF]/.test(m) ? m : 'תקלה לא צפויה.');
   }
 }
 

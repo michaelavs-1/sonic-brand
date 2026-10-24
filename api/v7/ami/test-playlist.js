@@ -32,6 +32,7 @@
 
 import { pgrRpc, pgrSelect, pgrUpsert } from '../../v5/supabase-client.js';
 import { requireSite, setCors } from '../../v6/origin-guard.js';
+import { requireAdmin } from '../../internal/_guard.js';
 import { guard } from '../../v6/ratelimit.js';
 import { spotifyCall, addAllTracks } from '../../v6/account/_daily-builder.js';
 import { runningCrons } from '../../_cron-running.js';
@@ -129,7 +130,7 @@ async function energiesOf(ids) {
 export default async function handler(req, res) {
   setCors(req, res);
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!requireSite(req, res)) return;
 
@@ -138,6 +139,9 @@ export default async function handler(req, res) {
     return res.status(200).json({ cronsRunning: await runningCrons() });
   }
   if (req.method !== 'POST') return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  // Building needs the admin key (2026-10-24): each build writes to Rubin's
+  // Spotify account, and the site check alone is trivial to fake.
+  if (!requireAdmin(req, res)) return;
   if (!await guard(req, res, 'ami-test-playlist', 40, 3600)) return;
 
   const parsed = parseRequest(req.body);

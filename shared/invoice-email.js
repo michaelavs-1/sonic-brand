@@ -3,8 +3,8 @@
 // payment screen (v7/result.js, which shows it).
 //
 // Hyp drops the "+" from an address it stores (seen 2026-09-29: sent as
-// roni.mark%2Btestb%40gmail.com, stored as roni.marktestb@gmail.com — most
-// likely a double URL-decode, "+" → space → removed). That's a different
+// name%2Btag%40gmail.com, stored as nametag@gmail.com — most likely a
+// double URL-decode, "+" → space → removed). That's a different
 // mailbox, possibly a stranger's, and the standing order keeps it for every
 // monthly invoice. So Hyp gets the address without its "+tag": the part after
 // "+" is only a label at Gmail, Outlook and most providers, so mail still

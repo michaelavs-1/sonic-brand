@@ -636,6 +636,8 @@ sonic-brand/
 ├── api/
 │   ├── _alert.js                           ← Resend REST helper. Reads SUPABASE_AUTH. Callers MUST await it
 │   │                                          before res.end() — see "Alerts via Resend" mechanism.
+│   ├── v6/_gemini-ceiling.js               ← The $20/day ceiling on browser-originated Gemini spend + its alert emails
+│   │                                          (2026-10-24; read by api/v6/gemini.js).
 │   ├── _cron-running.js                    ← Redis "cron running" flags set by both crons for their whole tick;
 │   │                                          read by api/v7/ami/test-playlist.js so Ami's builds wait. Fail-open.
 │   ├── alert-probe.js                      ← Diagnostic endpoint (CRON_SECRET-gated). GET reports whether
@@ -781,7 +783,8 @@ sonic-brand/
 │   │   │                                      track_analyses — the audio-features cache is shared across
 │   │   │                                      playlists and expensive to rebuild via RapidAPI.
 │   │   ├── ami-playlist-restore.js         ← Reverses ami-playlist-delete via the archive row; drops archive after.
-│   │   └── ...                             ← Legacy v4 endpoints (openai, spotify, biztype-match, cached-*)
+│   │   ├── _ami-auth.js                    ← requireAmi: admin key (or internal key) for every ami-* endpoint (2026-10-24).
+│   │   └── ...                             ← Legacy v4 endpoints (spotify, biztype-match, cached-*)
 │   ├── new/
 │   │   ├── spotify.js                      ← Two-app Spotify proxy (Michael CC reads + Rubin user writes).
 │   │   │                                      Resilience layer: 15s per-call timeout, 4xx/5xx body logging,
@@ -1046,8 +1049,9 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 ```
 
 **Current guards** (bucket name / limit / window seconds):
-- `/api/v5/anthropic` — 10/min
-- `/api/v6/gemini` — 20/min
+- `/api/v5/anthropic` — 10/min (server-only since 2026-10-24, so in practice internal and never limited)
+- `/api/v6/gemini` — 20/min, plus the browser caps and the $20 daily ceiling (see "Who can call what")
+- `/api/v6/transcribe` — 10 per 10 min (was 20/min until 2026-10-24); `/api/v6/place-lookup` — 20/hour (was 20/min)
 - `/api/v5/anchor-tracks`, `direction-tracks`, `databox-atmospheres` — 60/min
 - `/api/v5/prewarm` — 30/min
 - `/api/v5/record-playlist` — 30/min
@@ -1085,6 +1089,21 @@ if (!await guard(req, res, 'anthropic', 10, 60)) return; // 10/min per IP
 double-prefix; mirror to `.env.local` for `vercel dev`):
 - `UPSTASH_REDIS_REST_KV_REST_API_URL`
 - `UPSTASH_REDIS_REST_KV_REST_API_TOKEN`
+
+### Who can call what (pre-pilot audit, 2026-10-24)
+
+The Origin check (`requireSite` / `requireSiteOrInternal` in `api/v6/origin-guard.js`) only stops casual abuse: curl can send any Origin. Anything that costs money or writes shared data needs a real key, a cap, or both. What the audit changed:
+- **Server-only** (`x-sonic-internal`, `requireInternal`): `/api/new/spotify` WRITE actions (create / add / replace / update / unfollow; reads stay site-or-internal), both RapidAPI proxies (`/api/v4/track-analysis`, `/api/new/track-analysis`), `/api/v5/anthropic`. Before, a visitor could empty or rename any customer playlist on Rubin's account, trip Spotify's quota pause for everyone, burn the monthly RapidAPI plan, or use Claude for free. The v4–v6 browser playlist builders can no longer create playlists (legacy; v7 builds on the server).
+- **Admin key** (`INTERNAL_ADMIN_API_KEY`): every `/api/v4/ami-*` endpoint (`api/v4/_ami-auth.js`; the internal key also passes, `ami-cron-tick` also takes `CRON_SECRET`) and POST `/api/v7/ami/test-playlist`. They had no check at all: anyone could delete catalog playlists and tracks. Ami's two dashboards send the key he enters once (see § AMI'S DASHBOARD).
+- **Spotify ids** are checked (22 base62 characters) before going into a URL path, in both Spotify proxies. A bad `playlist_id` answers Spotify's own "400 Invalid base62 id", which the expire cron treats as already gone.
+- **Gemini browser calls** (`/api/v6/gemini` without the internal key) are capped: output 32,768 tokens (the biggest real call used 14,884, thinking included), prompt 150,000 characters (system + user + history) → 413 `prompt_too_large`, and a **$20 daily ceiling** on their combined cost (`api/v6/_gemini-ceiling.js`, Redis key `gemini:browser-spend:<IL date>`, fail-open) → 429 `daily_limit` until midnight Israel time. An email goes out at $10 and at $20. A normal day is ~$0.30. Server calls are never capped or counted. The real fix, moving the five onboarding / playlist-type prompts to the server, is still open (§ OPEN QUESTIONS).
+- **Transcription** refuses audio over 3 MB (onboarding's recorder stops at 60s, ~1 MB) → 413.
+- **Origin allowlist** pinned to this project: `sonic-brand.vercel.app` + `sonic-brand-<9-char hash>-michaelavs-1s-projects.vercel.app` / `sonic-brand-git-<branch>-…` previews. localhost / 127.0.0.1 pass only outside production (`VERCEL_ENV`).
+- **Removed:** `api/v4/openai.js` (dead: it read the OpenAI key with the anon key, which RLS blocks).
+- **Database** (migration [`2026-10-24-lock-down-businesses-and-functions.sql`](v5/precompute/migrations/2026-10-24-lock-down-businesses-and-functions.sql)): owners may UPDATE only `businesses.onboarding_expanded` (the `own_business` policy is FOR ALL, and they used to hold every table privilege, so they could un-cancel their subscription, set `paid_at`, insert or delete businesses). The server-only functions (`v7_timeline_pool`, `v7_track_genres`, `v6_direction_tracks_recent`, the scan-control ones) lost PUBLIC / anon / authenticated EXECUTE. A DROP + CREATE of one of them resets that: re-run the migration's block.
+- **Static files:** `.vercelignore` keeps CLAUDE.md, `docs/`, `scripts/`, the prompt histories, `v4/precompute/`, `v5/precompute/` and the rest of the tooling off the site (until 2026-10-24 they were all public). It also repeats every `.gitignore` entry. Before adding a folder, check nothing under `api/` imports from it (`lib/` stays: `api/v4/ami-scan.js` uses it).
+- **Browser:** v7 pages print nothing to the console (see § V7 ARCHITECTURE), and owners see only Hebrew error text: the onboarding error screen no longer shows the model's English reasoning or raw errors.
+- **Known, not changed** (decided 2026-10-24): accounts are free and open to anyone in Production while payments are off; the shared password on accounts created before 2026-09-29; the catalog tables are anon-readable; shipped code comments name the team; some v7 endpoints return raw database error text on failures (no secrets).
 
 ### Spotify resilience layer (`api/new/spotify.js`)
 
@@ -1396,7 +1415,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 - `deleted_playlists` — archive keyed by `playlist_id`. Columns: { playlist_id (PK), name, owner, playlist_genres_rows (jsonb), playlist_tracks_rows (jsonb), deleted_at }. Written by `api/v4/ami-playlist-delete.js`; consumed and dropped by `api/v4/ami-playlist-restore.js`. Added 2026-08-30 (migration `2026-08-25-deleted-playlists.sql`). Same RLS posture as `deleted_tracks`. **Does not archive `track_analyses`** — that cache is shared with any other playlist the tracks live in and is expensive to rebuild via RapidAPI.
 - `deleted_events` — archive keyed by `id` (same as the original `business_events.id`). Columns: { id (PK, uuid), business_id, name, description, original_created_at, deleted_at }. Written by `api/v6/account/delete-event.js` and `api/v7/account/delete-event.js` (owner-triggered, from the Home tab's event trash icon). No restore endpoint — the events chat flow is delete + re-chat by design (see Special event playlists section), so the archive is admin-visibility only, not a rollback mechanism. Added 2026-09-05 (migration `2026-09-05-owner-change-history.sql`). Same RLS posture as the other archives.
 
-**Historical / vestigial:** `analyses`, `track_feedback`, `app_settings` (old OpenAI key storage — the `openai_key` row + its permissive RLS were removed during the 2026-08-14 security audit), `spotify_tokens` (v1 era).
+**Historical / vestigial:** `analyses`, `track_feedback`, `spotify_tokens` (v1 era). `app_settings` lost its permissive RLS in the 2026-08-14 audit, but its `openai_key` row is still there (checked 2026-10-24): `api/v6/transcribe.js` reads it with the service key, since Vercel has no `OPENAI_API_KEY`.
 
 ### Track pool coverage
 
@@ -1486,7 +1505,7 @@ when a new model lands.
 
 ## AMI'S DASHBOARD
 
-Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tables. Endpoints under `api/v4/ami-*`:
+Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tables. Endpoints under `api/v4/ami-*`, all needing the admin key since 2026-10-24 (`api/v4/_ami-auth.js`). The page asks for it once and keeps it in localStorage `ami-admin-key`, the same entry as the prompt dashboard's taste-chat tab and energy test playlists, so entering it in one covers all three; a rejected key is asked for again (`amiFetch` in `v4/ami/app.js`):
 
 - `ami-scan.js` — sheet → Supabase upsert for biz-type genres
 - `ami-atmospheres-scan.js` — sheet → Supabase upsert for atmospheres (writes `atmospheres.name`, `ranges`, `row_in_sheet`)
@@ -1708,13 +1727,13 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 |---|---|---|
 | `ANTHROPIC_KEY` | `api/v5/anthropic.js` (the event-playlist endpoints reach it only if an ai-provider is switched to Anthropic) | Sonnet 4.6. Anthropic path is on standby; Gemini is production. |
 | `GEMINI_API_KEY` | `api/v6/gemini.js` | Google `x-goog-api-key`. Powers musical directions + event chat. |
-| `OPENAI_API_KEY` | `api/v6/transcribe.js`, legacy proxies | Env-only. The old Supabase `app_settings.openai_key` fallback was removed during the 2026-08-14 security audit (was readable via the public anon key). |
+| `OPENAI_API_KEY` | `api/v6/transcribe.js` | Not set in Vercel (checked 2026-10-24): transcription falls back to `app_settings.openai_key`, read with the service key (RLS blocks the anon key). |
 | `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` | Michael's app for CC reads | Hardcoded copy of client_id in v3/app.js for legacy OAuth |
 | `RUBIN_SPOTIFY_CLIENT_ID` / `RUBIN_SPOTIFY_CLIENT_SECRET` | Rubin's app for user-context writes | client_id: `431c55feb024444c979f2aa51e04426d` |
 | `RUBIN_REFRESH_TOKEN` | `api/new/spotify.js` refreshUserToken | Scope: `playlist-modify-private` + `playlist-modify-public` + `playlist-read-private` (widened 2026-09-06 — see § SPOTIFY SETUP). Re-seed for other scopes. |
 | `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` | All v5/v6 endpoints via api/v5/supabase-client.js | Anon safe to expose client-side; service role server-only |
 | `INTERNAL_API_KEY` | `api/v6/origin-guard.js requireSiteOrInternal`; passed as `x-sonic-internal` header for server-to-server calls into `api/new/spotify.js`; also rate-limit bypass in `api/v6/ratelimit.js` | Fail-open if not set. |
-| `INTERNAL_ADMIN_API_KEY` | `api/internal/_guard.js requireAdmin` — Michael's dashboard bearer token | Fail-CLOSED if unset (500s the endpoint). Must be set in Vercel prod + `.env.local`; share the value with Michael out-of-band. Since 2026-10-13 it also authorises WRITES (direction edits, daily picks + rebuilds, coupons) — rotate it if it leaks. |
+| `INTERNAL_ADMIN_API_KEY` | `api/internal/_guard.js requireAdmin` — Michael's dashboard bearer token | Fail-CLOSED if unset (500s the endpoint). Must be set in Vercel prod + `.env.local`; share the value with Michael out-of-band. Since 2026-10-13 it also authorises WRITES (direction edits, daily picks + rebuilds, coupons), and since 2026-10-24 Ami's `/api/v4/ami-*` endpoints and test playlists — rotate it if it leaks (then Ami re-enters it). |
 | `UPSTASH_REDIS_REST_KV_REST_API_URL` / `_TOKEN` | `api/v6/ratelimit.js`, `api/new/spotify.js` (pause switch + daily write counter) | Auto-injected by Vercel's Upstash integration with the `UPSTASH_REDIS_REST` custom prefix. If unset, rate limiting is DISABLED (fail-open) and one warning line prints at cold start. Same fail-open behaviour for the pause switch — logs a warning then proceeds without global backpressure. |
 | `SUPABASE_AUTH` | `api/_alert.js` sendAlert; Supabase Dashboard → Auth → SMTP for magic-link emails | Resend API key (prefixed `re_`). Named `SUPABASE_AUTH` because it was originally added for Supabase's SMTP config — same key powers our operational alert emails now. Fail-open if unset. Set in Vercel + `.env.local`. |
 | `GOOGLE_PLACES_API_KEY` | `api/v6/place-lookup.js` | Optional — endpoint silently skips if unset. Currently sensitive in Vercel + set to empty on some environments. |
@@ -1989,6 +2008,14 @@ Confirmed by reading both sides; not yet fixed (each needs a decision):
 - ~~**Misleading copy:** the v7 registration heading "הפלייליסטים שלכם מוכנים!" (`v7/result.js`) claims playlists are ready; v7 hasn't built any at that point.~~ RESOLVED — the heading no longer exists anywhere in `v7/` (checked 2026-09-28).
 
 Fixed in the same audit: taste-profile retry ReferenceError loop, R1 page-2 / R2 rank collisions in the R2 + taste-profile prompt inputs, and silent Option-1 energy-directions failures (see `prompt-history-v7.md` and `v7/account/app.js energyBuildFailed`). Fixed 2026-09-24: the v7 dashboard's "צור פלייליסטים" / "המקום פתוח?" links called v6's `/api/v6/account/generate-daily` (reads v6 `business_directions` → always 400 for v7); they now call the new `api/v7/account/generate-daily.js`. The taste-profile call (~57–88s, estimated from `gemini_call_log` token counts at ~150 tok/s) exceeded `/api/v6/gemini`'s 60s `maxDuration` — raised to 300s (`vercel dev` doesn't enforce the limit, so local runs never showed it). Verified 2026-09-24: `/v7/account` is on Supabase Auth's Redirect URLs allowlist.
+
+### OPEN — move the browser-run prompts to the server (2026-10-24 audit)
+
+Onboarding (Round 1, Round 2, taste profile) and the playlist-type step (Option 1 / Option 2 directions) build their prompts in the browser and send them whole to `/api/v6/gemini`. So the proxy can't tell a real call from someone using it as a free LLM, and clients can read every prompt in DevTools. For the pilot it's capped instead (browser caps + the $20/day ceiling, § KEY MECHANISMS "Who can call what").
+- **The fix:** a server endpoint that runs the five generators (the modules are already server-safe) and takes only their inputs. The browser calls it instead, keeping page 2 generating while the owner swipes page 1, cancellation and retries. Ami's dashboard, which legitimately sends edited prompts, moves to the admin key. Then lock `/api/v6/gemini` to internal + admin callers.
+- **Needs a full retest:** onboarding (both rounds, taste profile, signup), both playlist-type gates, Ami's dashboard. Deferred on 2026-10-24 so the pilot's day-one path wasn't rewritten the night before.
+- The new endpoint stays anonymous (onboarding happens before login), so the daily ceiling stays too.
+- Also deferred: v7 endpoints returning raw database error text on failures (`res.status(500).json({ error: e.message })`, ~20 places) — return a plain Hebrew error and keep the detail in Vercel's logs; validate the business id format before the ownership check.
 
 ### `conditional_genres` bucket — DATA ONLY for v7 launch
 

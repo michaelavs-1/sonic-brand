@@ -2,7 +2,11 @@
    SoundNet Track Analysis (RapidAPI) proxy. Single action:
      - analyze_track: GET /pktx/spotify/{spotify_id} → audio features (energy, tempo, ...)
    Auth: process.env.TRACK_ANALYSIS_RAPIDAPI_KEY
+   Callers: server-only (x-sonic-internal) since 2026-10-24 — it was open to
+   anyone, with no rate limit, and every call spends the monthly RapidAPI plan.
 */
+
+import { requireInternal } from '../v6/origin-guard.js';
 
 const RAPIDAPI_HOST = 'track-analysis.p.rapidapi.com';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -23,6 +27,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST')    return res.status(405).json({ error: 'Method not allowed' });
+  if (!requireInternal(req, res)) return;
 
   const key = process.env.TRACK_ANALYSIS_RAPIDAPI_KEY;
   if (!key) return res.status(500).json({ error: 'TRACK_ANALYSIS_RAPIDAPI_KEY not set' });

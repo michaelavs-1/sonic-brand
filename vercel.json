@@ -6,9 +6,6 @@
     "api/new/track-analysis.js": {
       "maxDuration": 30
     },
-    "api/v4/openai.js": {
-      "maxDuration": 60
-    },
     "api/v4/spotify.js": {
       "maxDuration": 30
     },

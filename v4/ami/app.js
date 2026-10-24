@@ -17,6 +17,37 @@ const POLL_INTERVAL_MS = 5000;
 
 const $ = (id) => document.getElementById(id);
 
+// ---------- admin key (2026-10-24) ----------
+// Every /api/v4/ami-* endpoint needs the admin key (INTERNAL_ADMIN_API_KEY).
+// It's asked for once and kept in this browser's localStorage under
+// 'ami-admin-key', the same entry the prompt dashboard
+// (/v5/ami-prompt-dashboard) uses, so entering it in either one covers both.
+// A rejected key is forgotten and asked for again; cancelling the question
+// stops asking until the page is reloaded.
+const ADMIN_KEY_STORE = 'ami-admin-key';
+let adminKeyDeclined = false;
+
+function adminKey() {
+    let k = '';
+    try { k = localStorage.getItem(ADMIN_KEY_STORE) || ''; } catch { /* private mode */ }
+    if (!k && !adminKeyDeclined) {
+        k = (window.prompt('Admin key (asked once in this browser):') || '').trim();
+        if (k) { try { localStorage.setItem(ADMIN_KEY_STORE, k); } catch { /* private mode */ } }
+        else adminKeyDeclined = true;
+    }
+    return k;
+}
+
+async function amiFetch(url, opts = {}) {
+    const send = () => fetch(url, { ...opts, headers: { ...(opts.headers || {}), Authorization: `Bearer ${adminKey()}` } });
+    let r = await send();
+    if ((r.status === 401 || r.status === 403) && !adminKeyDeclined) {
+        try { localStorage.removeItem(ADMIN_KEY_STORE); } catch { /* private mode */ }
+        r = await send();
+    }
+    return r;
+}
+
 const scanBtn      = $('scanBtn');
 const scanAtmoBtn  = $('scanAtmoBtn');
 const startBtn     = $('startBtn');
@@ -75,7 +106,7 @@ scanBtn.addEventListener('click', async () => {
     banner.classList.remove('show');
 
     try {
-        const r = await fetch('/api/v4/ami-scan', { method: 'POST' });
+        const r = await amiFetch('/api/v4/ami-scan', { method: 'POST' });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
 
@@ -114,7 +145,7 @@ scanAtmoBtn.addEventListener('click', async () => {
     banner.classList.remove('show');
 
     try {
-        const r = await fetch('/api/v4/ami-atmospheres-scan', { method: 'POST' });
+        const r = await amiFetch('/api/v4/ami-atmospheres-scan', { method: 'POST' });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
 
@@ -231,7 +262,7 @@ syncBtn.addEventListener('click', async () => {
     syncBtn.disabled = true;
     syncBtn.classList.add('spinning');
     try {
-        const r = await fetch('/api/v4/ami-sync-usage', { method: 'POST' });
+        const r = await amiFetch('/api/v4/ami-sync-usage', { method: 'POST' });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
         showBanner(`Usage synced: ${formatNumber(data.calls)} / ${formatNumber(data.limit)} used.`, 'success');
@@ -254,7 +285,7 @@ startBtn.addEventListener('click', async () => {
     startBtn.innerText = 'Starting...';
     try {
         console.log('[ami] POST /api/v4/ami-start');
-        const r = await fetch('/api/v4/ami-start', { method: 'POST' });
+        const r = await amiFetch('/api/v4/ami-start', { method: 'POST' });
         console.log('[ami] response status:', r.status);
         const data = await r.json();
         console.log('[ami] response body:', data);
@@ -283,7 +314,7 @@ stopBtn.addEventListener('click', async () => {
     stopBtn.disabled = true;
     stopBtn.innerText = 'Stopping...';
     try {
-        const r = await fetch('/api/v4/ami-stop', { method: 'POST' });
+        const r = await amiFetch('/api/v4/ami-stop', { method: 'POST' });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
         showBanner(`Stopped ${data.stopped} job${data.stopped === 1 ? '' : 's'}. In-flight RapidAPI calls will finish within ~30s.`);
@@ -302,7 +333,7 @@ stopBtn.addEventListener('click', async () => {
 
 async function refreshStatus() {
     try {
-        const r = await fetch('/api/v4/ami-status');
+        const r = await amiFetch('/api/v4/ami-status');
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
         renderUsage(data.monthlyRapidapi);
@@ -527,7 +558,7 @@ queueEl.addEventListener('click', (ev) => {
     applyRowStatusInline(li, btn, optimisticStatus);
 
     // 2. Fire POST in the background.
-    fetch('/api/v4/ami-toggle-skip', {
+    amiFetch('/api/v4/ami-toggle-skip', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ playlistId, skip }),
@@ -567,7 +598,7 @@ bulkToggleBtn.addEventListener('click', () => {
     bulkToggleBtn.disabled = true;
 
     // 2. Fire POST in the background.
-    fetch('/api/v4/ami-toggle-all', {
+    amiFetch('/api/v4/ami-toggle-all', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ skip }),
@@ -649,7 +680,7 @@ async function submitReorder(order) {
     if (reorderInFlight) return;
     reorderInFlight = true;
     try {
-        const r = await fetch('/api/v4/ami-reorder', {
+        const r = await amiFetch('/api/v4/ami-reorder', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ order }),
@@ -723,7 +754,7 @@ async function runTrackLookup({ keepGenreUndo = false } = {}) {
     trackLookupBtn.disabled = true;
     trackLookupBtn.innerHTML = '<span class="btn-spinner"></span>Searching...';
     try {
-        const r = await fetch('/api/v4/ami-track-lookup', {
+        const r = await amiFetch('/api/v4/ami-track-lookup', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ input }),
@@ -749,7 +780,7 @@ async function runTrackDelete() {
     const deleteBtn = trackLookupResult.querySelector('.track-delete-btn');
     if (deleteBtn) { deleteBtn.disabled = true; deleteBtn.innerText = 'Deleting...'; }
     try {
-        const r = await fetch('/api/v4/ami-track-delete', {
+        const r = await amiFetch('/api/v4/ami-track-delete', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ spotifyId: track.spotifyId }),
@@ -777,7 +808,7 @@ async function runTrackUndo() {
     const undoBtn = trackLookupResult.querySelector('.track-undo-btn');
     if (undoBtn) { undoBtn.disabled = true; undoBtn.innerText = 'Restoring...'; }
     try {
-        const r = await fetch('/api/v4/ami-track-restore', {
+        const r = await amiFetch('/api/v4/ami-track-restore', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ spotifyId: track.spotifyId }),
@@ -925,7 +956,7 @@ async function runGenreSave() {
     const btn = $('genreEditor')?.querySelector('.genre-save-btn');
     if (btn) { btn.disabled = true; btn.innerText = 'Saving...'; }
     try {
-        const r = await fetch('/api/v4/ami-track-genres', {
+        const r = await amiFetch('/api/v4/ami-track-genres', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ action: 'set', spotifyId: t.spotifyId, genres: [...genreDraft], title: t.title, artists: t.artists }),
@@ -948,7 +979,7 @@ async function runGenreUndo() {
     const btn = $('genreEditor')?.querySelector('.genre-undo-btn');
     if (btn) { btn.disabled = true; btn.innerText = 'Undoing...'; }
     try {
-        const r = await fetch('/api/v4/ami-track-genres', {
+        const r = await amiFetch('/api/v4/ami-track-genres', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ action: 'undo', editId: lastGenreEdit.editId }),
@@ -1054,7 +1085,7 @@ async function runPlaylistLookup() {
     playlistLookupBtn.disabled = true;
     playlistLookupBtn.innerHTML = '<span class="btn-spinner"></span>Searching...';
     try {
-        const r = await fetch('/api/v4/ami-playlist-lookup', {
+        const r = await amiFetch('/api/v4/ami-playlist-lookup', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ input }),
@@ -1078,7 +1109,7 @@ async function runPlaylistDelete() {
     const deleteBtn = playlistLookupResult.querySelector('.track-delete-btn');
     if (deleteBtn) { deleteBtn.disabled = true; deleteBtn.innerText = 'Deleting...'; }
     try {
-        const r = await fetch('/api/v4/ami-playlist-delete', {
+        const r = await amiFetch('/api/v4/ami-playlist-delete', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ playlistId: p.playlistId }),
@@ -1106,7 +1137,7 @@ async function runPlaylistUndo() {
     const undoBtn = playlistLookupResult.querySelector('.track-undo-btn');
     if (undoBtn) { undoBtn.disabled = true; undoBtn.innerText = 'Restoring...'; }
     try {
-        const r = await fetch('/api/v4/ami-playlist-restore', {
+        const r = await amiFetch('/api/v4/ami-playlist-restore', {
             method:  'POST',
             headers: { 'Content-Type': 'application/json' },
             body:    JSON.stringify({ playlistId: p.playlistId }),

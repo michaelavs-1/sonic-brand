@@ -1,0 +1,36 @@
+# Files Vercel must NOT upload. Everything uploaded outside api/ is served as a
+# public static file (until 2026-10-24, /CLAUDE.md, the prompt histories,
+# docs/ and scripts/ were readable by anyone).
+#
+# Before adding a folder here, check that nothing under api/ imports from it
+# (e.g. lib/ is imported by api/v4/ami-scan.js, so it stays).
+
+# Internal docs, prompt history, tooling
+CLAUDE.md
+README.md
+prompt-history.md
+prompt-history-v7.md
+docs/
+scripts/
+tests/
+benchmark-results/
+internal-dashboard/
+.claude/
+v4/precompute/
+v5/precompute/
+*.tmp
+.env.example
+
+# Everything in .gitignore, repeated so it never depends on Vercel reading it
+.vercel
+.env
+.env*.local
+.unique-track-ids.json
+michael-v4-snapshot/
+backups/
+hyp-support/
+api/openai.js
+api/spotify.js
+api/databox.js
+api/new/openai.js
+api/new/databox.js

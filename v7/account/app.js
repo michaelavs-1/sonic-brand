@@ -1993,6 +1993,39 @@ function logPlaylistOpen(spotifyId, source) {
   })();
 }
 
+// Open a playlist in the Spotify app, not the web player (2026-10-25, Roni):
+// the button kept its https link, which opened open.spotify.com in a new tab.
+// A click now goes to the app's own spotify:playlist: link. If the page is
+// still in front 2s later (no app, or the browser's "open Spotify?" question
+// unanswered), a "שגיאה בפתיחת ספוטיפיי; פתחו בדפדפן" link with the web link appears next
+// to the button. Ctrl / middle clicks keep the web link.
+function wireOpenInApp(a, url) {
+  const id = String(url || '').match(/playlist\/([A-Za-z0-9]{22})/)?.[1];
+  if (!id) return;
+  a.addEventListener('click', (e) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    let left = false;
+    const onLeave = () => { left = true; };
+    window.addEventListener('blur', onLeave, { once: true });
+    document.addEventListener('visibilitychange', onLeave, { once: true });
+    window.location.href = `spotify:playlist:${id}`;
+    setTimeout(() => {
+      window.removeEventListener('blur', onLeave);
+      document.removeEventListener('visibilitychange', onLeave);
+      if (left || a.nextElementSibling?.classList.contains('open-web')) return;
+      const web = document.createElement('a');
+      web.className = 'open-web';
+      web.href = url;
+      web.target = '_blank';
+      web.rel = 'noopener';
+      web.textContent = 'שגיאה בפתיחת ספוטיפיי; פתחו בדפדפן';
+      web.style.cssText = 'font-size:12px;opacity:.8;color:inherit;margin-inline-start:8px;align-self:center';
+      a.after(web);
+    }, 2000);
+  });
+}
+
 // ---------- why there are no daily playlists (2026-10-06) ----------
 // GET /api/v7/account/daily-status → { reason, hasLive }; the reason line
 // under "לא נוצרו פלייליסטים" (see that endpoint for the reasons). While the
@@ -2314,6 +2347,7 @@ function buildPlaylistRow(p) {
     open.rel = 'noopener';
     open.textContent = '▶ פתח';
     open.addEventListener('click', () => logPlaylistOpen(p.id, 'home-daily'));
+    wireOpenInApp(open, p.url);
     row.append(open);
   }
   if (showBar) updateExpandBar(row, p.trackCount || 0);
@@ -3147,6 +3181,7 @@ function renderEvents() {
       openA.rel = 'noopener';
       openA.textContent = '▶ פתח';
       openA.addEventListener('click', () => logPlaylistOpen(live.id, 'home-event'));
+      wireOpenInApp(openA, live.url);
       row.append(openA);
     } else if (building) {
       const busyBtn = document.createElement('button');

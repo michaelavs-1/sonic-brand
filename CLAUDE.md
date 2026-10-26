@@ -1446,7 +1446,20 @@ https://accounts.spotify.com/authorize?client_id=431c55feb024444c979f2aa51e04426
 
 Prereqs to re-seeding: `vercel dev` running (so the localhost callback answers), redirect URI still registered in the Rubin Spotify app's dashboard, and the same `INTERNAL_ADMIN_API_KEY` present in `.env.local` as the one you paste into the URL. The endpoint's 401 message points at this section.
 
-**Known 403 quirk on `DELETE /playlists/{id}/followers`:** occasional 403 "Insufficient client scope" when the expire cron tries to unfollow a playlist Rubin's app created hours earlier — even though rename + empty on the same playlist in the same tick succeed. First observed 2026-09-01 on a `בלנד 5 · Boutique World Funk & Ethio-Jazz` daily-gen playlist. Rename + empty succeed silently, unfollow 403s, `expirePlaylistNow` catches it as best-effort and marks `deleted_at` anyway → the playlist stays in Rubin's library as `(expired) <name>` with 0 tracks (cruft). Suspected trigger: `create_playlist` sets `collaborative: true` (see [api/new/spotify.js](api/new/spotify.js)), which may have quirky scope semantics on the follower-DELETE endpoint. If this becomes systematic, either (a) drop `collaborative: true` in create_playlist, or (b) treat unfollow 403s as retriable so the row stays eligible on next tick.
+**Known 403 quirk on `DELETE /playlists/{id}/followers`:** occasional 403 "Insufficient client scope" when the expire cron tries to unfollow a playlist Rubin's app created hours earlier — even though rename + empty on the same playlist in the same tick succeed. First observed 2026-09-01 on a `בלנד 5 · Boutique World Funk & Ethio-Jazz` daily-gen playlist. Rename + empty succeed silently, unfollow 403s, `expirePlaylistNow` catches it as best-effort and marks `deleted_at` anyway → the playlist stays in Rubin's library as `(expired) <name>` with 0 tracks (cruft). Suspected trigger was `create_playlist`'s `collaborative: true`, **dropped on 2026-10-26** (below) — watch whether the 403s stop. If they continue, treat unfollow 403s as retriable so the row stays eligible on next tick.
+
+### Playlists are `public: true, collaborative: false` (since 2026-10-26)
+
+`create_playlist` sent `public: false, collaborative: true` from the May-2026 account split (c6c5299) until 2026-10-26. The flags' only stated purpose, in that commit's CLAUDE.md, was "the end user opens the link in whichever browser session they're logged into Spotify with — no app-side OAuth is required for them" — i.e. link access for a playlist the customer doesn't own. Never about letting customers edit.
+
+**Why it changed:** nobody could remove a song from these playlists, not even Rubin. Spotify routes collaborative playlists through its newer invite-collaborator model; ours were flagged through the legacy API flag and never shared via an invite link, so with no collaborator roster the client offers no per-track Remove — even though Rubin owns the playlist and is `added_by` on every track (both verified against live rows).
+
+**Access is unaffected** (measured 2026-10-26, collaborative-on vs collaborative-off): app-token meta read, app-token track read and a fully unauthenticated link (oEmbed) all behave identically. Nothing in the code reads these playlists anyway — `get_playlist_tracks` is only used for Ami's catalog scans.
+
+**Gotchas if you ever touch these flags again:**
+- `GET /playlists/{id}` reported `public: true` on the old playlists even though we created them with `public: false`. That field is not a reliable read of the stored state — the PUT below proves they were private.
+- **Spotify refuses `{public: true, collaborative: false}` in one PUT** with 403 "You cannot make collaborative playlists public": it validates `public` against the playlist's *current* collaborative state. It takes two calls, `collaborative: false` first, then `public: true`.
+- The 14 playlists live on 2026-10-26 were converted that way (two-step, 600ms pacing, from the `created_playlists` ledger where `deleted_at IS NULL`). All 14 succeeded.
 
 ### Development mode
 

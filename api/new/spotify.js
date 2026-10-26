@@ -456,7 +456,16 @@ export default async function handler(req, res) {
       const r = await spotifyCall(`https://api.spotify.com/v1/me/playlists`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description: description || '', public: false, collaborative: true }),
+        // public: true + collaborative: false (2026-10-26). The old flags were
+        // public:false + collaborative:true, inherited from the May-2026 account
+        // split, whose only stated goal was "the end user opens the link without
+        // app-side OAuth" — and that still holds: a collaborative-off playlist was
+        // measured identical to a collaborative-on one on app-token meta reads,
+        // app-token track reads and a fully unauthenticated link. The flag
+        // cost us owner editing: Spotify routes collaborative playlists through the
+        // invite-collaborator model, and ours have no invited collaborators, so even
+        // Rubin (owner, and `added_by` on every track) got no per-track Remove.
+        body: JSON.stringify({ name, description: description || '', public: true, collaborative: false }),
       }, 'user');
       const data = await r.json().catch(() => ({}));
       return res.status(r.status).json(data);

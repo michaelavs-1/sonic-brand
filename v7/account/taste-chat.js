@@ -1,4 +1,5 @@
-// v7 taste chat — "הטעם המוזיקלי שלכם" (Home tab card, 2026-10-13).
+// v7 taste chat — "שינויים בפרופיל המוזיקלי שלכם" (Home tab card, 2026-10-13;
+// renamed from "הטעם המוזיקלי שלכם" on 2026-10-26).
 //
 // The owner tells the chat what they think of their daily music; the server
 // (api/v7/account/taste-chat.js) answers and may:

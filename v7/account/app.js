@@ -558,7 +558,7 @@ async function enterDashboardInner() {
   // for 15 min after a mode change so it can't race this build.
   if (pickedModeNow && !hasPlaylistsForToday()) runGenerateDaily();
 
-  // The Home tab's "הטעם המוזיקלי שלכם" chat (taste-chat.js; idempotent).
+  // The Home tab's "שינויים בפרופיל המוזיקלי שלכם" chat (taste-chat.js; idempotent).
   syncTastePlaceholder(state.deliveryMode);
   mountTasteChat({
     supabase: sb,
@@ -2404,7 +2404,7 @@ function buildNudgeRow(p, ns) {
   const row = document.createElement('div');
   row.className = 'nrg-row';
   const label = document.createElement('span');
-  label.textContent = 'אנרגיה להיום';
+  label.textContent = 'להרים/להוריד אנרגיה להיום';
   const dots = document.createElement('div');
   dots.className = 'nrg-dots';
   dots.dir = 'ltr';   // calmer on the left, more energetic on the right
@@ -2438,7 +2438,7 @@ function openNudgeConfirm(p, choice, k) {
   const name = undatedLabel(p.label);
   const more = k > 0;
   $('nudgeTitle').textContent = `${Math.abs(k) > 1 ? 'הרבה' : 'קצת'} ${more ? 'יותר' : 'פחות'} אנרגטי, רק להיום?`;
-  $('nudgeText').textContent = `נעדכן את "${name}" לאנרגיה ${more ? 'גבוהה' : 'רגועה'} יותר. מחר הוא יחזור להיות כרגיל. אפשר לשנות רק פלייליסט אחד, פעם אחת ביום. לשינוי קבוע נסו את צ'אט הטעם המוזיקלי.`;
+  $('nudgeText').textContent = `נעדכן את "${name}" לאנרגיה ${more ? 'גבוהה' : 'רגועה'} יותר. מחר הוא יחזור להיות כרגיל. אפשר לשנות רק פלייליסט אחד, פעם אחת ביום. לשינוי קבוע נסו את הצ'אט לשינויים בפרופיל המוזיקלי.`;
   $('nudgeModal').classList.remove('hide');
 }
 

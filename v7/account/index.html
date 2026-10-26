@@ -3578,37 +3578,11 @@
         <div id="eventsWrap"></div>
       </div>
 
-      <!-- "הטעם המוזיקלי שלכם" — the taste chat (2026-10-13; replaced the
-          dormant v6 "חידודים מוזיקליים" chat). A dropdown card identical to
-          the special-playlists chat below (.hours-toggle / .hours-body, wired
-          by the generic toggle handler in app.js; starts closed). Driven by
-          taste-chat.js; the server side is api/v7/account/taste-chat.js +
-          taste-apply.js. -->
-      <div class="box">
-        <div class="hours-section" style="margin:0">
-          <button type="button" class="hours-toggle" id="tasteToggle" aria-expanded="false" aria-controls="tasteBody">
-            <h2 style="margin:0"><span class="h-ico">🎧</span>הטעם המוזיקלי שלכם</h2>
-            <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
-              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-          <div class="hours-body hide" id="tasteBody">
-            <p class="muted sub" style="margin:6px 0 12px">ספרו לצ׳אט מה אתם חושבים על המוזיקה היומית: מה יש יותר מדי או
-              פחות מדי, מה בא לכם להוסיף, שירים שאתם אוהבים, או מתי המוזיקה אנרגטית או רגועה מדי.</p>
-            <div id="tasteChatMessages" class="chat-messages" aria-live="polite"></div>
-            <textarea class="input" id="tasteChatInput" rows="3" maxlength="1500"></textarea>
-            <button class="btn" id="tasteChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M12 2L22 12H17V22H7V12H2Z" />
-              </svg></button>
-            <p class="muted" id="tasteChatMsg" style="text-align:center;margin-top:8px"></p>
-          </div>
-        </div>
-      </div>
-
-      <!-- Special-playlists chat — collapsible, same pattern as the
-          "הטעם המוזיקלי שלכם" card above. Starts closed. Today's cards above
-          ("פלייליסטים אחרים") stay visible — they hold the "▶ פתח" buttons. -->
+      <!-- Special-playlists chat — collapsible, directly under today's
+          cards ("פלייליסטים אחרים"), which stay visible: they hold the
+          "▶ פתח" buttons. Starts closed. Same .hours-toggle / .hours-body
+          pattern as the profile-changes chat below, wired by the generic
+          toggle handler in app.js. -->
       <div class="box">
         <div class="hours-section" style="margin:0">
           <button type="button" class="hours-toggle" id="eventsToggle" aria-expanded="false" aria-controls="eventsBody">
@@ -3628,6 +3602,33 @@
                 <path d="M12 2L22 12H17V22H7V12H2Z" />
               </svg></button>
             <p class="muted" id="eventsMsg" style="text-align:center;margin-top:8px"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- The taste chat (2026-10-13; replaced the dormant v6
+          "חידודים מוזיקליים" chat). Renamed to "שינויים בפרופיל המוזיקלי שלכם"
+          and moved below the special-playlists chat on 2026-10-26 (Roni).
+          Driven by taste-chat.js; the server side is
+          api/v7/account/taste-chat.js + taste-apply.js. -->
+      <div class="box">
+        <div class="hours-section" style="margin:0">
+          <button type="button" class="hours-toggle" id="tasteToggle" aria-expanded="false" aria-controls="tasteBody">
+            <h2 style="margin:0"><span class="h-ico">🎧</span>שינויים בפרופיל המוזיקלי שלכם</h2>
+            <svg class="hours-chev" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor"
+              stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+          <div class="hours-body hide" id="tasteBody">
+            <p class="muted sub" style="margin:6px 0 12px">ספרו לצ׳אט מה אתם חושבים על המוזיקה היומית: מה יש יותר מדי או
+              פחות מדי, מה בא לכם להוסיף, שירים שאתם אוהבים, או מתי המוזיקה אנרגטית או רגועה מדי.</p>
+            <div id="tasteChatMessages" class="chat-messages" aria-live="polite"></div>
+            <textarea class="input" id="tasteChatInput" rows="3" maxlength="1500"></textarea>
+            <button class="btn" id="tasteChatSend">שלח&nbsp;<svg class="send-arrow" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 2L22 12H17V22H7V12H2Z" />
+              </svg></button>
+            <p class="muted" id="tasteChatMsg" style="text-align:center;margin-top:8px"></p>
           </div>
         </div>
       </div>
@@ -4014,7 +4015,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=26102026c"></script>
+  <script type="module" src="/v7/account/app.js?v=26102026d"></script>
 </body>
 
 </html>

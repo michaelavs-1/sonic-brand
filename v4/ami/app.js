@@ -846,11 +846,13 @@ function renderTrackLookupResult({ mode, track, message }) {
     const buttonsHtml = mode === 'deleted'
         ? `<button class="track-delete-btn" disabled>Delete track</button>
            <button class="track-undo-btn">Undo delete</button>`
-        : `<button class="track-delete-btn" ${cannotDelete ? 'disabled' : ''}>Delete track</button>
-           <button class="track-undo-btn" disabled>Undo delete</button>`;
+        : cannotDelete
+            ? `<button class="track-add-btn">Add to DB</button>`
+            : `<button class="track-delete-btn">Delete track</button>
+               <button class="track-undo-btn" disabled>Undo delete</button>`;
 
     const notFoundBadge = cannotDelete
-        ? `<span class="track-badge warn">Not in DB — nothing to delete</span>`
+        ? `<span class="track-badge warn">Not in DB</span>`
         : '';
 
     const genres = Array.isArray(t.genres) ? t.genres : [];
@@ -868,7 +870,7 @@ function renderTrackLookupResult({ mode, track, message }) {
         ? `<div class="track-meta track-playlists">
                <span class="track-meta-label">Playlists:</span>
                ${playlists.map((p) => p.manual
-                   ? `<span class="track-badge manual" title="Added in the genre editor — not a Spotify playlist">manual · ${escapeHtml(p.genres.join(', '))}</span>`
+                   ? `<span class="track-badge manual" title="Added by Ami in Track cleanup — not a Spotify playlist">Ami manual track · ${escapeHtml(p.genres.join(', '))}</span>`
                    : `<a class="track-badge track-playlist-link" href="https://open.spotify.com/playlist/${encodeURIComponent(p.id)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.id)}</a>`).join('')}
            </div>`
         : '';
@@ -896,9 +898,92 @@ function renderTrackLookupResult({ mode, track, message }) {
 
     const deleteBtn = trackLookupResult.querySelector('.track-delete-btn');
     const undoBtn   = trackLookupResult.querySelector('.track-undo-btn');
+    const addBtn    = trackLookupResult.querySelector('.track-add-btn');
     if (deleteBtn) deleteBtn.addEventListener('click', runTrackDelete);
     if (undoBtn)   undoBtn.addEventListener('click',   runTrackUndo);
+    if (addBtn)    addBtn.addEventListener('click',    openAddTrackModal);
     if (mode === 'found') renderGenreEditor();
+}
+
+// "Add to DB" (Ami, 2026-10-26): a track that isn't in the DB joins one genre
+// as an "Ami manual track" (/api/v4/ami-track-genres action 'add'). It has no
+// analysis yet; Roni's next local scan analyses it, and until then the daily
+// playlists skip it. The modal's list filters as Ami types.
+const addTrackModal  = $('addTrackModal');
+const addTrackSearch = $('addTrackSearch');
+const addTrackList   = $('addTrackList');
+const addTrackSubmit = $('addTrackSubmit');
+let addTrackChoice = null;
+
+function openAddTrackModal() {
+    if (!currentTrack) return;
+    addTrackChoice = null;
+    $('addTrackName').textContent = [currentTrack.title, (currentTrack.artists || []).join(', ')].filter(Boolean).join(' — ');
+    addTrackSearch.value = '';
+    renderAddTrackList();
+    addTrackModal.classList.add('show');
+    addTrackSearch.focus();
+}
+
+function closeAddTrackModal() {
+    addTrackModal.classList.remove('show');
+}
+
+function renderAddTrackList() {
+    const q = addTrackSearch.value.trim().toLowerCase();
+    const genres = (currentTrack?.allGenres || []).filter((g) => !q || g.label.toLowerCase().includes(q));
+    addTrackList.innerHTML = genres.length
+        ? genres.map((g) => `<button type="button" class="add-track-option ${g.value === addTrackChoice ? 'selected' : ''}" data-genre="${escapeAttr(g.value)}">${escapeHtml(g.label)}</button>`).join('')
+        : '<div class="add-track-empty">No genre matches.</div>';
+    addTrackList.querySelectorAll('.add-track-option').forEach((btn) => btn.addEventListener('click', () => {
+        addTrackChoice = btn.dataset.genre;
+        renderAddTrackList();
+    }));
+    const label = (currentTrack?.allGenres || []).find((g) => g.value === addTrackChoice)?.label;
+    addTrackSubmit.disabled = !addTrackChoice;
+    addTrackSubmit.textContent = label ? `Add to ${label}` : 'Add to DB';
+}
+
+addTrackSearch.addEventListener('input', renderAddTrackList);
+addTrackSearch.addEventListener('keydown', (ev) => {
+    // Enter picks the only match, or submits once a genre is chosen.
+    if (ev.key !== 'Enter') return;
+    const options = addTrackList.querySelectorAll('.add-track-option');
+    if (options.length === 1 && addTrackChoice !== options[0].dataset.genre) {
+        addTrackChoice = options[0].dataset.genre;
+        renderAddTrackList();
+    } else if (addTrackChoice) {
+        runAddTrack();
+    }
+});
+$('addTrackCancel').addEventListener('click', closeAddTrackModal);
+addTrackModal.addEventListener('click', (ev) => { if (ev.target === addTrackModal) closeAddTrackModal(); });
+document.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Escape' && addTrackModal.classList.contains('show')) closeAddTrackModal();
+});
+addTrackSubmit.addEventListener('click', runAddTrack);
+
+async function runAddTrack() {
+    const t = currentTrack;
+    if (!t || !addTrackChoice) return;
+    addTrackSubmit.disabled = true;
+    addTrackSubmit.textContent = 'Adding...';
+    try {
+        const r = await amiFetch('/api/v4/ami-track-genres', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ action: 'add', spotifyId: t.spotifyId, genre: addTrackChoice, title: t.title, artists: t.artists }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        lastGenreEdit = { editId: data.editId, spotifyId: t.spotifyId };
+        closeAddTrackModal();
+        showBanner(`Added "${t.title}" to ${(data.genres || []).join(', ')}. It's analysed in the next scan; until then it doesn't play.`, 'success');
+        await runTrackLookup({ keepGenreUndo: true });
+    } catch (err) {
+        showBanner(`Adding failed: ${err.message}`);
+        renderAddTrackList();
+    }
 }
 
 // Genre editor: a chip per genre (× takes it out, ↺ puts it back), a picker to
@@ -933,7 +1018,9 @@ function renderGenreEditor() {
         </div>
         <div class="genre-edit-hint">
             Removing a genre takes the track out of that genre's playlists. Added genres are stored as
-            manual placements, which sheet scans leave alone.${t.canAddGenres ? '' : ' This track has no usable analysis, so genres can only be removed.'}
+            manual placements, which sheet scans leave alone.${t.canAddGenres ? ''
+                : t.hasAnalysis ? ' This track has no usable analysis, so genres can only be removed.'
+                : ' Not analysed yet: the next scan analyses it, and until then it doesn\'t play. More genres can be added once it\'s analysed.'}
         </div>`;
 
     box.querySelectorAll('.genre-chip-x').forEach((btn) => btn.addEventListener('click', () => {

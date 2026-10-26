@@ -88,6 +88,11 @@ if (INCLUDE_GENRES.size && EXCLUDE_GENRES.size) {
     EXCLUDE_GENRES.clear();
 }
 
+// Ami's manual tracks (Track cleanup's "Add to DB", 2026-10-26) sit in
+// "manual:<genre>" playlists. Neither genre flag drops them, so any scan Roni
+// runs picks them up (and, with --include-errors, retries their failures).
+const isAmiManual = (pid) => String(pid).startsWith('manual:');
+
 // PostgREST paginated select via Range header — works for tables much larger
 // than the 1000-row default page.
 //
@@ -198,6 +203,7 @@ async function main() {
     let excludedOrphanCount   = 0;
     if (EXCLUDE_GENRES.size) {
         for (const pid of [...orphansByPlaylist.keys()]) {
+            if (isAmiManual(pid)) continue;
             const genres = (playlistGenres.get(pid) || []).map(norm);
             if (genres.some((g) => EXCLUDE_GENRES.has(g))) {
                 excludedOrphanCount += orphansByPlaylist.get(pid).length;
@@ -216,7 +222,7 @@ async function main() {
     if (INCLUDE_GENRES.size) {
         for (const pid of [...orphansByPlaylist.keys()]) {
             const genres = (playlistGenres.get(pid) || []).map(norm);
-            if (!genres.some((g) => INCLUDE_GENRES.has(g))) {
+            if (!isAmiManual(pid) && !genres.some((g) => INCLUDE_GENRES.has(g))) {
                 orphansByPlaylist.delete(pid);
             } else {
                 keptPlaylistCount++;

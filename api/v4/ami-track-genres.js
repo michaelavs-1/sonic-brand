@@ -1,6 +1,7 @@
 /* /api/v4/ami-track-genres.js
    POST /api/v4/ami-track-genres
    Body: { action: 'set', spotifyId, genres: ["rnb", "neo soul"], title?, artists? }
+       | { action: 'add', spotifyId, genre: "rnb", title?, artists? }
        | { action: 'undo', editId }
 
    Track cleanup's genre editor (Ami, 2026-10-05): put a catalog track in
@@ -16,6 +17,15 @@
    applied, so even a half-applied change can be undone.
      → { ok, editId, genres, removedFrom: [playlist_id], addedManual: [genre] }
        | { ok, unchanged: true, genres }
+
+   'add' (Ami, 2026-10-26): a track that isn't in the DB at all joins one
+   genre as an "Ami manual track": a row in that genre's manual playlist, with
+   no audio analysis yet. Roni's local scans analyse it: dry-run-fill.mjs
+   queues every unanalysed manual track, and dry-run-orphans.mjs keeps them
+   (and, with --include-errors, their failures) whatever genres it's scoped
+   to. Until then the playlist builders skip it, like any new track. Logged
+   in track_genre_edits like a genre change, so Undo takes it out again.
+     → { ok, editId, genres }
 
    'undo': puts back the track's playlist_tracks rows from before that edit.
      → { ok, spotifyId, genres }
@@ -43,7 +53,8 @@ export default async function handler(req, res) {
         const body = req.body || {};
         if (body.action === 'undo') return await undo(body, res);
         if (body.action === 'set')  return await setGenres(body, res);
-        return res.status(400).json({ error: "action must be 'set' or 'undo'" });
+        if (body.action === 'add')  return await addTrack(body, res);
+        return res.status(400).json({ error: "action must be 'set', 'add' or 'undo'" });
     } catch (err) {
         return res.status(500).json({ error: err.message || 'Server error' });
     }
@@ -92,6 +103,34 @@ async function setGenres({ spotifyId, genres, title, artists }, res) {
         removedFrom: plan.remove.map((r) => r.playlist_id),
         addedManual: plan.add.map((r) => r.playlist_id.slice(MANUAL_PREFIX.length)),
     });
+}
+
+async function addTrack({ spotifyId, genre, title, artists }, res) {
+    if (!spotifyId || !/^[a-zA-Z0-9]{22}$/.test(spotifyId)) {
+        return res.status(400).json({ error: 'spotifyId (22-char alphanumeric) required' });
+    }
+    const g = String(genre || '').trim().toLowerCase();
+    if (!CANONICAL.has(g)) return res.status(400).json({ error: 'Choose a genre from the list.' });
+
+    const state = await loadTrackGenres(spotifyId);
+    if (state.rows.length) {
+        return res.status(409).json({ error: 'This track is already in the DB — change its genres in the genre editor instead.' });
+    }
+
+    const plan = planGenreChange(spotifyId, [], new Map(), [g]);
+    const [edit] = await pgrInsert('track_genre_edits', [{
+        spotify_id:    spotifyId,
+        title:         typeof title === 'string' ? title.slice(0, 300) : null,
+        artist:        Array.isArray(artists) ? artists.join(', ').slice(0, 300) : null,
+        before_genres: [],
+        after_genres:  [g],
+        before_rows:   [],
+        after_rows:    plan.add,
+    }], { returnRows: true });
+
+    await applyGenrePlan(spotifyId, plan);
+    const after = await loadTrackGenres(spotifyId);
+    return res.status(200).json({ ok: true, editId: edit?.id ?? null, genres: after.genres });
 }
 
 async function undo({ editId }, res) {

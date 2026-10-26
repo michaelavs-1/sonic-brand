@@ -632,6 +632,8 @@ sonic-brand/
 │   │   ├── schema.sql                      ← track_analyses / playlist_tracks / playlist_genres schema
 │   │   ├── genre-status.mjs                ← Read-only per-genre report: OK tracks, orphans, and whether each genre is
 │   │   │                                      in shared/genre-universe.js (~2 min). Used after digesting new genres.
+│   │   ├── sheet-status.mjs                ← Read-only "what's waiting to be scanned": sheet vs DB vs genre list, plus Ami's
+│   │   │                                      manual tracks waiting for / failed analysis (2026-10-26). No vercel dev.
 │   │   ├── playlist-scan.mjs               ← RapidAPI analysis of whole playlists → playlist-scans/<id>.json
 │   │   │                                      (no Supabase). See § COMMON TASKS → Precompute.
 │   │   ├── playlist-scans/                 ← playlist-scan.mjs results (2026-09-28 scans kept here).
@@ -1379,7 +1381,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 **Reference / catalog (populated by Ami's scans + precompute):**
 - `atmospheres` — { name, ranges, row_in_sheet }. Populated by Ami's scan endpoint.
 - `biztype_genres` — { business_type, genre, column_letter, position_in_column }. Ami's other scan.
-- `playlist_genres` — playlist_id ↔ genre + position_in_genre. Genres stored lowercase. Rows with `playlist_id = 'manual:<genre>'` (null position) are Track cleanup's manual placements, not Spotify playlists (2026-10-05, see § AMI'S DASHBOARD).
+- `playlist_genres` — playlist_id ↔ genre + position_in_genre. Genres stored lowercase. Rows with `playlist_id = 'manual:<genre>'` (null position) are Track cleanup's manual placements, not Spotify playlists (2026-10-05, see § AMI'S DASHBOARD). Since 2026-10-26 they also hold tracks Ami added that weren't in the DB at all, unanalysed until Roni's next scan.
 - `playlist_tracks` — playlist_id ↔ spotify_id + position.
 - `track_analyses` — spotify_id + typed audio-feature columns (tempo, popularity, energy, `instrumentalness`, valence, etc.) + raw_analysis jsonb.
 
@@ -1542,6 +1544,12 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
   - **Kept across scans.** `ami-scan.js` and `dry-run-fill.mjs` skip manual playlists, so placements survive sheet scans and don't count toward a genre's playlist target.
   - **Log and undo.** Every change is logged in `track_genre_edits` (migration `2026-10-05-track-genre-edits.sql`) before it's applied; undo restores the "before" rows.
   - Tests: `node --test scripts/test-track-genre-plan.mjs`.
+- **"Add to DB"** (Ami + Roni, 2026-10-26). A track Track cleanup finds "Not in DB" gets an "Add to DB" button instead of Delete. It opens a modal (`#addTrackModal`) with a searchable list of the genres, and Ami picks one.
+  - **Saving** (`ami-track-genres.js` action `add`): the track joins that genre's manual playlist, with no analysis. The card labels it "Ami manual track · <genre>", the label every manual placement now gets. Refused when the track is already in the DB (409) or the genre isn't on the list.
+  - **Logged and undone** like a genre change: a `track_genre_edits` row with no "before" rows, so Undo takes the track out again.
+  - **Analysis is local only.** The server never analyses tracks (Roni, 2026-10-26), so the track waits for Roni's next scan and doesn't play until then. It isn't written to the Data Box sheet: the sheet holds playlist links, and we only read it.
+  - **The scans pick it up without extra steps** (see § COMMON TASKS → Precompute): `dry-run-fill.mjs` queues every unanalysed track in a manual playlist, whatever `--genres` says; `dry-run-orphans.mjs` never drops manual-playlist tracks through its genre flags, so `--include-errors` retries their failures too. `sheet-status.mjs` lists the ones waiting.
+  - **Checked 2026-10-26** in-process against prod: add, duplicate refused, bad genre refused, listed as waiting by `sheet-status.mjs`, undo.
 - **Playlist cleanup** (`ami-playlist-lookup.js` / `-delete.js` / `-restore.js`, added 2026-08-30) — the playlist equivalent. Lookup uses the same input parsing (bare id / URL / URI / mobile-share link resolved via redirect-follow) and reports playlist_genres row count + distinct genres + track_analyses coverage of the playlist's tracks. Delete archives every `playlist_genres` + `playlist_tracks` row for that `playlist_id` into `deleted_playlists`, then removes the live rows. **Critically does NOT touch `track_analyses`** — those audio-features rows are shared with any other playlist those tracks live in, and are expensive to rebuild via RapidAPI. If Ami wants a track's cache gone too, she uses the track-cleanup flow one-at-a-time. Restore replays the archive and drops the archive row for a re-deletable state.
 - `ami-cron-tick.js` — **cron schedule REMOVED from `vercel.json` on 2026-08-13**. Endpoint file kept so the batch worker can be revived, but no longer runs hourly. Was the driver for the RapidAPI-based track analysis pipeline; when we stopped needing it, keeping the hourly tick just consumed function invocations and served no purpose. Re-add `{"path": "/api/v4/ami-cron-tick", "schedule": "* * * * *"}` to `vercel.json crons` to bring it back.
 - `ami-sync-usage.js`, `ami-reorder.js` — housekeeping
@@ -1946,7 +1954,7 @@ Older knobs still in use:
 **The Data Box sheet** ("Test Test Test - Data Box", id `1AkMEsptNZFavFDpjbWnbAomhND9Ub004MFD7cICeXr8`, public CSV export) has two tabs:
 - **Tab 1** "לפי מקומות" (gid `0`): business types → genres. Read by `api/v4/databox.js`.
 - **Tab 2** "לפי ז׳אנרים" (gid `1199564828`): genre → up to 15 playlist links, data from row 7. Read by `api/v4/databox-genres.js`.
-- **"What did Ami add?"** = compare Tab 2 with `playlist_genres` (playlists not yet in the DB) and with `shared/genre-universe.js` (genres not in the prompts). Then refresh the baseline with `node v4/precompute/snapshot-databox.mjs` (needs `vercel dev`), so the next check can diff against it.
+- **"What did Ami add?"** = `node v4/precompute/sheet-status.mjs` (2026-10-26; read-only, no `vercel dev`, ~1 min). It compares Tab 2 with `playlist_genres` (playlists not yet in the DB) and with `shared/genre-universe.js` (genres not in the prompts), and lists Ami's manual tracks waiting for an analysis or whose analysis failed. Both of those ride along with the usual scan lines: step 1/2 below queues the waiting ones, step 3 retries the failed ones. Then refresh the baseline with `node v4/precompute/snapshot-databox.mjs` (needs `vercel dev`), so the next check can diff against it.
 - **State on 2026-10-22: the sheet, the DB and the genre list match.** All 139 sheet genres are in `shared/genre-universe.js`, every sheet playlist is in the DB (Spotify's own `37i9dQZF1D…` playlists are skipped), and the DB has no playlist or genre the sheet doesn't list. No track is waiting for a first analysis. The latest genre, `Morna` (7 playlists), joined the list on 2026-10-22.
   - **A genre with few playlists can skip step 1 below.** Its "first 2 playlists" step is there so that every new genre gets some coverage early. With one small genre, run step 2 (all its playlists) and then step 3, as for Morna on 2026-10-22: 76 minutes for step 2, which left 241 of its tracks failed, then 4.4 hours for the retry.
   - **Earlier rounds:** `Electronic Chillout` and `Meditative Ambient` (Ami, 2026-10-15 / 16) joined the list on 2026-10-20 after all three steps. The 4 genres added 2026-10-15 (`Acoustic Blues`, `Future Funk`, `פופ ישראלי`, `היפ הופ ישראלי`) finished their error retry by 2026-10-16. The two Israeli ones joined `hit_popularity_floor` in migration [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql), RUN by 2026-10-20.
@@ -1958,12 +1966,14 @@ Older knobs still in use:
 - `--genres="a,b,c"` — only these genres (case-insensitive).
 - With no `--genres` and `max`, it plans exactly the sheet playlists missing from the DB.
 - New entries are emitted round-robin (every genre's next playlist, then the next), so an early abort still leaves each genre some coverage.
+- **Ami's manual tracks** (Track cleanup's "Add to DB", 2026-10-26): every track in a `manual:<genre>` playlist with no analysis is queued too, first, whatever `--genres` says. Only their spotify ids go into the plan's `unique_track_ids`, not into `playlist_tracks`, since their rows already exist and `batch.mjs` would rewrite their positions. With nothing new in the sheet but such tracks waiting, the plan holds just them.
 - **Fixed 2026-10-08:** it (and `dry-run-genres.mjs`) read `playlist_genres` in one request, which stops at 1,000 rows. The table had passed that, so playlists already in the DB looked missing and were re-planned (131 instead of 18). Re-fetching them from Spotify also brought back one track Ami had deleted, which was then deleted again. Both now page through every row (`pgrSelectAll`).
 
 `v4/precompute/dry-run-orphans.mjs` gained:
 - `--exclude-genres="a,b,c"` — drops orphans whose playlist is tagged to any of the listed genres. Use when a specific genre's playlists are causing upstream storms and you want to keep filling everything else without touching the DB (they stay orphans, no blacklist).
 - `--include-genres="a,b,c"` (added 2026-09-26) — the inverse: keeps ONLY orphans whose playlist is tagged to one of the listed genres. Use it to scan newly added genres first (e.g. the first playlists of each new genre, then the rest). If both flags are passed, `--exclude-genres` is ignored.
 - `--include-errors` — also queues tracks currently at `status='error'`. Pair with `batch.mjs --retry-errors`, or batch skips them.
+- Neither genre flag drops tracks in `manual:<genre>` playlists (Ami's manual tracks, 2026-10-26), so every orphan or error run includes them.
 
 Typical fail-fast recovery run:
 ```powershell

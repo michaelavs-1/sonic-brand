@@ -149,6 +149,18 @@ async function pool(items, concurrency, worker) {
     }));
 }
 
+// Spotify ids in "manual:<genre>" playlists with no track_analyses row yet.
+// Tracks Ami placed in a genre AFTER they were analysed already have one, so
+// in practice these are the ones he added from Track cleanup.
+async function amiManualTracksWaiting() {
+    const rows = await pgrSelectAll('playlist_tracks', { playlist_id: 'like.manual:*' }, { select: 'spotify_id', order: 'playlist_id.asc,spotify_id.asc' });
+    const ids = [...new Set(rows.map((r) => r.spotify_id))];
+    if (!ids.length) return [];
+    const analysed = await pgrSelectIn('track_analyses', 'spotify_id', ids, { select: 'spotify_id' });
+    const done = new Set(analysed.map((r) => r.spotify_id));
+    return ids.filter((id) => !done.has(id));
+}
+
 async function main() {
     console.log(`Base: ${BASE}`);
     const targetLabel = TARGET_IS_MAX ? 'sheet-max' : String(TARGET_PLAYLISTS);
@@ -251,7 +263,15 @@ async function main() {
     console.log(`\nTotal new playlists to ingest: ${orderedPlaylists.length}`);
     console.log(`Rounds: ${maxRounds}`);
 
-    if (orderedPlaylists.length === 0) {
+    // 4b. Ami's manual tracks (Track cleanup's "Add to DB", 2026-10-26): songs
+    //     he put into a genre by hand. Their playlist_tracks rows already
+    //     exist (in "manual:<genre>" playlists); queue the ones never analysed,
+    //     whatever --genres says, so the usual scan picks them up. Failures are
+    //     left to dry-run-orphans.mjs --include-errors.
+    const amiWaiting = await amiManualTracksWaiting();
+    if (amiWaiting.length) console.log(`Ami's manual tracks waiting for analysis: ${amiWaiting.length}`);
+
+    if (orderedPlaylists.length === 0 && amiWaiting.length === 0) {
         console.log('\nNothing to do — every genre is already at or above the target.');
         return;
     }
@@ -277,8 +297,10 @@ async function main() {
     });
 
     // 6. Build unique_track_ids in round-robin order (first-occurrence wins).
-    const uniqueIdsOrdered = [];
-    const seen = new Set();
+    //    Ami's manual tracks go first; they're not added to playlist_tracks
+    //    below, since batch.mjs would rewrite their existing rows.
+    const uniqueIdsOrdered = [...amiWaiting];
+    const seen = new Set(amiWaiting);
     for (const rp of orderedPlaylists) {
         const ids = playlistTracks[rp.pid] || [];
         for (const id of ids) {
@@ -330,6 +352,7 @@ async function main() {
     console.log(`  Genres updated:            ${perGenreNew.length}`);
     console.log(`  New playlist_genres rows:  ${newPlaylistGenresRows.length}`);
     console.log(`  Brand-new playlists:       ${orderedPlaylists.length}`);
+    console.log(`  Ami's manual tracks:       ${amiWaiting.length}`);
     console.log(`  Total raw track slots:     ${totalSlots}`);
     console.log(`  Unique playable IDs:       ${uniqueIdsOrdered.length}`);
     console.log(`  Already cached:            ${alreadyCachedCount}`);

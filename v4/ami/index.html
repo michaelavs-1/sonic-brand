@@ -859,6 +859,164 @@
       color: var(--muted);
     }
 
+    /* Track cleanup's "Add to DB" (Ami, 2026-10-26): button + genre modal. */
+    .track-add-btn {
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--r-md);
+      cursor: pointer;
+      font-family: inherit;
+      background: var(--accent);
+      color: #0a0a0f;
+      transition: transform .15s, box-shadow .15s;
+    }
+
+    .track-add-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 14px rgba(29, 185, 84, .3);
+    }
+
+    .add-track-modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, .6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 1000;
+    }
+
+    .add-track-modal.show {
+      display: flex;
+    }
+
+    .add-track-box {
+      width: 100%;
+      max-width: 440px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      background: var(--card);
+      border: 1px solid var(--border-2);
+      border-radius: var(--r-lg);
+      padding: 20px;
+    }
+
+    .add-track-box h3 {
+      margin: 0;
+      font-size: 17px;
+      color: var(--text);
+    }
+
+    .add-track-name {
+      margin-top: 4px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .add-track-hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .add-track-search {
+      margin-top: 12px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 9px 12px;
+      font-size: 14px;
+      font-family: inherit;
+      background: var(--bg-2);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+      border-radius: var(--r-md);
+      outline: none;
+    }
+
+    .add-track-search:focus {
+      border-color: var(--accent);
+    }
+
+    .add-track-list {
+      margin-top: 8px;
+      flex: 1;
+      min-height: 120px;
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: var(--r-md);
+      background: var(--bg-2);
+      padding: 4px;
+    }
+
+    .add-track-option {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 7px 10px;
+      font-size: 13px;
+      font-family: inherit;
+      color: var(--text);
+      background: none;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    .add-track-option:hover {
+      background: var(--card-2);
+    }
+
+    .add-track-option.selected {
+      background: var(--accent-dim);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .add-track-empty {
+      padding: 10px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .add-track-actions {
+      margin-top: 14px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .add-track-actions button {
+      padding: 8px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      border-radius: var(--r-md);
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    #addTrackCancel {
+      background: transparent;
+      border: 1px solid var(--border-2);
+      color: var(--text);
+    }
+
+    #addTrackSubmit {
+      background: var(--accent);
+      border: none;
+      color: #0a0a0f;
+    }
+
+    #addTrackSubmit:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+
     .queue-empty {
       background: var(--card);
       border: 1px dashed var(--border);
@@ -1155,7 +1313,7 @@
 
     <div class="track-cleanup-section">
       <h2>Track cleanup</h2>
-      <p class="hint">Remove a single Spotify track from the DB, or change which genres it's in</p>
+      <p class="hint">Remove a single Spotify track from the DB, change which genres it's in, or add a missing track to a genre</p>
       <div class="track-cleanup-input-row">
         <input type="text" id="trackLookupInput"
           placeholder="Spotify track ID, open.spotify.com/track/... URL, or spotify:track:... URI" />
@@ -1209,7 +1367,22 @@
     </div>
   </div>
 
-  <script src="/v4/ami/app.js?v=24102026a"></script>
+  <div class="add-track-modal" id="addTrackModal" role="dialog" aria-modal="true" aria-labelledby="addTrackTitle">
+    <div class="add-track-box">
+      <h3 id="addTrackTitle">Add to DB</h3>
+      <div class="add-track-name" id="addTrackName"></div>
+      <div class="add-track-hint">Choose the genre this song belongs to. It's added as an Ami manual track and
+        analysed in the next scan; until then it doesn't play.</div>
+      <input type="text" class="add-track-search" id="addTrackSearch" placeholder="Search genres…" autocomplete="off" />
+      <div class="add-track-list" id="addTrackList"></div>
+      <div class="add-track-actions">
+        <button type="button" id="addTrackCancel">Cancel</button>
+        <button type="button" id="addTrackSubmit" disabled>Add to DB</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/v4/ami/app.js?v=26102026a"></script>
 </body>
 
 </html>

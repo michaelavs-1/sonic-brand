@@ -42,7 +42,7 @@ import {
   showR2FailureScreen,
   showRestartOnboardingScreen,
   preparePreview,
-} from '/v7/preview.js?v=24102026a';
+} from '/v7/preview.js?v=26102026a';
 // v7 has NO per-direction playlist build at onboarding — directions are
 // diagnostic probes, not playlist seeds. After the swipe deck the flow goes
 // "הכל מוכן!" → registration → payment → taste-profile (the point where
@@ -1149,8 +1149,8 @@ async function goToStep(start) {
             longestMinutes: state.longestMinutes,
             superLikedTracks: [...state.superLikedTracks],
             // Kept with the taste profile (2026-10-05): the super-liked genres
-            // are "requested" — Option 1 puts each one in every playlist of
-            // its energy tier.
+            // are "requested" — each day's playlists are picked so that at
+            // least one of them plays each of these (2026-10-26).
             superLikedGenres: [...new Set(state.superLikedGenres.values())],
             round2Emphases: state.round2Emphases || '',
             // The swipe cards + verdicts, for the admin console (2026-10-13).

@@ -63,9 +63,9 @@ import { mountHoursEditor } from '../hours-selector.js?v=29092026a';
 // the per-playlist edit / trash paths, which v7 rows never show (no direction_id).
 import { openDirectionChat, selectDirectionInChat, removeDirectionFromCard, patchDirectionOptimistic } from './direction-chat.js?v=24102026a';
 import { mountTasteChat, resetTasteChat, ensurePortrait, syncTastePlaceholder } from './taste-chat.js?v=24102026a';
-import { generateEnergyDirections } from '../generation/energy-directions.js?v=24102026b';
-import { generateLevelDirections } from '../generation/level-directions.js?v=24102026b';
-import { levelProfileKey } from '../generation/timeline-assembler.js?v=28092026a';
+import { generateEnergyDirections } from '../generation/energy-directions.js?v=26102026a';
+import { generateLevelDirections } from '../generation/level-directions.js?v=26102026a';
+import { levelProfileKey } from '../generation/timeline-assembler.js?v=26102026a';
 import { setWaitText, WAIT_DOTS_HTML } from '../wait-dots.js?v=28092026a';
 import { nudgeOptions } from '../generation/energy-windows.js?v=21102026a';
 import { mountHypPayment, ensureHypPaymentStyles } from '../hyp-payment.js?v=06102026a';
@@ -2138,7 +2138,7 @@ function renderEmptyDaily(wrap) {
   const link = (text, onClick) => {
     const a = document.createElement('a');
     a.href = '#';
-    a.className = 'closed-open-link';
+    a.className = 'closed-open-link inline-link';
     a.textContent = text;
     a.addEventListener('click', (e) => { e.preventDefault(); onClick(); });
     return a;
@@ -2167,7 +2167,9 @@ function renderEmptyDaily(wrap) {
 
   if (reason === 'subscription-ended' && state.subscription?.status === 'ended') {
     sep();
-    msg.append(`${DAILY_REASON_TEXT[reason]} – `, renewLink());
+    const renew = renewLink();
+    renew.classList.add('inline-link');   // sits inside the line, like the links above
+    msg.append(`${DAILY_REASON_TEXT[reason]} – `, renew);
   } else if (DAILY_REASON_TEXT[reason]) {
     sep();
     msg.append(DAILY_REASON_TEXT[reason]);

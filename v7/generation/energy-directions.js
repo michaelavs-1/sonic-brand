@@ -11,9 +11,12 @@
 // own energy scale (N = energy_levels_total) is split at its midpoint (N/2):
 //   - HIGH tier = approved genres whose energy_level > N/2.
 //   - LOW tier  = approved genres whose energy_level <= N/2.
-// Every direction sits wholly inside one tier, and contains every requested
-// genre of its tier (taste profile's requested_genres — super-liked or asked
-// for in the emphases, 2026-10-05; overrides the coherence rules). Each
+// Every direction sits wholly inside one tier. A requested genre (the taste
+// profile's requested_genres — super-liked or asked for in the emphases) sits
+// only in the directions it suits, like any other genre, and must be in at
+// least one of its tier's directions: the daily draw then guarantees the
+// owner hears it, by picking directions that play it (Roni, 2026-10-26 — until
+// then it was forced into EVERY direction of its tier). Each
 // direction is a curated,
 // internally coherent blend (v6 onboarding style: 4–6 genres, v6's energy /
 // jazz / pop / house pairing rules, cross-cultural blends encouraged), and
@@ -43,7 +46,7 @@
 
 import { callModel, parseJSONFromText } from './ai-provider.js';
 import { GENRE_UNIVERSE_SECTION, GENRES, GENRE_SET } from '../../shared/genre-universe.js';
-import { tierOfLevel, requestedByTier, withRequested } from './option1-draw.js';
+import { tierOfLevel, requestedByTier } from './option1-draw.js';
 import { enforceIsolation } from './pairing-rules.js';
 import { serverWarn } from './server-log.js';
 export { GENRE_UNIVERSE_SECTION };
@@ -102,10 +105,10 @@ const REQUESTED_GENRES_SECTION = `## Requested Genres
 
 The owner explicitly asked for some genres: they super-liked a track from them, or named them in their emphases. These are marked "(requested)" in the approved list.
 
-- **Every direction of a tier contains every requested genre of that tier.** If \`Rnb\` is a requested HIGH-tier genre, every HIGH direction includes \`Rnb\`; the LOW directions are not affected. The owner hears each requested genre in every playlist of its energy, every day.
-- **This overrides every rule in "Coherence Inside Each Direction" below** (beat/percussion pairing, Jazz isolation, Pure Pop isolation, Electronic R&B isolation, DownTempo & LoFi independence, House & Techno containment, the genre-count target). Build the rest of each direction to sit as well as possible with the requested genres.
-- **Vary what surrounds them.** The requested genres are shared by all of a tier's directions, so the library's variety comes from the other genres: give each direction a different combination of the tier's remaining genres.
-- A tier whose approved genres are all requested gets a single direction made of exactly those genres.`;
+- **Place them like any other genre — only in the directions they genuinely suit.** Every rule in "Coherence Inside Each Direction" below applies to them in full. Never staple a requested genre onto a direction it doesn't belong in.
+- **Every requested genre must be in at least one direction of its tier.** This one is absolute. Each day the tool picks the day's playlists so that a direction playing each requested genre is among them — a requested genre with no direction would simply never be heard. If nothing in its tier pairs with it under the coherence rules, give it a direction of its own.
+- **Put it in every direction where it belongs.** A requested genre may appear in as many of its tier's directions as it genuinely suits — that, not forced placement, is what keeps it present in the owner's week.
+- **Two directions of a tier should be able to carry all of that tier's requested genres.** The tool plays two directions per tier per day. Where the coherence rules allow, arrange them so that two of your directions between them hold every requested genre of the tier (e.g. the two that sit well together in one direction, the third in another). Never break a coherence rule for this: when the rules keep them apart, build the directions correctly and the tool will rotate the leftovers across the following days.`;
 
 const LIBRARY_SECTION = `## Library Size & Diversity
 
@@ -246,8 +249,8 @@ Hard invariants:
 - Every genre in every direction must be one of the approved genres provided in the input.
 - Every genre string must be VERBATIM from the Genre Universe.
 - HIGH directions contain only HIGH-tier genres; LOW directions contain only LOW-tier genres.
-- Every direction contains every requested genre of its tier.
-- At least 2 directions for each tier that has any approved genres (1 when every approved genre of the tier is requested).
+- Every requested genre is in at least one direction of its tier.
+- At least 2 directions for each tier that has any approved genres.
 - No two directions have the same set of genres.
 - At most 30 directions in total.
 
@@ -322,13 +325,13 @@ export function buildUserMessage({
   base += `\n\n## Approved genres (the ONLY genres in play)\n${formatApprovedGenres(approvedGenres, energyLevelsTotal, requestedGenres)}`;
   const req = requestedByTier(requestedGenres, approvedGenres, energyLevelsTotal);
   if (req.high.length || req.low.length) {
-    base += `\n\n## Requested genres (in EVERY direction of their tier)\nHIGH tier: ${req.high.join(', ') || '(none)'}\nLOW tier: ${req.low.join(', ') || '(none)'}`;
+    base += `\n\n## Requested genres (each in at least one direction of its tier)\nHIGH tier: ${req.high.join(', ') || '(none)'}\nLOW tier: ${req.low.join(', ') || '(none)'}`;
   }
   base += formatPlaceBlock(place);
 
   return base
     + `\n\nBuild a library of as many directions as make sense, up to 30, from these approved genres: each direction a coherent blend inside a single tier, the directions diverse from one another, at least 2 per tier that has approved genres`
-    + (req.high.length || req.low.length ? `, every requested genre in every direction of its tier.` : '.');
+    + (req.high.length || req.low.length ? `, and every requested genre in at least one direction of its tier — in the directions it suits, never forced.` : '.');
 }
 
 // ---------- Validation & normalization ----------
@@ -351,10 +354,12 @@ function canonicalize(genreString) {
 // - Directions left with zero valid genres.
 // - A direction whose tier + genre set repeats an earlier one.
 // - Everything past MAX_DIRECTIONS (30).
-// Adds any requested genre of the direction's tier the model left out (the
-// "in every direction of its tier" rule). Fixes recipes that break the
-// clear-cut isolation rules (pairing-rules.js, 2026-10-21). Warns (server and scripts
-// only, never hard-errors) for dropped genres, a tier with fewer than 2 directions.
+// Fixes recipes that break the clear-cut isolation rules (pairing-rules.js,
+// 2026-10-21), then gives a requested genre a direction of its own when no
+// direction of its tier plays it (2026-10-26 — the daily draw can only
+// guarantee the owner hears it through a direction that holds it). Warns
+// (server and scripts only, never hard-errors) for dropped genres, a tier
+// with fewer than 2 directions.
 export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGenres = []) {
   if (!parsed || typeof parsed !== 'object') return null;
 
@@ -374,7 +379,6 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGe
   const directions = [];
   const seenSets = new Set();
   const dropped = [];
-  let added = 0;
 
   for (const d of rawDirections) {
     if (directions.length >= MAX_DIRECTIONS) break;
@@ -393,9 +397,6 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGe
       seen.add(genre);
     }
     if (!genres.length) continue;
-    const full = withRequested(genres, requested[tier]);
-    added += full.length - genres.length;
-    genres.splice(0, genres.length, ...full);
 
     const setKey = `${tier}|${[...genres].sort().join('|')}`;
     if (seenSets.has(setKey)) continue;
@@ -409,15 +410,16 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGe
   }
 
   // Ami's clear-cut isolation rules (Electronic R&B; DownTempo / LoFi), which
-  // Gemini sometimes breaks: fixed per tier, requested genres exempt; genres
-  // taken out get a recipe of their own when no other recipe plays them.
+  // Gemini sometimes breaks: fixed per tier; genres taken out get a recipe of
+  // their own when no other recipe plays them. Requested genres are no longer
+  // exempt (2026-10-26) — they are ordinary members of the recipes they sit in.
   const isolationNotes = [];
   for (const tier of ['high', 'low']) {
     const at = directions.map((d, i) => (d.energy_tier === tier ? i : -1)).filter((i) => i >= 0);
     if (!at.length) continue;
-    const res = enforceIsolation(at.map((i) => directions[i]), requested[tier]);
+    const res = enforceIsolation(at.map((i) => directions[i]));
     at.forEach((i, k) => { directions[i] = res.recipes[k]; });
-    for (const a of res.added) directions.push({ energy_tier: tier, title_en: a.title_en, genres: withRequested(a.genres, requested[tier]) });
+    for (const a of res.added) directions.push({ energy_tier: tier, title_en: a.title_en, genres: a.genres });
     isolationNotes.push(...res.notes.map((n) => `${tier}: ${n}`));
   }
   if (isolationNotes.length) {
@@ -433,11 +435,29 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGe
     serverWarn('[v7 energy-directions] isolation rules fixed:', isolationNotes.join(' | '));
   }
 
+  // The guarantee the daily draw rests on: a requested genre no direction of
+  // its tier plays gets one of its own (the model is told to do this itself).
+  // At the library ceiling the tier's last direction makes room — being heard
+  // at all beats one more variation.
+  const orphans = [];
+  for (const tier of ['high', 'low']) {
+    for (const g of requested[tier]) {
+      if (directions.some((d) => d.energy_tier === tier && d.genres.includes(g))) continue;
+      if (directions.length >= MAX_DIRECTIONS) {
+        const last = directions.map((d, i) => (d.energy_tier === tier ? i : -1)).filter((i) => i >= 0).pop();
+        if (last === undefined) break;
+        directions.splice(last, 1);
+      }
+      directions.push({ energy_tier: tier, title_en: g, genres: [g] });
+      orphans.push(`${g} (${tier})`);
+    }
+  }
+
   if (dropped.length) {
     serverWarn('[v7 energy-directions] dropped genres that are not approved for that tier:', dropped.join(', '));
   }
-  if (added) {
-    serverWarn(`[v7 energy-directions] added ${added} requested genre(s) the model left out of a direction of their tier`);
+  if (orphans.length) {
+    serverWarn('[v7 energy-directions] requested genre(s) no direction played — gave each one its own:', orphans.join(', '));
   }
   // Only warn for tiers that produced at least one direction — a completely
   // empty tier just means the user had no approved genres in that half.

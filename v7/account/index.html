@@ -852,6 +852,21 @@
       color: var(--accent)
     }
 
+    /* A link that sits inside a sentence rather than after a heading — the
+       Home tab's "לא נוצרו פלייליסטים · <סיבה> · צור פלייליסטים" line
+       (2026-10-26). The " · " before it is already the gap, so the base
+       class's margin would push it a second time; and it takes the
+       surrounding text's size so it sits on the same visual centre as the
+       rest of the line instead of riding low on the baseline. */
+    .closed-open-link.inline-link {
+      margin-inline-start: 0;
+      font-size: inherit;
+      /* A touch bolder than the base link (500): it is the one thing to act
+         on in that line, and at the paragraph's own size it needs the weight
+         to stand out from the text around it (Roni, 2026-10-26). */
+      font-weight: 700;
+    }
+
     /* Generate-daily confirmation modal. Matches the overall dashboard aesthetic
    (dark card on blurred backdrop). */
     /* Subscription renewal sheet (startRenewal in app.js) */
@@ -3999,7 +4014,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=25102026a"></script>
+  <script type="module" src="/v7/account/app.js?v=26102026c"></script>
 </body>
 
 </html>

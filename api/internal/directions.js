@@ -109,8 +109,12 @@ function opsFor(state, body) {
   const needDir = ['add_genre', 'remove_genre', 'replace_genre', 'delete_direction'].includes(body.action);
   if (needDir && !dir) return { error: `no direction "${body.direction}" — use a key from the latest GET (${lib.map((d) => d.key).join(', ') || 'none'})` };
   const warnings = [];
-  const requestedNote = (g) => (state.mode === 'option1' && state.requested.includes(g)
-    ? [`${g} is a requested genre: every Option 1 playlist of its tier gets it at build time, whatever its directions hold`] : []);
+  // Requested genres stopped being added to every Option 1 playlist on
+  // 2026-10-26: now one of the day's playlists plays a direction that holds
+  // the genre, so taking it out of directions does change what plays — and a
+  // genre left with no direction gets one of its own (taste-ops finalize).
+  const requestedNote = (g) => (state.requested.includes(g)
+    ? [`${g} is a requested genre: one of the day's playlists must play a direction that holds it, so it keeps at least one direction (it gets one of its own if this leaves it with none)`] : []);
 
   switch (body.action) {
     case 'add_genre': {

@@ -53,7 +53,8 @@ export function option2View(rows, N) {
 
 // The approved genres grouped by energy level, with the Option 1 tier each
 // level falls in, the taste chat's weight (1 = normal) and whether it's a
-// requested genre (in every Option 1 playlist of its tier).
+// requested genre (the owner super-liked it or asked for it: it sits in the
+// recipes it suits, and one of each day's playlists plays one of them).
 export function approvedByLevel(profile) {
   const N = normLevels(profile?.energy_levels_total);
   const weights = profile?.genre_weights && typeof profile.genre_weights === 'object' ? profile.genre_weights : {};

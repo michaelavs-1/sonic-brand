@@ -222,14 +222,14 @@ const fitsDir = (s, dir, g) => (s.mode === 'option2'
 
 // Ami's clear-cut isolation rules (pairing-rules.js, 2026-10-21): Electronic
 // R&B only with house / Nu Disco / Indie Dance, DownTempo only with DownTempo,
-// LoFi only with LoFi. Option 1's requested genres don't count — they sit in
-// every recipe of their tier. An op that would make a recipe break one is
-// refused with the rule as its reason (the admin console shows it; the chat
-// drops the op).
-const isolationExempt = (s) => (s.mode === 'option1' ? s.requested : []);
+// LoFi only with LoFi. They hold for requested genres too since 2026-10-26 —
+// a requested genre is an ordinary member of the recipes it sits in (before
+// that, Option 1 put it in every recipe of its tier, so it was exempt). An op
+// that would make a recipe break one is refused with the rule as its reason
+// (the admin console shows it; the chat drops the op).
 function newIsolationBreak(s, before, after) {
-  const was = splitRecipe(before, isolationExempt(s)).out.length;
-  const now = splitRecipe(after, isolationExempt(s)).out;
+  const was = splitRecipe(before).out.length;
+  const now = splitRecipe(after).out;
   return now.length > was ? `would break a pairing rule (${now[now.length - 1].why})` : null;
 }
 
@@ -459,8 +459,9 @@ export const OP_NAMES = Object.keys(HANDLERS);
 //   - drop genres no longer approved, or now in another tier / level;
 //   - drop empty recipes and repeated genre sets;
 //   - a genre the ops added or moved that no recipe of its tier/level plays
-//     gets a recipe of its own (Option 1: requested genres are exempt — every
-//     playlist of their tier gets them at build time);
+//     gets a recipe of its own, and so does a requested genre no recipe plays
+//     (the daily draw can only guarantee the owner hears it through a recipe
+//     that holds it — 2026-10-26);
 //   - Option 1: a tier with approved genres but no recipe gets one with them;
 //   - the current mode's recipes follow the isolation rules (pairing-rules.js);
 //   - requested / weights / rejected / conditional stay consistent.
@@ -481,7 +482,7 @@ function finalize(s, ctx) {
   s.option1Dirs = clean(s.option1Dirs, (d, g) => tierOfLevel(lv.get(g), s.N) === d.energy_tier);
   s.levelDirs = clean(s.levelDirs, (d, g) => lv.get(g) === d.energy_level);
 
-  for (const g of ctx.touched) {
+  for (const g of new Set([...ctx.touched, ...s.requested])) {
     if (!lv.has(g)) continue;
     if (s.mode === 'option2') {
       const L = lv.get(g);
@@ -490,7 +491,7 @@ function finalize(s, ctx) {
         s.levelDirs.push({ key: nextKey(s, { level: L }), energy_level: L, title_en: g, genres: [g], energy_range: null });
         ctx.notes.push(`gave ${g} a recipe of its own`);
       }
-    } else if (!s.requested.includes(g)) {
+    } else {
       const tier = tierOfLevel(lv.get(g), s.N);
       if (!s.option1Dirs.some((d) => d.energy_tier === tier && d.genres.includes(g)) && s.option1Dirs.length < MAX_OPTION1_DIRECTIONS) {
         s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: g, genres: [g] });
@@ -518,7 +519,7 @@ function finalize(s, ctx) {
   let fixed = false;
   for (const { L, tier, dirs } of groups) {
     if (!dirs.length) continue;
-    const res = enforceIsolation(dirs, isolationExempt(s));
+    const res = enforceIsolation(dirs);
     if (!res.notes.length) continue;
     fixed = true;
     dirs.forEach((d, k) => { d.genres = res.recipes[k].genres; });

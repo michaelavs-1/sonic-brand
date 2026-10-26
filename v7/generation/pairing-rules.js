@@ -13,8 +13,10 @@
 //
 // A recipe that breaks a rule keeps its larger side; the genres taken out form
 // a recipe of their own when no other recipe of the tier / level plays them,
-// so no genre loses its last recipe. Exempt genres (Option 1's requested
-// genres, which go into every recipe of their tier) never count.
+// so no genre loses its last recipe. `exempt` genres never count; nothing in
+// production passes any since 2026-10-26, when requested genres stopped being
+// forced into every recipe of their tier and became ordinary members of the
+// recipes they sit in.
 //
 // Pure, no imports — browser + server.
 

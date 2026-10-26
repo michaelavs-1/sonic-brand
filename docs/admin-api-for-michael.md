@@ -198,7 +198,8 @@ login. Below it, the tabs:
 - **The approved genres, one row per energy level**, calm (level 1) to
   energetic (level N), as chips:
   - for Option 1, label each row with its tier: רגוע / אנרגטי;
-  - a star on requested genres;
+  - a star on requested genres (they sit in the directions that suit them, and
+    one of each day's playlists plays a direction that holds them);
   - a small ↓ / ↑ on genres whose weight is below / above 1.
 - **The two preferences:** אינסטרומנטלי and להיטים. Values: `none` → רגיל,
   `soft` → עדיפות, `hard` → רק.
@@ -424,7 +425,9 @@ they're likely to enjoy (**approved**), each at an **energy level** from 1
 levels are relative to that owner's taste. In Option 1, the upper half of
 the levels is the **high tier** and the rest the **calm tier**.
 **Requested** genres are ones the owner explicitly asked for (super-liked or
-named in their text). Option 1 puts each one in every playlist of its tier.
+named in their text). They sit in the directions that suit them, and the
+day's playlists are picked so that at least one of them plays a direction
+holding each requested genre (both options, since 2026-10-26).
 
 **Directions** (called "recipes" in some places). A direction is a blend of
 genres that sound good together. Each business has a library of them:
@@ -910,9 +913,13 @@ refused (`400`, the message says where the genre is) unless you send
 `"move": true`. Moving it also takes it out of the directions of its old
 tier / level, which changes other playlists — confirm with the admin first.
 
-**Requested genres.** In Option 1, a requested genre is added to every
-playlist of its tier when the playlists are built, so removing it from a
-direction doesn't stop it playing. The response warns about this.
+**Requested genres.** A requested genre (the owner super-liked it or named it
+in their emphases) sits only in the directions it suits, like any other genre,
+and at least one of the day's playlists plays a direction that holds it. So
+removing it from a direction DOES change what plays, and if it leaves the
+genre with no direction at all, the server gives it one of its own. The
+response warns about this. (Until 2026-10-26, Option 1 added every requested
+genre to every playlist of its tier and Option 2 ignored them.)
 
 **Pairing rules (since 2026-10-21).** Some genres may only share a
 direction with certain others:
@@ -920,6 +927,9 @@ direction with certain others:
 - `Electronic R&B`: only with house genres, `Nu Disco` or `Indie Dance`;
 - `DownTempo`, `French DownTempo`, `Latin DownTempo`: only with each other;
 - `LoFi Beats`, `Desi LoFi`, `LoFi Bossa`: only with each other.
+
+Requested genres are NOT exempt (they were in Option 1 until 2026-10-26,
+while they went into every playlist of their tier).
 
 An `add_genre`, `replace_genre` or `new_direction` that would break one of
 these is refused: `400`, with the rule in `dropped[].reason`, e.g.

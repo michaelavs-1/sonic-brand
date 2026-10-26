@@ -64,6 +64,7 @@ import {
 } from '../../../v7/generation/energy-timeline.js';
 import {
   estimateDemand, estimateDemandPerMix, assembleMixes, pickLevelDirections, dayNumber,
+  applyRequestedCoverage, requestedPerLevel,
   mulberry32, seedFrom, shuffle, DEFAULT_TRACK_SEC,
 } from '../../../v7/generation/timeline-assembler.js';
 import { levelEnergyWindow } from '../../../v7/generation/energy-windows.js';
@@ -110,6 +111,9 @@ async function readInputs(businessId) {
   return {
     timeline: settings?.[0]?.timeline || null,
     approved: Array.isArray(tp?.approved_genres) ? tp.approved_genres : [],
+    // Requested genres: one of the day's two mixes must play each of them
+    // (2026-10-26). Missing column (pre-2026-10-05 migration) → none.
+    requested: Array.isArray(tp?.requested_genres) ? tp.requested_genres : [],
     N: normLevels(tp?.energy_levels_total),
     inst: normPref(tp?.instrumentalness_preference),
     pop: normPref(tp?.popularity_preference),
@@ -217,7 +221,7 @@ export async function planOption2Timeline({ businessId, hours, now = new Date(),
 // levelDirections = business_v7_level_directions rows ([] → no library).
 // dailyPicks = the admin's business_v7_daily_picks rows for the day ([] → the
 // usual rotation everywhere; ignored when there's no library).
-export async function planFromInputs({ businessId, hours, timeline, approved, N, inst = 'none', pop = 'none', levelDirections = [], weights = null, dailyPicks = [], now = new Date(), onDemand = false }) {
+export async function planFromInputs({ businessId, hours, timeline, approved, N, inst = 'none', pop = 'none', levelDirections = [], weights = null, requested = [], dailyPicks = [], now = new Date(), onDemand = false }) {
   N = normLevels(N);
   const genresByLevel = new Map();
   const canonical = new Map();
@@ -235,10 +239,16 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
   if (win.reason) return { slots: [], reason: win.reason };
 
   // Today's direction per level for each mix (null → no library: every mix
-  // plays every genre of the level).
+  // plays every genre of the level). The rotation first, then the move that
+  // makes sure every requested genre is played today, then the admin's picks.
   const MIXES = OPTION2_TITLES.length;
   const lib = levelLibrary(levelDirections, genresByLevel);
-  const picks = lib ? applyOption2Picks(pickLevelDirections(lib, win.isoDate, MIXES), dailyPicks, genresByLevel, lib) : null;
+  const picks = lib
+    ? applyOption2Picks(
+      applyRequestedCoverage(pickLevelDirections(lib, win.isoDate, MIXES), lib,
+        requestedPerLevel(requested, genresByLevel), dayNumber(win.isoDate)),
+      dailyPicks, genresByLevel, lib)
+    : null;
   if (!lib && levelDirections?.length) console.warn(`[v7 option2] biz=${businessId}: stored level directions don't match the taste profile — playing every genre of each level`);
 
   // Pools: one per genre AND energy range. A recipe's songs come from its own

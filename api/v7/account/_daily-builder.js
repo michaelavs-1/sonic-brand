@@ -18,8 +18,8 @@
        business_v7_directions rows (persisted at mode selection), splits by
        energy_tier, and fills the 4 fixed names ("אנרגיה גבוהה #1/#2",
        "אנרגיה רגועה #1/#2") with 2 directions per tier — the first random,
-       the second the least like it, re-drawn every build/day (pickTierPair).
-       The tier's requested genres go into both. Half-day target each. Songs
+       the second the least like it, re-drawn every build/day (pickTierPair),
+       and between them they play the tier's requested genres. Half-day target each. Songs
        from the tier's energy range (high 50–80, low 30–60). "Well-known
        songs" per tier (the taste chat, 2026-10-14); "only hits" falls back
        to hits-first for a playlist without enough unplayed hits.
@@ -78,7 +78,8 @@ import {
   datedLabel,
 } from '../../../v7/generation/playlist-length.js';
 import { businessWindowAt } from '../../../v7/generation/energy-timeline.js';
-import { pickTierPair, requestedByTier, withRequested, tierOfLevel, tierPopularity } from '../../../v7/generation/option1-draw.js';
+import { pickTierPair, requestedByTier, tierOfLevel, tierPopularity } from '../../../v7/generation/option1-draw.js';
+import { dayNumber } from '../../../v7/generation/timeline-assembler.js';
 import { option1EnergyWindow } from '../../../v7/generation/energy-windows.js';
 import { applyOption1Picks } from '../../../v7/generation/daily-picks.js';
 import { readDailyPicks } from './_daily-picks.js';
@@ -114,8 +115,8 @@ async function readEnergyWindows(businessId) {
 
 // Read the taste profile once: carry-through inst/pop prefs (used by both
 // options), the approved genre pool (used by Option 2), and the requested
-// genres + energy scale (Option 1 puts each requested genre in every playlist
-// of its tier). Missing profile or a read error degrades to unfiltered
+// genres + energy scale (Option 1 draws the day's directions so that each
+// requested genre is played by at least one of its tier's two playlists). Missing profile or a read error degrades to unfiltered
 // defaults rather than throwing — the cron already gated on the profile's
 // presence, so this is belt-and-suspenders. If requested_genres isn't there
 // yet (migration 2026-10-05-v7-requested-genres.sql not run), it's read
@@ -318,9 +319,11 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   // 3. Fill the 4 fixed names — "אנרגיה גבוהה #1/#2", "אנרגיה רגועה #1/#2" —
   //    with 2 directions per tier: the first at random, the second the one
   //    least like it (pickTierPair, v7/generation/option1-draw.js). No mixing
-  //    between tiers. Every requested genre of the tier goes into both
-  //    playlists (withRequested — the library already has them; this covers
-  //    libraries built before the rule). The TRACKS inside each direction also
+  //    between tiers. The draw is narrowed to the pairs that play the most of
+  //    the tier's requested genres, so the owner hears each of them at least
+  //    once a day through a direction that holds it (2026-10-26; until then
+  //    every requested genre was added to every playlist of its tier). The
+  //    TRACKS inside each direction also
   //    rotate day to day (fetchTracksWithHistory's random draw + 7-day dedup).
   //    Each tier's songs come from its energy range (high 50–80, low 30–60,
   //    v7/generation/energy-windows.js — or the owner's own, moved by the
@@ -337,12 +340,14 @@ export async function planOption1({ businessId, hours, now = new Date(), onDeman
   const tierAllowed = (tier) => new Map(approvedGenres
     .filter((a) => a?.genre && tierOfLevel(a.energy_level, energyLevelsTotal) === tier)
     .map((a) => [String(a.genre).toLowerCase(), a.genre]));
-  const high = applyOption1Picks('high', pickTierPair(highTier), highTier, picks, tierAllowed('high'));
-  const low  = applyOption1Picks('low',  pickTierPair(lowTier),  lowTier,  picks, tierAllowed('low'));
+  const day = dayNumber(labelDate);
+  const draw = (tier, pool) => pickTierPair(pool, Math.random, { requested: requested[tier], day });
+  const high = applyOption1Picks('high', draw('high', highTier), highTier, picks, tierAllowed('high'));
+  const low  = applyOption1Picks('low',  draw('low', lowTier),  lowTier,  picks, tierAllowed('low'));
   if (!high.length && !low.length) return EMPTY('no-directions');
 
   const shape = (tier) => (d, i) => shapeV7Direction(
-    { ...d, genres: withRequested(d.genres, requested[tier]) },
+    d,
     tierPlaylistName(tier, i + 1), inst_pref, tierPopularity(pop_pref, popTiers, tier), option1EnergyWindow(tier, storedWindows), genreWeights);
   const directions = [...high.map(shape('high')), ...low.map(shape('low'))];
 

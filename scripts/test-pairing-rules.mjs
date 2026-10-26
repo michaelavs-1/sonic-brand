@@ -60,7 +60,7 @@ test('a taken-out group that breaks a rule itself is split again', () => {
   assert.deepEqual(res.added.map((r) => r.genres).sort(), [['DownTempo'], ['Electronic R&B']].sort());
 });
 
-test('Option 1 normalizer: fixes per tier, keeps requested genres in every recipe of their tier', () => {
+test('Option 1 normalizer: fixes per tier; a requested genre no recipe plays gets its own', () => {
   const approved = [
     { genre: 'בלדות ישראליות', energy_level: 1 }, { genre: 'LoFi Bossa', energy_level: 1 }, { genre: 'Bossa Nova', energy_level: 1 },
     { genre: 'LoFi Beats', energy_level: 2 }, { genre: 'Jazz (Standards)', energy_level: 2 }, { genre: 'Late Night jazz', energy_level: 2 },
@@ -76,9 +76,10 @@ test('Option 1 normalizer: fixes per tier, keeps requested genres in every recip
   assert.deepEqual(sets, [
     'high: Electronic R&B',
     'high: French Touch, Nu Disco',
-    'low: Bossa Nova, בלדות ישראליות',
-    'low: Jazz (Standards), Late Night jazz, בלדות ישראליות',
-    'low: LoFi Beats, LoFi Bossa, בלדות ישראליות',
+    'low: Bossa Nova',
+    'low: Jazz (Standards), Late Night jazz',
+    'low: LoFi Beats, LoFi Bossa',
+    'low: בלדות ישראליות',           // requested, and no recipe played it
   ]);
 });
 
@@ -129,9 +130,10 @@ test('taste ops: dir_add that keeps the rules still works', () => {
   assert.deepEqual(r.state.option1Dirs.find((d) => d.key === 'C2').genres, ['Bossa Nova', 'Jazz (Standards)', 'בלדות ישראליות']);
 });
 
-test('taste ops: requested genres are exempt', () => {
+test('taste ops: a requested genre is not exempt from the rules (2026-10-26)', () => {
   const r = applyOps(option1State(['Bossa Nova']), [{ op: 'dir_add', dir: 'C1', genre: 'Bossa Nova' }]);
-  assert.equal(r.applied.length, 1);
+  assert.equal(r.applied.length, 0);
+  assert.match(r.dropped[0].reason, /LoFi only with LoFi/);
 });
 
 test('taste ops: dir_new that breaks a rule is refused', () => {

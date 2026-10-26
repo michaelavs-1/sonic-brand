@@ -47,7 +47,9 @@ import { runDailyBuild } from '../v7/account/_run-daily-build.js';
 import { liveDailyRows, businessDaySinceIso } from '../v7/account/_replace-status.js';
 import { levelLibrary } from '../v7/account/_option2-builder.js';
 import { businessWindowAt, normLevels } from '../../v7/generation/energy-timeline.js';
-import { pickLevelDirections, dayNumber } from '../../v7/generation/timeline-assembler.js';
+import {
+  pickLevelDirections, dayNumber, applyRequestedCoverage, requestedPerLevel,
+} from '../../v7/generation/timeline-assembler.js';
 import {
   OPTION1_SLOTS, OPTION1_SLOT_NAMES, OPTION2_MIXES, option2Slot, parseSlot, applyOption2Picks,
 } from '../../v7/generation/daily-picks.js';
@@ -65,9 +67,11 @@ function openOn(hours, isoDate) {
 }
 
 // Option 2's plan for a day: the rotation + that day's picks.
-function option2Plan(lib, isoDate, dayPicks, genresByLevel, keyById) {
+function option2Plan(lib, isoDate, dayPicks, genresByLevel, keyById, requested = []) {
   if (!lib) return null;
-  const rotated = pickLevelDirections(lib, isoDate, OPTION2_MIXES);
+  const rotated = applyRequestedCoverage(
+    pickLevelDirections(lib, isoDate, OPTION2_MIXES), lib,
+    requestedPerLevel(requested, genresByLevel), dayNumber(isoDate));
   const withPicks = applyOption2Picks(rotated, dayPicks, genresByLevel, lib);
   const out = {};
   withPicks.forEach((m, k) => {
@@ -129,7 +133,8 @@ async function getView(biz, query) {
             : { name: OPTION1_SLOT_NAMES[slot], source: 'random', note: 'drawn at build time' }];
         }));
       } else if (lib.mode === 'option2') {
-        planned = option2Plan(o2lib, d, dayPicks.filter((p) => p.mode === 'option2'), genresByLevel, keyById)
+        planned = option2Plan(o2lib, d, dayPicks.filter((p) => p.mode === 'option2'), genresByLevel, keyById,
+          lib.profile?.requested_genres)
           || { note: 'no level library: each level plays all its genres together' };
       }
     }

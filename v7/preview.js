@@ -45,6 +45,15 @@ function fmtTime(ms) {
 
 // ---------- Spotify IFrame API singleton ----------
 let _apiPromise = null;
+
+// ---------- one-time swap-button cue ----------
+// The first time a song plays for 3 seconds in this onboarding, the swap
+// button pops (×1.25) with a light sweep so owners notice it exists
+// (Roni, 2026-10-26; chosen on a standalone test page). Once per page load,
+// so Round 2 doesn't repeat it. CSS: .swap-btn.swap-cue in v7/index.html.
+let swapCueDone = false;
+const SWAP_CUE_DELAY_MS = 3000;
+const SWAP_CUE_TOTAL_MS = 1700;   // pop 1200ms + the sweep that starts at 420ms
 function getSpotifyIframeApi() {
   if (_apiPromise) return _apiPromise;
   _apiPromise = new Promise((resolve) => {
@@ -629,6 +638,22 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         pbTotal.textContent = '0:00';
       }
 
+      // Swap-button cue timer (see swapCueDone above). Starts on play, is
+      // cleared on pause, and fires only if this card is still on screen.
+      let swapCueTimer = null;
+      const swapCueFire = () => {
+        swapCueTimer = null;
+        if (swapCueDone || !cardEl.isConnected || swap.disabled) return;
+        swapCueDone = true;
+        swap.classList.add('swap-cue');
+        setTimeout(() => swap.classList.remove('swap-cue'), SWAP_CUE_TOTAL_MS);
+      };
+      const swapCueOnPlayback = (paused) => {
+        if (swapCueDone) return;
+        if (paused) { clearTimeout(swapCueTimer); swapCueTimer = null; return; }
+        if (!swapCueTimer) swapCueTimer = setTimeout(swapCueFire, SWAP_CUE_DELAY_MS);
+      };
+
       let pendingPlay = false;
       const wireController = (mountNode) => {
         api.createController(mountNode, { uri: cardEl.dataset.uri, width: '100%', height: 80 }, (c) => {
@@ -638,6 +663,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
             const dd = e?.data || {};
             const paused = dd.isPaused !== false;
             playBtn.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
+            swapCueOnPlayback(paused);
             // Capture position/duration into pbState so the RAF loop and
             // seek/scrub UI reflect the actual iframe state.
             if (typeof dd.duration === 'number' && dd.duration > 0) pbState.duration = dd.duration;
@@ -725,6 +751,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         return null;
       };
       swap.addEventListener('click', async () => {
+        // The owner found the button — no need to point at it any more.
+        swapCueDone = true;
+        clearTimeout(swapCueTimer);
+        swap.classList.remove('swap-cue');
         swap.disabled = true;
         // Reset to the canonical label — NOT the current DOM text, which may
         // be a stale "אין עוד שירים" message from a prior click that failed

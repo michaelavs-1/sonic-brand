@@ -3,7 +3,9 @@
  * Fill business_taste_profiles.requested_genres for v7 businesses that signed
  * up before 2026-10-05, when signup started recording it. Requested genres =
  * the genres the owner super-liked + the genres they named in their musical
- * emphases; Option 1 puts each one in every playlist of its energy tier.
+ * emphases; each day's playlists are picked so that at least one plays each
+ * of them (2026-10-26; until then Option 1 put each one in every playlist of
+ * its energy tier).
  *
  * Neither input was stored before, so both are reconstructed:
  *   - Super-liked genres: each saved super-liked track (super_liked_tracks)

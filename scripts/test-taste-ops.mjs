@@ -143,14 +143,15 @@ test('allow_track: only linked songs, only under an approved genre', () => {
   assert.equal(withAdd.applied.length, 3, 'a genre added earlier in the same proposal counts');
 });
 
-test('a tier left without recipes gets one; requested genres need no recipe in Option 1', () => {
+test('a tier left without recipes gets one; a requested genre always gets a recipe', () => {
   const r = applyOps(opt1(), [{ op: 'dir_delete', dir: 'C1' }, { op: 'dir_delete', dir: 'C2' }]);
   const calm = r.state.option1Dirs.filter((d) => d.energy_tier === 'low');
   assert.equal(calm.length, 1);
   assert.deepEqual([...calm[0].genres].sort(), ['Bossa Nova', 'Jazz (Standards)', 'Neo Soul']);
   const req = applyOps(opt1(), [{ op: 'set_requested', genre: 'Samba', energy_level: 3 }]);
   assert.ok(req.state.requested.includes('Samba'));
-  assert.ok(!req.state.option1Dirs.some((d) => d.genres.includes('Samba')), 'requested: added at draw time, not placed');
+  // The daily draw can only play it through a recipe that holds it.
+  assert.ok(req.state.option1Dirs.some((d) => d.genres.includes('Samba')), 'requested: must land in a recipe');
 });
 
 test('rows: excluded = the rest of the catalog; snapshot round trip', () => {

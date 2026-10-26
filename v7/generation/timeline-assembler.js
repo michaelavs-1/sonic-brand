@@ -12,6 +12,11 @@
 // Two mixes are built side by side (the one further behind in time advances
 // next, so scarce genres are shared fairly) and never share a track.
 //
+// Requested genres (Roni, 2026-10-26): a genre the owner super-liked or asked
+// for must be heard every day. Its level's directions hold it where it fits
+// (level-directions.js), and applyRequestedCoverage then makes sure one of the
+// day's two mixes plays a direction that holds it.
+//
 // Level directions (Roni, 2026-09-28): each energy level has a LIBRARY of
 // directions (business_v7_level_directions, v7/generation/level-directions.js).
 // On a given day each mix plays ONE direction per level — the two mixes get
@@ -66,6 +71,89 @@ export function pickLevelDirections(dirsByLevel, isoDate, mixes = 2) {
     const K = Array.isArray(dirs) ? dirs.length : 0;
     if (!K) continue;
     for (let k = 0; k < mixes; k++) out[k].set(L, dirs[(d + Math.floor((k * K) / mixes)) % K]);
+  }
+  return out;
+}
+
+// ---- requested genres: heard at least once a day ----
+
+const playsGenre = (d, g) => (d?.genres || []).some((x) => String(x).toLowerCase() === g);
+
+// The requested genres (business_taste_profiles.requested_genres — super-liked
+// or named in the emphases) of each level, keeping the catalog spelling.
+// genresByLevel: Map<level, [genre]> of the approved genres, as the builder
+// groups them.
+export function requestedPerLevel(requestedGenres, genresByLevel) {
+  const out = new Map();
+  const want = new Set((Array.isArray(requestedGenres) ? requestedGenres : []).map((g) => String(g).toLowerCase()));
+  if (!want.size || !genresByLevel) return out;
+  for (const [L, genres] of genresByLevel) {
+    const hit = (genres || []).filter((g) => want.has(String(g).toLowerCase()));
+    if (hit.length) out.set(L, hit);
+  }
+  return out;
+}
+
+// Make sure the day's mixes play every requested genre (Roni, 2026-10-26 —
+// Option 2 ignored requested genres until then, and Option 1 forced them into
+// every recipe). Runs on pickLevelDirections' result, before the admin's picks
+// (an admin pick wins over this).
+//
+// Per level: if no mix's direction of the day plays a requested genre of that
+// level, one mix moves to the nearest direction in the rotation that improves
+// the day's coverage, and the mixes stay on different directions. `day` (the
+// business day as a day number) rotates which mix gives way first and which
+// genres win when the level's directions can't carry them all — so a genre
+// left out today comes first on the days after. Deterministic: a same-day
+// rebuild lands on the same directions.
+export function applyRequestedCoverage(picks, dirsByLevel, requestedByLevel, day = 0) {
+  if (!Array.isArray(picks) || !picks.length || !dirsByLevel) return picks;
+  const out = picks.map((m) => new Map(m));
+  for (const [L, dirs] of dirsByLevel) {
+    const K = Array.isArray(dirs) ? dirs.length : 0;
+    if (K < 2) continue;                       // no other direction to move to
+    const wanted = [...new Set((requestedByLevel?.get(L) || []).map((g) => String(g).toLowerCase()))]
+      .filter((g) => dirs.some((d) => playsGenre(d, g)));
+    if (!wanted.length) continue;
+
+    const n = wanted.length;
+    const start = ((day % n) + n) % n;
+    const order = wanted.map((_, i) => wanted[(start + i) % n]);
+    // How well a set of directions serves today's order: how many requested
+    // genres it plays, then how early in the order they are.
+    const scoreOf = (chosen) => {
+      let count = 0;
+      let mask = 0;
+      order.forEach((g, i) => {
+        if (!chosen.some((d) => playsGenre(d, g))) return;
+        count++;
+        mask += 2 ** (n - 1 - i);
+      });
+      return { count, mask };
+    };
+    const better = (a, b) => a.count > b.count || (a.count === b.count && a.mask > b.mask);
+
+    const at = out.map((m) => { const i = dirs.indexOf(m.get(L)); return i >= 0 ? i : 0; });
+    let score = scoreOf(at.map((i) => dirs[i]));
+    for (let round = 0; round < out.length && score.count < n; round++) {
+      let best = null;
+      for (let s = 0; s < out.length; s++) {
+        const k = (day + s) % out.length;
+        for (let step = 1; step < K; step++) {
+          const i = (at[k] + step) % K;
+          if (at.some((cur, other) => other !== k && cur === i)) continue;   // the mixes stay apart
+          const trial = scoreOf(at.map((cur, other) => dirs[other === k ? i : cur]));
+          if (!better(trial, score)) continue;
+          if (!best || better(trial, best.score) || (trial.count === best.score.count && trial.mask === best.score.mask && step < best.step)) {
+            best = { k, i, step, score: trial };
+          }
+        }
+      }
+      if (!best) break;
+      at[best.k] = best.i;
+      score = best.score;
+    }
+    out.forEach((m, k) => m.set(L, dirs[at[k]]));
   }
   return out;
 }

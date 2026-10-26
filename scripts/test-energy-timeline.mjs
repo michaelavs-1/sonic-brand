@@ -9,7 +9,7 @@ import {
 } from '../v7/generation/energy-timeline.js';
 import {
   assembleMixes, estimateDemand, estimateDemandPerMix, mulberry32, shuffle, seedFrom,
-  dayNumber, pickLevelDirections, levelProfileKey,
+  dayNumber, pickLevelDirections, levelProfileKey, applyRequestedCoverage, requestedPerLevel,
 } from '../v7/generation/timeline-assembler.js';
 import { planWindow, levelLibrary } from '../api/v7/account/_option2-builder.js';
 import { normalizeLevelDirections, MAX_PER_LEVEL } from '../v7/generation/level-directions.js';
@@ -378,6 +378,70 @@ test('rotation: every level rotates independently; empty levels skipped', () => 
   assert.equal(m1.get(3).id, m2.get(3).id);
 });
 
+// ---- requested genres: one mix plays each of them every day (2026-10-26) ----
+
+// A level library from genre lists: libFrom([['Funk','Disco'], ['Samba']]).
+const libFrom = (sets, level = 1) => new Map([[level, sets.map((genres, i) => ({ id: `d${i}`, title_en: `D${i}`, genres }))]]);
+const playedAt = (picks, level) => picks.flatMap((m) => m.get(level)?.genres || []);
+
+test('coverage: a requested genre only one direction plays is played every day', () => {
+  const lib = libFrom([['Funk'], ['Disco'], ['Samba'], ['Rnb']]);
+  const req = new Map([[1, ['Rnb']]]);
+  for (let i = 0; i < 12; i++) {
+    const iso = addDaysIso(DAY0, i);
+    const picks = applyRequestedCoverage(pickLevelDirections(lib, iso), lib, req, dayNumber(iso));
+    assert.ok(playedAt(picks, 1).includes('Rnb'), `${iso} left Rnb out`);
+    assert.notEqual(picks[0].get(1).id, picks[1].get(1).id, 'the mixes stay on different directions');
+  }
+});
+
+test('coverage: two requested genres in different directions are both played', () => {
+  const lib = libFrom([['Funk'], ['Deep House'], ['Italo Disco'], ['Samba'], ['Bolero']]);
+  const req = new Map([[1, ['Deep House', 'Italo Disco']]]);
+  for (let i = 0; i < 10; i++) {
+    const iso = addDaysIso(DAY0, i);
+    const played = playedAt(applyRequestedCoverage(pickLevelDirections(lib, iso), lib, req, dayNumber(iso)), 1);
+    assert.ok(played.includes('Deep House') && played.includes('Italo Disco'), `${iso}: ${played}`);
+  }
+});
+
+test('coverage: more requested genres than two mixes can carry → the most, rotating', () => {
+  const lib = libFrom([['Funk'], ['Disco'], ['Samba']]);
+  const req = new Map([[1, ['Funk', 'Disco', 'Samba']]]);
+  const seen = new Set();
+  for (let i = 0; i < 9; i++) {
+    const iso = addDaysIso(DAY0, i);
+    const played = playedAt(applyRequestedCoverage(pickLevelDirections(lib, iso), lib, req, dayNumber(iso)), 1);
+    assert.equal(played.length, 2, `${iso} played ${played.length} of 3`);
+    played.forEach((g) => seen.add(g));
+  }
+  assert.deepEqual([...seen].sort(), ['Disco', 'Funk', 'Samba']);
+});
+
+test('coverage: leaves the rotation alone when it already plays the requested genres', () => {
+  const lib = libFrom([['Rnb', 'Funk'], ['Rnb', 'Disco'], ['Rnb', 'Samba']]);
+  const req = new Map([[1, ['Rnb']]]);
+  for (let i = 0; i < 6; i++) {
+    const iso = addDaysIso(DAY0, i);
+    const before = pickLevelDirections(lib, iso);
+    const after = applyRequestedCoverage(before, lib, req, dayNumber(iso));
+    assert.deepEqual(after.map((m) => m.get(1).id), before.map((m) => m.get(1).id));
+  }
+});
+
+test('coverage: a one-direction level and a genre nothing plays are left as they are', () => {
+  const lib = libFrom([['Funk']]);
+  const picks = applyRequestedCoverage(pickLevelDirections(lib, DAY0), lib, new Map([[1, ['Rnb']]]), 0);
+  assert.deepEqual(picks.map((m) => m.get(1).id), ['d0', 'd0']);
+});
+
+test('requestedPerLevel: the requested genres of each level, catalog spelling kept', () => {
+  const byLevel = new Map([[1, ['Bossa Nova', 'Fado']], [3, ['Funk', 'Disco']]]);
+  const out = requestedPerLevel(['funk', 'Bossa Nova', 'Samba'], byLevel);
+  assert.deepEqual([...out.entries()], [[1, ['Bossa Nova']], [3, ['Funk']]]);
+  assert.equal(requestedPerLevel([], byLevel).size, 0);
+});
+
 test('levelProfileKey: order-independent; changes on add / remove / level move / N', () => {
   const tp = { energy_levels_total: 4, approved_genres: [{ genre: 'Funk', energy_level: 3 }, { genre: 'Bossa Nova', energy_level: 1 }] };
   const k = levelProfileKey(tp);
@@ -584,4 +648,21 @@ test('normalizeLevelDirections + shapeLevelRows: level-checked genres, no duplic
   assert.ok(rows.every((r) => r.profile_key === profileKey && r.business_id === 'biz' && r.active));
   assert.deepEqual(rows.map((r) => [r.energy_level, r.rank]), [[1, 1], [1, 2], [3, 1], [1, 3]]);
   assert.equal(shapeLevelRows('biz', [{ energy_level: 3, genres: ['Fado'] }], tp).rows.length, 0, 'wrong-level genre rejected server-side');
+});
+
+test('normalizeLevelDirections: a requested genre no direction plays gets one of its own', () => {
+  const approved = [
+    { genre: 'Bossa Nova', energy_level: 1 }, { genre: 'Fado', energy_level: 1 }, { genre: 'Funk', energy_level: 3 },
+  ];
+  const raw = { directions: [
+    { energy_level: 1, title_en: 'A', genres: ['Bossa Nova', 'Fado'] },
+    { energy_level: 3, title_en: 'B', genres: ['Funk'] },
+  ] };
+  // Fado is played → untouched. Samba isn't approved → nothing to do.
+  assert.deepEqual(normalizeLevelDirections(raw, approved, 3, ['Fado', 'Samba']).directions.length, 2);
+  // Funk requested but only at level 3 — level 1 is not affected.
+  const out = normalizeLevelDirections(
+    { directions: [{ energy_level: 1, title_en: 'A', genres: ['Bossa Nova'] }] }, approved, 3, ['Fado', 'Funk'],
+  ).directions;
+  assert.deepEqual(out.map((d) => [d.energy_level, d.genres]), [[1, ['Bossa Nova']], [1, ['Fado']], [3, ['Funk']]]);
 });

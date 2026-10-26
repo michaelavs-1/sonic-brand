@@ -27,8 +27,10 @@ import {
   normalizeLevelDirections,
   approvedByLevel,
 } from '../../v7/generation/level-directions.js';
-import { pickLevelDirections } from '../../v7/generation/timeline-assembler.js';
-import { tierOfLevel, pickTierPair, requestedByTier, withRequested } from '../../v7/generation/option1-draw.js';
+import {
+  pickLevelDirections, applyRequestedCoverage, requestedPerLevel, dayNumber,
+} from '../../v7/generation/timeline-assembler.js';
+import { tierOfLevel, pickTierPair, requestedByTier } from '../../v7/generation/option1-draw.js';
 
 const MAX_TOKENS = 65536;
 const ROTATION_DAYS = 4;
@@ -38,12 +40,13 @@ export const EXPLANATION_HE = {
     'אפשרות 1 — 4 פלייליסטים ביום: 2 באנרגיה גבוהה ו־2 באנרגיה רגועה.',
     'הז\'אנרים המאושרים בפרופיל הטעם מתחלקים לשתי קבוצות לפי אמצע סולם האנרגיה של בעל העסק: הרמות בחצי העליון = "גבוהה", השאר = "רגועה". המודל בונה מכל קבוצה ספרייה של כיוונים (עד 30 בסך הכול).',
     'בכל יום נבחרים 2 כיוונים מכל קבוצה: הראשון באקראי, והשני הכיוון שהכי שונה ממנו (הכי מעט ז\'אנרים משותפים). כל פלייליסט בנוי מכיוון אחד בלבד: שירים אקראיים מהז\'אנרים של הכיוון, בטווח האנרגיה של הקבוצה (ערך האנרגיה של השיר, 0–100): גבוהה 50–80, רגועה 30–60. כשאין מספיק שירים בטווח הוא מתרחב ב־5 לכל צד עד שיש; שירים שהעסק שמע ב־7 הימים האחרונים נכנסים רק כשגם זה לא מספיק. אורך כל פלייליסט: חצי משעות הפתיחה של אותו יום + שעה וחצי.',
-    'ז\'אנר שנתבקש מפורשות (סופר לייק או הדגשים המוזיקליים) נמצא בכל כיוון של הקבוצה שלו, ולכן בשני הפלייליסטים של אותה אנרגיה בכל יום. הכלל הזה גובר על כללי ההתאמה בין ז\'אנרים.',
+    'ז\'אנר שנתבקש מפורשות (סופר לייק או הדגשים המוזיקליים) נמצא רק בכיוונים שהוא מתאים להם, לפי כללי ההתאמה הרגילים, וחייב להיות בלפחות כיוון אחד בקבוצה שלו. הבחירה היומית מבטיחה שלפחות אחד משני הפלייליסטים של אותה אנרגיה מנגן כיוון שמכיל אותו. כשיש בקבוצה יותר ז\'אנרים כאלה משני כיוונים יכולים להכיל, הנותרים מקבלים עדיפות בימים הבאים.',
     'שמות הכיוונים באנגלית פנימיים בלבד.',
   ],
   option2: [
     'אפשרות 2 — 2 מיקסים ביום ("Daily Mix #1/#2") שהאנרגיה שלהם עוקבת אחרי ציר האנרגיה שבעל העסק מצייר: למעלה = אנרגטי, למטה = רגוע. גובה הציר בכל רגע קובע רמת אנרגיה בסולם של בעל העסק (1 = הכי רגוע).',
     'לכל רמת אנרגיה המודל בונה ספרייה של כיוונים רק מהז\'אנרים של אותה רמה. ביום נתון כל מיקס מנגן בכל רמה מכיוון אחד בלבד. כשלרמה יש 2 כיוונים או יותר, שני המיקסים מקבלים כיוונים שונים.',
+    'ז\'אנר שנתבקש מפורשות (סופר לייק או הדגשים המוזיקליים) נמצא רק בכיוונים שהוא מתאים להם, וחייב להיות בלפחות כיוון אחד ברמה שלו. בכל יום אחד המיקסים מוזז לכיוון שמכיל אותו, כך שבעל העסק שומע אותו — בתנאי שהציר מגיע לרמה שלו באותו יום.',
     'למחרת כל רמה עוברת לכיוון הבא שלה, עד שכל הכיוונים שלה נוגנו, ואז מתחילים מחדש (למטה: תצוגה של הימים הקרובים). השירים מסודרים לפי האורך האמיתי שלהם כך שהאנרגיה מתאימה לשעה, מהפתיחה (או מרגע הבנייה) ועד חצי שעה אחרי הסגירה; רמה בלי ז\'אנרים משתמשת ברמה הקרובה אליה.',
     'לכל רמה יש טווח אנרגיה לשירים (ערך האנרגיה של השיר, 0–100): 20–80 מתחלק לפי מספר הרמות, וכל שתי רמות סמוכות חופפות ב־20 (ב־4 רמות: 20–50, 30–60, 40–70, 50–80). כשאין מספיק שירים בטווח הוא מתרחב ב־5 לכל צד עד שיש; שירים שהעסק שמע ב־7 הימים האחרונים נכנסים רק כשגם זה לא מספיק.',
   ],
@@ -69,7 +72,7 @@ export async function generateForOption(option, { profile, inputs, label, editab
   const requestedGenres = profile.requested_genres || [];
   const userMessage = option === 'option1'
     ? buildEnergyUserMessage({ ...common, approvedGenres: approved, energyLevelsTotal: N, requestedGenres })
-    : buildLevelUserMessage({ ...common, approved: approvedByLevel(approved, N), energyLevelsTotal: N });
+    : buildLevelUserMessage({ ...common, approved: approvedByLevel(approved, N), energyLevelsTotal: N, requestedGenres });
 
   const { text, usage, elapsed } = await callModel({ system, userMessage, maxTokens: MAX_TOKENS, cache: false, label });
   let parsed;
@@ -83,7 +86,7 @@ export async function generateForOption(option, { profile, inputs, label, editab
   }
   const normalized = option === 'option1'
     ? normalizeEnergyDirections(parsed, approved, N, requestedGenres)
-    : normalizeLevelDirections(parsed, approved, N);
+    : normalizeLevelDirections(parsed, approved, N, requestedGenres);
   const directions = normalized?.directions || [];
   if (!directions.length) return { ok: false, error: 'לא חזרו כיוונים תקינים', rawText: text, usage, elapsed };
   return { ok: true, directions, dropped: droppedPairs(option, parsed, directions), usage, elapsed };
@@ -105,6 +108,14 @@ function droppedPairs(option, parsed, kept) {
 
 const levelOfGenre = (profile) => new Map(profile.approved_genres.map((e) => [e.genre, e.energy_level]));
 
+// Today in Israel as YYYY-MM-DD, plus n days.
+function ilDate(offsetDays = 0) {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+  const [y, m, d] = today.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
+}
+const shortDate = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+
 // ---------- Option 1 ----------
 
 export function formatOption1(profile, { directions, dropped }) {
@@ -117,7 +128,7 @@ export function formatOption1(profile, { directions, dropped }) {
     const levels = [...new Set(tierGenres.map((e) => e.energy_level))].sort((a, b) => b - a);
     const dirs = directions.filter((d) => d.energy_tier === tier);
     lines.push(`${tier === 'high' ? 'HIGH' : 'LOW'} tier (${tier === 'high' ? 'אנרגיה גבוהה' : 'אנרגיה רגועה'}) — levels ${levels.join(', ') || '—'} of ${N}, ${tierGenres.length} approved genres → ${dirs.length} directions`);
-    if (requested[tier].length) lines.push(`  Requested — in every direction of this tier: ${requested[tier].join(', ')}`);
+    if (requested[tier].length) lines.push(`  Requested — each in at least one direction of this tier, and in one of the day's two playlists: ${requested[tier].join(', ')}`);
     dirs.forEach((d, i) => {
       lines.push(`  ${i + 1}. ${d.title_en}`);
       lines.push(`     ${d.genres.map((g) => `${g} (L${lvl.get(g) ?? '?'})`).join(', ')}`);
@@ -130,26 +141,23 @@ export function formatOption1(profile, { directions, dropped }) {
   if (dropped.length) lines.push(`DROPPED — not approved for that tier (${dropped.length}): ${dropped.join(', ')}`, '');
 
   // One example day, drawn exactly the way planOption1 draws (pickTierPair:
-  // the first at random, the second the least like it), with the tier's
-  // requested genres in both playlists.
-  lines.push('Example day (a new draw every day: the first at random, the second the one least like it):');
+  // among the pairs that play the most of the tier's requested genres, the
+  // first at random and the second the least like it).
+  const day = dayNumber(ilDate());
+  lines.push('Example day (a new draw every day: the first at random, the second the one least like it, among the pairs that cover the requested genres):');
   for (const tier of ['high', 'low']) {
-    pickTierPair(directions.filter((d) => d.energy_tier === tier)).forEach((d, i) => {
-      lines.push(`  ${tier === 'high' ? 'אנרגיה גבוהה' : 'אנרגיה רגועה'} #${i + 1} → ${d.title_en}: ${withRequested(d.genres, requested[tier]).join(', ')}`);
+    const pool = directions.filter((d) => d.energy_tier === tier);
+    const pair = pickTierPair(pool, Math.random, { requested: requested[tier], day });
+    pair.forEach((d, i) => {
+      lines.push(`  ${tier === 'high' ? 'אנרגיה גבוהה' : 'אנרגיה רגועה'} #${i + 1} → ${d.title_en}: ${d.genres.join(', ')}`);
     });
+    const missing = requested[tier].filter((g) => !pair.some((d) => d.genres.includes(g)));
+    if (missing.length) lines.push(`    (requested, not played today — first in line on the days after: ${missing.join(', ')})`);
   }
   return lines.join('\n');
 }
 
 // ---------- Option 2 ----------
-
-// Today in Israel as YYYY-MM-DD, plus n days.
-function ilDate(offsetDays = 0) {
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
-  const [y, m, d] = today.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + offsetDays)).toISOString().slice(0, 10);
-}
-const shortDate = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
 
 export function formatOption2(profile, { directions, dropped }) {
   const N = profile.energy_levels_total;
@@ -170,11 +178,14 @@ export function formatOption2(profile, { directions, dropped }) {
   }
   if (dropped.length) lines.push(`DROPPED — not approved at that level (${dropped.length}): ${dropped.join(', ')}`, '');
 
-  // The daily rotation production uses (pickLevelDirections), for the next days.
+  // The daily rotation production uses (pickLevelDirections + the move that
+  // makes sure every requested genre is played), for the next days.
+  const reqByLevel = requestedPerLevel(profile.requested_genres,
+    new Map([...lib.keys()].map((L) => [L, profile.approved_genres.filter((e) => e.energy_level === L).map((e) => e.genre)])));
   lines.push(`Rotation — which direction each mix plays per level, next ${ROTATION_DAYS} days:`);
   for (let i = 0; i < ROTATION_DAYS; i++) {
     const iso = ilDate(i);
-    const picks = pickLevelDirections(lib, iso);
+    const picks = applyRequestedCoverage(pickLevelDirections(lib, iso), lib, reqByLevel, dayNumber(iso));
     lines.push(`  ${shortDate(iso)}${i === 0 ? ' (today)' : ''}`);
     picks.forEach((m, k) => {
       const parts = [...m].sort((a, b) => b[0] - a[0]).map(([L, d]) => `L${L} ${d.title_en}`);

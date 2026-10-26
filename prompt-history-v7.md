@@ -46,7 +46,66 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-24 (latest) — Swipe-card descriptions never mention the client, and no "ליין-אפ"
+## 2026-10-26 (latest) — A requested genre sits only where it fits, and the daily draw guarantees it
+
+**Applies to:** energy directions (`REQUESTED_GENRES_SECTION`, the output invariants, the user message), level directions (new `REQUESTED_GENRES_SECTION`, the inputs + output invariants, the user message), taste chat (`HOW_OPTION1` / `HOW_OPTION2`, the ops rule, the coherence intro, the deck and feel-word rules).
+
+A requested genre (super-liked, or named in the musical emphases) was forced into EVERY direction of its tier in Option 1, overriding every coherence rule, and Option 2 ignored requested genres altogether. On הוטל ססיל (Deep House, Italo Disco, Disco) that bolted the three onto 8 of the 10 high recipes, producing things like `Latin Funk & Tropical Boogaloo: Deep House, Italo Disco, Disco, Latin Funk, Latin Boogaloo, Cha Cha Cha` and `Anatolian Psych & Afro Club: Deep House, Italo Disco, Disco, Afro House, Peruvian Cumbia` — the model built a coherent concept and then had the requested genres stapled on.
+
+Roni, 2026-10-26: a requested genre goes into however many recipes it genuinely suits, like any other genre, and the guarantee moves to the DAILY DRAW — at least one of the day's playlists plays a recipe that holds it, in BOTH options. Where a tier / level has more requested genres than two recipes can carry, the day covers as many as it can and the rest come first on the days after (rotation by the business day); nothing is forced into a recipe it doesn't fit. No weight bump: the guarantee is the whole of the special treatment (the taste chat can still raise a genre's weight per business).
+
+Code, outside the prompts (CLAUDE.md § V7 ARCHITECTURE has the full description):
+- `pickTierPair(pool, rng, { requested, day })` — Option 1 draws among the pairs that play the most of the tier's requested genres, then the usual random-first / least-alike-second inside them. `withRequested` is gone.
+- `applyRequestedCoverage` + `requestedPerLevel` (`timeline-assembler.js`) — Option 2 moves one mix onto a direction that holds an uncovered requested genre, after the rotation and before the admin's picks.
+- Both normalizers give a requested genre a recipe of its own when the model left it out of all of them, and requested genres are no longer exempt from the isolation rules (`pairing-rules.js`), in the generators or in `taste-ops.js`.
+
+### Option 1 — `REQUESTED_GENRES_SECTION` (new text)
+
+```
+## Requested Genres
+
+The owner explicitly asked for some genres: they super-liked a track from them, or named them in their emphases. These are marked "(requested)" in the approved list.
+
+- **Place them like any other genre — only in the directions they genuinely suit.** Every rule in "Coherence Inside Each Direction" below applies to them in full. Never staple a requested genre onto a direction it doesn't belong in.
+- **Every requested genre must be in at least one direction of its tier.** This one is absolute. Each day the tool picks the day's playlists so that a direction playing each requested genre is among them — a requested genre with no direction would simply never be heard. If nothing in its tier pairs with it under the coherence rules, give it a direction of its own.
+- **Put it in every direction where it belongs.** A requested genre may appear in as many of its tier's directions as it genuinely suits — that, not forced placement, is what keeps it present in the owner's week.
+- **Two directions of a tier should be able to carry all of that tier's requested genres.** The tool plays two directions per tier per day. Where the coherence rules allow, arrange them so that two of your directions between them hold every requested genre of the tier (e.g. the two that sit well together in one direction, the third in another). Never break a coherence rule for this: when the rules keep them apart, build the directions correctly and the tool will rotate the leftovers across the following days.
+```
+
+Output-format invariants: "Every direction contains every requested genre of its tier." → "Every requested genre is in at least one direction of its tier."; the "(1 when every approved genre of the tier is requested)" exception to the 2-per-tier minimum is gone. The user message's block header is now "## Requested genres (each in at least one direction of its tier)" and its closing line ends "…, and every requested genre in at least one direction of its tier — in the directions it suits, never forced."
+
+### Option 2 — `REQUESTED_GENRES_SECTION` (new section, level directions had none)
+
+```
+## Requested Genres
+
+The owner explicitly asked for some genres: they super-liked a track from them, or named them in their emphases. These are marked "(requested)" in the approved list.
+
+- **Place them like any other genre — only in the directions they genuinely suit.** Every rule in "Coherence Inside Each Direction" below applies to them in full. Never staple a requested genre onto a direction it doesn't belong in.
+- **Every requested genre must be in at least one direction of its level.** This one is absolute. Each day the tool makes sure one of the two mixes plays, at that level, a direction holding the genre — a requested genre with no direction would simply never be heard. If nothing at its level pairs with it under the coherence rules, give it a direction of its own.
+- **Put it in every direction where it belongs.** A requested genre may appear in as many of its level's directions as it genuinely suits — that, not forced placement, is what keeps it present in the owner's week.
+- **Two directions of a level should be able to carry all of that level's requested genres.** The two mixes play one direction each per level per day. Where the coherence rules allow, arrange them so that two of that level's directions between them hold every requested genre of the level. Never break a coherence rule for this: when the rules keep them apart, build the directions correctly and the tool will rotate the leftovers across the following days.
+```
+
+Also in the level-directions prompt: a "Requested genres" bullet in `## Inputs`, "(requested)" marks in the per-level approved list of the user message, a "## Requested genres (each in at least one direction of its level)" block, and the invariant "Every requested genre is in at least one direction of its level."
+
+Known limit of Option 2 (Roni accepted it): a requested genre is heard only if the day's energy curve reaches its level. A level the curve never visits plays nothing, requested or not.
+
+### Taste chat
+
+- Option 1's "how it works": "Requested genres … are added to every playlist of their tier automatically." → they "sit in the recipes they suit, like any other genre. What makes them special is the daily pick: it always chooses recipes so that each of them is played by at least one of that tier's two playlists. When a tier has more requested genres than two recipes can hold, the leftovers come first on the following days. So a requested genre needs at least one recipe of its tier — a recipe of its own when nothing pairs with it."
+- Option 2's "how it works" gained the same bullet (one mix is moved onto a recipe that holds each of them, as long as the curve reaches its level).
+- The coherence intro's Option-1 clause "the requested genres are added to every playlist of their tier automatically — never place them" became "They hold for requested genres too: place one only where it belongs, and give it a recipe of its own when nothing in its tier / level pairs with it."
+- The ops rule now says every requested genre must end up in at least one recipe too (the "(Option 1: unless it's requested)" exception is gone).
+- The genre deck: a super-liked suggestion gets `add_genre` + a placement as well as `set_requested`; "super-like = always in their playlists" → "heard in at least one playlist every day". The feel-word rule lost its stale "or add it to every recipe".
+
+### Existing accounts
+
+Libraries built under the old rule still carry the requested genres everywhere. Rebuild with `scripts/_v7-regenerate-energy-directions.mjs --confirm` / `_v7-regenerate-level-directions.mjs --confirm` (both need `vercel dev`). On 2026-10-26 only הוטל ססיל had requested genres (Deep House, Italo Disco, Disco; the other three v7 accounts had none, so their libraries are unaffected).
+
+---
+
+## 2026-10-24 — Swipe-card descriptions never mention the client, and no "ליין-אפ"
 
 **Applies to:** R1+R2 (`HEBREW_DESCRIPTION_SECTION`, shared by both rounds).
 

@@ -8,10 +8,14 @@
 //     possible: the first direction is random, the second is the one with the
 //     fewest genres in common with it (pickTierPair).
 //   - Every requested genre (super-liked, or asked for in the emphases —
-//     business_taste_profiles.requested_genres) is in EVERY playlist of its
-//     tier (withRequested). The directions generator already builds them into
-//     every direction; the builder adds any that are missing, so the rule
-//     holds for libraries built before it existed too.
+//     business_taste_profiles.requested_genres) is heard at least once a day:
+//     the pair must include a direction that plays it (Roni, 2026-10-26).
+//     Until then a requested genre was forced into EVERY direction of its
+//     tier, which bolted it onto recipes it didn't belong in; now it sits
+//     only in the recipes it suits, and the DRAW is what guarantees the owner
+//     hears it. When the tier's requested genres need more than two recipes,
+//     the day covers as many as it can and the rest come first on the days
+//     after (the priority order rotates with the business day).
 //
 // Pure, no imports — server-reachable and browser-loadable.
 
@@ -51,19 +55,9 @@ export function requestedByTier(requestedGenres, approvedGenres, n) {
   return out;
 }
 
-// A direction's genres plus any of `requested` it doesn't have yet.
-export function withRequested(genres, requested) {
-  const list = Array.isArray(genres) ? [...genres] : [];
-  const have = new Set(list.map((g) => String(g).toLowerCase()));
-  for (const r of Array.isArray(requested) ? requested : []) {
-    if (!have.has(String(r).toLowerCase())) { list.push(r); have.add(String(r).toLowerCase()); }
-  }
-  return list;
-}
-
 // How alike two directions are, 0..1: shared genres / all genres, counting
-// only genres that are NOT in every direction of the pool (requested genres
-// sit in all of them, so they say nothing about how two directions differ).
+// only genres that are NOT in every direction of the pool (a genre all of
+// them play says nothing about how two of them differ).
 function similarity(a, b, common) {
   const ga = new Set((a.genres || []).map((g) => String(g).toLowerCase()).filter((g) => !common.has(g)));
   const gb = new Set((b.genres || []).map((g) => String(g).toLowerCase()).filter((g) => !common.has(g)));
@@ -80,25 +74,82 @@ function similarity(a, b, common) {
 // vary. A pool of 1 fills both with the same direction: builds run serially
 // and each playlist records its tracks before the next starts, so the second
 // draws different tracks.
-export function pickTierPair(pool, rng = Math.random) {
+//
+// `requested` (the tier's requested genres) narrows the draw to the pairs that
+// play the most of them, so the owner hears every genre they asked for at
+// least once a day through a recipe that holds it — rather than by having it
+// stapled onto all of them. `day` (the business day as a day number) rotates
+// which ones win when no pair can carry them all. Among the pairs that tie on
+// coverage the rules above are unchanged.
+export function pickTierPair(pool, rng = Math.random, { requested = [], day = 0 } = {}) {
   if (!Array.isArray(pool) || !pool.length) return [];
   if (pool.length === 1) return [pool[0], pool[0]];
-  const first = pool[Math.floor(rng() * pool.length)];
-  return [first, leastAlike(pool, first, rng)];
+
+  // Only genres some direction of the tier actually plays can be covered.
+  const plays = (d, g) => (d.genres || []).some((x) => String(x).toLowerCase() === g);
+  const want = [...new Set((Array.isArray(requested) ? requested : []).map((g) => String(g).toLowerCase()))]
+    .filter((g) => pool.some((d) => plays(d, g)));
+
+  if (!want.length) {
+    const first = pool[Math.floor(rng() * pool.length)];
+    return [first, leastAlike(pool, first, rng)];
+  }
+
+  // Today's priority order: a genre left out today comes first tomorrow. A
+  // pair is scored by how many requested genres it plays, then by how early in
+  // that order they are (a bitmask, the most urgent genre the highest bit).
+  const n = want.length;
+  const start = ((day % n) + n) % n;
+  const order = want.map((_, i) => want[(start + i) % n]);
+  const score = (a, b) => {
+    let count = 0;
+    let mask = 0;
+    for (let i = 0; i < n; i++) {
+      if (!plays(a, order[i]) && !plays(b, order[i])) continue;
+      count++;
+      mask += 2 ** (n - 1 - i);
+    }
+    return { count, mask };
+  };
+
+  let best = { count: -1, mask: -1 };
+  let bestPairs = [];
+  for (let i = 0; i < pool.length; i++) {
+    for (let j = i + 1; j < pool.length; j++) {
+      const s = score(pool[i], pool[j]);
+      if (s.count > best.count || (s.count === best.count && s.mask > best.mask)) {
+        best = s;
+        bestPairs = [];
+      }
+      if (s.count === best.count && s.mask === best.mask) bestPairs.push([pool[i], pool[j]]);
+    }
+  }
+
+  // The usual flavour inside the winning pairs: the first direction at random
+  // among those that appear in one, the second the least like it.
+  const firsts = [...new Set(bestPairs.flat())];
+  const first = firsts[Math.floor(rng() * firsts.length)];
+  const partners = bestPairs
+    .filter((p) => p.includes(first))
+    .map((p) => (p[0] === first ? p[1] : p[0]));
+  return [first, leastAlike(pool, first, rng, partners)];
 }
 
 // The direction of `pool` least like `first` (ties at random), never `first`
 // itself — or, with a genre set equal to it, never one with the same genres
 // (`first` may be a copy from outside the pool: an admin's daily pick,
 // v7/generation/daily-picks.js). A pool with nothing else → `first`.
-export function leastAlike(pool, first, rng = Math.random) {
+// `among` (optional) limits the answer to those directions — pickTierPair
+// passes the partners that keep the day's requested-genre coverage — while
+// how alike they are is still measured against the whole pool.
+export function leastAlike(pool, first, rng = Math.random, among = null) {
   if (!Array.isArray(pool) || !pool.length) return first;
   const lower = (d) => (d.genres || []).map((g) => String(g).toLowerCase());
   const common = new Set(lower(pool[0]).filter((g) => pool.every((d) => lower(d).includes(g))));
   const firstKey = lower(first).sort().join('|');
   let best = Infinity;
   let candidates = [];
-  for (const d of pool) {
+  for (const d of (Array.isArray(among) ? among : pool)) {
     if (d === first || lower(d).sort().join('|') === firstKey) continue;
     const s = similarity(first, d, common);
     if (s < best - 1e-9) { best = s; candidates = [d]; }

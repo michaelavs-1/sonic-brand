@@ -5,8 +5,11 @@
  * business_v7_directions set — what re-picking Option 1 in the Profile tab
  * does, for every Option-1 business at once. Written for the 2026-09-28
  * switch from 4–7 tight clusters to a library of up to 30 v6-style blends.
- * Also for the 2026-10-05 requested-genres rule (each requested genre in every
- * direction of its tier): run scripts/_v7-backfill-requested-genres.mjs first.
+ * Also for the 2026-10-26 requested-genres rule (each requested genre only in
+ * the directions it suits, and in at least one of them — the daily draw then
+ * plays it; it was "in every direction of its tier" from 2026-10-05 to then).
+ * Businesses whose taste profile has no requested_genres are unaffected by it.
+ * Accounts from before 2026-10-05: run scripts/_v7-backfill-requested-genres.mjs first.
  *
  * Same inputs as the dashboard's buildEnergyDirections (taste profile,
  * business name / description / emphases, onboarding atmospheres from the

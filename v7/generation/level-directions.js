@@ -14,6 +14,13 @@
 // genuinely support (no target; at least 2 for a level with 2+ genres so the
 // two mixes can differ, 1 for a single-genre level, at most MAX_PER_LEVEL).
 //
+// Requested genres (the taste profile's requested_genres — super-liked or
+// asked for in the emphases; Option 2 ignored them until 2026-10-26) must each
+// be in at least one direction of their level, so the daily rotation can
+// guarantee the owner hears them: the builder makes sure one of the two mixes
+// plays a direction that holds each of them that day
+// (applyRequestedCoverage in timeline-assembler.js).
+//
 // Downstream (api/v7/account/_option2-builder.js): each day every level plays
 // ONE direction per mix, the two mixes different ones when the level has 2+,
 // and the next day the level moves on to its next direction
@@ -61,6 +68,7 @@ You will receive:
 - Optionally: Free-text description of the business (any language).
 - Optionally: Selected atmospheres (short adjectives from a fixed menu).
 - Optionally: **Musical emphases** — free-text preferences the owner typed during onboarding.
+- Optionally: **Requested genres** — approved genres the owner explicitly asked for (they super-liked a track from them or named them in their emphases). They are marked "(requested)" in the approved list; see Requested Genres.
 - Optionally: **Venue context** — a short block describing the physical venue (name / type / summary). Use it only to lightly inform how genres are combined for venue-appropriateness; it does NOT add or remove genres.
 
 You will NOT receive conditional or excluded genres. Do not ask for them, do not infer them, do not reintroduce them. Build directions strictly from the approved genres given.`;
@@ -93,6 +101,15 @@ const LIBRARY_SECTION = `## Library Size & Diversity
 
 - Within a level, the same genre may appear in as many directions as make sense — there is no limit on how many genres two directions share.
 - The only thing to avoid is repeating a whole sound: no two directions of the same level may have the same set of genres, and don't return two directions whose genre lists are so close that they would sound the same.`;
+
+const REQUESTED_GENRES_SECTION = `## Requested Genres
+
+The owner explicitly asked for some genres: they super-liked a track from them, or named them in their emphases. These are marked "(requested)" in the approved list.
+
+- **Place them like any other genre — only in the directions they genuinely suit.** Every rule in "Coherence Inside Each Direction" below applies to them in full. Never staple a requested genre onto a direction it doesn't belong in.
+- **Every requested genre must be in at least one direction of its level.** This one is absolute. Each day the tool makes sure one of the two mixes plays, at that level, a direction holding the genre — a requested genre with no direction would simply never be heard. If nothing at its level pairs with it under the coherence rules, give it a direction of its own.
+- **Put it in every direction where it belongs.** A requested genre may appear in as many of its level's directions as it genuinely suits — that, not forced placement, is what keeps it present in the owner's week.
+- **Two directions of a level should be able to carry all of that level's requested genres.** The two mixes play one direction each per level per day. Where the coherence rules allow, arrange them so that two of that level's directions between them hold every requested genre of the level. Never break a coherence rule for this: when the rules keep them apart, build the directions correctly and the tool will rotate the leftovers across the following days.`;
 
 // The coherence rules are copied from Option 1's COHERENCE_SECTION
 // (v7/generation/energy-directions.js, 2026-09-28 — itself copied from v6's
@@ -207,6 +224,7 @@ Field contracts:
 Hard invariants:
 - Every genre in every direction is an approved genre of that direction's level.
 - Every genre string is VERBATIM from the Genre Universe.
+- Every requested genre is in at least one direction of its level.
 - At least 2 directions for each level that has 2 or more approved genres; exactly 1 for a level with a single approved genre; none for a level with no approved genres.
 - At most ${MAX_PER_LEVEL} directions per level.
 - No two directions of the same level have the same set of genres.
@@ -230,6 +248,7 @@ export const EDITABLE_PROMPT_SECTION = [
   LEVEL_DIRECTIONS_INPUTS_SECTION,
   LEVEL_RULES_SECTION,
   LIBRARY_SECTION,
+  REQUESTED_GENRES_SECTION,
   COHERENCE_SECTION,
   TITLES_SECTION,
 ].join('\n\n');
@@ -287,21 +306,30 @@ function formatPlaceBlock(place) {
 }
 
 // approved = approvedByLevel(...) output.
-export function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, approved, energyLevelsTotal }) {
+export function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases, place, approved, energyLevelsTotal, requestedGenres = [] }) {
   const N = energyLevelsTotal;
   const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
   const descLine = (bizDesc && String(bizDesc).trim()) ? String(bizDesc).trim() : 'none';
   const atmLine = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
   let s = `Energy levels total (N): ${N}\nBusiness name: ${nameLine}\nDescription: ${descLine}\nAtmospheres: ${atmLine}`;
   if (typeof musicalEmphases === 'string' && musicalEmphases.trim().length) s += `\nMusical emphases: ${musicalEmphases.trim()}`;
+  const requested = new Set((Array.isArray(requestedGenres) ? requestedGenres : []).map((g) => String(g).toLowerCase()));
+  const mark = (g) => `- ${g}${requested.has(g.toLowerCase()) ? ' (requested)' : ''}`;
   s += `\n\n## Approved genres by energy level (the ONLY genres in play)`;
+  const requestedByLevel = [];
   for (let L = 1; L <= N; L++) {
     const gs = approved.filter((a) => a.energy_level === L).map((a) => a.genre);
     s += `\n\n### ${levelLabel(L, N)} — ${gs.length} genre${gs.length === 1 ? '' : 's'}\n`;
-    s += gs.length ? gs.map((g) => `- ${g}`).join('\n') : '(no approved genres — build no directions for this level)';
+    s += gs.length ? gs.map(mark).join('\n') : '(no approved genres — build no directions for this level)';
+    const req = gs.filter((g) => requested.has(g.toLowerCase()));
+    if (req.length) requestedByLevel.push(`Level ${L}: ${req.join(', ')}`);
+  }
+  if (requestedByLevel.length) {
+    s += `\n\n## Requested genres (each in at least one direction of its level)\n${requestedByLevel.join('\n')}`;
   }
   s += formatPlaceBlock(place);
-  return s + `\n\nFor every level that has approved genres, build a library of as many directions as its genres genuinely support (at least 2 when it has 2 or more genres, 1 when it has a single genre, at most ${MAX_PER_LEVEL}): each a coherent blend of that level's genres only — never pairing genres that don't belong together (a genre with no natural partner gets its own direction) — the directions of a level clearly different from one another.`;
+  return s + `\n\nFor every level that has approved genres, build a library of as many directions as its genres genuinely support (at least 2 when it has 2 or more genres, 1 when it has a single genre, at most ${MAX_PER_LEVEL}): each a coherent blend of that level's genres only — never pairing genres that don't belong together (a genre with no natural partner gets its own direction) — the directions of a level clearly different from one another`
+    + (requestedByLevel.length ? `, and every requested genre in at least one direction of its level — in the directions it suits, never forced.` : '.');
 }
 
 // ---------- Validation & normalization ----------
@@ -313,12 +341,16 @@ export function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphase
 // - Duplicate genres within a direction; directions left with no genre.
 // - A direction whose level + genre set repeats an earlier one.
 // - Everything past MAX_PER_LEVEL in a level.
-// Warns (server and scripts only, never errors) for dropped genres and for a level with 2+
-// genres that came back with fewer than 2 directions.
-export function normalizeLevelDirections(parsed, approvedGenres, n) {
+// Gives a requested genre a direction of its own when no direction of its
+// level plays it (2026-10-26 — the daily rotation can only guarantee the owner
+// hears it through a direction that holds it). Warns (server and scripts only,
+// never errors) for dropped genres and for a level with 2+ genres that came
+// back with fewer than 2 directions.
+export function normalizeLevelDirections(parsed, approvedGenres, n, requestedGenres = []) {
   if (!parsed || typeof parsed !== 'object') return null;
   const approved = approvedByLevel(approvedGenres, n);
   const levelOf = new Map(approved.map((a) => [a.genre, a.energy_level]));
+  const requestedSet = new Set((Array.isArray(requestedGenres) ? requestedGenres : []).map((g) => String(g).toLowerCase()));
 
   const directions = [];
   const seenSets = new Set();
@@ -372,8 +404,29 @@ export function normalizeLevelDirections(parsed, approvedGenres, n) {
     serverWarn('[v7 level-directions] isolation rules fixed:', isolationNotes.join(' | '));
   }
 
+  // The guarantee the daily rotation rests on: a requested genre no direction
+  // of its level plays gets one of its own (the model is told to do this
+  // itself). At the per-level ceiling the level's last direction makes room —
+  // being heard at all beats one more variation.
+  const orphans = [];
+  for (const { genre, energy_level: L } of approved) {
+    if (!requestedSet.has(genre.toLowerCase())) continue;
+    if (directions.some((d) => d.energy_level === L && d.genres.includes(genre))) continue;
+    if ((perLevel.get(L) || 0) >= MAX_PER_LEVEL) {
+      const last = directions.map((d, i) => (d.energy_level === L ? i : -1)).filter((i) => i >= 0).pop();
+      directions.splice(last, 1);
+      perLevel.set(L, perLevel.get(L) - 1);
+    }
+    directions.push({ energy_level: L, title_en: genre, genres: [genre] });
+    perLevel.set(L, (perLevel.get(L) || 0) + 1);
+    orphans.push(`${genre} (L${L})`);
+  }
+
   if (dropped.length) {
     serverWarn('[v7 level-directions] dropped genres that are not approved at that level:', dropped.join(', '));
+  }
+  if (orphans.length) {
+    serverWarn('[v7 level-directions] requested genre(s) no direction played — gave each one its own:', orphans.join(', '));
   }
   for (let L = 1; L <= n; L++) {
     const genreCount = approved.filter((a) => a.energy_level === L).length;
@@ -399,8 +452,9 @@ export async function generateLevelDirections({
     return { error: 'insufficient_signal', reasoning_en: 'taste profile has no approved genres' };
   }
 
+  const requestedGenres = Array.isArray(tasteProfile.requested_genres) ? tasteProfile.requested_genres : [];
   const userMessage = buildUserMessage({
-    bizName, bizDesc, atmospheres, musicalEmphases, place, approved, energyLevelsTotal,
+    bizName, bizDesc, atmospheres, musicalEmphases, place, approved, energyLevelsTotal, requestedGenres,
   });
 
   let parsed;
@@ -420,7 +474,7 @@ export async function generateLevelDirections({
   if (parsed?.error) {
     return { error: String(parsed.error), reasoning_en: typeof parsed.reasoning_en === 'string' ? parsed.reasoning_en : '' };
   }
-  const normalized = normalizeLevelDirections(parsed, tasteProfile.approved_genres, energyLevelsTotal);
+  const normalized = normalizeLevelDirections(parsed, tasteProfile.approved_genres, energyLevelsTotal, requestedGenres);
   if (!normalized) return { error: 'matcher_error', reasoning_en: 'level directions could not be parsed' };
   if (!normalized.directions.length) return { error: 'matcher_error', reasoning_en: 'level directions returned zero valid directions' };
   return { directions: normalized.directions };

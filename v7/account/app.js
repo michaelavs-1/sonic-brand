@@ -177,7 +177,7 @@ function playlistRowToClient(r) {
 // is active). On error, we log and fall back to empty arrays / null so
 // the dashboard still renders instead of white-screening.
 async function loadDashboardData(businessId) {
-  const [plRes, evRes, hoursRes, placeRes, opensRes] = await Promise.all([
+  const [plRes, evRes, hoursRes, placeRes, opensRes, fbRes] = await Promise.all([
     sb.from('business_playlists').select('*').eq('business_id', businessId).order('created_at', { ascending: false }),
     sb.from('business_events').select('id,name,description,created_at').eq('business_id', businessId).order('created_at', { ascending: true }),
     sb.from('business_hours').select('hours,longest_minutes').eq('business_id', businessId).limit(1),
@@ -186,11 +186,20 @@ async function loadDashboardData(businessId) {
     // client-side into a { spotify_id → total } map used by renderPlaylists
     // to sort most-clicked first. See sortPlaylistsByClicksDesc below.
     sb.from('business_playlist_opens').select('spotify_id').eq('business_id', businessId),
+    // The owner's like / dislike per daily playlist (2026-10-26). At most one
+    // row per playlist; read client-direct under its owner-scoped RLS policy.
+    // Before the 2026-10-26 migration this errors and comes back empty, which
+    // just leaves every icon unlit.
+    sb.from('business_playlist_feedback').select('spotify_id,verdict,reason').eq('business_id', businessId),
   ]);
   const clicksBySpotifyId = new Map();
   for (const o of (opensRes.data || [])) {
     if (!o.spotify_id) continue;
     clicksBySpotifyId.set(o.spotify_id, (clicksBySpotifyId.get(o.spotify_id) || 0) + 1);
+  }
+  const feedbackBySpotifyId = new Map();
+  for (const f of (fbRes.data || [])) {
+    if (f.spotify_id) feedbackBySpotifyId.set(f.spotify_id, { verdict: f.verdict, reason: f.reason || '' });
   }
   state.dashboard = {
     playlists: (plRes.data || []).map(playlistRowToClient),
@@ -199,6 +208,7 @@ async function loadDashboardData(businessId) {
     longestMinutes: hoursRes.data?.[0]?.longest_minutes || null,
     place: placeRes.data?.[0] || null,
     clicksBySpotifyId,
+    feedbackBySpotifyId,
   };
 }
 
@@ -531,7 +541,7 @@ async function enterDashboardInner() {
     // it identifies which biz the dashboard opens to and is tiny (uuid).
     meta = { ...meta, currentBizId: business.id };
     try { await sb.auth.updateUser({ data: { sonic: meta } }); }
-    catch {}
+    catch { }
   }
 
   // Profile → מנוי + the Home tab's "subscription ended" banner. Started now,
@@ -540,7 +550,7 @@ async function enterDashboardInner() {
   // The Home tab's "why no playlists" line — also started now, so the line
   // can appear whole with the box instead of a moment later.
   const dailyStatusPending = dailyStatusRequest('GET');
-  dailyStatusPending.catch(() => {});   // handled in loadDailyStatus
+  dailyStatusPending.catch(() => { });   // handled in loadDailyStatus
 
   await loadDashboardData(business.id);
   renderAll();
@@ -580,7 +590,7 @@ async function enterDashboardInner() {
   // sample size. The endpoint streams progress and updateCountInRow ticks
   // the count live. Fire-and-forget so the dashboard is interactive
   // immediately.
-  expandPendingPlaylists().catch(() => {});
+  expandPendingPlaylists().catch(() => { });
 }
 
 // v7 first-login delivery-mode gate. Reads business_v7_settings.delivery_mode
@@ -615,7 +625,7 @@ async function checkV7ModeGate() {
         .eq('business_id', business.id)
         .eq('active', true);
       state.energyBuildFailed = !count;
-    } catch {}
+    } catch { }
   }
   if (mode === 'option2') {
     // Option 2 still builds without its level directions (every genre of the
@@ -627,12 +637,12 @@ async function checkV7ModeGate() {
         .eq('business_id', business.id)
         .eq('active', true);
       if (!error) state.levelBuildFailed = !count;
-    } catch {}
+    } catch { }
   }
   if (mode) return false;
 
   const gate = $('v7ModeGate');
-  const err  = $('v7ModeErr');
+  const err = $('v7ModeErr');
   const opt1 = $('v7ModeOption1');
   const opt2 = $('v7ModeOption2');
   const building = $('v7ModeBuilding');
@@ -1117,7 +1127,7 @@ document.addEventListener('direction-change-applied', async (e) => {
     await loadDashboardData(business.id);
     renderPlaylistsTitle();
     renderPlaylists();
-  } catch {}
+  } catch { }
 });
 
 // Businesses table read — includes onboarding_expanded (moved off user_metadata
@@ -1566,8 +1576,8 @@ function renderSubscriptionSection() {
   }
   rows.push(['מנוי מאז', heDate(sub.startedOn)]);
   if (sub.invoiceEmail) rows.push(['חשבוניות נשלחות אל', sub.invoiceEmail, 'ltr']);
-  if (sub.invoiceName)  rows.push(['חשבונית על שם', sub.invoiceName]);
-  if (sub.taxId)        rows.push(['ח.פ / ע.מ', sub.taxId]);
+  if (sub.invoiceName) rows.push(['חשבונית על שם', sub.invoiceName]);
+  if (sub.taxId) rows.push(['ח.פ / ע.מ', sub.taxId]);
 
   $('subRows').replaceChildren(...rows.map(([label, value, cls]) => {
     const row = document.createElement('div');
@@ -2040,9 +2050,9 @@ let dailyStatusTimer = null;
 
 const DAILY_REASON_TEXT = {
   'subscription-ended': 'המנוי שלכם הסתיים',
-  'closed':             'המקום סגור היום',
-  'before-build':       'הפלייליסטים ייווצרו לפני הפתיחה',
-  'after-close':        'הפלייליסטים הבאים ייווצרו לפני הפתיחה הבאה',
+  'closed': 'המקום סגור היום',
+  'before-build': 'הפלייליסטים ייווצרו לפני הפתיחה',
+  'after-close': 'הפלייליסטים הבאים ייווצרו לפני הפתיחה הבאה',
 };
 
 const reportedKey = () => `rubin-v7-reported:${business.id}:${businessWindowAt(bmeta().hours).isoDate}`;
@@ -2218,9 +2228,9 @@ function renderPlaylists() {
   // Falls back to a single generic placeholder for the sub-second gap
   // between "click generate" and "server sends the plan line".
   if (state.generating) {
-    const plan   = state.generating.plan;   // [{direction_id, title}, ...] or null
+    const plan = state.generating.plan;   // [{direction_id, title}, ...] or null
     const status = state.generating.status; // Map<direction_id, 'pending'|'built'|'failed'>
-    const built  = state.generating.builtRows; // Map<direction_id, clientRow>
+    const built = state.generating.builtRows; // Map<direction_id, clientRow>
     if (!plan || !plan.length) {
       const row = document.createElement('div');
       row.className = 'slot slot-pending';
@@ -2340,6 +2350,9 @@ function buildPlaylistRow(p) {
     // closed (the modal doesn't hold a reference to the row).
     row.dataset.directionId = p.directionId;
   }
+  // Like / dislike — bare icons, no button chrome, beside "▶ פתח" (Roni,
+  // 2026-10-26). Only on a row that has a playlist to judge.
+  if (p.id) row.append(buildFeedbackIcons(p));
   if (p.url) {
     const open = document.createElement('a');
     open.className = 'btn';
@@ -2358,6 +2371,155 @@ function buildPlaylistRow(p) {
   return row;
 }
 
+// ---------- like / dislike on a daily playlist (Roni, 2026-10-26) ----------
+// Two bare thumb icons beside each daily playlist's "▶ פתח". A tap records the
+// verdict at once (so a skipped modal still counts) and opens a modal asking
+// what the owner liked or didn't, with an optional field: "שלח" saves the
+// text, "דלג" closes and leaves the verdict. Tapping the lit icon clears it.
+// Server: api/v7/account/playlist-feedback.js (needs the 2026-10-26 migration).
+
+const FEEDBACK_ICONS = {
+  like: '<path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>',
+  dislike: '<path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3z"/><path d="M17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/>',
+};
+const FEEDBACK_WORDS = { like: 'אהבנו', dislike: 'פחות אהבנו' };
+
+// { verdict, reason } for one playlist, or null.
+const feedbackFor = (spotifyId) => state.dashboard?.feedbackBySpotifyId?.get(spotifyId) || null;
+
+const feedback = { pending: null, busy: false };
+
+function buildFeedbackIcons(p) {
+  const wrap = document.createElement('div');
+  wrap.className = 'pl-fb-row';
+  for (const verdict of ['like', 'dislike']) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pl-fb pl-fb-' + verdict;
+    b.dataset.verdict = verdict;
+    b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + FEEDBACK_ICONS[verdict] + '</svg>';
+    b.title = FEEDBACK_WORDS[verdict];
+    b.setAttribute('aria-label', FEEDBACK_WORDS[verdict]);
+    b.addEventListener('click', () => onFeedbackTap(p, verdict));
+    wrap.append(b);
+  }
+  paintFeedback(wrap, feedbackFor(p.id)?.verdict || null);
+  return wrap;
+}
+
+// Lights the chosen icon and dims the other. `pop` replays the little scale
+// so a fresh tap reads as a change, not just a colour swap.
+function paintFeedback(wrap, verdict, pop = false) {
+  if (!wrap) return;
+  wrap.querySelectorAll('.pl-fb').forEach((b) => {
+    const on = b.dataset.verdict === verdict;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (on && pop) { b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop'); }
+    if (!on) b.classList.remove('pop');
+  });
+}
+
+const feedbackRowFor = (spotifyId) =>
+  document.querySelector('.slot[data-playlist-id="' + CSS.escape(spotifyId) + '"] .pl-fb-row');
+
+async function postFeedback(spotifyId, verdict, reason) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session?.access_token) throw new Error('לא מחוברים');
+  const body = { business_id: business.id, spotify_id: spotifyId, verdict };
+  if (reason !== undefined) body.reason = reason;
+  const r = await fetch('/api/v7/account/playlist-feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok || !data.ok) {
+    throw new Error(data?.error === 'needs-migration'
+      ? 'המשוב עדיין לא זמין — נסו שוב מאוחר יותר'
+      : (data?.error || ('שגיאה ' + r.status)));
+  }
+  return data.feedback;
+}
+
+async function onFeedbackTap(p, verdict) {
+  if (feedback.busy) return;
+  const before = feedbackFor(p.id);
+  const clearing = before?.verdict === verdict;
+  const next = clearing ? null : { verdict, reason: before?.reason || '' };
+  const wrap = feedbackRowFor(p.id);
+
+  // The icon and the modal both answer the tap at once; the write follows in
+  // the background (waiting for it put a visible delay on the modal).
+  const map = state.dashboard?.feedbackBySpotifyId;
+  if (next) map?.set(p.id, next); else map?.delete(p.id);
+  paintFeedback(wrap, next?.verdict || null, !clearing);
+  if (!clearing) openFeedbackModal(p, verdict);
+
+  feedback.busy = true;
+  try {
+    await postFeedback(p.id, clearing ? 'clear' : verdict);
+  } catch (e) {
+    // Undo only if nothing newer has landed: the modal's "שלח" may have
+    // written the same verdict WITH a reason while this call was in flight.
+    const now = feedbackFor(p.id);
+    const stillOurs = (now?.verdict || null) === (next?.verdict || null)
+      && (now?.reason || '') === (next?.reason || '');
+    if (stillOurs) {
+      if (before) map?.set(p.id, before); else map?.delete(p.id);
+      paintFeedback(wrap, before?.verdict || null);
+      if (feedback.pending?.id === p.id) closeFeedbackModal();
+      toast(String(e.message || 'משהו השתבש — נסו שוב').slice(0, 120));
+    }
+  } finally {
+    feedback.busy = false;
+  }
+}
+
+function openFeedbackModal(p, verdict) {
+  feedback.pending = { id: p.id, verdict };
+  $('feedbackTitle').textContent = verdict === 'like' ? 'מה אהבתם בפלייליסט?' : 'מה לא אהבתם בפלייליסט?';
+  $('feedbackText').textContent = undatedLabel(p.label) || 'הפלייליסט';
+  const input = $('feedbackInput');
+  input.value = feedbackFor(p.id)?.reason || '';
+  input.placeholder = verdict === 'like'
+    ? 'לדוגמה: השירים התאימו בדיוק לשעות הבוקר'
+    : 'לדוגמה: יותר מדי שירים שקטים בשעות העומס';
+  $('feedbackSend').disabled = false;
+  $('feedbackModal').classList.remove('hide');
+  setTimeout(() => input.focus(), 50);
+}
+
+function closeFeedbackModal() {
+  feedback.pending = null;
+  $('feedbackModal').classList.add('hide');
+}
+
+// "שלח" closes at once and writes in the background, like the icon tap: the
+// owner is done, and waiting for the round-trip only held the modal open.
+async function sendFeedbackReason() {
+  const pending = feedback.pending;
+  if (!pending) return closeFeedbackModal();
+  const reason = $('feedbackInput').value.trim();
+  const map = state.dashboard?.feedbackBySpotifyId;
+  const before = feedbackFor(pending.id);
+  map?.set(pending.id, { verdict: pending.verdict, reason });
+  closeFeedbackModal();
+  // The thank-you goes up with the close, not when the write lands —
+  // waiting for the round-trip made it arrive long after the owner moved on.
+  toast('תודה, נשמר ✓');
+  try {
+    await postFeedback(pending.id, pending.verdict, reason);
+  } catch (e) {
+    // The verdict itself was saved by the tap — only the text failed. Put
+    // the stored text back so a later open shows what is really saved.
+    if (before) map?.set(pending.id, before);
+    toast('ההסבר לא נשמר — אפשר לנסות שוב');
+  }
+}
+
+$('feedbackSend')?.addEventListener('click', sendFeedbackReason);
+$('feedbackSkip')?.addEventListener('click', closeFeedbackModal);
 // ---------- "today only" energy for one playlist (4 a day; Ami + Roni, 2026-10-21) ----------
 // Three circles under each of the 4 daily playlists: calmer / as usual / more
 // energetic — the windows from nudgeOptions (v7/generation/energy-windows.js):
@@ -2404,7 +2566,7 @@ function buildNudgeRow(p, ns) {
   const row = document.createElement('div');
   row.className = 'nrg-row';
   const label = document.createElement('span');
-  label.textContent = 'להרים/להוריד אנרגיה להיום';
+  label.textContent = 'להרים / להוריד אנרגיה להיום';
   const dots = document.createElement('div');
   dots.className = 'nrg-dots';
   dots.dir = 'ltr';   // calmer on the left, more energetic on the right
@@ -2497,7 +2659,7 @@ $('nudgeModal')?.addEventListener('click', (e) => { if (e.target?.id === 'nudgeM
 // same listener on the home tab already handles — same channel the chat's
 // apply flow uses, so both paths converge to a single reload.
 const RENAME_MAX_LEN = 120;                            // matches server's sanitizeUpdates cap
-const RENAME_ICON_SAVE   = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg>';
+const RENAME_ICON_SAVE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="5 12 10 17 19 7"/></svg>';
 const RENAME_ICON_CANCEL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
 
 function enterRenameMode(labelEl, playlist) {
@@ -2593,10 +2755,10 @@ function enterRenameMode(labelEl, playlist) {
             Authorization: `Bearer ${session.access_token}`,
           },
           body: JSON.stringify({
-            businessId:         business.id,
-            kind:               'edit',
-            directionId:        playlist.directionId,
-            updates:            { title_en: newName },
+            businessId: business.id,
+            kind: 'edit',
+            directionId: playlist.directionId,
+            updates: { title_en: newName },
             expireLivePlaylist: false,   // ignored server-side on the cosmetic-only branch
           }),
         });
@@ -2624,7 +2786,7 @@ function enterRenameMode(labelEl, playlist) {
   saveBtn.addEventListener('click', commit);
   cancelBtn.addEventListener('click', restore);
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter')       { e.preventDefault(); commit(); }
+    if (e.key === 'Enter') { e.preventDefault(); commit(); }
     else if (e.key === 'Escape') { e.preventDefault(); restore(); }
   });
 }
@@ -2636,7 +2798,7 @@ async function editDirectionFromCard(directionId) {
   if (!directionId) return;
   openDirectionsSection();
   try { await selectDirectionInChat(directionId); }
-  catch {}
+  catch { }
 }
 
 // Trash icon on a playlist row → open the confirmation modal. The
@@ -2666,9 +2828,9 @@ async function confirmTrashDirectionRemove() {
   // without blocking the rest of the UI.
   closeTrashDirectionModal();
 
-  const row      = document.querySelector(`#slotsWrap .slot[data-direction-id="${cssEscape(id)}"]`);
+  const row = document.querySelector(`#slotsWrap .slot[data-direction-id="${cssEscape(id)}"]`);
   const trashBtn = row?.querySelector('.slot-trash');
-  const editBtn  = row?.querySelector('.slot-edit');
+  const editBtn = row?.querySelector('.slot-edit');
   const origTrashHtml = trashBtn?.innerHTML;
   if (trashBtn) {
     trashBtn.disabled = true;
@@ -2797,7 +2959,7 @@ async function expandPendingPlaylists() {
       const bar = row.querySelector('.pl-expand-bar');
       if (bar && bar.classList.contains('done')) bar.remove();
     });
-  } catch {}
+  } catch { }
 }
 
 async function expandOne(playlist, token, target) {
@@ -2887,12 +3049,18 @@ async function expandOne(playlist, token, target) {
 //   closed    — "המקום פתוח?" on a closed day: a ~12-hour set.
 //   otherwise — today's set.
 const GEN_DAILY_COPY = {
-  openNow: { title: 'צור פלייליסטים עכשיו', btn: 'צור פלייליסטים עכשיו',
-    text: 'ניצור את הפלייליסטים של היום כבר עכשיו, כאילו המקום נפתח עכשיו — הם יימשכו עד הסגירה.' },
-  closed:  { title: 'צור פלייליסטים יומיים', btn: 'צור פלייליסטים יומיים',
-    text: 'ניצור לכם סט פלייליסטים באורך של כ־12 שעות לפי הטעם המוזיקלי שלכם.' },
-  today:   { title: 'צור פלייליסטים יומיים', btn: 'צור פלייליסטים יומיים',
-    text: 'ניצור לכם את הפלייליסטים של היום לפי הטעם המוזיקלי שלכם.' },
+  openNow: {
+    title: 'צור פלייליסטים עכשיו', btn: 'צור פלייליסטים עכשיו',
+    text: 'ניצור את הפלייליסטים של היום כבר עכשיו, כאילו המקום נפתח עכשיו — הם יימשכו עד הסגירה.'
+  },
+  closed: {
+    title: 'צור פלייליסטים יומיים', btn: 'צור פלייליסטים יומיים',
+    text: 'ניצור לכם סט פלייליסטים באורך של כ־12 שעות לפי הטעם המוזיקלי שלכם.'
+  },
+  today: {
+    title: 'צור פלייליסטים יומיים', btn: 'צור פלייליסטים יומיים',
+    text: 'ניצור לכם את הפלייליסטים של היום לפי הטעם המוזיקלי שלכם.'
+  },
 };
 let genDailyOpenNow = false;
 
@@ -2928,7 +3096,7 @@ function closeGenerateDailyModal() {
 function expectedDailySlots(mode) {
   const titles = mode === 'option1' ? OPTION1_DAILY_TITLES
     : mode === 'option2' ? OPTION2_DAILY_TITLES
-    : null;
+      : null;
   if (!titles) return null;
   // Dated like the rows the server builds ("Daily Mix #1 · 28.09.2026").
   let isoDate = null;
@@ -2954,9 +3122,9 @@ async function runGenerateDaily({ replaceToday = false, openNow = false } = {}) 
   // replaces this one (same slot-N keys, so nothing flickers when they match).
   const expected = expectedDailySlots(state.deliveryMode);
   state.generating = {
-    plan:       expected,                 // [{direction_id, title}, ...]; the server's 'plan' line replaces it
-    status:     new Map((expected || []).map((d) => [d.direction_id, 'pending'])),  // → 'pending' | 'built' | 'failed'
-    builtRows:  new Map(),                // direction_id → clientRow (from playlistRowToClient)
+    plan: expected,                 // [{direction_id, title}, ...]; the server's 'plan' line replaces it
+    status: new Map((expected || []).map((d) => [d.direction_id, 'pending'])),  // → 'pending' | 'built' | 'failed'
+    builtRows: new Map(),                // direction_id → clientRow (from playlistRowToClient)
   };
   // Repaint the title too — on a closed day this flips it from
   // "המקום סגור [המקום פתוח?]" to the normal day/date format immediately,
@@ -3023,7 +3191,7 @@ async function runGenerateDaily({ replaceToday = false, openNow = false } = {}) 
         if (msg.type === 'plan' && Array.isArray(msg.directions)) {
           state.generating.plan = msg.directions.map((d) => ({
             direction_id: d.direction_id,
-            title:        d.title || 'פלייליסט',
+            title: d.title || 'פלייליסט',
           }));
           for (const d of state.generating.plan) {
             if (!state.generating.status.has(d.direction_id)) state.generating.status.set(d.direction_id, 'pending');
@@ -3040,16 +3208,16 @@ async function runGenerateDaily({ replaceToday = false, openNow = false } = {}) 
           renderPlaylists();
         } else if (msg.type === 'done') {
           // Server-authoritative counts (in case a line was dropped).
-          if (Number.isFinite(msg.built))  builtCount  = msg.built;
+          if (Number.isFinite(msg.built)) builtCount = msg.built;
           if (Number.isFinite(msg.failed)) failedCount = msg.failed;
         }
       }
     }
 
     await cleanupOnExit();
-    if (builtCount && !failedCount)       toast(`נבנו ${builtCount} פלייליסטים ✓`);
-    else if (builtCount && failedCount)   toast(`נבנו ${builtCount} מתוך ${builtCount + failedCount} פלייליסטים`);
-    else                                  toast('לא הצלחנו לבנות אף פלייליסט — נסו שוב');
+    if (builtCount && !failedCount) toast(`נבנו ${builtCount} פלייליסטים ✓`);
+    else if (builtCount && failedCount) toast(`נבנו ${builtCount} מתוך ${builtCount + failedCount} פלייליסטים`);
+    else toast('לא הצלחנו לבנות אף פלייליסט — נסו שוב');
   } catch (err) {
     await cleanupOnExit();
     toast(String(err.message || 'משהו השתבש — נסו שוב').slice(0, 120));
@@ -3085,7 +3253,7 @@ function cssEscape(s) {
 // A card whose playlist is live shows "▶ פתח" whatever its state.
 const eventBuilds = new Map();      // eventId → 'building' | 'failed'
 const RESUME_BUILD_WINDOW_MS = 3 * 60 * 1000;   // a playlist-less card this young is probably still building
-const EVENT_BUILD_LOCK_MS    = 190 * 1000;      // a little past event-playlist.js's build lock
+const EVENT_BUILD_LOCK_MS = 190 * 1000;      // a little past event-playlist.js's build lock
 let eventsDayTimer = null;
 
 // Look up an event's live (unexpired) playlist by cross-referencing the
@@ -3389,11 +3557,11 @@ async function callChatModel(userMessage) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization:  `Bearer ${session.access_token}`,
+      Authorization: `Bearer ${session.access_token}`,
     },
     body: JSON.stringify({
-      businessId:     business?.id,
-      message:        userMessage,
+      businessId: business?.id,
+      message: userMessage,
       sessionStartAt: SESSION_START_AT_ISO,
     }),
   });
@@ -3489,7 +3657,7 @@ async function finalizeAndSaveEvent(goBtn) {
       },
       body: JSON.stringify({
         businessId: business.id,
-        event:      { name, description, genre_source },
+        event: { name, description, genre_source },
         // Server backfills business_event_chats.event_id on every row
         // from this chat session so the admin API can surface "here's
         // the conversation that produced event X".

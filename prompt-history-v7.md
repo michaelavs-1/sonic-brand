@@ -46,7 +46,23 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-26 (latest) — A requested genre sits only where it fits, and the daily draw guarantees it
+## 2026-10-27 (latest) — 3 new genres; two of them join the Israeli exception
+
+**Applies to:** all v7 (source-of-truth edit; flows to every v7 prompt via imports). The R1 sub-rule edit applies to R1+R2.
+
+Cross-referenced from `prompt-history.md`'s 2026-10-27 entry (primary record). New genres: `Bhangra Hip Hop`, `אינדי ישראלי`, `פופ אמוני ישראלי`. `GENRES.length` moves 139 → 142, so the taste profile now buckets 142 genres.
+
+**One prompt line changed:** the Popularity preference sub-rule in R1's `PROCESSING_RULES_SECTION` (R2 imports it) names the Israeli genres that use the 40–100 hit window. It now lists the two new ones too, matching the database's `hit_popularity_floor` (migration `2026-10-27-israeli-hit-floor-indie-emuni.sql`). The line now reads:
+
+```
+  **Exception — Israeli genres** (`בלדות ישראליות`, `פופ מזרחית`, `מזרחית ישנה`, `רוק ישראלי`, `שירי ארץ ישראל`, `שירי יום הזיכרון והשואה`, `פופ ישראלי`, `היפ הופ ישראלי`, `אינדי ישראלי`, `פופ אמוני ישראלי`): Israeli tracks score lower on this global popularity scale, so for these genres the DB uses 40–100 instead. They have plenty of tracks in their own hit window — do NOT avoid them because the owner asked for hits.
+```
+
+**Not done:** no family list or guardrail names the new genres. `Bhangra Hip Hop` is not in R1's "Hip Hop family" (`BEAT_PERCUSSION_RULE`).
+
+---
+
+## 2026-10-26 — A requested genre sits only where it fits, and the daily draw guarantees it
 
 **Applies to:** energy directions (`REQUESTED_GENRES_SECTION`, the output invariants, the user message), level directions (new `REQUESTED_GENRES_SECTION`, the inputs + output invariants, the user message), taste chat (`HOW_OPTION1` / `HOW_OPTION2`, the ops rule, the coherence intro, the deck and feel-word rules).
 

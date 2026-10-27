@@ -30,6 +30,7 @@
       --teal: #2c637a;
       --teal-soft: #57a3bd;
       --danger: #e07a6a;
+      --good: #6fc08c;
       --r: 16px;
       --r-lg: 24px;
       --glow: 0 0 30px rgba(240, 167, 63, .12);
@@ -2657,6 +2658,89 @@
       box-shadow: 0 4px 14px rgba(224, 122, 106, .22);
     }
 
+    /* Like / dislike on a daily playlist (2026-10-26). Bare icons — no fill,
+       border or radius — so they read as marks beside the "▶ פתח" button
+       rather than three competing buttons. The chosen one takes colour and
+       a filled glyph; .pop replays a small scale on a fresh tap. */
+    .pl-fb-row {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      flex-shrink: 0;
+    }
+
+    .pl-fb {
+      background: none;
+      border: none;
+      padding: 6px;
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      opacity: .8;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: opacity .15s, transform .12s;
+    }
+
+    /* Each thumb carries its own colour from the start, as an outline; a tap
+       fills the glyph with that same colour (Roni, 2026-10-26). */
+    .pl-fb-like {
+      color: var(--good);
+    }
+
+    .pl-fb-dislike {
+      color: var(--danger);
+    }
+
+    .pl-fb svg {
+      width: 17px;
+      height: 17px;
+      display: block;
+    }
+
+    .pl-fb:hover {
+      opacity: 1;
+      transform: translateY(-1px);
+    }
+
+    .pl-fb:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Chosen: the glyph fills with its own colour, so it reads at a glance. */
+    .pl-fb.on {
+      opacity: 1;
+    }
+
+    .pl-fb.on svg {
+      fill: currentColor;
+    }
+
+    .pl-fb.pop {
+      animation: plFbPop 420ms cubic-bezier(.34, 1.56, .64, 1);
+    }
+
+    @keyframes plFbPop {
+      0% { transform: scale(1); }
+      45% { transform: scale(1.35); }
+      100% { transform: scale(1); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pl-fb.pop { animation: none; }
+    }
+
+    /* The reason box inside the like / dislike modal. */
+    .fb-input {
+      width: 100%;
+      min-height: 72px;
+      resize: vertical;
+      margin: 4px 0 14px;
+      text-align: start;
+    }
+
     /* ---------- inline direction rename on Home tab playlist rows ----------
        The .s-label span wraps the display title inside .s-title (which also
        holds the leading emoji). Clicking swaps the span for an input + two
@@ -3915,6 +3999,21 @@
     </div>
   </div>
 
+
+  <!-- Like / dislike on a daily playlist (2026-10-26). The verdict is already
+       saved by the time this opens; the field is optional and "דלג" just
+       closes. See the feedback block in app.js. -->
+  <div class="gd-overlay hide" id="feedbackModal">
+    <div class="gd-modal">
+      <h3 id="feedbackTitle"></h3>
+      <p id="feedbackText"></p>
+      <textarea class="input fb-input" id="feedbackInput" rows="3" maxlength="500"></textarea>
+      <div class="gd-actions">
+        <button class="btn" id="feedbackSend" type="button">שלח</button>
+        <button class="btn-ghost" id="feedbackSkip" type="button">דלג</button>
+      </div>
+    </div>
+  </div>
   <div class="gd-overlay hide" id="trashEventModal">
     <div class="gd-modal">
       <h3>למחוק את האירוע?</h3>
@@ -4015,7 +4114,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=26102026d"></script>
+  <script type="module" src="/v7/account/app.js?v=26102026j"></script>
 </body>
 
 </html>

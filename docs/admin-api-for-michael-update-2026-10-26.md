@@ -2,9 +2,11 @@
 
 > Give this to your Claude / AI coding assistant together with the
 > document it already has ("Rubin — Admin Dashboard: Build Brief + API
-> Reference") and the update of 2026-10-22. No endpoint, field or action was
-> added, removed or renamed this time: what changed is the MEANING of the
-> requested genres, which shows up in the libraries and in one refusal.
+> Reference") and the update of 2026-10-22. Two things changed: the MEANING
+> of the requested genres, which shows up in the libraries and in one refusal
+> (sections 1 and 2, no API change), and a NEW piece of data — the owner can
+> now like or dislike each daily playlist, which adds fields to `/users` and
+> `/business` (section 3).
 >
 > The full document with these changes merged in is
 > `docs/admin-api-for-michael.md` in Rubin's repo, if you'd rather replace
@@ -18,6 +20,10 @@
       wording (section 1).
 - [ ] Direction edits: adding a requested genre to a recipe can now be
       refused by a pairing rule, like any other genre (section 2).
+- [ ] Show the owner's like / dislike per daily playlist, and what they
+      wrote about it (section 3). Three new fields on the business list,
+      a `feedback` key on every daily playlist, and a new
+      `playlist_feedback` section on the business page.
 
 ---
 
@@ -82,3 +88,111 @@ Nothing to change beyond showing the reason, which you already do.
 One related behaviour: if an edit leaves a requested genre with no recipe at
 all, the server gives it a recipe of its own (named after the genre) rather
 than letting it go unplayed. You'll see that extra recipe in the response.
+
+---
+
+## 3. New: the owner can like or dislike each daily playlist
+
+Since 2026-10-26 every daily playlist on the owner's dashboard carries two
+small thumb icons next to its "▶ פתח" button — green for like, red for
+dislike. A tap records the verdict straight away and opens a short modal
+asking "מה אהבתם בפלייליסט?" / "מה לא אהבתם בפלייליסט?" with ONE optional
+free-text field, plus "שלח" and "דלג". So:
+
+- a verdict can exist with no text (they skipped the modal, which is the
+  common case) — treat a missing reason as normal, not as missing data;
+- a verdict can be changed (like → dislike) or taken back (tapping the lit
+  icon clears it, and the row is deleted);
+- the text can be edited later by tapping the same icon again.
+
+Each day's playlists are NEW Spotify playlists, so a verdict belongs to one
+specific playlist on one specific day. Yesterday's verdicts stay as history
+and today's playlists start unrated.
+
+### 3.1. `GET /users` — three new fields per business
+
+```json
+{
+  "playlist_likes": 7,
+  "playlist_dislikes": 2,
+  "last_playlist_feedback_at": "2026-10-26T09:12:40Z"
+}
+```
+
+Counts of the CURRENT verdicts (a verdict changed from like to dislike counts
+once, as a dislike; one taken back counts not at all). `null` /  `0` where the
+owner never used it.
+
+**Worth putting on the business list**, next to the opens: a business with
+dislikes and no likes is the one to look at first.
+
+### 3.2. `GET /business` — on each daily playlist
+
+Every playlist inside `daily[].playlists[]` gains a `feedback` key:
+
+```json
+{
+  "spotify_id": "4EoQ…", "name": "אנרגיה גבוהה #1", "slot": "high-1",
+  "opens": 1,
+  "feedback": {
+    "verdict": "dislike",
+    "reason": "יותר מדי שירים שקטים בשעות העומס",
+    "created_at": "2026-10-26T09:10:02Z",
+    "updated_at": "2026-10-26T09:12:40Z"
+  }
+}
+```
+
+- `feedback` is `null` when the owner said nothing about that playlist, which
+  is most of them.
+- `reason` is `null` when they skipped the modal.
+- `created_at` is when they first judged it, `updated_at` the last change —
+  equal unless they changed their mind or added the text afterwards.
+
+Each day in `daily[]` also carries `likes` and `dislikes`, the counts within
+that day, so a day row can show them without walking its playlists.
+
+### 3.3. `GET /business` — a new `playlist_feedback` section
+
+The same verdicts as one list, newest change first, each naming the playlist
+it was about. Use this for a "what did they say" panel on the business page,
+without walking every day.
+
+```json
+"playlist_feedback": {
+  "likes": 7,
+  "dislikes": 2,
+  "with_reason": 3,
+  "items": [{
+    "verdict": "dislike",
+    "reason": "יותר מדי שירים שקטים בשעות העומס",
+    "created_at": "2026-10-26T09:10:02Z",
+    "updated_at": "2026-10-26T09:12:40Z",
+    "spotify_id": "4EoQ…",
+    "name": "אנרגיה גבוהה #1",
+    "il_date": "2026-10-26",
+    "url": "https://open.spotify.com/playlist/4EoQ…"
+  }]
+}
+```
+
+- `with_reason` — how many of them have text. The ones with text are the
+  interesting ones; consider showing those first, or filtering to them.
+- `name` / `il_date` / `url` are `null` only if the playlist row is somehow
+  missing; normally they always resolve.
+
+### 3.4. What this is NOT
+
+- There is no write: the console cannot add, change or delete a verdict. It
+  is the owner's own voice, read-only.
+- It does not change the music by itself. Nothing in the builders reads it
+  yet; it is there for you and Rubin to read.
+- It is separate from the taste chat. An owner who wants a real change still
+  says so in the chat, and that shows up in `taste_chat.changes` as before.
+
+### 3.5. Before the migration
+
+The table is `business_playlist_feedback`. Until Rubin runs its migration on
+a given environment, every one of the fields above is simply empty (`0`,
+`null`, `[]`) — no endpoint errors. So the dashboard can ship first.
+

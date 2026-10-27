@@ -41,7 +41,8 @@ import {
   UUID_RE, hasServiceKey, fetchAuthUser, loadBusiness, selectAll, selectOrEmpty, ilDateOf, round6,
 } from './_admin.js';
 import { readLibrary } from './_library.js';
-import { dailyByDay, playedOf } from './_daily-view.js';
+import { dailyByDay, playedOf, feedbackOf, businessDayOf } from './_daily-view.js';
+import { undatedLabel } from '../../v7/generation/playlist-length.js';
 import { businessWindowAt } from '../../v7/generation/energy-timeline.js';
 import { subscriptionStatus, nextChargeDate } from '../v7/account/_subscription.js';
 
@@ -90,7 +91,7 @@ export default async function handler(req, res) {
     const [
       owner, lib, placeRows, hoursRows, playlistRows, openRows, superLiked, tasteChat, tasteChanges,
       events, eventChats, deletedEvents, checkouts, settingsChanges, buildLog, geminiRows, backlog,
-      adminActions, picks, v6Directions, v6Changes, portraits,
+      adminActions, picks, v6Directions, v6Changes, portraits, playlistFeedback,
     ] = await Promise.all([
       fetchAuthUser(business.owner_id),
       readLibrary(id),
@@ -132,12 +133,19 @@ export default async function handler(req, res) {
       }),
       // The owner's musical portrait, every version, newest first (2026-10-21).
       selectOrEmpty('business_taste_portraits', by, { select: 'id,portrait_he,source,message_id,created_at', order: 'created_at.desc' }),
+      // The owner's like / dislike per daily playlist (2026-10-26). At most
+      // one row per playlist: their CURRENT verdict, newest change first.
+      selectOrEmpty('business_playlist_feedback', by, {
+        select: 'spotify_id,verdict,reason,created_at,updated_at', order: 'updated_at.desc',
+      }),
     ]);
 
     const hours = hoursRows[0]?.hours || null;
     const today = businessWindowAt(hours || {}, now).isoDate;
     const profile = lib.profile;
     const playlists = [...playlistRows].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    // spotify_id → its row, for naming the playlist a like / dislike was about.
+    const playlistById = new Map(playlists.map((p) => [p.spotify_id, p]));
     const byPlaylist = new Map(playlists.map((p) => [p.spotify_id, p]));
 
     // ---- clicks ----
@@ -272,7 +280,24 @@ export default async function handler(req, res) {
         option2:                 lib.option2,
         option2_matches_profile: lib.option2_matches_profile,
       },
-      daily: dailyByDay(playlists, opens, now),
+      daily: dailyByDay(playlists, opens, now, playlistFeedback),
+      // Every like / dislike the owner gave a daily playlist, newest change
+      // first, each naming the playlist it was about (2026-10-26).
+      playlist_feedback: {
+        likes:       playlistFeedback.filter((f) => f.verdict === 'like').length,
+        dislikes:    playlistFeedback.filter((f) => f.verdict === 'dislike').length,
+        with_reason: playlistFeedback.filter((f) => f.reason).length,
+        items: playlistFeedback.map((f) => {
+          const row = playlistById.get(f.spotify_id) || null;
+          return {
+            ...feedbackOf(f),
+            spotify_id: f.spotify_id,
+            name:       row ? undatedLabel(row.label) : null,
+            il_date:    row ? businessDayOf(row) : null,
+            url:        row?.url || null,
+          };
+        }),
+      },
       daily_picks: picks.filter((p) => p.il_date >= today),
       clicks: {
         total:       opens.length,

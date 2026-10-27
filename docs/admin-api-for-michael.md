@@ -1,4 +1,4 @@
-# Rubin — Admin Dashboard: Build Brief + API Reference (v2, 2026-10-13; updated 2026-10-22)
+# Rubin — Admin Dashboard: Build Brief + API Reference (v2, 2026-10-13; updated 2026-10-26)
 
 > Give this document (or paste its contents) to your Claude / AI coding
 > assistant. It holds everything needed to build the admin dashboard: what
@@ -508,7 +508,10 @@ One row per business, newest first. No parameters.
     "opens_total": 6,
     "last_opened_at": "2026-10-08T11:29:49Z",
     "special_requests_total": 0,
-    "taste_chat_messages": 0
+    "taste_chat_messages": 0,
+    "playlist_likes": 7,
+    "playlist_dislikes": 2,
+    "last_playlist_feedback_at": "2026-10-26T09:12:40Z"
   }]
 }
 ```
@@ -522,6 +525,10 @@ One row per business, newest first. No parameters.
 - `opens_*` — clicks on "▶ פתח" in the owner's dashboard (daily and special
   playlists together).
 - `taste_chat_messages` — messages the owner wrote in the taste chat.
+- `playlist_likes` / `playlist_dislikes` — how many daily playlists the
+  owner has liked or disliked with the thumb icons (2026-10-26). Current
+  verdicts: one changed from like to dislike counts once, one taken back
+  not at all. `last_playlist_feedback_at` is the newest of them, or `null`.
 
 ### 5.2. `GET /api/internal/business?id=<business_uuid>`
 
@@ -681,12 +688,14 @@ whether they really paid.
 ```json
 [{
   "il_date": "2026-10-13",
-  "opens_total": 2,
+  "opens_total": 2, "likes": 1, "dislikes": 0,
   "playlists": [{
     "spotify_id": "4EoQ…", "url": "https://open.spotify.com/playlist/4EoQ…",
     "name": "אנרגיה גבוהה #1", "label": "אנרגיה גבוהה #1 · 13.10.2026", "slot": "high-1",
     "track_count": 146, "created_at": "…", "expires_at": "…",
     "live": true, "replaced": false, "opens": 1,
+    "feedback": { "verdict": "dislike", "reason": "יותר מדי שירים שקטים בשעות העומס",
+                  "created_at": "…", "updated_at": "…" },
     "played": { "kind": "option1", "direction": { "direction_id": "…", "title_en": "Global Funk", "admin_pick": false }, "genres": ["Funk", "Afro Funk"],
                 "energy": { "range": [60, 90], "today_only": { "usual": [50, 80], "direction": "more", "at": "…" } } }
   }]
@@ -719,6 +728,39 @@ whether they really paid.
   list.
 - `live` — still on the owner's dashboard.
 - `opens` — "▶ פתח" clicks on this playlist.
+- `feedback` (2026-10-26) — the owner's like or dislike on this playlist,
+  from the two thumb icons beside its "▶ פתח":
+  `{verdict: "like" | "dislike", reason, created_at, updated_at}`.
+  `null` when they said nothing, which is most playlists. `reason` is what
+  they typed in the modal that follows the tap, or `null` when they skipped
+  it — a verdict with no text is the normal case, not missing data. They can
+  change their mind or take it back, so `updated_at` may be later than
+  `created_at`. Every day's playlists are new, so a verdict belongs to one
+  playlist on one day. The day row's `likes` / `dislikes` count them within
+  that day. Nothing in the dashboard can write a verdict: it is the owner's
+  own voice, read-only, and nothing in the builders reads it yet.
+
+#### `playlist_feedback` — the owner's likes and dislikes (2026-10-26)
+
+The same verdicts as `daily[].playlists[].feedback`, gathered into one list,
+newest change first, each naming the playlist it was about. For a "what did
+they say about the music" panel, without walking every day.
+
+```json
+{
+  "likes": 7, "dislikes": 2, "with_reason": 3,
+  "items": [{
+    "verdict": "dislike", "reason": "יותר מדי שירים שקטים בשעות העומס",
+    "created_at": "2026-10-26T09:10:02Z", "updated_at": "2026-10-26T09:12:40Z",
+    "spotify_id": "4EoQ…", "name": "אנרגיה גבוהה #1", "il_date": "2026-10-26",
+    "url": "https://open.spotify.com/playlist/4EoQ…"
+  }]
+}
+```
+
+- `with_reason` — how many carry text. Those are the interesting ones.
+- Empty (`0` / `[]`) for a business whose owner never used the icons, and
+  for every business until Rubin runs the 2026-10-26 migration.
 
 #### `daily_picks` — item 11
 

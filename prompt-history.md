@@ -32,7 +32,21 @@ history matters for debugging old rows.
 
 ---
 
-## 2026-10-22 (latest) — `Morna` added to shared/genre-universe.js
+## 2026-10-27 (latest) — 3 new genres added to shared/genre-universe.js
+
+**Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
+
+Ami added these to Data Box Tab 2 between 2026-10-24 and 2026-10-26. Their playlists were digested by 2026-10-27, the 6-retry error run included. Counts that day:
+
+- `Bhangra Hip Hop` (90 OK tracks · 2 playlists). Inserted alphabetically after `Bedroom Pop`. Thin, since the sheet has only 2 playlists for it; Roni added it anyway.
+- `אינדי ישראלי` (673 OK · 12 playlists; 20 still failed). At the end of the Israeli block.
+- `פופ אמוני ישראלי` (330 OK · 9 playlists; 5 still failed). At the end of the Israeli block.
+
+`GENRES.length` moves from 139 → 142. The two Israeli genres also joined the Israeli hit floor (popularity 40+ counts as a hit): migration `v5/precompute/migrations/2026-10-27-israeli-hit-floor-indie-emuni.sql` + `v5-rpc-functions.sql`. v6's prompt still names no Israeli exception, as before. Cross-referenced in `prompt-history-v7.md` at the same date.
+
+---
+
+## 2026-10-22 — `Morna` added to shared/genre-universe.js
 
 **Applies to:** both (source-of-truth edit; flows to every v6 and v7 consumer via imports)
 

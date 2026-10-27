@@ -45,6 +45,7 @@ export const GENRES = [
   'Argentine Tango',
   'Baroque',
   'Bedroom Pop',
+  'Bhangra Hip Hop',
   'Blues',
   'Bolero',
   'Bossa Nova',
@@ -158,7 +159,7 @@ export const GENRES = [
   'Grime & Drill',
   // Israeli genres: a "hit" here is popularity 40+, not 60+. A new Israeli
   // genre must also go into the SQL function hit_popularity_floor
-  // (latest: v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql).
+  // (latest: v5/precompute/migrations/2026-10-27-israeli-hit-floor-indie-emuni.sql).
   'בלדות ישראליות',
   'פופ מזרחית',
   'מזרחית ישנה',
@@ -167,6 +168,8 @@ export const GENRES = [
   'שירי יום הזיכרון והשואה',
   'פופ ישראלי',
   'היפ הופ ישראלי',
+  'אינדי ישראלי',
+  'פופ אמוני ישראלי',
 ];
 
 export const GENRE_SET = new Set(GENRES);

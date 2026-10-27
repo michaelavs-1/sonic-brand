@@ -21,6 +21,9 @@
          last_opened_at,
          special_requests_total,
          taste_chat_messages,        // the owner's own messages
+         playlist_likes,             // like / dislike on a daily playlist
+         playlist_dislikes,          //   (2026-10-26; current verdicts)
+         last_playlist_feedback_at,
        }] }   newest business first
 */
 
@@ -51,7 +54,7 @@ export default async function handler(req, res) {
     if (!hasServiceKey()) return res.status(500).json({ error: 'SUPABASE_SERVICE_ROLE_KEY not set' });
 
     const weekAgo = new Date(Date.now() - 7 * 86400e3).toISOString();
-    const [businesses, users, settings, profiles, checkouts, dailyRows, opens, events, chats] = await Promise.all([
+    const [businesses, users, settings, profiles, checkouts, dailyRows, opens, events, chats, feedback] = await Promise.all([
       pgrSelect('businesses', {}, { select: '*', order: 'created_at.desc', useService: true }),
       listAllAuthUsers(),
       safe(selectAll('business_v7_settings', {}, { select: 'business_id,delivery_mode', order: 'business_id.asc' })),
@@ -61,6 +64,9 @@ export default async function handler(req, res) {
       safe(selectAll('business_playlist_opens', {}, { select: 'id,business_id,opened_at', order: 'id.asc' })),
       safe(selectAll('business_events', {}, { select: 'id,business_id', order: 'id.asc' })),
       safe(selectAll('business_direction_chats', { role: 'eq.user' }, { select: 'id,business_id', order: 'id.asc' })),
+      // The owner's like / dislike per daily playlist (2026-10-26). Comes
+      // back empty until that migration has run.
+      safe(selectAll('business_playlist_feedback', {}, { select: 'business_id,verdict,updated_at', order: 'id.asc' })),
     ]);
 
     const userById = new Map(users.filter((u) => u?.id).map((u) => [u.id, u]));
@@ -74,6 +80,9 @@ export default async function handler(req, res) {
     const lastOpenBy = maxBy(opens, 'opened_at');
     const eventsBy = countBy(events);
     const chatsBy = countBy(chats);
+    const likesBy = countBy(feedback.filter((f) => f.verdict === 'like'));
+    const dislikesBy = countBy(feedback.filter((f) => f.verdict === 'dislike'));
+    const lastFeedbackBy = maxBy(feedback, 'updated_at');
 
     const rows = (businesses || []).map((b) => {
       const u = userById.get(b.owner_id);
@@ -99,6 +108,9 @@ export default async function handler(req, res) {
         last_opened_at:         lastOpenBy.get(b.id) || null,
         special_requests_total: eventsBy.get(b.id) || 0,
         taste_chat_messages:    chatsBy.get(b.id) || 0,
+        playlist_likes:            likesBy.get(b.id) || 0,
+        playlist_dislikes:         dislikesBy.get(b.id) || 0,
+        last_playlist_feedback_at: lastFeedbackBy.get(b.id) || null,
       };
     });
 

@@ -64,13 +64,30 @@ function energyOf(d) {
   return { range: [lo, hi], today_only };
 }
 
-// Daily rows + click rows → [{ il_date, playlists: [...], opens_total }],
-// newest day first. Each playlist: { spotify_id, url, name, label, slot,
-// track_count, created_at, expires_at, live, replaced, opens, played }.
+// One business_playlist_feedback row → what the console shows (2026-10-26).
+// `reason` is what the owner typed in the modal; null = they skipped it.
+export function feedbackOf(f) {
+  if (!f?.verdict) return null;
+  return {
+    verdict: f.verdict,                                 // 'like' | 'dislike'
+    reason: f.reason || null,
+    created_at: f.created_at || null,                   // first judged
+    updated_at: f.updated_at || f.created_at || null,   // last changed
+  };
+}
+
+// Daily rows + click rows → [{ il_date, playlists: [...], opens_total,
+// likes, dislikes }], newest day first. Each playlist: { spotify_id, url,
+// name, label, slot, track_count, created_at, expires_at, live, replaced,
+// opens, played, feedback }.
 // `replaced` = hidden before its normal expiry ("replace now" / admin rebuild).
-export function dailyByDay(rows, opens = [], now = new Date()) {
+// `feedback` = the owner's like / dislike on that playlist, or null if they
+// didn't say (business_playlist_feedback, 2026-10-26).
+export function dailyByDay(rows, opens = [], now = new Date(), feedback = []) {
   const opensBy = new Map();
   for (const o of opens) opensBy.set(o.spotify_id, (opensBy.get(o.spotify_id) || 0) + 1);
+  const feedbackBy = new Map();
+  for (const f of feedback || []) if (f?.spotify_id) feedbackBy.set(f.spotify_id, feedbackOf(f));
   const days = new Map();
   for (const r of rows || []) {
     if (r.event_id) continue;
@@ -83,6 +100,7 @@ export function dailyByDay(rows, opens = [], now = new Date()) {
       live: !exp || exp > now.getTime(),
       opens: opensBy.get(r.spotify_id) || 0,
       played: playedOf(r),
+      feedback: feedbackBy.get(r.spotify_id) || null,
     };
     if (!days.has(day)) days.set(day, []);
     days.get(day).push(item);
@@ -96,6 +114,12 @@ export function dailyByDay(rows, opens = [], now = new Date()) {
   }
   return [...days.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([il_date, playlists]) => ({ il_date, playlists, opens_total: playlists.reduce((n, p) => n + p.opens, 0) }));
+    .map(([il_date, playlists]) => ({
+      il_date,
+      playlists,
+      opens_total: playlists.reduce((n, p) => n + p.opens, 0),
+      likes:    playlists.filter((p) => p.feedback?.verdict === 'like').length,
+      dislikes: playlists.filter((p) => p.feedback?.verdict === 'dislike').length,
+    }));
 }
 

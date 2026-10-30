@@ -26,8 +26,11 @@
    market='IL' (matching what our scan uses). The market-canonical `id` in
    the response is what we compare against the DB — otherwise pasting a
    Spotify-app "copy link" ID would miss the row we stored under the relinked
-   ID. The response's `spotifyId` field is always the canonical ID, so the
-   dashboard's downstream delete/undo/re-lookup calls use the right key.
+   ID. When that ID isn't in the DB, the pasted ID is checked too (a link
+   copied from one of our own playlists is the ID we stored). The response's
+   `spotifyId` field is the ID found in the DB (the relinked one when neither
+   is), so the dashboard's downstream delete/undo/re-lookup calls use the
+   right key.
 */
 
 import { pgrSelect } from './supabase-client.js';
@@ -134,16 +137,30 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: msg, spotifyId });
         }
 
-        const canonicalId = spotifyData?.id || spotifyId;
-
         // Genres this track is associated with = distinct genres of every
         // playlist it appears in (via playlist_genres), including "manual"
         // placements made with the genre editor (see ./_track-genres.js).
-        const [trackGenres, analysisRows] = await Promise.all([
-            loadTrackGenres(canonicalId),
-            pgrSelect('track_analyses', { spotify_id: `eq.${canonicalId}` }, { select: '*', limit: 1 }),
-        ]);
-        const analysis = (analysisRows || [])[0] || null;
+        const loadDb = async (id) => {
+            const [trackGenres, analysisRows] = await Promise.all([
+                loadTrackGenres(id),
+                pgrSelect('track_analyses', { spotify_id: `eq.${id}` }, { select: '*', limit: 1 }),
+            ]);
+            const analysis = (analysisRows || [])[0] || null;
+            return { id, trackGenres, analysis, inDb: trackGenres.genresByPlaylist.size > 0 || analysis !== null };
+        };
+
+        // Relinking works both ways: the DB may hold the relinked ID (the scan
+        // stores what the playlist returns) OR the pasted one (a link copied
+        // from one of our own playlists is the ID we stored). On 2026-10-30 a
+        // link copied from a daily playlist resolved to another ID and showed
+        // "Not in DB" for an analysed track. So check both, canonical first.
+        const relinkedId = spotifyData?.id || spotifyId;
+        let found = await loadDb(relinkedId);
+        if (!found.inDb && relinkedId !== spotifyId) {
+            const pasted = await loadDb(spotifyId);
+            if (pasted.inDb) found = pasted;
+        }
+        const { id: canonicalId, trackGenres, analysis } = found;
         const playlistIds = [...trackGenres.genresByPlaylist.keys()].sort();
 
         return res.status(200).json({

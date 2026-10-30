@@ -22,15 +22,21 @@
    and rejected with a helpful error so Ami knows to share the individual
    track's link instead.
 
-   Spotify's track-relinking is applied by asking Spotify for the track with
-   market='IL' (matching what our scan uses). The market-canonical `id` in
-   the response is what we compare against the DB — otherwise pasting a
-   Spotify-app "copy link" ID would miss the row we stored under the relinked
-   ID. When that ID isn't in the DB, the pasted ID is checked too (a link
-   copied from one of our own playlists is the ID we stored). The response's
-   `spotifyId` field is the ID found in the DB (the relinked one when neither
-   is), so the dashboard's downstream delete/undo/re-lookup calls use the
-   right key.
+   The DB is checked first, under the pasted ID (2026-10-30). Spotify is
+   asked in parallel (market='IL', matching what our scan uses) for the
+   title + artist, and for track relinking: Spotify may answer with another
+   copy of the song, and when the pasted ID isn't in the DB, that copy's ID
+   is checked too. A Spotify failure no longer stops the lookup: the card
+   shows what the DB has, without a title. Only when Spotify fails AND the
+   DB has nothing is it an error.
+
+   The response's `spotifyId` field is the ID found in the DB (Spotify's
+   copy when neither is, so "Add to DB" stores that one), and the
+   dashboard's downstream delete/undo/re-lookup calls use it.
+
+   Why the pasted ID first: until 2026-10-30 only Spotify's copy was
+   checked, and a link copied from a daily playlist (the ID we stored)
+   showed "Not in DB" for an analysed track whose Israeli copy has another ID.
 */
 
 import { pgrSelect } from './supabase-client.js';
@@ -118,25 +124,6 @@ export default async function handler(req, res) {
         }
         const spotifyId = resource.id;
 
-        // Serialize Spotify → DB: the DB queries need the market-canonical ID
-        // that Spotify returns (relinking), so we can't parallelize them.
-        // x-sonic-internal: /api/v4/spotify is guarded by requireSiteOrInternal
-        // — server-to-server calls from another Vercel function carry no
-        // Origin header, so we pass the shared secret to satisfy the guard.
-        const spotifyRes = await fetch(sameOriginUrl(req, '/api/v4/spotify'), {
-            method:  'POST',
-            headers: {
-                'Content-Type':     'application/json',
-                'x-sonic-internal': process.env.INTERNAL_API_KEY || '',
-            },
-            body:    JSON.stringify({ action: 'get_track', track_id: spotifyId, market: 'IL' }),
-        });
-        const spotifyData = await spotifyRes.json().catch(() => ({}));
-        if (!spotifyRes.ok) {
-            const msg = spotifyData?.error?.message || spotifyData?.error || `Spotify lookup failed: HTTP ${spotifyRes.status}`;
-            return res.status(400).json({ error: msg, spotifyId });
-        }
-
         // Genres this track is associated with = distinct genres of every
         // playlist it appears in (via playlist_genres), including "manual"
         // placements made with the genre editor (see ./_track-genres.js).
@@ -149,16 +136,40 @@ export default async function handler(req, res) {
             return { id, trackGenres, analysis, inDb: trackGenres.genresByPlaylist.size > 0 || analysis !== null };
         };
 
-        // Relinking works both ways: the DB may hold the relinked ID (the scan
-        // stores what the playlist returns) OR the pasted one (a link copied
-        // from one of our own playlists is the ID we stored). On 2026-10-30 a
-        // link copied from a daily playlist resolved to another ID and showed
-        // "Not in DB" for an analysed track. So check both, canonical first.
-        const relinkedId = spotifyData?.id || spotifyId;
-        let found = await loadDb(relinkedId);
-        if (!found.inDb && relinkedId !== spotifyId) {
-            const pasted = await loadDb(spotifyId);
-            if (pasted.inDb) found = pasted;
+        // Title + artist and Spotify's copy for Israel. Never throws: a failed
+        // call just means no title (and no relinked ID to check).
+        // x-sonic-internal: /api/v4/spotify is guarded by requireSiteOrInternal
+        // — server-to-server calls from another Vercel function carry no
+        // Origin header, so we pass the shared secret to satisfy the guard.
+        const fetchSpotify = async () => {
+            try {
+                const r = await fetch(sameOriginUrl(req, '/api/v4/spotify'), {
+                    method:  'POST',
+                    headers: {
+                        'Content-Type':     'application/json',
+                        'x-sonic-internal': process.env.INTERNAL_API_KEY || '',
+                    },
+                    body:    JSON.stringify({ action: 'get_track', track_id: spotifyId, market: 'IL' }),
+                });
+                const data = await r.json().catch(() => ({}));
+                if (r.ok) return { data, error: null };
+                return { data: null, error: data?.error?.message || data?.error || `Spotify lookup failed: HTTP ${r.status}` };
+            } catch (e) {
+                return { data: null, error: `Spotify lookup failed: ${e.message}` };
+            }
+        };
+
+        const [pasted, spotify] = await Promise.all([loadDb(spotifyId), fetchSpotify()]);
+        const spotifyData = spotify.data;
+        const relinkedId  = spotifyData?.id || spotifyId;
+
+        let found = pasted;
+        if (!pasted.inDb && relinkedId !== spotifyId) {
+            // Neither in the DB → Spotify's copy, so "Add to DB" stores that one.
+            found = await loadDb(relinkedId);
+        }
+        if (!found.inDb && spotify.error) {
+            return res.status(400).json({ error: spotify.error, spotifyId });
         }
         const { id: canonicalId, trackGenres, analysis } = found;
         const playlistIds = [...trackGenres.genresByPlaylist.keys()].sort();

@@ -15,6 +15,13 @@
 //                           Pair with `batch.mjs --retry-errors` to actually
 //                           re-analyze them (otherwise batch would skip them
 //                           since they're already in track_analyses).
+//     --include-not-found → also queues tracks at status='not_found' (the
+//                           analysis service had no audio data for them at
+//                           the time). Pair with `batch.mjs --retry-not-found`.
+//                           Added 2026-11-01: a song not found in June came
+//                           back with full data in November, and 6,720 of the
+//                           6,844 not_found songs sit in catalog playlists
+//                           (they never play without an analysis).
 //
 // Prereqs:
 //   1) .env.local with SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
@@ -27,6 +34,7 @@
 // Run (from anywhere):
 //   node v4/precompute/dry-run-orphans.mjs
 //   node v4/precompute/dry-run-orphans.mjs --include-errors
+//   node v4/precompute/dry-run-orphans.mjs --include-not-found
 //   node v4/precompute/dry-run-orphans.mjs --exclude-genres="samba-choro,italian funk"
 
 import fs from 'node:fs';
@@ -63,6 +71,14 @@ const OUT_PATH = path.join(STATE_DIR, 'dry-run.json');
 // `batch.mjs --retry-errors` to actually re-attempt them.
 const INCLUDE_ERRORS = process.argv.includes('--include-errors');
 
+// --include-not-found: same for status='not_found'. Pair with
+// `batch.mjs --retry-not-found`.
+const INCLUDE_NOT_FOUND = process.argv.includes('--include-not-found');
+const REQUEUE_STATUSES = new Set([
+    ...(INCLUDE_ERRORS ? ['error'] : []),
+    ...(INCLUDE_NOT_FOUND ? ['not_found'] : []),
+]);
+
 // --exclude-genres="a,b,c": skip orphans that belong to any of the listed
 // genres. Comma-separated, case-insensitive. Any playlist tagged to at
 // least one excluded genre has all its orphans dropped from this run —
@@ -90,7 +106,8 @@ if (INCLUDE_GENRES.size && EXCLUDE_GENRES.size) {
 
 // Ami's manual tracks (Track cleanup's "Add to DB", 2026-10-26) sit in
 // "manual:<genre>" playlists. Neither genre flag drops them, so any scan Roni
-// runs picks them up (and, with --include-errors, retries their failures).
+// runs picks them up (and, with --include-errors / --include-not-found,
+// retries their failures).
 const isAmiManual = (pid) => String(pid).startsWith('manual:');
 
 // PostgREST paginated select via Range header — works for tables much larger
@@ -132,6 +149,7 @@ async function main() {
     console.log('Scanning Supabase for orphan spotify_ids...');
     console.log('  orphan = present in playlist_tracks, MISSING from track_analyses');
     if (INCLUDE_ERRORS) console.log('  (--include-errors: also treating status=error rows as orphans)');
+    if (INCLUDE_NOT_FOUND) console.log('  (--include-not-found: also treating status=not_found rows as orphans)');
     if (EXCLUDE_GENRES.size) console.log(`  (--exclude-genres: dropping orphans tagged to any of: ${[...EXCLUDE_GENRES].join(', ')})`);
     if (INCLUDE_GENRES.size) console.log(`  (--include-genres: keeping only orphans tagged to any of: ${[...INCLUDE_GENRES].join(', ')})`);
     console.log('');
@@ -141,17 +159,16 @@ async function main() {
     const ptRows = await fetchAllPaginated('playlist_tracks', { select: 'playlist_id,spotify_id,position' }, 'spotify_id');
     console.log(`  playlist_tracks rows: ${ptRows.length}`);
 
-    // 2. All spotify_ids in track_analyses. In --include-errors mode we exclude
-    //    status='error' rows from the "touched" set so those tracks reappear as
-    //    orphans and get queued for a fresh RapidAPI attempt.
+    // 2. All spotify_ids in track_analyses. With --include-errors /
+    //    --include-not-found we exclude those statuses from the "touched" set so
+    //    those tracks reappear as orphans and get queued for a fresh RapidAPI
+    //    attempt.
     console.log('Fetching track_analyses...');
     const taRows = await fetchAllPaginated('track_analyses', { select: 'spotify_id,status' }, 'spotify_id');
-    const consideredTouched = INCLUDE_ERRORS
-        ? taRows.filter((r) => r.status !== 'error')
-        : taRows;
+    const consideredTouched = taRows.filter((r) => !REQUEUE_STATUSES.has(r.status));
     const taSet = new Set(consideredTouched.map((r) => r.spotify_id));
-    const errorCount = taRows.length - consideredTouched.length;
-    console.log(`  track_analyses rows: ${taRows.length}${INCLUDE_ERRORS ? ` (${errorCount} status=error re-queued)` : ''}`);
+    const requeuedCount = taRows.length - consideredTouched.length;
+    console.log(`  track_analyses rows: ${taRows.length}${REQUEUE_STATUSES.size ? ` (${requeuedCount} status=${[...REQUEUE_STATUSES].join('/')} re-queued)` : ''}`);
 
     // 3. Orphans grouped by playlist for round-robin ordering + reporting
     const orphansByPlaylist = new Map();   // playlist_id -> [{ spotify_id, position }]

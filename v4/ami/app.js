@@ -838,9 +838,17 @@ function renderTrackLookupResult({ mode, track, message }) {
     const t = track;
     const artistsStr = (t.artists || []).join(', ');
     const inPlaylist = mode === 'deleted' ? '(archived)' : `${t.inPlaylistCount ?? '?'} playlist${t.inPlaylistCount === 1 ? '' : 's'}`;
+    // A failed analysis is still a track_analyses row: "not found" = the
+    // analysis service had no audio data for the track, "failed" = it errored.
+    // Neither plays (2026-11-01: both used to show as "analysis: yes").
+    const analysisStatus = t.analysis?.status;
+    const analysisFailed = t.hasAnalysis && analysisStatus !== 'ok';
     const analysisTag = mode === 'deleted'
         ? '(archived)'
-        : (t.hasAnalysis ? 'analysis: yes' : 'analysis: no');
+        : !t.hasAnalysis ? 'analysis: no'
+        : analysisStatus === 'not_found' ? 'analysis: not found'
+        : analysisFailed ? 'analysis: failed'
+        : 'analysis: yes';
     const cannotDelete = mode === 'found' && (t.inPlaylistCount || 0) === 0 && !t.hasAnalysis;
 
     const buttonsHtml = mode === 'deleted'
@@ -886,7 +894,7 @@ function renderTrackLookupResult({ mode, track, message }) {
             <div class="track-meta">
                 ${notFoundBadge}
                 <span class="track-badge">${escapeHtml(inPlaylist)}</span>
-                <span class="track-badge">${escapeHtml(analysisTag)}</span>
+                <span class="track-badge${analysisFailed && mode !== 'deleted' ? ' warn' : ''}">${escapeHtml(analysisTag)}</span>
                 <span class="track-badge">${escapeHtml(t.spotifyId)}</span>
             </div>
             ${genresHtml}
@@ -1019,7 +1027,7 @@ function renderGenreEditor() {
         <div class="genre-edit-hint">
             Removing a genre takes the track out of that genre's playlists. Added genres are stored as
             manual placements, which sheet scans leave alone.${t.canAddGenres ? ''
-                : t.hasAnalysis ? ' This track has no usable analysis, so genres can only be removed.'
+                : t.hasAnalysis ? ' The analysis service had no data for this track when it was scanned, so it doesn\'t play and genres can only be removed. The next re-scan of these tracks tries it again.'
                 : ' Not analysed yet: the next scan analyses it, and until then it doesn\'t play. More genres can be added once it\'s analysed.'}
         </div>`;
 

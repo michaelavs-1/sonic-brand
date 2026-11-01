@@ -28,6 +28,7 @@
 // Run (from anywhere):
 //   node v4/precompute/batch.mjs --max-rapidapi-calls=15000
 //   node v4/precompute/batch.mjs --max-rapidapi-calls=15000 --concurrency=2
+//   node v4/precompute/batch.mjs --max-rapidapi-calls=15000 --retry-not-found
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -429,6 +430,16 @@ async function main() {
     // some calls returned transient error payloads (e.g. RapidAPI was unhealthy).
     const retryErrors = !!args['retry-errors'];
 
+    // --retry-not-found — same for status='not_found' rows (2026-11-01). The
+    // analysis service's "no data" isn't final: a song not found in June came
+    // back with full data in November. Plan with
+    // `dry-run-orphans.mjs --include-not-found`.
+    const retryNotFound = !!args['retry-not-found'];
+    const retryStatuses = new Set([
+        ...(retryErrors ? ['error'] : []),
+        ...(retryNotFound ? ['not_found'] : []),
+    ]);
+
     // --max-error-retries=N — caps the 5xx/network retry ladder at N retries
     // *after* the initial failure (default: full 6-step ladder). Use N=0 for
     // TRUE fail-fast: first server_error → terminal immediately, no backoff,
@@ -468,6 +479,7 @@ async function main() {
     log(`cap: ${cap}`);
     log(`concurrency: ${concurrency} workers (each does serial calls)`);
     log(`retry-errors: ${retryErrors ? 'YES — status=error rows will be re-attempted' : 'no (default)'}`);
+    log(`retry-not-found: ${retryNotFound ? 'YES — status=not_found rows will be re-attempted' : 'no (default)'}`);
     log(`max-error-retries: ${maxErrorRetries ?? `${RETRY_5XX_BACKOFF_MS.length} (default full ladder)`}`);
     log(`no-storm-abort: ${noStormAbort ? 'YES — storm safety disabled' : 'no (default)'}`);
 
@@ -478,16 +490,14 @@ async function main() {
     // --- Live cap math: ask Supabase how many IDs are already cached now,
     // then use that to compute actual remaining. Avoids tripping the cap on
     // a stale plan after partial-batch runs. ---
-    // When retryErrors is set we still fetch everything but filter out
-    // status='error' rows from the "already cached" set so they get re-attempted.
+    // When retrying we still fetch everything but filter the retried statuses
+    // out of the "already cached" set so they get re-attempted.
     log(`live-checking Supabase for already-cached IDs (for accurate cap math)...`);
     const preExisting = await pgrSelectIn('track_analyses', 'spotify_id', plan.unique_track_ids, { select: 'spotify_id,status' });
-    const cachedRows = retryErrors
-        ? preExisting.filter((r) => r.status !== 'error')
-        : preExisting;
+    const cachedRows = preExisting.filter((r) => !retryStatuses.has(r.status));
     const liveCachedCount = cachedRows.length;
     const actualRemaining = plan.unique_track_ids.length - liveCachedCount;
-    log(`  already cached (live): ${liveCachedCount}${retryErrors ? ` (excluded ${preExisting.length - cachedRows.length} status=error rows for retry)` : ''}`);
+    log(`  already cached (live): ${liveCachedCount}${retryStatuses.size ? ` (excluded ${preExisting.length - cachedRows.length} status=${[...retryStatuses].join('/')} rows for retry)` : ''}`);
     log(`  actual remaining:      ${actualRemaining}`);
 
     const cycleKey  = currentBillingCycleKey();
@@ -546,11 +556,11 @@ async function main() {
     const doneSet = new Set(progress.done);
     const erroredSet = new Set(progress.errored.map((x) => x.id));
 
-    // When retrying errors, the progress.json `done` set still contains the
-    // IDs we want to re-attempt (they were successfully upserted as 'error',
-    // which counted as done). Bypass the progress checks and let the live
-    // alreadyCachedSet (which excludes status='error' in retry mode) decide.
-    const toAnalyze = retryErrors
+    // When retrying, the progress.json `done` set still contains the IDs we
+    // want to re-attempt (they were successfully upserted as 'error' /
+    // 'not_found', which counted as done). Bypass the progress checks and let
+    // the live alreadyCachedSet (which excludes the retried statuses) decide.
+    const toAnalyze = retryStatuses.size
         ? plan.unique_track_ids.filter((id) => !alreadyCachedSet.has(id))
         : plan.unique_track_ids.filter((id) =>
               !alreadyCachedSet.has(id) && !doneSet.has(id) && !erroredSet.has(id)

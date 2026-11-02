@@ -24,6 +24,16 @@
 //   - the owner's own songs (business_allowed_tracks).
 // Recipes have short keys the chat refers to: Option 1 "H1".. (high) and
 // "C1".. (calm), Option 2 "L2-1" (level 2, first recipe).
+//
+// Two-sided profiles (two onboarding decks, 2026-11-02;
+// business_taste_profiles.two_sided): the scale's lower half is the calm side
+// and its upper half the energetic side ('low' / 'high', = Option 1's tiers).
+// In such a profile a both-ways genre (shared/genre-sides.js) may be approved
+// twice, once per side, and the ops respect the sides: a calm-only genre never
+// goes to the upper half, an energetic-only one never to the lower half, and
+// remove_genre / move_genre take an optional "tier" for one side. Profiles
+// from before (two_sided not true) keep one entry per genre and behave exactly
+// as before.
 
 import { GENRES } from '../../shared/genre-universe.js';
 import { tierOfLevel, tierPopularity } from './option1-draw.js';
@@ -31,6 +41,7 @@ import { normLevels } from './energy-timeline.js';
 import { OPTION1_ENERGY_WINDOWS, levelEnergyWindow } from './energy-windows.js';
 import { levelProfileKey } from './timeline-assembler.js';
 import { splitRecipe, enforceIsolation } from './pairing-rules.js';
+import { genreSide } from '../../shared/genre-sides.js';
 
 export const WEIGHT_STEPS = [0.25, 0.5, 1, 1.5, 2];
 export const MAX_OPTION1_DIRECTIONS = 30;   // = MAX_DIRECTIONS in energy-directions.js
@@ -77,21 +88,28 @@ const window2 = (w, fallback) => {
 //   allowedRows  live business_allowed_tracks rows
 export function stateFromRows({ mode, profile, settings = null, option1Rows = [], levelRows = [], allowedRows = [] }) {
   const N = normLevels(profile?.energy_levels_total);
+  // The flag, or — should it be missing (signup saved without the column) —
+  // a genre listed in both halves, which only a two-sided profile has. Either
+  // way such a profile keeps both entries.
+  const twoSided = profile?.two_sided === true || listsBothHalves(profile, N);
   const clampL = (l) => Math.min(N, Math.max(1, Math.round(Number(l) || 1)));
+  const key = (g, L) => entryKey({ twoSided, N }, g, L);
   const approved = [];
   const seen = new Set();
   for (const a of Array.isArray(profile?.approved_genres) ? profile.approved_genres : []) {
     const g = canonicalGenre(typeof a === 'string' ? a : a?.genre);
-    if (!g || seen.has(g)) continue;
-    seen.add(g);
-    approved.push({ genre: g, energy_level: clampL(a?.energy_level) });
+    const L = clampL(a?.energy_level);
+    if (!g || seen.has(key(g, L))) continue;
+    seen.add(key(g, L));
+    approved.push({ genre: g, energy_level: L });
   }
   const conditional = [];
   for (const c of Array.isArray(profile?.conditional_genres) ? profile.conditional_genres : []) {
     const g = canonicalGenre(c?.genre);
-    if (!g || seen.has(g)) continue;
-    seen.add(g);
-    conditional.push({ genre: g, energy_level: clampL(c?.energy_level), note_en: typeof c?.note_en === 'string' ? c.note_en : '' });
+    const L = clampL(c?.energy_level);
+    if (!g || seen.has(key(g, L))) continue;
+    seen.add(key(g, L));
+    conditional.push({ genre: g, energy_level: L, note_en: typeof c?.note_en === 'string' ? c.note_en : '' });
   }
   const canonList = (xs) => uniq((Array.isArray(xs) ? xs : []).map(canonicalGenre).filter(Boolean));
   const weights = {};
@@ -143,6 +161,7 @@ export function stateFromRows({ mode, profile, settings = null, option1Rows = []
   return {
     mode: mode === 'option2' ? 'option2' : 'option1',
     N,
+    twoSided,
     approved,
     conditional,
     requested: canonList(profile?.requested_genres).filter((g) => approved.some((a) => a.genre === g)),
@@ -201,13 +220,39 @@ export function stateFromSnapshot(base, snap) {
 // "Well-known songs" of one Option 1 tier ('high' | 'low').
 export const popularityOfTier = (state, tier) => tierPopularity(state.pop, state.popTiers, tier);
 
+// A genre approved at a level in each half of the scale.
+function listsBothHalves(profile, N) {
+  const tiers = new Map();
+  for (const a of Array.isArray(profile?.approved_genres) ? profile.approved_genres : []) {
+    const g = canonicalGenre(typeof a === 'string' ? a : a?.genre);
+    if (!g) continue;
+    const L = Math.min(N, Math.max(1, Math.round(Number(a?.energy_level) || 1)));
+    tiers.set(g, new Set([...(tiers.get(g) || []), tierOfLevel(L, N)]));
+  }
+  return [...tiers.values()].some((t) => t.size === 2);
+}
+
 // ---- lookups ----
-const levelOfGenre = (s, g) => s.approved.find((a) => a.genre === g)?.energy_level ?? null;
+// What makes a profile entry unique: the genre — or, in a two-sided profile,
+// a both-ways genre + its side (one entry per side).
+function entryKey(s, g, L) {
+  return s.twoSided && genreSide(g) === 'both' ? `${g}|${tierOfLevel(L, s.N)}` : g;
+}
 const isApproved = (s, g) => s.approved.some((a) => a.genre === g);
-const tierOf = (s, g) => {
-  const L = levelOfGenre(s, g);
-  return L == null ? null : tierOfLevel(L, s.N);
-};
+// A genre's approved levels / tiers (two entries for a genre on both sides).
+const levelsOf = (s, g) => new Set(s.approved.filter((a) => a.genre === g).map((a) => a.energy_level));
+const tiersOf = (s, g) => new Set([...levelsOf(s, g)].map((L) => tierOfLevel(L, s.N)));
+const opTier = (op) => (op.tier === 'high' || op.tier === 'low' ? op.tier : null);
+// Two-sided profiles: a calm-only genre stays in the lower half, an
+// energetic-only one in the upper half. → reason, or null when L is fine.
+function sideBlock(s, g, L) {
+  if (!s.twoSided) return null;
+  const side = genreSide(g);
+  const tier = tierOfLevel(L, s.N);
+  if (side === 'calm' && tier === 'high') return `calm-only genre — only the calm side (levels 1–${Math.floor(s.N / 2)})`;
+  if (side === 'energetic' && tier === 'low') return `energetic-only genre — only the energetic side (levels ${Math.floor(s.N / 2) + 1}–${s.N})`;
+  return null;
+}
 // Effective range of an Option 2 recipe: its own, or its level's default.
 export function rangeOf(dir, N) {
   if (Array.isArray(dir?.energy_range)) return dir.energy_range;
@@ -217,8 +262,8 @@ export function rangeOf(dir, N) {
 const library = (s) => (s.mode === 'option2' ? s.levelDirs : s.option1Dirs);
 const findDir = (s, key) => library(s).find((d) => d.key === String(key || '').trim().toUpperCase());
 const fitsDir = (s, dir, g) => (s.mode === 'option2'
-  ? levelOfGenre(s, g) === dir.energy_level
-  : tierOf(s, g) === dir.energy_tier);
+  ? levelsOf(s, g).has(dir.energy_level)
+  : tiersOf(s, g).has(dir.energy_tier));
 
 // Ami's clear-cut isolation rules (pairing-rules.js, 2026-10-21): Electronic
 // R&B only with house / Nu Disco / Indie Dance, DownTempo only with DownTempo,
@@ -249,7 +294,8 @@ function nextKey(s, { tier, level }) {
 function addApproved(s, g, level) {
   const L = Math.min(s.N, Math.max(1, Math.round(Number(level) || Math.ceil(s.N / 2))));
   s.approved.push({ genre: g, energy_level: L });
-  s.conditional = s.conditional.filter((c) => c.genre !== g);
+  const k = entryKey(s, g, L);
+  s.conditional = s.conditional.filter((c) => entryKey(s, c.genre, c.energy_level) !== k);
   s.rejected = s.rejected.filter((x) => x !== g);
 }
 
@@ -270,6 +316,17 @@ const HANDLERS = {
     const g = canonicalGenre(op.genre);
     if (!g) return 'unknown genre';
     if (!isApproved(s, g) && !s.conditional.some((c) => c.genre === g)) return 'not in the profile';
+    // Two-sided profile + tier: that side only. The other side stays (with its
+    // weight and requested mark), and the genre isn't turned down; the recipes
+    // of that side lose it (finalize). Without a tier: everywhere, as before.
+    const tier = s.twoSided ? opTier(op) : null;
+    if (tier) {
+      const onTier = (e) => e.genre === g && tierOfLevel(e.energy_level, s.N) === tier;
+      if (!s.approved.some(onTier) && !s.conditional.some(onTier)) return `not on the ${tier} side`;
+      s.approved = s.approved.filter((e) => !onTier(e));
+      s.conditional = s.conditional.filter((e) => !onTier(e));
+      if (isApproved(s, g) || s.conditional.some((c) => c.genre === g)) return null;
+    }
     s.approved = s.approved.filter((a) => a.genre !== g);
     s.conditional = s.conditional.filter((c) => c.genre !== g);
     s.requested = s.requested.filter((x) => x !== g);
@@ -292,9 +349,17 @@ const HANDLERS = {
   add_genre(s, op, ctx) {
     const g = canonicalGenre(op.genre);
     if (!g) return 'not a genre from the catalog';
-    if (isApproved(s, g)) return 'already approved';
     const L = Number(op.energy_level);
-    if (!Number.isInteger(L) || L < 1 || L > s.N) return `energy_level must be 1..${s.N}`;
+    if (s.twoSided) {
+      if (!Number.isInteger(L) || L < 1 || L > s.N) return `energy_level must be 1..${s.N}`;
+      const block = sideBlock(s, g, L);
+      if (block) return block;
+      // A both-ways genre approved on one side may be added on the other.
+      if (tiersOf(s, g).has(tierOfLevel(L, s.N)) || (isApproved(s, g) && genreSide(g) !== 'both')) return 'already approved';
+    } else {
+      if (isApproved(s, g)) return 'already approved';
+      if (!Number.isInteger(L) || L < 1 || L > s.N) return `energy_level must be 1..${s.N}`;
+    }
     addApproved(s, g, L);
     ctx.touched.add(g);
     return null;
@@ -305,8 +370,16 @@ const HANDLERS = {
     if (!g || !isApproved(s, g)) return 'not one of the approved genres';
     const L = Number(op.energy_level);
     if (!Number.isInteger(L) || L < 1 || L > s.N) return `energy_level must be 1..${s.N}`;
-    const a = s.approved.find((x) => x.genre === g);
+    // A genre on both sides: the entry on op.tier, else the one on the side
+    // of the target level (a move within its side).
+    const entries = s.approved.filter((x) => x.genre === g);
+    const tier = opTier(op) || tierOfLevel(L, s.N);
+    const a = entries.length === 1 ? entries[0] : entries.find((x) => tierOfLevel(x.energy_level, s.N) === tier);
+    if (!a) return `not on the ${tier} side`;
     if (a.energy_level === L) return 'already at that level';
+    const block = sideBlock(s, g, L);
+    if (block) return block;
+    if (entries.some((x) => x !== a && tierOfLevel(x.energy_level, s.N) === tierOfLevel(L, s.N))) return 'already approved on that side';
     a.energy_level = L;
     ctx.touched.add(g);
     return null;
@@ -318,6 +391,8 @@ const HANDLERS = {
     if (!isApproved(s, g)) {
       const L = Number(op.energy_level);
       if (!Number.isInteger(L) || L < 1 || L > s.N) return `not approved yet — energy_level 1..${s.N} needed`;
+      const block = sideBlock(s, g, L);
+      if (block) return block;
       addApproved(s, g, L);
       ctx.touched.add(g);
     }
@@ -354,7 +429,7 @@ const HANDLERS = {
       const L = Number(op.energy_level);
       if (!Number.isInteger(L) || L < 1 || L > s.N) return `energy_level must be 1..${s.N}`;
       if (s.levelDirs.filter((d) => d.energy_level === L).length >= MAX_LEVEL_DIRECTIONS) return 'that level already has the most recipes allowed';
-      const fit = genres.filter((g) => levelOfGenre(s, g) === L);
+      const fit = genres.filter((g) => levelsOf(s, g).has(L));
       if (!fit.length) return 'no approved genre of that level';
       const why = newIsolationBreak(s, [], fit);
       if (why) return why;
@@ -364,7 +439,7 @@ const HANDLERS = {
     const tier = op.tier === 'high' || op.tier === 'low' ? op.tier : null;
     if (!tier) return 'tier must be "high" or "low"';
     if (s.option1Dirs.length >= MAX_OPTION1_DIRECTIONS) return 'the library already has the most recipes allowed';
-    const fit = genres.filter((g) => tierOf(s, g) === tier);
+    const fit = genres.filter((g) => tiersOf(s, g).has(tier));
     if (!fit.length) return 'no approved genre of that tier';
     const why = newIsolationBreak(s, [], fit);
     if (why) return why;
@@ -466,7 +541,10 @@ export const OP_NAMES = Object.keys(HANDLERS);
 //   - the current mode's recipes follow the isolation rules (pairing-rules.js);
 //   - requested / weights / rejected / conditional stay consistent.
 function finalize(s, ctx) {
-  const lv = new Map(s.approved.map((a) => [a.genre, a.energy_level]));
+  // genre → its approved levels (two for a genre on both sides).
+  const lv = new Map();
+  for (const a of s.approved) lv.set(a.genre, new Set([...(lv.get(a.genre) || []), a.energy_level]));
+  const inTier = (g, tier) => [...(lv.get(g) || [])].some((L) => tierOfLevel(L, s.N) === tier);
   const clean = (dirs, fits) => {
     const seen = new Set();
     return dirs
@@ -479,23 +557,26 @@ function finalize(s, ctx) {
         return true;
       });
   };
-  s.option1Dirs = clean(s.option1Dirs, (d, g) => tierOfLevel(lv.get(g), s.N) === d.energy_tier);
-  s.levelDirs = clean(s.levelDirs, (d, g) => lv.get(g) === d.energy_level);
+  s.option1Dirs = clean(s.option1Dirs, (d, g) => inTier(g, d.energy_tier));
+  s.levelDirs = clean(s.levelDirs, (d, g) => lv.get(g).has(d.energy_level));
 
+  // Per level / tier the genre sits in (both, for a genre on both sides).
   for (const g of new Set([...ctx.touched, ...s.requested])) {
     if (!lv.has(g)) continue;
     if (s.mode === 'option2') {
-      const L = lv.get(g);
-      const atLevel = s.levelDirs.filter((d) => d.energy_level === L);
-      if (atLevel.length && !atLevel.some((d) => d.genres.includes(g)) && atLevel.length < MAX_LEVEL_DIRECTIONS) {
-        s.levelDirs.push({ key: nextKey(s, { level: L }), energy_level: L, title_en: g, genres: [g], energy_range: null });
-        ctx.notes.push(`gave ${g} a recipe of its own`);
+      for (const L of lv.get(g)) {
+        const atLevel = s.levelDirs.filter((d) => d.energy_level === L);
+        if (atLevel.length && !atLevel.some((d) => d.genres.includes(g)) && atLevel.length < MAX_LEVEL_DIRECTIONS) {
+          s.levelDirs.push({ key: nextKey(s, { level: L }), energy_level: L, title_en: g, genres: [g], energy_range: null });
+          ctx.notes.push(`gave ${g} a recipe of its own`);
+        }
       }
     } else {
-      const tier = tierOfLevel(lv.get(g), s.N);
-      if (!s.option1Dirs.some((d) => d.energy_tier === tier && d.genres.includes(g)) && s.option1Dirs.length < MAX_OPTION1_DIRECTIONS) {
-        s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: g, genres: [g] });
-        ctx.notes.push(`gave ${g} a recipe of its own`);
+      for (const tier of new Set([...lv.get(g)].map((L) => tierOfLevel(L, s.N)))) {
+        if (!s.option1Dirs.some((d) => d.energy_tier === tier && d.genres.includes(g)) && s.option1Dirs.length < MAX_OPTION1_DIRECTIONS) {
+          s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: g, genres: [g] });
+          ctx.notes.push(`gave ${g} a recipe of its own`);
+        }
       }
     }
   }
@@ -535,14 +616,17 @@ function finalize(s, ctx) {
     ctx.notes.push(...res.notes.map((n) => `pairing rules: ${n}`));
   }
   if (fixed) {
-    if (s.mode === 'option2') s.levelDirs = clean(s.levelDirs, (d, g) => lv.get(g) === d.energy_level);
-    else s.option1Dirs = clean(s.option1Dirs, (d, g) => tierOfLevel(lv.get(g), s.N) === d.energy_tier);
+    if (s.mode === 'option2') s.levelDirs = clean(s.levelDirs, (d, g) => lv.get(g).has(d.energy_level));
+    else s.option1Dirs = clean(s.option1Dirs, (d, g) => inTier(g, d.energy_tier));
   }
 
   s.requested = s.requested.filter((g) => lv.has(g));
   for (const g of Object.keys(s.weights)) if (!lv.has(g)) delete s.weights[g];
   s.rejected = uniq(s.rejected.filter((g) => !lv.has(g)));
-  s.conditional = s.conditional.filter((c) => !lv.has(c.genre));
+  // A conditional entry gives way to an approved one of the same genre (on the
+  // same side, in a two-sided profile).
+  const approvedKeys = new Set(s.approved.map((a) => entryKey(s, a.genre, a.energy_level)));
+  s.conditional = s.conditional.filter((c) => !approvedKeys.has(entryKey(s, c.genre, c.energy_level)));
 }
 
 // Run a proposal's ops on a copy of the state.

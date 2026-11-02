@@ -42,17 +42,22 @@ function genreList(v) {
 }
 
 // Columns added by later migrations — the row is saved without any that
-// don't exist yet: 2026-10-05-v7-requested-genres.sql (the first three) and
-// 2026-10-13-admin-console.sql (onboarding_probes).
-const OPTIONAL_COLUMNS = ['requested_genres', 'super_liked_genres', 'round2_emphases', 'onboarding_probes'];
+// don't exist yet: 2026-10-05-v7-requested-genres.sql (the first three),
+// 2026-10-13-admin-console.sql (onboarding_probes) and
+// 2026-11-02-v7-two-sided-profiles.sql (two_sided).
+const OPTIONAL_COLUMNS = ['requested_genres', 'super_liked_genres', 'round2_emphases', 'onboarding_probes', 'two_sided'];
 
 // The swipe cards from the onboarding page (v7/app.js onboardingProbes):
-// [{ round, rank, title_en, description_he, genres, verdict }], trimmed.
+// [{ round, deck, rank, title_en, description_he, genres, verdict }], trimmed.
+// Two decks since 2026-11-02: 6 + 6 cards + up to 4 Round 2 cards per deck;
+// `deck` is 'energetic' | 'calm' (null for older onboardings' cards).
 const VERDICTS = new Set(['liked', 'disliked', 'not-swiped']);
+const DECKS = new Set(['energetic', 'calm']);
 function probeList(v) {
   if (!Array.isArray(v)) return null;
-  return v.slice(0, 16).filter((p) => p && typeof p === 'object').map((p) => ({
+  return v.slice(0, 20).filter((p) => p && typeof p === 'object').map((p) => ({
     round: Number(p.round) === 2 ? 2 : 1,
+    deck: DECKS.has(p.deck) ? p.deck : null,
     rank: Number.isFinite(Number(p.rank)) ? Number(p.rank) : null,
     title_en: String(p.title_en || '').slice(0, 160),
     description_he: String(p.description_he || '').slice(0, 600),
@@ -88,6 +93,8 @@ export function tasteProfileRow(businessId, profile, genreTally, inputs = {}) {
     updated_at:                  new Date().toISOString(),
   };
   if (Array.isArray(profile.requested_genres)) row.requested_genres = genreList(profile.requested_genres);
+  // The two-deck onboarding's profiles (2026-11-02); older callers leave it out.
+  if (typeof profile.two_sided === 'boolean') row.two_sided = profile.two_sided;
   if (Array.isArray(inputs.superLikedGenres)) row.super_liked_genres = genreList(inputs.superLikedGenres);
   if (typeof inputs.round2Emphases === 'string') {
     row.round2_emphases = inputs.round2Emphases.trim().slice(0, 2000) || null;
@@ -109,7 +116,7 @@ export async function upsertTasteProfileRow(row) {
     } catch (e) {
       const missing = OPTIONAL_COLUMNS.filter((c) => c in rest && (e.message || '').includes(c));
       if (!missing.length) throw e;
-      console.error(`[v7 taste-profile] column(s) ${missing.join(', ')} missing — run the newer v7 migrations (2026-10-05-v7-requested-genres.sql, 2026-10-13-admin-console.sql). Saving the profile without them.`);
+      console.error(`[v7 taste-profile] column(s) ${missing.join(', ')} missing — run the newer v7 migrations (2026-10-05-v7-requested-genres.sql, 2026-10-13-admin-console.sql, 2026-11-02-v7-two-sided-profiles.sql). Saving the profile without them.`);
       rest = { ...rest };
       for (const c of missing) delete rest[c];
     }

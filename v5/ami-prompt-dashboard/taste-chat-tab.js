@@ -20,6 +20,16 @@
 //   to the real profile (POST /api/internal/taste-bench — logged as an admin
 //   change; from the next build).
 //
+// - "אונבורדינג מחדש" (2026-11-02): the two-deck onboarding again for the
+//   chosen business, in a window running the real onboarding page in bench
+//   mode (/v7/?bench=1). It gets the business's onboarding inputs plus its
+//   taste portrait and turned-down genres; Ami swipes both decks (+ Round 2);
+//   the new two-sided profile comes back, recipes for the business's playlist
+//   type are built for it (production generator), and it becomes the working
+//   copy — the chat works on it. "שמירת הפרופיל החדש" (bottom of the עסק card)
+//   saves it: the server archives the current profile first
+//   (business_taste_profile_archive), then replaces it.
+//
 // Same pieces as production (api/v7/account/taste-chat.js): the prompt
 // (editable part + fixed part), formatTasteContext, Gemini with medium
 // thinking and the conversation history, normalizeTasteReply + vetReply.
@@ -35,7 +45,7 @@ import {
   tasteChatEditableSection, assembleTasteChatSystemPrompt, formatTasteContext, normalizeTasteReply, vetReply,
   tasteChatPlaceholder,
 } from '../../v7/generation/taste-chat-prompt.js';
-import { applyOps, snapshotOf, stateFromSnapshot, withMode, rangeOf, canonicalGenre } from '../../v7/generation/taste-ops.js';
+import { applyOps, snapshotOf, stateFromSnapshot, withMode, rangeOf, canonicalGenre, stateFromRows } from '../../v7/generation/taste-ops.js';
 import { levelEnergyWindow } from '../../v7/generation/energy-windows.js';
 import { generateEnergyDirections } from '../../v7/generation/energy-directions.js';
 import { generateLevelDirections } from '../../v7/generation/level-directions.js';
@@ -52,6 +62,8 @@ let users = [];          // [{ business_id, name, delivery_mode }]
 let loaded = null;       // { business_id, name, mode, ctx } from the server
 let state = null;        // working copy of the business's taste state
 let switched = null;     // { mode, library } — the type switch tried here, or null
+let replaced = null;     // the re-onboarded profile waiting to be saved: { profile, library, cards, superLikedGenres, round2Emphases, genreTally }
+let benchFrame = null;   // the re-onboarding window's iframe while it's open
 let tried = [];          // changes tried here, newest first: { when, summary_he, ops, undone, before }
 let history = [];        // [{ role: 'user' | 'model', text }]
 let busy = false;        // a chat turn, a type switch or a save in flight
@@ -69,7 +81,11 @@ function el(tag, attrs = {}, ...children) {
 const clone = (x) => JSON.parse(JSON.stringify(x));
 const ilTime = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
 const pendingChanges = () => tried.filter((c) => !c.undone);
-const pendingCount = () => (switched ? 1 : 0) + pendingChanges().length;
+const pendingCount = () => (switched ? 1 : 0) + (replaced ? 1 : 0) + pendingChanges().length;
+// Approved genres, counted once each (a two-sided profile lists a genre on
+// both sides twice).
+const genreCount = (s) => new Set(s.approved.map((a) => a.genre)).size;
+const bothSides = (s, g) => new Set(s.approved.filter((a) => a.genre === g).map((a) => (a.energy_level > s.N / 2 ? 'high' : 'low'))).size === 2;
 const promptOf = (mode) => $(mode === 'option2' ? 'tcPromptOption2' : 'tcPromptOption1');
 
 const status = (text, kind = '') => {
@@ -244,6 +260,7 @@ function resetBusiness() {
   loaded = null;
   state = null;
   switched = null;
+  replaced = null;
   tried = [];
   history = [];
   heard.clear();
@@ -298,7 +315,8 @@ function chip(text, mark = '', title = null) {
 function genreChip(g) {
   const marks = [];
   const titles = [];
-  if (state.requested.includes(g)) { marks.push('★'); titles.push('מבוקש — בכל פלייליסט של הרמה שלו'); }
+  if (state.twoSided && bothSides(state, g)) { marks.push('↕'); titles.push('מאושר גם ברגוע וגם באנרגטי'); }
+  if (state.requested.includes(g)) { marks.push('★'); titles.push('מבוקש — לפחות אחד מהפלייליסטים של היום מנגן אותו'); }
   const w = state.weights[g];
   if (w != null && w !== 1) { marks.push(w > 1 ? '↑' : '↓'); titles.push(`משקל ${w} (${WEIGHT_WORD[w] || ''})`); }
   return chip(g, marks.join(''), titles.join(' · ') || null);
@@ -327,14 +345,18 @@ function renderProfile() {
     let label = `רמה ${L}`;
     let sub = null;
     if (s.mode === 'option1') label += L > s.N / 2 ? ' · אנרגטי' : ' · רגוע';
-    else { const w = levelEnergyWindow(L, s.N); sub = `טווח אנרגיה של השירים: ${rng(w.min, w.max)}`; }
+    else {
+      if (s.twoSided) label += L > s.N / 2 ? ' · צד אנרגטי' : ' · צד רגוע';
+      const w = levelEnergyWindow(L, s.N);
+      sub = `טווח אנרגיה של השירים: ${rng(w.min, w.max)}`;
+    }
     levels.append(row(label, genres.length ? genres.map(genreChip) : [el('span', { class: 'tcp-sub' }, '—')], sub));
   }
   if (s.mode === 'option1') {
     levels.append(el('div', { class: 'tcp-sub' },
-      `טווח אנרגיה של השירים: בפלייליסטים האנרגטיים ${rng(...s.windows.high)}, ברגועים ${rng(...s.windows.low)}. ★ = מבוקש, ↑ / ↓ = יותר / פחות מהרגיל.`));
+      `טווח אנרגיה של השירים: בפלייליסטים האנרגטיים ${rng(...s.windows.high)}, ברגועים ${rng(...s.windows.low)}. ★ = מבוקש, ↑ / ↓ = יותר / פחות מהרגיל${s.twoSided ? ', ↕ = ברגוע וגם באנרגטי' : ''}.`));
   } else {
-    levels.append(el('div', { class: 'tcp-sub' }, '★ = מבוקש, ↑ / ↓ = יותר / פחות מהרגיל.'));
+    levels.append(el('div', { class: 'tcp-sub' }, `★ = מבוקש, ↑ / ↓ = יותר / פחות מהרגיל${s.twoSided ? ', ↕ = בצד הרגוע וגם באנרגטי' : ''}.`));
   }
   box.append(levels);
 
@@ -387,7 +409,7 @@ function render() {
   $('tcBusiness').hidden = !loaded;
   if (loaded) {
     const recipes = mode === 'option2' ? state.levelDirs.length : state.option1Dirs.length;
-    $('tcUserLine').textContent = `${state.approved.length} ז'אנרים מאושרים · ${state.N} רמות אנרגיה · ${recipes} מתכונים`;
+    $('tcUserLine').textContent = `${genreCount(state)} ז'אנרים מאושרים · ${state.N} רמות אנרגיה · ${recipes} מתכונים${state.twoSided ? ' · פרופיל דו-צדדי (רגוע / אנרגטי)' : ''}`;
     $('tcSwitched').hidden = !switched;
     $('tcSwitched').textContent = switched ? `בבדיקה: העסק הועבר ל${MODE_NAME[switched.mode]} — עוד לא נשמר בפרופיל.` : '';
     const target = mode === 'option1' ? 'option2' : 'option1';
@@ -398,6 +420,21 @@ function render() {
     }
   }
   renderProfile();
+
+  // Re-onboarding: the button next to the picker, and the save row at the
+  // bottom of the עסק card while a new profile is waiting.
+  const re = $('tcReonboard');
+  if (!re.dataset.label) re.disabled = !loaded || busy;
+  $('tcReSave').hidden = !replaced;
+  if (replaced) {
+    const extra = pendingChanges().length;
+    $('tcReplacedLine').textContent = `בבדיקה: פרופיל חדש מאונבורדינג מחדש${extra ? ` + ${extra === 1 ? 'שינוי אחד' : `${extra} שינויים`} בצ'אט` : ''} — עוד לא נשמר. בשמירה הפרופיל הנוכחי נשמר בארכיון.`;
+    const rs = $('tcSaveReonboard');
+    if (!rs.dataset.label) {
+      rs.disabled = busy;
+      rs.textContent = `שמירת הפרופיל החדש של ${loaded?.name || 'העסק'}`;
+    }
+  }
 
   const n = pendingCount();
   const save = $('tcSave');
@@ -416,6 +453,7 @@ async function loadUser(id, { keepChat = false } = {}) {
     loaded = await api(`/api/internal/taste-bench?id=${encodeURIComponent(id)}`);
     state = clone(loaded.ctx.state);
     switched = null;
+    replaced = null;
     tried = [];
     if (!keepChat) { history = []; heard.clear(); $('tcLog').replaceChildren(); resetInput(); }
   } catch (e) {
@@ -434,9 +472,10 @@ function contextNow() {
   return {
     ...ctx,
     state,
-    // After a type switch tried here, today's playlists and the energy curve
-    // belong to the other type — the chat sees none, as on a fresh switch.
-    ...(switched ? { today: {}, curve: null } : {}),
+    // After a type switch or a re-onboarding tried here, today's playlists
+    // (and the energy curve) belong to the old setup — the chat sees none, as
+    // on a fresh switch.
+    ...(switched || replaced ? { today: {}, curve: null } : {}),
     changes: [
       ...tried.map(({ when, summary_he, ops, undone }) => ({ when, summary_he, ops, undone })),
       ...(ctx.changes || []),
@@ -466,6 +505,7 @@ async function libraryFor(mode) {
 
 async function switchType() {
   if (!loaded || busy) return;
+  if (replaced) { error('קודם שמרו את הפרופיל החדש, או "שיחה חדשה" כדי לוותר עליו.'); return; }
   const target = state.mode === 'option1' ? 'option2' : 'option1';
   if (pendingChanges().length && !window.confirm('השינויים שנוסו כאן ועוד לא נשמרו יימחקו. להמשיך?')) return;
   // Back to the business's own type = drop the switch.
@@ -488,6 +528,103 @@ async function switchType() {
     switched = { mode: target, library };
     tried = [];
     $('tcLog').append(el('div', { class: 'oc-sep' }, `— בבדיקה: העסק הועבר ל${MODE_NAME[target]} —`));
+  } catch (e) {
+    error(e.message);
+  } finally {
+    busy = false;
+    unspin(btn);
+    render();
+  }
+}
+
+// ---------- "אונבורדינג מחדש" ----------
+
+function openReonboard() {
+  if (!loaded || busy) return;
+  if (pendingCount() && !window.confirm('השינויים שנוסו כאן ועוד לא נשמרו יימחקו. להמשיך?')) return;
+  error('');
+  $('trTitle').textContent = `אונבורדינג מחדש — ${loaded.name || 'העסק'}`;
+  benchFrame = el('iframe', { src: '/v7/?bench=1', title: 'אונבורדינג מחדש', allow: 'autoplay; encrypted-media' });
+  $('trFrameHost').replaceChildren(benchFrame);
+  $('tcReModal').hidden = false;
+}
+
+function closeReonboard() {
+  $('tcReModal').hidden = true;
+  $('trFrameHost').replaceChildren();
+  benchFrame = null;
+}
+
+// Messages from the onboarding page in the window (same origin only).
+function onBenchMessage(e) {
+  if (!benchFrame || e.origin !== location.origin || e.source !== benchFrame.contentWindow) return;
+  const m = e.data || {};
+  if (m.type === 'rubin-bench-ready' && loaded) {
+    const b = loaded.ctx.business || {};
+    benchFrame.contentWindow.postMessage({
+      type: 'rubin-bench-start',
+      inputs: {
+        bizName: b.name || loaded.name || '',
+        bizDesc: b.description || '',
+        musicalEmphases: b.emphases || '',
+        atmospheres: loaded.reonboard?.atmospheres || [],
+        place: loaded.reonboard?.place || null,
+        // What we already know: the owner's portrait and turned-down genres.
+        knownTaste: loaded.ctx.portrait || '',
+        turnedDown: loaded.ctx.state.rejected || [],
+      },
+    }, location.origin);
+  } else if (m.type === 'rubin-bench-result' && m.profile) {
+    closeReonboard();
+    adoptReonboarded(m);
+  }
+}
+
+// The new profile → recipes for the business's playlist type (production
+// generator) → the working copy. The owner's weights (for genres still
+// approved), turned-down genres, own songs and energy windows carry over, as
+// the server does when saving.
+async function adoptReonboarded(m) {
+  const mode = loaded.mode;
+  const btn = $('tcReonboard');
+  busy = true;
+  spin(btn, 'בונה מתכונים לפרופיל החדש… (עד דקה)');
+  error('');
+  try {
+    const p = m.profile;
+    const b = loaded.ctx.business || {};
+    const args = {
+      tasteProfile: p, bizName: b.name, bizDesc: b.description, musicalEmphases: b.emphases,
+      atmospheres: loaded.reonboard?.atmospheres || [], place: loaded.reonboard?.place || null,
+      label: 'ami-reonboard-directions',
+    };
+    const r = mode === 'option1' ? await generateEnergyDirections(args) : await generateLevelDirections(args);
+    if (r.error) throw new Error(`בניית המתכונים נכשלה: ${r.reasoning_en || r.error}`);
+    const old = loaded.ctx.state;
+    const approvedNow = new Set(p.approved_genres.map((e) => e.genre));
+    const s = stateFromRows({
+      mode,
+      profile: {
+        ...p,
+        genre_weights: Object.fromEntries(Object.entries(old.weights).filter(([g]) => approvedNow.has(g))),
+        rejected_genres: old.rejected.filter((g) => !approvedNow.has(g)),
+        popularity_tiers: null,
+      },
+      settings: { energy_windows: { high: old.windows.high, low: old.windows.low } },
+      allowedRows: old.allowed,
+    });
+    state = withMode(s, mode, r.directions);
+    replaced = {
+      profile: p, library: r.directions, cards: m.cards || [], superLikedGenres: m.superLikedGenres || [],
+      round2Emphases: m.round2Emphases || '', genreTally: m.genreTally || [],
+    };
+    switched = null;
+    tried = [];
+    history = [];
+    heard.clear();
+    resetInput();
+    $('tcLog').replaceChildren(el('div', { class: 'oc-sep' }, '— פרופיל חדש מאונבורדינג מחדש (עוד לא נשמר) —'));
+    status(`הפרופיל החדש נטען: ${genreCount(state)} ז'אנרים, ${state.N} רמות${state.twoSided ? ', רגוע / אנרגטי' : ''}. אפשר לבדוק אותו בצ'אט ולשמור.`, 'ok');
   } catch (e) {
     error(e.message);
   } finally {
@@ -863,13 +1000,17 @@ async function send(textArg, { visibleText } = {}) {
   }
 }
 
-async function save() {
+async function save(e) {
   const changes = pendingChanges().slice().reverse();   // oldest first
   if (!loaded || !pendingCount()) return;
   const name = loaded.name || 'העסק';
-  const parts = [switched ? `העברה ל${MODE_NAME[switched.mode]}` : '', changes.length ? `${changes.length === 1 ? 'שינוי אחד' : `${changes.length} שינויים`} בטעם` : ''].filter(Boolean);
+  const parts = [
+    replaced ? 'החלפת פרופיל הטעם בפרופיל מהאונבורדינג מחדש (הנוכחי יישמר בארכיון)' : '',
+    switched ? `העברה ל${MODE_NAME[switched.mode]}` : '',
+    changes.length ? `${changes.length === 1 ? 'שינוי אחד' : `${changes.length} שינויים`} בטעם` : '',
+  ].filter(Boolean);
   if (!window.confirm(`לשמור בפרופיל האמיתי של ${name}: ${parts.join(' + ')}?\nזה ייכנס לתוקף מהבנייה הבאה של הפלייליסטים.`)) return;
-  const btn = $('tcSave');
+  const btn = e?.currentTarget?.id === 'tcSaveReonboard' ? $('tcSaveReonboard') : $('tcSave');
   busy = true;
   spin(btn, 'שומר…');
   status('');
@@ -880,6 +1021,7 @@ async function save() {
         business_id: loaded.business_id,
         ops: changes.flatMap((c) => c.ops),
         summary_he: changes.map((c) => c.summary_he).filter(Boolean).join(' · '),
+        ...(replaced ? { replace: replaced } : {}),
         ...(switched ? { switch: switched } : {}),
       },
     });
@@ -891,9 +1033,10 @@ async function save() {
       sel.delivery_mode = r.switched;
       $('tcUser').selectedOptions[0].textContent = `${sel.name || '(בלי שם)'} · ${r.switched === 'option2' ? '2 מיקסים' : '4 פלייליסטים'}`;
     }
+    const archived = r.replaced ? ` הפרופיל הקודם נשמר בארכיון (#${r.archive_id}).` : '';
     status(r.dropped?.length
-      ? `נשמר — חוץ מ-${r.dropped.length} שלא מתאימים לפרופיל הנוכחי: ${r.dropped.map((d) => reasonHe(d.reason)).join(' · ')}`
-      : `נשמר בפרופיל של ${name} ✓ — ייכנס לתוקף מהבנייה הבאה.`, r.dropped?.length ? 'err' : 'ok');
+      ? `נשמר — חוץ מ-${r.dropped.length} שלא מתאימים לפרופיל הנוכחי: ${r.dropped.map((d) => reasonHe(d.reason)).join(' · ')}.${archived}`
+      : `נשמר בפרופיל של ${name} ✓ — ייכנס לתוקף מהבנייה הבאה.${archived}`, r.dropped?.length ? 'err' : 'ok');
   } catch (e) {
     unspin(btn);
     busy = false;
@@ -937,6 +1080,10 @@ export function mountTasteChatTab() {
     });
   }
   $('tcSave').addEventListener('click', save);
+  $('tcSaveReonboard').addEventListener('click', save);
+  $('tcReonboard').addEventListener('click', openReonboard);
+  $('trClose').addEventListener('click', closeReonboard);
+  window.addEventListener('message', onBenchMessage);
   $('tcNewChat').addEventListener('click', () => {
     if (!loaded) { history = []; heard.clear(); $('tcLog').replaceChildren(); resetInput(); return; }
     if (pendingCount() && !window.confirm('יש שינויים שנוסו כאן ולא נשמרו. להתחיל מחדש ולוותר עליהם?')) return;

@@ -343,6 +343,60 @@ try {
     ok(r.status === 200 && st2?.delivery_mode === 'option2' && st2?.timeline?.groups?.length > 0 && lv2.length > 0 && lv2.every((x) => x.profile_key),
       `back to option2: timeline (${st2?.timeline?.groups?.length} groups) + level library (${lv2.length} recipes)`);
   }
+
+  // --- 7. Ami's re-onboarding (2026-11-02): archive first, then replace ---
+  console.log('\n[7] taste bench: re-onboarding');
+  if (!(await hasTable('business_taste_profile_archive'))) {
+    skip('re-onboarding', 'migration 2026-11-02-v7-taste-profile-archive.sql not run');
+  } else {
+    r = await admin('GET', `taste-bench?id=${businessId}`);
+    ok(r.status === 200 && r.data.reonboard?.atmospheres?.[0] === 'קליל', 'the onboarding inputs come with the bench context', JSON.stringify(r.data.reonboard));
+    const mode = r.data.mode;
+    const oldRow = (await pgr('GET', 'business_taste_profiles', { query: { business_id: `eq.${businessId}`, select: '*' } }))[0];
+    const NEW_APPROVED = [
+      { genre: 'Rnb', energy_level: 1 }, { genre: 'Bossa Nova', energy_level: 1 }, { genre: 'Neo Soul', energy_level: 2 },
+      { genre: 'Funk', energy_level: 3 }, { genre: 'Rnb', energy_level: 4 }, { genre: 'Hip Hop', energy_level: 4 },
+    ];
+    const library = mode === 'option2'
+      ? [{ energy_level: 1, title_en: 'Calm', genres: ['Rnb', 'Bossa Nova'] }, { energy_level: 2, title_en: 'Soul', genres: ['Neo Soul'] },
+        { energy_level: 3, title_en: 'Funk', genres: ['Funk'] }, { energy_level: 4, title_en: 'Up', genres: ['Rnb', 'Hip Hop'] }]
+      : [{ energy_tier: 'high', title_en: 'Up', genres: ['Rnb', 'Funk'] }, { energy_tier: 'high', title_en: 'Rap', genres: ['Hip Hop'] },
+        { energy_tier: 'low', title_en: 'Calm', genres: ['Rnb', 'Neo Soul'] }, { energy_tier: 'low', title_en: 'Bossa', genres: ['Bossa Nova'] }];
+    r = await admin('POST', 'taste-bench', {
+      business_id: businessId,
+      replace: {
+        profile: { energy_levels_total: 4, approved_genres: NEW_APPROVED, conditional_genres: [], requested_genres: ['Rnb'], two_sided: true,
+          instrumentalness_preference: 'none', popularity_preference: 'none', reasoning_en: 're-onboarding test' },
+        library,
+        cards: [{ round: 1, deck: 'energetic', rank: 1, title_en: 'Up R&B', description_he: 'בודק…', genres: ['Rnb'], verdict: 'liked' },
+          { round: 1, deck: 'calm', rank: 7, title_en: 'Calm R&B', description_he: 'בודק…', genres: ['Rnb'], verdict: 'liked' }],
+        superLikedGenres: ['Rnb'], round2Emphases: '', genreTally: [{ genre: 'Rnb', like: 2, dislike: 0 }],
+      },
+      ops: [{ op: 'set_weight', genre: 'Neo Soul', weight: 0.5 }, { op: 'move_genre', genre: 'Bossa Nova', energy_level: 4 }],
+      summary_he: 'בדיקת אונבורדינג מחדש',
+    });
+    ok(r.status === 200 && r.data.replaced && r.data.archive_id != null, 'saved, with an archive id', JSON.stringify(r.data).slice(0, 300));
+    ok(r.data.dropped?.length === 1 && /calm-only/.test(r.data.dropped[0].reason), 'a calm-only genre moved to the energetic side → dropped', JSON.stringify(r.data.dropped));
+    const arch = (await pgr('GET', 'business_taste_profile_archive', { query: { id: `eq.${r.data.archive_id}`, select: '*' } }))[0];
+    ok(arch && JSON.stringify(arch.profile.approved_genres) === JSON.stringify(oldRow.approved_genres) && arch.profile.energy_levels_total === oldRow.energy_levels_total
+      && arch.reason === 'reonboard', 'the previous profile is in the archive, unchanged');
+    ok(Array.isArray(arch?.option1_directions) && Array.isArray(arch?.level_directions) && (arch.option1_directions.length + arch.level_directions.length) > 0,
+      'the previous recipes are in the archive too');
+    const newRow = (await pgr('GET', 'business_taste_profiles', { query: { business_id: `eq.${businessId}`, select: '*' } }))[0];
+    ok(newRow.two_sided === true && newRow.approved_genres.filter((a) => a.genre === 'Rnb').length === 2, 'the new profile is two-sided, R&B on both sides');
+    ok(newRow.genre_weights?.Funk === 1.5 && newRow.genre_weights?.['Neo Soul'] === 0.5, `weights: the owner's carried over + the tried one (${JSON.stringify(newRow.genre_weights)})`);
+    ok(newRow.onboarding_probes?.[0]?.deck === 'energetic', 'the new swipe cards, with their decks');
+    const last = (await pgr('GET', 'business_taste_changes', { query: { business_id: `eq.${businessId}`, select: 'ops,source', order: 'applied_at.desc', limit: '1' } }))[0];
+    ok(last?.ops?.[0]?.op === 'reonboard' && last.source === 'admin', 'logged as a re-onboarding (admin)');
+    r = await admin('POST', 'directions', { business_id: businessId, action: 'undo' });
+    ok(r.status === 409 && r.data.code === 'reonboard', 'the admin undo refuses it (the archive is the way back)');
+    r = await admin('GET', `business?id=${businessId}`);
+    const tpv = r.data.taste_profile;
+    ok(tpv?.two_sided === true && tpv.archived?.length >= 1 && tpv.approved_by_level?.some((l) => l.genres.some((g) => g.genre === 'Rnb' && g.both_sides)),
+      'the business page: two_sided, both_sides on R&B, the archive');
+    r = await admin('GET', 'users');
+    ok(r.data.businesses?.find((x) => x.business_id === businessId)?.approved_genre_count === 5, 'users counts 5 genres (R&B once)');
+  }
 } catch (e) {
   console.error('\nERROR', e.message);
   failed++;

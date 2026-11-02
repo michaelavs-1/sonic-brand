@@ -106,7 +106,10 @@ function droppedPairs(option, parsed, kept) {
   return [...out];
 }
 
-const levelOfGenre = (profile) => new Map(profile.approved_genres.map((e) => [e.genre, e.energy_level]));
+// tier|genre → level (a genre may be approved on both sides — two-deck taste
+// profile, 2026-11-02 — so the key carries the tier).
+const levelOfGenre = (profile) => new Map(profile.approved_genres.map((e) =>
+  [`${tierOfLevel(e.energy_level, profile.energy_levels_total)}|${e.genre}`, e.energy_level]));
 
 // Today in Israel as YYYY-MM-DD, plus n days.
 function ilDate(offsetDays = 0) {
@@ -131,7 +134,7 @@ export function formatOption1(profile, { directions, dropped }) {
     if (requested[tier].length) lines.push(`  Requested — each in at least one direction of this tier, and in one of the day's two playlists: ${requested[tier].join(', ')}`);
     dirs.forEach((d, i) => {
       lines.push(`  ${i + 1}. ${d.title_en}`);
-      lines.push(`     ${d.genres.map((g) => `${g} (L${lvl.get(g) ?? '?'})`).join(', ')}`);
+      lines.push(`     ${d.genres.map((g) => `${g} (L${lvl.get(`${tier}|${g}`) ?? '?'})`).join(', ')}`);
     });
     const used = new Set(dirs.flatMap((d) => d.genres));
     const unused = tierGenres.map((e) => e.genre).filter((g) => !used.has(g));

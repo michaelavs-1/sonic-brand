@@ -1,7 +1,7 @@
 /* /api/v7/anchor-tracks.js
    v7's swipe-deck preview source: one random cached track per card.
 
-     POST { "specs": [ { rank, genre, inst_pref?, pop_pref? }, ... ] }
+     POST { "specs": [ { rank, genre, inst_pref?, pop_pref?, lo?, hi? }, ... ] }
      →    { "byRank": { "1": "<spotify_id>", ... } }
 
    Calls the v7_anchor_tracks RPC (migration
@@ -14,6 +14,9 @@
      drops those cards.
    - Keyed by rank so directions sharing a genre still get distinct tracks.
    - inst_pref / pop_pref: 'none' | 'soft' | 'hard', same semantics as v5.
+   - lo / hi (2026-11-02, the two onboarding decks): the card's energy range
+     (track_analyses.energy, 0–100) — a song inside it, else the nearest one
+     (migration 2026-11-02-v7-anchor-tracks-energy.sql). Both or neither.
 */
 
 import { pgrRpc } from '../v5/supabase-client.js';
@@ -21,6 +24,7 @@ import { requireSite, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
 
 const PREF = (p) => (p === 'hard' || p === 'soft') ? p : 'none';
+const ENERGY = (v) => (Number.isFinite(v) && v >= 0 && v <= 100 ? v : null);
 
 function validateSpec(s) {
   return s
@@ -44,12 +48,18 @@ export default async function handler(req, res) {
     if (!Array.isArray(specs) || !specs.length) {
       return res.status(400).json({ error: 'specs required (non-empty array)' });
     }
-    const clean = specs.filter(validateSpec).map((s) => ({
-      rank:      Math.round(s.rank),
-      genre:     s.genre,
-      inst_pref: PREF(s.inst_pref),
-      pop_pref:  PREF(s.pop_pref),
-    }));
+    const clean = specs.filter(validateSpec).map((s) => {
+      const spec = {
+        rank:      Math.round(s.rank),
+        genre:     s.genre,
+        inst_pref: PREF(s.inst_pref),
+        pop_pref:  PREF(s.pop_pref),
+      };
+      const lo = ENERGY(s.lo);
+      const hi = ENERGY(s.hi);
+      if (lo != null && hi != null && lo <= hi) Object.assign(spec, { lo, hi });
+      return spec;
+    });
     if (!clean.length) {
       return res.status(400).json({ error: 'no valid specs after validation' });
     }

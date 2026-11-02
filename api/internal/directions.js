@@ -28,6 +28,12 @@
    level is refused unless `move: true`, which moves it (that also takes it
    out of the recipes of its old tier / level).
 
+   Two-sided profiles (business_taste_profiles.two_sided, the two-deck
+   onboarding, 2026-11-02): a both-ways genre approved on one side is simply
+   added on the direction's side as well (no `move` needed — it then sits on
+   both sides); a calm-only genre can't go into a high-energy direction nor an
+   energetic-only one into a calm direction (dropped with that reason).
+
    Runs the taste chat's ops (v7/generation/taste-ops.js) on the business's
    current state and writes it the same way (_taste-state.js), so the result
    is always consistent with the profile; logged in business_taste_changes
@@ -47,6 +53,7 @@ import { readLibrary } from './_library.js';
 import { readTasteState, writeTasteState } from '../v7/account/_taste-state.js';
 import { applyOps, snapshotOf, stateFromSnapshot, canonicalGenre } from '../../v7/generation/taste-ops.js';
 import { tierOfLevel } from '../../v7/generation/option1-draw.js';
+import { genreSide } from '../../shared/genre-sides.js';
 import { GENRES } from '../../shared/genre-universe.js';
 
 const ACTIONS = new Set(['add_genre', 'remove_genre', 'replace_genre', 'new_direction', 'delete_direction', 'undo']);
@@ -77,12 +84,20 @@ async function newestChange(businessId) {
 // Where an added genre should sit in the profile, as ops to run before
 // dir_add. → { ops, error }
 function placeGenre(state, dir, genre, { energy_level, move }) {
-  const have = state.approved.find((a) => a.genre === genre);
+  const tierOf = (a) => tierOfLevel(a.energy_level, state.N);
+  // Its entries (two for a genre on both sides of a two-sided profile).
+  const entries = state.approved.filter((a) => a.genre === genre);
+  // Two-sided profile + both-ways genre: the other side can simply be added.
+  const canAddSide = state.twoSided && genreSide(genre) === 'both';
   if (state.mode === 'option2') {
-    if (!have) return { ops: [{ op: 'add_genre', genre, energy_level: dir.energy_level }] };
-    if (have.energy_level === dir.energy_level) return { ops: [] };
+    if (!entries.length) return { ops: [{ op: 'add_genre', genre, energy_level: dir.energy_level }] };
+    if (entries.some((a) => a.energy_level === dir.energy_level)) return { ops: [] };
+    const dirTier = tierOfLevel(dir.energy_level, state.N);
+    const sameSide = entries.find((a) => tierOf(a) === dirTier);
+    if (canAddSide && !sameSide) return { ops: [{ op: 'add_genre', genre, energy_level: dir.energy_level }] };
+    const have = sameSide || entries[0];
     if (!move) return { error: `${genre} is approved at energy level ${have.energy_level}, not ${dir.energy_level} — pass move:true to move it (it then leaves the level-${have.energy_level} directions)` };
-    return { ops: [{ op: 'move_genre', genre, energy_level: dir.energy_level }] };
+    return { ops: [{ op: 'move_genre', genre, energy_level: dir.energy_level, tier: tierOf(have) }] };
   }
   const tier = dir.energy_tier;
   const levelsOfTier = Array.from({ length: state.N }, (_, i) => i + 1).filter((L) => tierOfLevel(L, state.N) === tier);
@@ -92,13 +107,14 @@ function placeGenre(state, dir, genre, { energy_level, move }) {
   }
   if (energy_level == null) {
     // The direction's own genres' middle level, else the tier's middle level.
-    const lv = dir.genres.map((g) => state.approved.find((a) => a.genre === g)?.energy_level).filter(Boolean).sort((a, b) => a - b);
+    const lv = dir.genres.map((g) => state.approved.find((a) => a.genre === g && tierOf(a) === tier)?.energy_level).filter(Boolean).sort((a, b) => a - b);
     L = lv.length ? lv[Math.floor((lv.length - 1) / 2)] : levelsOfTier[Math.floor((levelsOfTier.length - 1) / 2)];
   }
-  if (!have) return { ops: [{ op: 'add_genre', genre, energy_level: L }] };
-  if (tierOfLevel(have.energy_level, state.N) === tier) return { ops: [] };
+  if (!entries.length) return { ops: [{ op: 'add_genre', genre, energy_level: L }] };
+  if (entries.some((a) => tierOf(a) === tier)) return { ops: [] };
+  if (canAddSide) return { ops: [{ op: 'add_genre', genre, energy_level: L }] };
   if (!move) return { error: `${genre} is approved in the ${tier === 'high' ? 'calm' : 'high'}-energy tier — pass move:true to move it (it then leaves that tier's directions)` };
-  return { ops: [{ op: 'move_genre', genre, energy_level: L }] };
+  return { ops: [{ op: 'move_genre', genre, energy_level: L, tier: tierOf(entries[0]) }] };
 }
 
 // The request → taste ops. → { ops, error, warnings }
@@ -195,6 +211,12 @@ export default async function handler(req, res) {
       const last = await newestChange(id);
       if (!last || last.source !== 'admin') {
         return res.status(409).json({ error: last ? 'the newest change was the owner\'s (taste chat) — an admin undo would wipe it out' : 'nothing to undo', code: 'nothing-to-undo' });
+      }
+      // A re-onboarding replaced the whole profile (energy scale included);
+      // its snapshot can't restore that — the previous profile is in
+      // business_taste_profile_archive.
+      if (Array.isArray(last.ops) && last.ops.some((o) => o?.op === 'reonboard')) {
+        return res.status(409).json({ error: 'the newest change is a re-onboarding — it can\'t be undone here; the previous profile is in the archive', code: 'reonboard' });
       }
       let target = stateFromSnapshot(state, last.before);
       if (last.delivery_mode !== state.mode) target = { ...target, option1Dirs: state.option1Dirs, levelDirs: state.levelDirs };

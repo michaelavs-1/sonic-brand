@@ -71,7 +71,10 @@ export default async function handler(req, res) {
 
     const userById = new Map(users.filter((u) => u?.id).map((u) => [u.id, u]));
     const modeBy = new Map(settings.map((s) => [s.business_id, s.delivery_mode || null]));
-    const approvedBy = new Map(profiles.map((p) => [p.business_id, Array.isArray(p.approved_genres) ? p.approved_genres.length : 0]));
+    // Distinct genres: a two-sided profile (2026-11-02) can list a genre twice,
+    // once per side — it still counts once.
+    const approvedBy = new Map(profiles.map((p) => [p.business_id, Array.isArray(p.approved_genres)
+      ? new Set(p.approved_genres.map((a) => (typeof a === 'string' ? a : a?.genre)).filter(Boolean)).size : 0]));
     const firstPaidBy = new Map();
     for (const c of checkouts) if (c.paid_at && (!firstPaidBy.has(c.business_id) || c.paid_at < firstPaidBy.get(c.business_id))) firstPaidBy.set(c.business_id, c.paid_at);
     const lastBuiltBy = maxBy(dailyRows, 'created_at');

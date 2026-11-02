@@ -92,10 +92,12 @@ The user's scale has N levels (N = energy levels total). Define the midpoint as 
 - **HIGH tier** = approved genres whose \`energy_level\` is in the UPPER half of the scale, i.e. \`energy_level > N/2\`.
 - **LOW tier** = approved genres whose \`energy_level\` is in the LOWER half of the scale, i.e. \`energy_level <= N/2\`.
 
-Every approved genre lands in exactly one tier based on its \`energy_level\`. Examples:
+Each approved entry lands in one tier based on its \`energy_level\`. Examples:
 - N=4, midpoint 2: levels 3–4 are HIGH, levels 1–2 are LOW.
 - N=6, midpoint 3: levels 4–6 are HIGH, levels 1–3 are LOW.
 - N=2, midpoint 1: level 2 is HIGH, level 1 is LOW.
+
+**A genre approved on both sides.** Some genres have a calm side and an energetic side (e.g. \`Rnb\`), and the owner may like both: such a genre is listed in BOTH tiers, once with a HIGH level and once with a LOW level. Use it in both tiers: in HIGH directions it stands for its upbeat side, in LOW directions for its calm side — so pair it in each tier with genres whose same side sounds alike (calm \`Rnb\` with calm \`Neo Soul\`, upbeat \`Rnb\` with upbeat \`Korean RnB\`).
 
 ### 3. Every direction sits inside one tier — never mix tiers
 
@@ -350,6 +352,8 @@ function canonicalize(genreString) {
 // - Genre strings not in the shared Genre Universe (case-normalised first).
 // - Genres that aren't in the approved list, or whose energy level puts them
 //   in the other tier (the prompt's "silently dropped downstream" promise).
+//   A genre approved on both sides (two-deck taste profile, 2026-11-02) is
+//   allowed in both tiers.
 // - Duplicate genres within a single direction.
 // - Directions left with zero valid genres.
 // - A direction whose tier + genre set repeats an earlier one.
@@ -363,16 +367,17 @@ function canonicalize(genreString) {
 export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGenres = []) {
   if (!parsed || typeof parsed !== 'object') return null;
 
-  const tierOfGenre = new Map();
+  const tiersOfGenre = new Map();
   for (const e of Array.isArray(approvedGenres) ? approvedGenres : []) {
     const g = canonicalize(e?.genre);
     const level = Number(e?.energy_level);
-    if (g && Number.isFinite(level)) tierOfGenre.set(g, tierOfLevel(level, n));
+    if (!g || !Number.isFinite(level)) continue;
+    if (!tiersOfGenre.has(g)) tiersOfGenre.set(g, new Set());
+    tiersOfGenre.get(g).add(tierOfLevel(level, n));
   }
   const requested = { high: [], low: [] };
   for (const g of (Array.isArray(requestedGenres) ? requestedGenres : []).map(canonicalize)) {
-    const t = g && tierOfGenre.get(g);
-    if (t && !requested[t].includes(g)) requested[t].push(g);
+    for (const t of (g && tiersOfGenre.get(g)) || []) if (!requested[t].includes(g)) requested[t].push(g);
   }
 
   const rawDirections = Array.isArray(parsed.directions) ? parsed.directions : [];
@@ -392,7 +397,7 @@ export function normalizeEnergyDirections(parsed, approvedGenres, n, requestedGe
     for (const g of rawGenres) {
       const genre = canonicalize(g);
       if (!genre || seen.has(genre)) continue;
-      if (tierOfGenre.get(genre) !== tier) { dropped.push(`${g} → ${tier}`); continue; }
+      if (!tiersOfGenre.get(genre)?.has(tier)) { dropped.push(`${g} → ${tier}`); continue; }
       genres.push(genre);
       seen.add(genre);
     }
@@ -498,6 +503,7 @@ export async function generateEnergyDirections({
   place,
   businessId,
   onboardingSessionId,
+  label = 'v7-energy-directions',   // Ami's dashboard passes its own (2026-11-02)
 }) {
   if (!tasteProfile || typeof tasteProfile !== 'object') {
     return { error: 'insufficient_signal', reasoning_en: 'missing or invalid taste profile' };
@@ -523,7 +529,7 @@ export async function generateEnergyDirections({
   try {
     parsed = await callEnergyDirections({
       userMessage,
-      label: 'v7-energy-directions',
+      label,
       businessId,
       onboardingSessionId,
     });

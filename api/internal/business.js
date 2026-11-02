@@ -91,7 +91,7 @@ export default async function handler(req, res) {
     const [
       owner, lib, placeRows, hoursRows, playlistRows, openRows, superLiked, tasteChat, tasteChanges,
       events, eventChats, deletedEvents, checkouts, settingsChanges, buildLog, geminiRows, backlog,
-      adminActions, picks, v6Directions, v6Changes, portraits, playlistFeedback,
+      adminActions, picks, v6Directions, v6Changes, portraits, playlistFeedback, archive,
     ] = await Promise.all([
       fetchAuthUser(business.owner_id),
       readLibrary(id),
@@ -137,6 +137,10 @@ export default async function handler(req, res) {
       // one row per playlist: their CURRENT verdict, newest change first.
       selectOrEmpty('business_playlist_feedback', by, {
         select: 'spotify_id,verdict,reason,created_at,updated_at', order: 'updated_at.desc',
+      }),
+      // Taste profiles replaced by a re-onboarding (2026-11-02), newest first.
+      selectOrEmpty('business_taste_profile_archive', by, {
+        select: 'id,reason,source,delivery_mode,archived_at,profile,option1_directions,level_directions', order: 'archived_at.desc',
       }),
     ]);
 
@@ -250,6 +254,10 @@ export default async function handler(req, res) {
       },
       taste_profile: profile ? {
         energy_levels_total:         profile.energy_levels_total,
+        // Two-deck onboarding (2026-11-02): calm side = the lower half of the
+        // scale, energetic side = the upper half; a genre may be approved on
+        // both. false for every profile from before.
+        two_sided:                   profile.two_sided === true,
         approved_by_level:           lib.approved_by_level,
         approved_genres:             profile.approved_genres || [],
         conditional_genres:          profile.conditional_genres || [],
@@ -267,6 +275,15 @@ export default async function handler(req, res) {
           ? { text: portraits[0].portrait_he, source: portraits[0].source, updated_at: portraits[0].created_at, versions: portraits.length }
           : null,
         portrait_history:            portraits.map((r) => ({ text: r.portrait_he, source: r.source, message_id: r.message_id, created_at: r.created_at })),
+        // Earlier profiles, kept when a re-onboarding replaced them (Ami's
+        // dashboard, 2026-11-02): the whole old row + both old libraries.
+        archived:                    archive.map((a) => ({
+          id: a.id, archived_at: a.archived_at, reason: a.reason, source: a.source, delivery_mode: a.delivery_mode,
+          energy_levels_total: a.profile?.energy_levels_total ?? null,
+          approved_genres: a.profile?.approved_genres || [],
+          two_sided: a.profile?.two_sided === true,
+          profile: a.profile, option1_directions: a.option1_directions || [], level_directions: a.level_directions || [],
+        })),
       } : null,
       delivery: {
         mode:           lib.mode,

@@ -364,6 +364,27 @@
       font-size: 14px;
     }
 
+    /* Step 2 — a heading + Round 2 note per deck (two decks, 2026-11-02) */
+    .swipe-deck-title {
+      font-weight: 700;
+      font-size: 14.5px;
+      margin: 14px 0 4px;
+    }
+
+    .swipe-deck-title:first-child {
+      margin-top: 0;
+    }
+
+    .swipe-deck-note {
+      color: var(--warn-text);
+      font-size: 12.5px;
+      margin-bottom: 8px;
+    }
+
+    .swipe-deck-note:empty {
+      display: none;
+    }
+
     .swipe-desc {
       color: var(--muted);
       font-size: 12.5px;
@@ -780,6 +801,68 @@
       border-color: var(--accent);
     }
 
+    /* "אונבורדינג מחדש" (2026-11-02): next to the business picker, the window
+       with the onboarding page, and the save row at the bottom of the card. */
+    .tc-pickrow {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .tc-pickrow .tc-select {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tc-pickrow .btn {
+      white-space: nowrap;
+    }
+
+    .tc-resave {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border-2);
+    }
+
+    .tc-resave[hidden] {
+      display: none;
+    }
+
+    .tr-modal {
+      background: linear-gradient(180deg, var(--card), var(--bg-2));
+      border: 1px solid var(--border-2);
+      border-radius: 22px;
+      padding: 14px 14px 12px;
+      width: min(480px, 100%);
+      height: min(880px, 94vh);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+    }
+
+    .tr-hint {
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+
+    #trFrameHost {
+      flex: 1;
+      min-height: 0;
+    }
+
+    #trFrameHost iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      border-radius: 14px;
+      background: #0a1117;
+    }
+
     .tc-business {
       display: flex;
       flex-direction: column;
@@ -1127,7 +1210,7 @@
     }
 
     .tcp-chip .mark {
-      color: #f5c518;
+      color: var(--warn-text);
       margin-inline-start: 4px;
     }
 
@@ -1575,8 +1658,9 @@
 
     <div class="tab-panel" id="tabOnboarding">
     <p class="subtitle">
-      עורך את הפרומפטים שהולכים למודל: פרומפט הכיוונים המוזיקליים (שלב 1) ופרומפט פרופיל הטעם (שלב 3). שלב 4 מראה מה
-      נבנה מפרופיל הטעם לכל סוג פלייליסטים יומיים. שינויים כאן משפיעים רק על הריצה הזו — לא נשמר לפרודקשן.
+      עורך את הפרומפטים שהולכים למודל: פרומפט האונבורדינג — כיוונים אנרגטיים ואז רגועים (שלב 1) ופרומפט פרופיל הטעם (שלב 3). שלב 4
+      מראה מה נבנה מפרופיל הטעם לכל סוג פלייליסטים יומיים. שינויים כאן משפיעים רק על הריצה הזו — לא נשמר לפרודקשן.
+      שלבים 1–3 בודקים את האונבורדינג: כיוונים אנרגטיים ואז כיוונים רגועים.
     </p>
 
     <!-- Business inputs -->
@@ -1596,13 +1680,14 @@
 
     <!-- Prompt editor -->
     <div class="card">
-      <div class="card-title">שלב 1 — פרומפט הכיוונים המוזיקליים</div>
+      <div class="card-title">שלב 1 — פרומפט אונבורדינג (אנרגטי ורגוע בנפרד)</div>
       <div class="warn">
         <b>אזהרה: לא לשנות את רשימת הז'אנרים (Genre universe) — הם חייבים להיות זהים לרשימה במסד הנתונים.</b>
       </div>
       <div class="card-hint">
         זה החלק "היצירתי" של הפרומפט. חלקים אחרים (סכימת JSON, טיפול בשגיאות, דוגמאות בעייתיות) נשארים קבועים ומצטרפים
-        אוטומטית לפני השליחה.
+        אוטומטית לפני השליחה. אותו פרומפט רץ פעמיים במקביל — פעם לכיוונים האנרגטיים ופעם לרגועים (ההודעה למודל אומרת איזה).
+        ז'אנר מהצד הלא נכון (למשל "רגוע בלבד" בכיוונים האנרגטיים) נזרק בקוד ומופיע בתוצאה תחת DROPPED.
       </div>
       <textarea class="txt prompt" id="promptEditor" spellcheck="false"></textarea>
       <div class="btn-row">
@@ -1627,10 +1712,11 @@
       <div class="card-title">שלב 2 — מה בעל העסק אהב?</div>
       <div class="card-hint">
         במקום ההחלקות באונבורדינג: סמנו לכל כיוון "אהבתי" או "לא בשבילי". לחיצה על ז'אנר = סופר לייק על שיר מהז'אנר
-        הזה (וגם מסמנת את הכיוון כ"אהבתי"). קלט העסק נלקח מהריצה האחרונה של שלב 1 — אם שיניתם אותו, הריצו שוב את שלב 1.
+        הזה, באותו צד (וגם מסמנת את הכיוון כ"אהבתי"). לייקים על כיוונים אנרגטיים בונים את הצד האנרגטי של הפרופיל,
+        ועל כיוונים רגועים את הצד הרגוע. קלט העסק נלקח מהריצה האחרונה של שלב 1 — אם שיניתם אותו, הריצו שוב את שלב 1.
       </div>
       <div id="swipeList"></div>
-      <label for="round2Emphases">דגשים מסבב 2 (רשות — פעיל רק כשסומנו פחות מ-3 כיוונים כ"אהבתי", כמו בפרודקשן)</label>
+      <label for="round2Emphases">דגשים מסבב 2 (רשות — פעיל רק כשסומנו פחות מ-2 כיוונים אנרגטיים או פחות מ-2 רגועים כ"אהבתי")</label>
       <textarea class="txt" id="round2Emphases" rows="2" maxlength="500"
         placeholder="מה שבעל העסק כותב אחרי ששמע את השירים"></textarea>
       <label>העדפות שעוברות מהכיוונים (אפשר לשנות לבדיקה)</label>
@@ -1660,7 +1746,8 @@
       </div>
       <div class="card-hint">
         הפרומפט שממיין את כל הז'אנרים לפי מה שבעל העסק אהב בשלב 2 (approved / conditional / excluded) וקובע לכל ז'אנר רמת
-        אנרגיה. פורמט ה-JSON וטיפול בשגיאות נשארים קבועים ומצטרפים אוטומטית לפני השליחה.
+        אנרגיה: הצד הרגוע בחצי התחתון של הסולם והאנרגטי בחצי העליון. ז'אנר דואלי יכול להופיע פעמיים — פעם בכל צד (מסומן
+        ↕ בתוצאה). פורמט ה-JSON וטיפול בשגיאות נשארים קבועים ומצטרפים אוטומטית לפני השליחה.
       </div>
       <textarea class="txt prompt" id="tastePromptEditor" spellcheck="false"></textarea>
       <div class="btn-row">
@@ -1737,7 +1824,12 @@
           </div>
         </div>
         <div id="tcPicker" hidden>
-          <select class="tc-select" id="tcUser"></select>
+          <!-- "אונבורדינג מחדש" (2026-11-02): the two-deck onboarding again for
+               this business, in a window (/v7/?bench=1). -->
+          <div class="tc-pickrow">
+            <select class="tc-select" id="tcUser"></select>
+            <button class="btn btn-secondary" id="tcReonboard" type="button" disabled>אונבורדינג מחדש</button>
+          </div>
           <div class="tc-business" id="tcBusiness" hidden>
             <div class="tc-line" id="tcUserLine"></div>
             <div class="tc-switched" id="tcSwitched" hidden></div>
@@ -1746,6 +1838,11 @@
         </div>
         <div class="tc-loading" id="tcLoading"><span class="sb-spinner"></span><span id="tcLoadingText">טוען…</span></div>
         <div class="tc-error" id="tcError" hidden></div>
+        <!-- After a re-onboarding: what's waiting, and saving it. -->
+        <div class="tc-resave" id="tcReSave" hidden>
+          <div class="tc-switched" id="tcReplacedLine"></div>
+          <button class="btn btn-primary" id="tcSaveReonboard" type="button"></button>
+        </div>
       </div>
       <div class="card" id="tcProfileCard" hidden>
         <div class="card-title" id="tcProfileTitle"></div>
@@ -1795,6 +1892,18 @@
         <div class="dp-desc" id="tmDesc"></div>
         <div id="tmBody"></div>
         <div class="dp-actions" id="tmActions"></div>
+      </div>
+    </div>
+
+    <!-- "אונבורדינג מחדש": the onboarding page in bench mode (taste-chat-tab.js). -->
+    <div class="dp-overlay" id="tcReModal" role="dialog" aria-modal="true" aria-labelledby="trTitle" hidden>
+      <div class="tr-modal">
+        <div class="dp-head">
+          <div class="dp-title" id="trTitle">אונבורדינג מחדש</div>
+          <button class="dp-close" id="trClose" type="button" aria-label="סגור">×</button>
+        </div>
+        <div class="tr-hint">בסוף התהליך פרופיל הטעם החדש ייטען לדף מבלי להישמר לפרופיל האמיתי</div>
+        <div id="trFrameHost"></div>
       </div>
     </div>
 
@@ -1871,7 +1980,7 @@
       show(saved);
     })();
   </script>
-  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=24102026b"></script>
+  <script type="module" src="/v5/ami-prompt-dashboard/app.js?v=02112026c"></script>
 </body>
 
 </html>

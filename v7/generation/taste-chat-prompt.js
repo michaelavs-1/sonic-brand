@@ -24,6 +24,7 @@ import { COHERENCE_SECTION as OPTION1_COHERENCE } from './energy-directions.js';
 import { COHERENCE_SECTION as OPTION2_COHERENCE } from './level-directions.js';
 import { CORE_PHILOSOPHY_SECTION, HARD_BOUNDARY_RULES_SECTION } from './taste-profile.js';
 import { WEIGHT_STEPS, rangeOf, popularityOfTier, applyOps, canonicalGenre } from './taste-ops.js';
+import { genreSide, genreSidesList } from '../../shared/genre-sides.js';
 
 export const TASTE_CHAT_STATES = ['gathering', 'confirming', 'suggesting', 'off_topic'];
 // What the deck results message starts with (the client sends it; the prompt
@@ -102,6 +103,20 @@ Every change is a list of ops in a proposal (exact shapes under "## Output forma
 - **Instrumental music:** set_pref instrumentalness ("none" = no preference, "soft" = mostly, "hard" = only). Well-known songs: see "## Well-known songs".
 - **Undo:** "תחזירו כמו שהיה", "תבטלו את השינוי" → a proposal whose only op is undo; it reverts the newest change under "## Changes made through this chat" (say what it reverts).`;
 
+// Two-sided profiles (two onboarding decks, 2026-11-02). The context says when
+// a profile has sides; older profiles don't, and these rules don't apply.
+const SIDES = `## Calm side and energetic side (only when "## Taste profile" says this profile has sides)
+
+- Such a profile has a CALM side (the lower half of the scale) and an ENERGETIC side (the upper half), built from what the owner liked among calm samples and among energetic samples when they signed up. The calm side feeds the calm music (Option 1: the CALM tier and its playlists; Option 2: the calmer parts of the day), the energetic side the energetic music.
+- A genre can be on both sides (marked ↕, e.g. calm R&B and upbeat R&B): it is listed at two levels, and the two are different music. "Less R&B in the calm playlists" is not "less R&B".
+- Every genre has a side set by our music curator ("## Genre sides"): never put a calm-only genre on the energetic side or an energetic-only genre on the calm side — in add_genre, move_genre, set_requested and suggestions alike. A both-ways genre may be on either side, or both.
+- For a ↕ genre, say which side an op means with "tier": "high" (the energetic side) or "low" (the calm side):
+  - remove_genre with a tier takes it off that side only (the other side stays, and it isn't turned down); without a tier, off both sides and turned down.
+  - move_genre with a tier moves that side's entry, within its side.
+  - add_genre of a both-ways genre that's approved on one side, at a level of the other side, adds the other side.
+- One weight covers both sides of a genre (set_weight has no tier). For less of a ↕ genre on one side only, take it out of some recipes of that side (dir_remove), or off that side altogether (remove_genre with a tier).
+- When the owner names a ↕ genre without saying where ("פחות R&B"), look at "## What actually played" and today's playlists; if it's still unclear, ask one short question (in the calm music, the energetic music, or both?).`;
+
 const ENERGY_OPTION1 = `## Energy (this owner has the 4 daily playlists)
 
 - **Just today, one playlist:** under each of the 4 playlists on the Home tab there are three circles (calmer / as usual / more energetic) that change THAT playlist's energy for today only, once a day for one playlist (see "## Today's playlists" for whether it's used). When the owner's complaint is about one playlist today ("הפלייליסט האנרגטי היום חזק מדי"), tell them about the circles in one sentence ("העיגולים מתחת לפלייליסט") and offer the lasting change below only if they want it from now on. Don't propose shift_window in that reply unless they asked for a lasting change. When they already used today's change, offer the lasting change.
@@ -147,6 +162,11 @@ const CONFIRMING = `## Proposing and confirming
 - A plain "כן" / "יאללה" after your confirming message: the button does the work — reply briefly ("לחצו על 'אישור' כדי להחיל.") with state "gathering".
 - Ops must reference only genres from the Genre Universe (verbatim) and recipe keys from "## Recipes". Every genre you add or move must end up in at least one recipe of its tier/level, and so must every requested genre (super-liked ones included) — otherwise it is never played.`;
 
+// Ami's genre sides (shared/genre-sides.js), for the rules under SIDES.
+const GENRE_SIDES = `## Genre sides (set by our music curator)
+
+${genreSidesList()}`;
+
 const TASTE_RULES = `## Taste rules for new genres (when suggesting)
 
 ${CORE_PHILOSOPHY_SECTION}
@@ -173,9 +193,9 @@ On EVERY reply output a single JSON object and NOTHING ELSE — no prose around 
 
 Ops (each one an object with "op" + its fields):
 - {"op":"set_weight","genre":"Rnb","weight":0.5}
-- {"op":"remove_genre","genre":"Reggaeton"}
+- {"op":"remove_genre","genre":"Reggaeton"}   (a ↕ genre: add "tier":"high" or "low" for one side only)
 - {"op":"add_genre","genre":"Bossa Nova","energy_level":1}
-- {"op":"move_genre","genre":"Funk","energy_level":3}
+- {"op":"move_genre","genre":"Funk","energy_level":3}   (a ↕ genre: add "tier":"high" or "low" for the side it moves within)
 - {"op":"set_requested","genre":"Samba","energy_level":3}       (energy_level only when the genre isn't approved yet)
 - {"op":"dir_add","dir":"${mode === 'option2' ? 'L2-1' : 'H2'}","genre":"Latin Funk"}
 - {"op":"dir_remove","dir":"${mode === 'option2' ? 'L2-1' : 'H2'}","genre":"Rnb"}
@@ -200,6 +220,7 @@ export function tasteChatEditableSection(mode) {
     UNDERSTANDING,
     AIM_TO_PLEASE,
     CHANGES_COMMON,
+    SIDES,
     m === 'option2' ? ENERGY_OPTION2 : ENERGY_OPTION1,
     m === 'option2' ? POPULARITY_OPTION2 : POPULARITY_OPTION1,
     CONFIRMING,
@@ -208,7 +229,7 @@ export function tasteChatEditableSection(mode) {
 
 export function assembleTasteChatSystemPrompt(editable, mode) {
   const m = mode === 'option2' ? 'option2' : 'option1';
-  return [editable, coherence(m), TASTE_RULES, GENRE_UNIVERSE_SECTION, OUTPUT(m)].join('\n\n');
+  return [editable, coherence(m), TASTE_RULES, GENRE_UNIVERSE_SECTION, GENRE_SIDES, OUTPUT(m)].join('\n\n');
 }
 
 export function buildTasteChatSystemPrompt(mode) {
@@ -251,8 +272,14 @@ export function formatTasteContext(ctx) {
   out.push(`## Now\n- יום ${HE_WEEKDAYS[n.weekday] ?? '?'}, ${n.date || '?'}, ${n.time || '?'} (Israel time)\n- Today's hours: ${n.open && n.close ? `${n.open}–${n.close}` : 'closed'} · ${phase}`);
 
   const weightOf = (g) => s.weights[g];
+  // A genre approved on both sides (two-sided profiles).
+  const both = new Set(s.twoSided ? s.approved.map((a) => a.genre).filter((g) => {
+    const tiers = new Set(s.approved.filter((a) => a.genre === g).map((a) => (a.energy_level > s.N / 2 ? 'high' : 'low')));
+    return tiers.size === 2;
+  }) : []);
   const tag = (g) => {
     const t = [];
+    if (both.has(g)) t.push('↕ both sides');
     if (s.requested.includes(g)) t.push('requested');
     if (weightOf(g) != null) t.push(`weight ${weightOf(g)}`);
     return t.length ? ` [${t.join(', ')}]` : '';
@@ -261,10 +288,14 @@ export function formatTasteContext(ctx) {
   for (const a of s.approved) byLevel.set(a.energy_level, [...(byLevel.get(a.energy_level) || []), a.genre]);
   const lines = [];
   for (let L = s.N; L >= 1; L--) {
-    const tier = s.mode === 'option1' ? (L > s.N / 2 ? ' (HIGH tier)' : ' (CALM tier)') : '';
+    const tier = s.mode === 'option1' ? (L > s.N / 2 ? ' (HIGH tier)' : ' (CALM tier)')
+      : s.twoSided ? (L > s.N / 2 ? ' (energetic side)' : ' (calm side)') : '';
     lines.push(`- Level ${L}${tier}: ${(byLevel.get(L) || []).map((g) => g + tag(g)).join(', ') || '—'}`);
   }
-  out.push(`## Taste profile (energy scale 1..${s.N}, 1 = calmest)\n${lines.join('\n')}\n- Conditional (in reserve, not played): ${s.conditional.map((c) => `${c.genre} (L${c.energy_level})`).join(', ') || '—'}\n- Turned down (never suggest): ${s.rejected.join(', ') || '—'}\n- Instrumental music: ${PREF_TEXT[s.inst]} · Well-known songs: ${popularityLine(s)}\n- The owner's own songs: ${s.allowed.map((a) => `"${a.title}" — ${a.artist} (${a.genre})`).join('; ') || '—'}`);
+  const sidesLine = s.twoSided
+    ? `\n- This profile has sides: calm = levels 1–${Math.floor(s.N / 2)}, energetic = levels ${Math.floor(s.N / 2) + 1}–${s.N} (see "## Calm side and energetic side").`
+    : '';
+  out.push(`## Taste profile (energy scale 1..${s.N}, 1 = calmest)${sidesLine}\n${lines.join('\n')}\n- Conditional (in reserve, not played): ${s.conditional.map((c) => `${c.genre} (L${c.energy_level})`).join(', ') || '—'}\n- Turned down (never suggest): ${s.rejected.join(', ') || '—'}\n- Instrumental music: ${PREF_TEXT[s.inst]} · Well-known songs: ${popularityLine(s)}\n- The owner's own songs: ${s.allowed.map((a) => `"${a.title}" — ${a.artist} (${a.genre})`).join('; ') || '—'}`);
 
   if (s.mode === 'option1') {
     const dirs = (tier) => s.option1Dirs.filter((d) => d.energy_tier === tier).map((d) => `- ${d.key}: ${d.genres.join(', ')}`).join('\n') || '- —';
@@ -356,6 +387,18 @@ export function normalizeTasteReply(parsed, { mode }) {
   return { reply_he, state, proposal, suggestions, timeline_hint, offer_new_mix };
 }
 
+// Two-sided profiles: a calm-only suggestion goes no higher than the calm
+// side's top level, an energetic-only one no lower than the energetic side's
+// bottom level (the ops would refuse it otherwise).
+function onItsSide(state, g, L) {
+  if (!state.twoSided) return L;
+  const top = Math.floor(state.N / 2);
+  const side = genreSide(g);
+  if (side === 'calm') return Math.min(L, top);
+  if (side === 'energetic') return Math.max(L, top + 1);
+  return L;
+}
+
 // What the owner sees when nothing in a proposal can be applied.
 export const COULD_NOT_PREPARE = 'לא הצלחתי להכין את השינוי הזה. תוכלו לנסח שוב, במילים קצת אחרות?';
 
@@ -390,7 +433,7 @@ export function vetReply(reply, state, { linkedTracks, hasUndoable }) {
     reply.suggestions = reply.suggestions
       .map((x) => ({ ...x, genre: canonicalGenre(x.genre) }))
       .filter((x) => x.genre && !approved.has(x.genre) && !state.rejected.includes(x.genre) && !seen.has(x.genre) && seen.add(x.genre))
-      .map((x) => ({ ...x, energy_level: Math.min(state.N, Math.max(1, x.energy_level || Math.ceil(state.N / 2))), label_he: x.label_he || x.genre }));
+      .map((x) => ({ ...x, energy_level: onItsSide(state, x.genre, Math.min(state.N, Math.max(1, x.energy_level || Math.ceil(state.N / 2)))), label_he: x.label_he || x.genre }));
     if (!reply.suggestions.length) { notes.push('no usable suggestions'); reply.suggestions = null; reply.state = 'gathering'; }
   }
   return notes;

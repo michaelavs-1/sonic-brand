@@ -14,6 +14,21 @@
 // emails a magic link. Email verification is REQUIRED (like v6) — the owner
 // enters /v7/account only by clicking that link.
 //
+// Two decks (Ami, 2026-11-02): the swipe step is an ENERGETIC deck of 6, then
+// a CALM deck of 6 (v7/generation/deck-directions.js — both requested at
+// once). Each card plays a song from its deck's energy range. A deck with
+// fewer than 2 likes gets 4 more cards of the same energy (Round 2 per deck,
+// after both decks). The taste profile is two-sided
+// (v7/generation/taste-profile-decks.js): energetic-deck likes build the
+// energetic side, calm-deck likes the calm side.
+//
+// Bench mode (/v7/?bench=1, 2026-11-02): Ami's prompt dashboard opens this page
+// in a window to re-run the swipe step for a real business. The dashboard
+// sends the business's onboarding inputs (+ its taste portrait and turned-down
+// genres); the page runs only the two decks + Round 2 and the taste profile,
+// and sends the profile back. Nothing is saved here and nobody signs up — the
+// dashboard saves (POST /api/internal/taste-bench, `replace`).
+//
 // The onboarding steps are driven by a state machine so users can click any
 // reached step in the progress bar to jump back and edit. State (bizName,
 // bizDesc, place, atmospheres, directions, picks, dislikes) is preserved
@@ -23,9 +38,9 @@
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=24102026a';
 import { runEmphasesStep } from '/v7/emphases.js?v=03102026a';
 import { runHoursSelection } from '/v7/hours-selector.js?v=29092026a';
-import { generateMusicalDirections } from '/v7/generation/musical-directions.js?v=24102026b';
-import { generateRefinedMusicalDirections } from '/v7/generation/refined-directions.js?v=24102026b';
-import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=24102026b';
+import { generateDeckDirections } from '/v7/generation/deck-directions.js?v=02112026a';
+import { generateRefinedDeckDirections } from '/v7/generation/refined-directions.js?v=02112026a';
+import { generateDeckTasteProfile } from '/v7/generation/taste-profile-decks.js?v=02112026a';
 // derivePopularityWindow was removed 2026-09-02 — atmospheres no longer
 // derive a popularity window. Atmosphere strings still enter the prompt
 // as context (see buildUserMessage in musical-directions.js), but
@@ -35,14 +50,14 @@ import { generateTasteProfile } from '/v7/generation/taste-profile.js?v=24102026
 // unless popularity_preference='hard' overrides to [60, 100] ([45, 100] for
 // Israeli genres) or 'soft' biases the ORDER BY toward hits.
 import {
-  runDirectionPreviewFlow,
+  runDeckFlow,
   runRefinedDirectionPreviewFlow,
   runRefinedEmphasesStep,
   showRefinedDirectionsLoading,
   showR2FailureScreen,
   showRestartOnboardingScreen,
   preparePreview,
-} from '/v7/preview.js?v=26102026a';
+} from '/v7/preview.js?v=02112026b';
 // v7 has NO per-direction playlist build at onboarding — directions are
 // diagnostic probes, not playlist seeds. After the swipe deck the flow goes
 // "הכל מוכן!" → registration → payment → taste-profile (the point where
@@ -104,13 +119,21 @@ const state = {
   // positive signal — a sharper input than "the whole direction was liked".
   // Also preserved across all navigation, same lifetime as superLikedTracks.
   superLikedGenres: new Map(),
+  // Which deck each super-liked track came from: Map<trackId, 'energetic' |
+  // 'calm'> (two decks, 2026-11-02) — the taste profile approves the genre on
+  // that deck's side. Same lifetime as superLikedGenres.
+  superLikedDecks: new Map(),
   // Opening hours are collected in step 4 alongside the Gemini call. Kept
   // across step re-entry so users don't re-enter them just for changing
   // atmospheres or emphases.
   hours: null,                // { 0: { closed: true } | { open, close }, ..., 6: ... }
   longestMinutes: 0,          // longest open window across days — feeds daily-playlist target
+  // The energetic deck (ranks 1–6). page2Promise is the calm deck's call
+  // (→ { directions } | { error }); calmDirections holds its directions once
+  // the owner reaches it (ranks 7–12).
   directions: null,
   page2Promise: null,
+  calmDirections: null,
   // Round 1's short phrase for the business ("המסעדה הסקסית"), shown on the
   // "הכל מוכן!" screen before sign-up (2026-10-21). null = left out.
   venuePhrase: null,
@@ -153,6 +176,11 @@ const state = {
   // as a `let` inside the step-5 block it was out of scope there and every
   // retry threw a ReferenceError → endless retry screen.
   round2Directions: null,
+  // Bench mode only (see the header): { post } to the dashboard, and what we
+  // already know about the owner — fed to the decks, Round 2 and the profile.
+  bench: null,
+  knownTaste: '',
+  turnedDown: [],
 };
 
 // Highest step index the user has reached — determines which steps in the
@@ -217,6 +245,7 @@ function invalidateFrom(step) {
     state.directions = null;
     state.venuePhrase = null;
     state.page2Promise = null;
+    state.calmDirections = null;
     // round2Emphases is feedback on a specific R1 outcome — clear
     // whenever directions regenerate so it doesn't leak stale context
     // into the next R2 attempt.
@@ -272,37 +301,179 @@ function carryPref(directionSets, field) {
   return 'none';
 }
 
-// Every Round-1 direction the owner actually reacted to, for the R2 and
-// taste-profile prompts. state.directions only ever holds R1 PAGE 1 (ranks
-// 1-4) — page 2 (ranks 5-8) lives inside preview.js — yet likes/dislikes can
-// include page-2 directions. Passing only page 1 left the model reading
-// "LIKED: 6" with no rank-6 direction described. So: page 1 plus any other
-// direction found in the given like/dislike lists, excluding Round-2
-// directions (ranks 9-12, see refined-directions.js), deduped by rank.
-function round1DirectionsSeen(...lists) {
-  const r2 = new Set(state.round2Directions || []);
+// Round 2 opens for a deck the owner liked fewer than this many cards of.
+const ROUND2_MIN_LIKES = 2;
+const DECKS = ['energetic', 'calm'];
+
+// Every card the owner was dealt: the energetic deck (ranks 1–6), the calm
+// deck (7–12) and any Round 2 cards (13–16 energetic, 17–20 calm) — ranks are
+// unique across all of them, so likes / dislikes go by rank. Fed to the taste
+// profile, whose LIKED / DISLIKED lists refer to these ranks.
+function allCardsSeen() {
   const byRank = new Map();
-  for (const d of [state.directions || [], ...lists].flat()) {
-    if (!d || r2.has(d) || byRank.has(d.rank)) continue;
-    byRank.set(d.rank, d);
+  for (const d of [state.directions || [], state.calmDirections || [], state.round2Directions || []].flat()) {
+    if (d && Number.isFinite(d.rank) && !byRank.has(d.rank)) byRank.set(d.rank, d);
   }
   return [...byRank.values()].sort((a, b) => a.rank - b.rank);
 }
 
-// The swipe cards the owner saw (Round 1 + Round 2) with what they did with
+// { energetic: [genre], calm: [genre] } — each super-liked track's genre on
+// the deck it was super-liked on.
+function superLikedByDeck() {
+  const out = { energetic: [], calm: [] };
+  for (const [trackId, genre] of state.superLikedGenres) {
+    const deck = state.superLikedDecks.get(trackId);
+    if (out[deck] && genre && !out[deck].includes(genre)) out[deck].push(genre);
+  }
+  return out;
+}
+
+// The two-sided taste-profile call, from the current state (first run + the
+// bar's retry).
+function tasteProfileCall() {
+  const cards = allCardsSeen();
+  return generateDeckTasteProfile({
+    bizName: state.bizName,
+    bizDesc: state.bizDesc,
+    atmospheres: state.selectedAtmos,
+    musicalEmphases: state.musicalEmphases,
+    round2Emphases: state.round2Emphases,
+    directions: cards,
+    likedDirections: state.picked || [],
+    dislikedDirections: state.dislikedDirections,
+    superLikedByDeck: superLikedByDeck(),
+    // Single carry-through prefs. Prefer the liked directions; fall back to
+    // every card (the decks stamp these uniformly, so both agree in the
+    // common case).
+    instrumentalnessPreference: carryPref([state.picked, cards], 'instrumentalness_preference'),
+    popularityPreference: carryPref([state.picked, cards], 'popularity_preference'),
+    onboardingSessionId: state.onboardingSessionId,
+    knownTaste: state.knownTaste,
+    turnedDown: state.turnedDown,
+    label: state.bench ? 'ami-reonboard-taste' : undefined,
+  });
+}
+
+// After a swipe step with no likes: back to the start. In bench mode the
+// business's inputs are fixed, so the decks are generated again instead.
+function restartFlow() {
+  if (state.bench) {
+    invalidateFrom(3);
+    goToStep(5);
+    return;
+  }
+  goToStep(1);
+}
+
+// ---------- bench mode ----------
+const benchCard = () => document.querySelector('.screen-card');
+
+function benchScreen(title, text, { loading = false, button = null } = {}) {
+  const card = benchCard();
+  if (!card) return null;
+  const h = document.createElement('h1');
+  h.textContent = title;
+  const kids = [h];
+  if (text) {
+    const p = document.createElement('p');
+    p.className = 'subtitle';
+    p.textContent = text;
+    kids.push(p);
+  }
+  if (loading) {
+    const wrap = document.createElement('div');
+    wrap.className = 'preview-load-column';
+    wrap.innerHTML = '<div class="preview-load-label">בונים את פרופיל הטעם' + WAIT_DOTS_HTML + '</div>'
+      + '<div class="preview-load-progress"><div class="preview-load-progress-fill taste-profile-fill"></div></div>';
+    kids.push(wrap);
+  }
+  let btn = null;
+  if (button) {
+    btn = document.createElement('button');
+    btn.className = 'btn btn-primary btn-block';
+    btn.type = 'button';
+    btn.textContent = button;
+    kids.push(btn);
+  }
+  card.replaceChildren(...kids);
+  return btn;
+}
+
+// After the swipe step: wait for the taste profile (retry on failure), then
+// send it, with the cards and the super-likes, to the dashboard.
+async function benchFinish(signal) {
+  for (;;) {
+    benchScreen('כמעט סיימנו', 'הפרופיל החדש נבנה לפי מה שאהבתם. זה לוקח עד דקה.', { loading: true });
+    const r = await abortable(Promise.resolve(state.tasteProfilePromise), signal);
+    if (r?.profile) {
+      state.bench.post({
+        type: 'rubin-bench-result',
+        profile: r.profile,
+        cards: onboardingProbes(),
+        superLikedGenres: [...new Set(state.superLikedGenres.values())],
+        round2Emphases: state.round2Emphases || '',
+        genreTally: [...state.genreTally.entries()].map(([genre, t]) => ({ genre, like: t.like || 0, dislike: t.dislike || 0 })),
+      });
+      benchScreen('הפרופיל החדש מוכן ✓', 'הוא מחכה בדשבורד. אפשר לסגור את החלון.');
+      return;
+    }
+    const retry = benchScreen('בניית הפרופיל נכשלה', 'אפשר לנסות שוב.', { button: 'נסו שוב' });
+    await abortable(new Promise((resolve) => retry.addEventListener('click', resolve, { once: true })), signal);
+    state.tasteProfilePromise = tasteProfileCall().catch((e) => ({ error: 'matcher_error', reasoning_en: e?.message || String(e) }));
+  }
+}
+
+// Opened by the dashboard: wait for its inputs, then run the swipe step.
+function startBench() {
+  $('splash')?.remove();
+  $('introCard')?.remove();
+  const main = $('mainCard');
+  if (main) {
+    main.hidden = false;
+    mainCardTemplateHtml = main.innerHTML;
+  }
+  const fp = $('flowProgress');
+  if (fp) fp.hidden = true;
+  const parentWin = window.parent !== window ? window.parent : null;
+  if (!parentWin) {
+    benchScreen('המסך הזה נפתח מהדשבורד', 'פתחו אותו מהכפתור "אונבורדינג מחדש".');
+    return;
+  }
+  benchScreen('טוענים את פרטי העסק…', '');
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin || e.source !== parentWin) return;
+    const m = e.data;
+    if (!m || m.type !== 'rubin-bench-start' || state.bench) return;
+    const inp = m.inputs || {};
+    const list = (x) => (Array.isArray(x) ? x.filter((v) => typeof v === 'string' && v) : []);
+    Object.assign(state, {
+      bench: { post: (msg) => parentWin.postMessage(msg, location.origin) },
+      bizName: String(inp.bizName || ''),
+      bizDesc: String(inp.bizDesc || ''),
+      selectedAtmos: list(inp.atmospheres),
+      musicalEmphases: String(inp.musicalEmphases || ''),
+      confirmedPlace: inp.place && typeof inp.place === 'object' ? inp.place : null,
+      knownTaste: String(inp.knownTaste || ''),
+      turnedDown: list(inp.turnedDown),
+      // Ami's testing isn't an onboarding: no session id (gemini_call_log
+      // keeps it under the ami-reonboard labels, unattributed).
+      onboardingSessionId: null,
+    });
+    highestStep = 5;
+    goToStep(5);
+  });
+  parentWin.postMessage({ type: 'rubin-bench-ready' }, location.origin);
+}
+
+// The swipe cards the owner saw, with their deck, round and what they did with
 // each — saved with the taste profile at signup for the admin console
-// (business_taste_profiles.onboarding_probes, 2026-10-13). Ranks are unique
-// across rounds (R1 1–8, R2 9–12), so verdicts go by rank.
+// (business_taste_profiles.onboarding_probes, 2026-10-13).
 function onboardingProbes() {
   const liked = new Set((state.picked || []).map((d) => d?.rank));
   const disliked = new Set((state.dislikedDirections || []).map((d) => d?.rank));
-  const r2 = new Set((state.round2Directions || []).map((d) => d?.rank));
-  const byRank = new Map();
-  for (const d of [state.directions || [], state.picked || [], state.dislikedDirections || [], state.round2Directions || []].flat()) {
-    if (d && Number.isFinite(d.rank) && !byRank.has(d.rank)) byRank.set(d.rank, d);
-  }
-  return [...byRank.values()].sort((a, b) => a.rank - b.rank).map((d) => ({
-    round: r2.has(d.rank) ? 2 : 1,
+  return allCardsSeen().map((d) => ({
+    round: d.round === 2 ? 2 : 1,
+    deck: d.deck || null,
     rank: d.rank,
     title_en: d.title_en || '',
     description_he: d.description_he || '',
@@ -762,6 +933,7 @@ async function goToStep(start) {
           state.directions = null;
           state.venuePhrase = null;
           state.page2Promise = null;
+          state.calmDirections = null;
           state.picked = null;
           state.results = null;
           state.round2Emphases = '';
@@ -790,6 +962,7 @@ async function goToStep(start) {
           state.directions = null;
           state.venuePhrase = null;
           state.page2Promise = null;
+          state.calmDirections = null;
           state.picked = null;
           state.results = null;
           state.round2Emphases = '';
@@ -809,13 +982,16 @@ async function goToStep(start) {
         // in the background — that way when the swipe deck actually needs
         // to render (step 5), everything is warm and it appears instantly.
         if (!state.directions && !directionsPromise) {
-          const rawDirections = generateMusicalDirections({
+          const rawDirections = generateDeckDirections({
             bizName: state.bizName,
             bizDesc: state.bizDesc,
             atmospheres: state.selectedAtmos,
             musicalEmphases: state.musicalEmphases,
             place: state.confirmedPlace,
             onboardingSessionId: state.onboardingSessionId,
+            knownTaste: state.knownTaste,
+            turnedDown: state.turnedDown,
+            label: state.bench ? 'ami-reonboard' : undefined,
           });
           directionsPromise = rawDirections.then(
             (r) => { directionsSettled = true; return r; },
@@ -854,13 +1030,16 @@ async function goToStep(start) {
         // bar), the hours step didn't run — so directionsPromise may not
         // exist yet. Kick it off inline in that case.
         if (!state.directions && !directionsPromise) {
-          const rawDirections = generateMusicalDirections({
+          const rawDirections = generateDeckDirections({
             bizName: state.bizName,
             bizDesc: state.bizDesc,
             atmospheres: state.selectedAtmos,
             musicalEmphases: state.musicalEmphases,
             place: state.confirmedPlace,
             onboardingSessionId: state.onboardingSessionId,
+            knownTaste: state.knownTaste,
+            turnedDown: state.turnedDown,
+            label: state.bench ? 'ami-reonboard' : undefined,
           });
           directionsPromise = rawDirections.then(
             (r) => { directionsSettled = true; return r; },
@@ -898,123 +1077,102 @@ async function goToStep(start) {
           state.venuePhrase = dResult.venuePhrase || null;
         }
 
-        const picked = await abortable(runDirectionPreviewFlow({
-          directions: state.directions,
-          page2Promise: state.page2Promise,
-          preparedPromise,
-          // Shared references — the swipe deck mutates these directly.
+        // The two decks, one after the other: energetic (page 1 of the
+        // prepared preview), then calm (page 2). Shared references — the
+        // decks mutate the super-like maps, the dislikes and the audit tally
+        // directly.
+        const deckOpts = {
           superLikedTracks: state.superLikedTracks,
           superLikedGenres: state.superLikedGenres,
-          // v7: dislikes carry meaning. The deck pushes each swiped-left
-          // direction here, and increments the per-genre audit tally on
-          // every like/dislike. Both are shared mutable references.
+          superLikedDecks: state.superLikedDecks,
           dislikedDirections: state.dislikedDirections,
           genreTally: state.genreTally,
-        }), signal);
+        };
+        const prepared = await abortable(preparedPromise || preparePreview({
+          directions: state.directions,
+          page2Promise: state.page2Promise,
+        }).catch(() => emptyPreparedPreview()), signal);
+        const energeticPicked = await abortable(runDeckFlow({ deck: 'energetic', ready: prepared.page1Ready, ...deckOpts }), signal);
+        const calmResult = await abortable(Promise.resolve(state.page2Promise).catch(() => null), signal);
+        state.calmDirections = calmResult && !calmResult.error && Array.isArray(calmResult.directions)
+          ? calmResult.directions : [];
+        const calmPicked = await abortable(runDeckFlow({ deck: 'calm', ready: prepared.page2Ready, ...deckOpts }), signal);
+        const picked = [...energeticPicked, ...calmPicked];
 
-        // R2 refined directions, captured if Round 2 fires — fed to the
+        // Round 2 refined directions, captured if Round 2 fires — fed to the
         // background taste-profile call (and its retry) below.
         state.round2Directions = null;
 
-        // Round 2 refinement: fires when Round 1 yielded < 3 liked
-        // directions (0, 1, or 2). Feeds the R2 Gemini call all R1 inputs
-        // + the full R1 direction set + liked/disliked + a deduped list
-        // of super-liked GENRES (the specific genres the owner tapped
-        // super-like on tracks from — a sharper signal than
-        // super-liked-direction refs), then presents a 4-card swipe
-        // deck. Merges R2 picks into R1 picks. If TOTAL likes across
-        // both rounds is 0, offers a restart-onboarding screen instead
-        // of the "no directions" dead-end. See v6/generation/refined-
-        // directions.js for the R2 prompt spec.
+        // Round 2 per deck (2026-11-02): a deck with fewer than 2 liked cards
+        // (a deck that failed to load counts as 0) gets 4 more cards of its
+        // own energy. One refinement question first — its text goes to every
+        // deck's Round 2 call as the HIGHEST-priority signal — then the decks'
+        // calls run in parallel and their cards are shown in one deck
+        // (energetic first). If the owner ends with 0 likes overall, they get
+        // the restart-onboarding screen.
         let mergedPicked = picked;
-        if (picked.length < 3) {
-          // First: ask the owner for optional refinement guidance — a
-          // free-text field with a המשך / דלג pair. The captured text
-          // (may be empty on skip) becomes the HIGHEST-priority signal
-          // fed to the R2 Gemini call (see Learning step 6 in
-          // refined-directions.js). Pre-fills from state.round2Emphases
-          // so re-entering the step preserves the input; state is
-          // cleared whenever state.directions is invalidated.
+        const thinDecks = DECKS.filter((deck) => picked.filter((d) => d.deck === deck).length < ROUND2_MIN_LIKES);
+        if (thinDecks.length) {
           const round2Emphases = await abortable(
-            runRefinedEmphasesStep({ initialValue: state.round2Emphases }),
+            runRefinedEmphasesStep({ initialValue: state.round2Emphases, decks: thinDecks }),
             signal,
           );
           state.round2Emphases = round2Emphases;
 
-          // Page 1 + any page-2 direction the owner swiped (see round1DirectionsSeen).
-          const r1Directions = round1DirectionsSeen(picked, state.dislikedDirections);
-          // v7: use the ACTUALLY-swiped-left directions recorded by the deck,
-          // not "everything the owner didn't like" (v6's derivation). A
-          // direction the owner never reached — because they hit 3 likes and
-          // the deck ended early, or page 2 never rendered — is not a dislike.
-          const dislikedDirs = [...state.dislikedDirections];
-          // Deduped list of every genre the owner super-liked a track
-          // from — includes super-likes from disliked directions too
-          // (the direction as a whole didn't resonate, but that specific
-          // genre did). Passed to R2 as its extra-weighted positive signal.
-          const superLikedGenresList = [...new Set(state.superLikedGenres.values())];
+          const deckCards = { energetic: state.directions || [], calm: state.calmDirections || [] };
+          const slByDeck = superLikedByDeck();
 
-          // Retry loop: any hard R2 failure (Gemini error OR anchor-tracks
-          // pool empty on all 4 refined directions) shows a screen offering
-          // "נסה שוב" (refires the whole R2 pipeline) or a secondary action (continue
-          // with R1 picks / restart onboarding). Loop exits when either
-          // the R2 preview successfully renders OR the owner picks the
-          // secondary action.
+          // Retry loop: if no Round 2 deck could be built (model errors, or no
+          // song for any card) the owner can retry, continue with their picks,
+          // or restart. A deck whose call failed while the other's worked just
+          // goes without extra cards.
           let refinedPicked = null;
           while (refinedPicked === null) {
             showRefinedDirectionsLoading();
-            let refinedResult;
+            let results;
             try {
-              refinedResult = await abortable(generateRefinedMusicalDirections({
+              results = await abortable(Promise.all(thinDecks.map((deck) => generateRefinedDeckDirections({
+                deck,
                 bizName: state.bizName,
                 bizDesc: state.bizDesc,
                 atmospheres: state.selectedAtmos,
                 musicalEmphases: state.musicalEmphases,
                 round2Emphases,
                 place: state.confirmedPlace,
-                round1Directions: r1Directions,
-                likedDirections: picked,
-                dislikedDirections: dislikedDirs,
-                superLikedGenres: superLikedGenresList,
+                deckDirections: deckCards[deck],
+                likedDirections: picked.filter((d) => d.deck === deck),
+                dislikedDirections: state.dislikedDirections.filter((d) => d.deck === deck),
+                superLikedGenres: slByDeck[deck],
+                otherDeckLiked: picked.filter((d) => d.deck !== deck),
                 onboardingSessionId: state.onboardingSessionId,
-              }), signal);
+                knownTaste: state.knownTaste,
+                turnedDown: state.turnedDown,
+                label: state.bench ? 'ami-reonboard-refined' : undefined,
+              }).catch((e) => ({ error: 'matcher_error', reasoning_en: e?.message || String(e) })))), signal);
             } catch (e) {
               if (e?.name === 'AbortError') return;
-              refinedResult = { error: 'matcher_error', reasoning_en: e.message };
+              results = [];
             }
+            const refined = results.flatMap((r) => (r && !r.error && Array.isArray(r.directions) ? r.directions : []));
 
-            const hasDirections = refinedResult && !refinedResult.error
-              && Array.isArray(refinedResult.directions) && refinedResult.directions.length;
             let previewSucceeded = false;
-            if (hasDirections) {
+            if (refined.length) {
               try {
                 refinedPicked = await abortable(runRefinedDirectionPreviewFlow({
-                  refinedDirections: refinedResult.directions,
-                  superLikedTracks: state.superLikedTracks,
-                  superLikedGenres: state.superLikedGenres,
-                  // Same v7 signal accumulation as R1: R2 swipe-lefts are real
-                  // dislikes, and every R2 like/dislike feeds the audit tally.
-                  dislikedDirections: state.dislikedDirections,
-                  genreTally: state.genreTally,
+                  refinedDirections: refined,
+                  ...deckOpts,
                 }), signal);
-                // The R2 direction set becomes `round2Directions` for the
-                // taste-profile call, so the model sees the same probes the
-                // owner actually swiped in Round 2.
-                state.round2Directions = refinedResult.directions;
-                // preview rendered (may be [] if the owner swiped left on
-                // every R2 card — that's a valid outcome, not a failure)
+                state.round2Directions = refined;
+                // The deck rendered (it may return [] if the owner swiped
+                // left on every card — a valid outcome, not a failure).
                 previewSucceeded = true;
               } catch (e) {
                 if (e?.name === 'AbortError') return;
                 refinedPicked = null;
               }
             }
-
             if (previewSucceeded) break;
 
-            // Something failed — either Gemini or preview. Ask the owner
-            // what to do. Loop again on 'retry', bail on 'continue' /
-            // 'restart'.
             const choice = await abortable(showR2FailureScreen({
               hasR1Picks: picked.length > 0,
             }), signal);
@@ -1023,10 +1181,10 @@ async function goToStep(start) {
               continue;
             }
             if (choice === 'restart') {
-              showRestartOnboardingScreen(() => goToStep(1));
+              showRestartOnboardingScreen(restartFlow);
               return;
             }
-            // 'continue' — proceed with R1 picks only
+            // 'continue' — proceed with the decks' picks only
             refinedPicked = [];
             break;
           }
@@ -1035,14 +1193,9 @@ async function goToStep(start) {
 
           if (mergedPicked.length === 0) {
             // In-app restart: goToStep(1) preserves everything the owner has
-            // already entered (bizName / bizDesc / musicalEmphases / place /
-            // atmospheres / hours / super-liked tracks + directions) — see
-            // invalidateFrom() for the full persistence contract. Only the
-            // downstream picks/directions/results are cleared, so a fresh
-            // Round 1 fires when the owner re-submits. No page reload, so
-            // splash + intro do not re-fire. Hard refresh (F5) still resets
-            // everything to a truly fresh session as expected.
-            showRestartOnboardingScreen(() => goToStep(1));
+            // already entered — see invalidateFrom() for the full persistence
+            // contract. No page reload, so splash + intro do not re-fire.
+            showRestartOnboardingScreen(restartFlow);
             return;
           }
         }
@@ -1060,32 +1213,17 @@ async function goToStep(start) {
         // keep running even if the owner navigates back and forth between
         // registration and payment. It's re-kicked-off (below) only if the
         // owner re-swipes (invalidateFrom clears it).
-        state.tasteProfilePromise = generateTasteProfile({
-          bizName: state.bizName,
-          bizDesc: state.bizDesc,
-          atmospheres: state.selectedAtmos,
-          musicalEmphases: state.musicalEmphases,
-          round2Emphases: state.round2Emphases,
-          round1Directions: round1DirectionsSeen(mergedPicked, state.dislikedDirections),
-          round2Directions: state.round2Directions,   // null unless Round 2 fired
-          likedDirections: mergedPicked,
-          dislikedDirections: state.dislikedDirections,
-          // Deduped list of the specific genres the owner super-liked tracks
-          // from (across R1 + R2). Sharper positive signal than "the whole
-          // direction was liked".
-          superLikedGenres: [...new Set(state.superLikedGenres.values())],
-          // Single carry-through prefs. Prefer the liked directions; fall back
-          // to the full R1 set (R1 stamps these uniformly, so both agree in
-          // the common case).
-          instrumentalnessPreference: carryPref([mergedPicked, state.directions], 'instrumentalness_preference'),
-          popularityPreference: carryPref([mergedPicked, state.directions], 'popularity_preference'),
-          onboardingSessionId: state.onboardingSessionId,
-        }).catch((e) => {
+        state.tasteProfilePromise = tasteProfileCall().catch((e) => {
           // Surface as a structured error the taste-profile bar can retry.
           return { error: 'matcher_error', reasoning_en: e?.message || String(e) };
         });
 
         markReached(6);
+        // Bench mode stops here: the profile goes to the dashboard.
+        if (state.bench) {
+          await benchFinish(signal);
+          return;
+        }
       }
 
       // ---- v7 checkout: registration → payment → taste-profile bar ----
@@ -1163,21 +1301,7 @@ async function goToStep(start) {
             ([genre, t]) => ({ genre, like: t.like || 0, dislike: t.dislike || 0 }),
           ),
           // Retry path: rebuild the same call from current state.
-          retry: () => generateTasteProfile({
-            bizName: state.bizName,
-            bizDesc: state.bizDesc,
-            atmospheres: state.selectedAtmos,
-            musicalEmphases: state.musicalEmphases,
-            round2Emphases: state.round2Emphases,
-            round1Directions: round1DirectionsSeen(state.picked, state.dislikedDirections),
-            round2Directions: state.round2Directions,
-            likedDirections: state.picked,
-            dislikedDirections: state.dislikedDirections,
-            superLikedGenres: [...new Set(state.superLikedGenres.values())],
-            instrumentalnessPreference: carryPref([state.picked, state.directions], 'instrumentalness_preference'),
-            popularityPreference: carryPref([state.picked, state.directions], 'popularity_preference'),
-            onboardingSessionId: state.onboardingSessionId,
-          }),
+          retry: () => tasteProfileCall(),
         });
         return;
       }
@@ -1242,6 +1366,10 @@ function runIntro() {
   //               skip splash AND intro card, go straight to step 1.
   //               Bypasses the session check for the same reason.
   const params = new URLSearchParams(location.search);
+  if (params.has('bench')) {
+    startBench();
+    return;
+  }
   const skipSplash = params.has('intro') || params.has('start');
   const skipIntro = params.has('start');
 

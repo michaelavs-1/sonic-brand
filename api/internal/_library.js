@@ -55,16 +55,21 @@ export function option2View(rows, N) {
 // level falls in, the taste chat's weight (1 = normal) and whether it's a
 // requested genre (the owner super-liked it or asked for it: it sits in the
 // recipes it suits, and one of each day's playlists plays one of them).
+// both_sides (2026-11-02): the genre is approved in both tiers — possible
+// only in a two-sided profile (the two-deck onboarding), where it then shows
+// at two levels; always false for older profiles.
 export function approvedByLevel(profile) {
   const N = normLevels(profile?.energy_levels_total);
   const weights = profile?.genre_weights && typeof profile.genre_weights === 'object' ? profile.genre_weights : {};
   const requested = new Set((Array.isArray(profile?.requested_genres) ? profile.requested_genres : []).map((g) => String(g).toLowerCase()));
   const levels = Array.from({ length: N }, (_, i) => ({ level: i + 1, tier: tierOfLevel(i + 1, N), genres: [] }));
-  for (const a of Array.isArray(profile?.approved_genres) ? profile.approved_genres : []) {
-    const g = typeof a === 'string' ? a : a?.genre;
-    if (!g) continue;
-    const L = Math.min(N, Math.max(1, Math.round(Number(a?.energy_level) || 1)));
-    levels[L - 1].genres.push({ genre: g, weight: Number(weights[g]) || 1, requested: requested.has(g.toLowerCase()) });
+  const list = (Array.isArray(profile?.approved_genres) ? profile.approved_genres : [])
+    .map((a) => ({ g: typeof a === 'string' ? a : a?.genre, L: Math.min(N, Math.max(1, Math.round(Number(a?.energy_level) || 1))) }))
+    .filter((x) => x.g);
+  const tiers = new Map();
+  for (const { g, L } of list) tiers.set(g, new Set([...(tiers.get(g) || []), tierOfLevel(L, N)]));
+  for (const { g, L } of list) {
+    levels[L - 1].genres.push({ genre: g, weight: Number(weights[g]) || 1, requested: requested.has(g.toLowerCase()), both_sides: tiers.get(g).size === 2 });
   }
   return levels;
 }

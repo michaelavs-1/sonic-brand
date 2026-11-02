@@ -273,15 +273,19 @@ function canonicalize(genreString) {
 }
 
 // Approved genres read the way the Option-2 builder reads them: canonical
-// name, level rounded + clamped to 1..N. Unknown genres dropped.
+// name, level rounded + clamped to 1..N. Unknown genres dropped. A genre may
+// sit at two levels (a both-ways genre approved on both sides in the two-deck
+// taste profile, 2026-11-02); a repeat at the same level is dropped.
 export function approvedByLevel(approvedGenres, n) {
   const out = [];
   const seen = new Set();
   for (const a of Array.isArray(approvedGenres) ? approvedGenres : []) {
     const genre = canonicalize(typeof a === 'string' ? a : a?.genre);
-    if (!genre || seen.has(genre)) continue;
-    seen.add(genre);
-    out.push({ genre, energy_level: Math.min(n, Math.max(1, Math.round(Number(a?.energy_level) || 1))) });
+    if (!genre) continue;
+    const energy_level = Math.min(n, Math.max(1, Math.round(Number(a?.energy_level) || 1)));
+    if (seen.has(`${genre}|${energy_level}`)) continue;
+    seen.add(`${genre}|${energy_level}`);
+    out.push({ genre, energy_level });
   }
   return out;
 }
@@ -349,7 +353,11 @@ export function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphase
 export function normalizeLevelDirections(parsed, approvedGenres, n, requestedGenres = []) {
   if (!parsed || typeof parsed !== 'object') return null;
   const approved = approvedByLevel(approvedGenres, n);
-  const levelOf = new Map(approved.map((a) => [a.genre, a.energy_level]));
+  const levelsOf = new Map();
+  for (const a of approved) {
+    if (!levelsOf.has(a.genre)) levelsOf.set(a.genre, new Set());
+    levelsOf.get(a.genre).add(a.energy_level);
+  }
   const requestedSet = new Set((Array.isArray(requestedGenres) ? requestedGenres : []).map((g) => String(g).toLowerCase()));
 
   const directions = [];
@@ -363,7 +371,7 @@ export function normalizeLevelDirections(parsed, approvedGenres, n, requestedGen
     const genres = [];
     for (const g of Array.isArray(d.genres) ? d.genres : []) {
       const genre = canonicalize(g);
-      if (!genre || levelOf.get(genre) !== L) { dropped.push(`${g} → L${L}`); continue; }
+      if (!genre || !levelsOf.get(genre)?.has(L)) { dropped.push(`${g} → L${L}`); continue; }
       if (!genres.includes(genre)) genres.push(genre);
     }
     if (!genres.length) continue;

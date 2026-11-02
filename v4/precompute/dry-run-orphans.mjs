@@ -35,6 +35,7 @@
 //   node v4/precompute/dry-run-orphans.mjs
 //   node v4/precompute/dry-run-orphans.mjs --include-errors
 //   node v4/precompute/dry-run-orphans.mjs --include-not-found
+//   node v4/precompute/dry-run-orphans.mjs --include-errors --errors-since=2026-11-01
 //   node v4/precompute/dry-run-orphans.mjs --exclude-genres="samba-choro,italian funk"
 
 import fs from 'node:fs';
@@ -74,6 +75,20 @@ const INCLUDE_ERRORS = process.argv.includes('--include-errors');
 // --include-not-found: same for status='not_found'. Pair with
 // `batch.mjs --retry-not-found`.
 const INCLUDE_NOT_FOUND = process.argv.includes('--include-not-found');
+// --errors-since=<date or ISO time>: with --include-errors, re-queue only the
+// errors recorded at or after that time (track_analyses.analyzed_at). Use it to
+// retry just the failures of a run you made, not every error in the DB, most
+// of which already went through retry runs (2026-11-01).
+const ERRORS_SINCE_ARG = process.argv.find((a) => a.startsWith('--errors-since='));
+const ERRORS_SINCE = ERRORS_SINCE_ARG ? Date.parse(ERRORS_SINCE_ARG.slice('--errors-since='.length)) : null;
+if (ERRORS_SINCE_ARG && !Number.isFinite(ERRORS_SINCE)) {
+    console.error(`Can't read the date in ${ERRORS_SINCE_ARG} (use e.g. --errors-since=2026-11-01).`);
+    process.exit(1);
+}
+if (ERRORS_SINCE_ARG && !INCLUDE_ERRORS) {
+    console.error('--errors-since only works together with --include-errors.');
+    process.exit(1);
+}
 const REQUEUE_STATUSES = new Set([
     ...(INCLUDE_ERRORS ? ['error'] : []),
     ...(INCLUDE_NOT_FOUND ? ['not_found'] : []),
@@ -150,6 +165,7 @@ async function main() {
     console.log('  orphan = present in playlist_tracks, MISSING from track_analyses');
     if (INCLUDE_ERRORS) console.log('  (--include-errors: also treating status=error rows as orphans)');
     if (INCLUDE_NOT_FOUND) console.log('  (--include-not-found: also treating status=not_found rows as orphans)');
+    if (ERRORS_SINCE != null) console.log(`  (--errors-since: only errors recorded since ${new Date(ERRORS_SINCE).toISOString()})`);
     if (EXCLUDE_GENRES.size) console.log(`  (--exclude-genres: dropping orphans tagged to any of: ${[...EXCLUDE_GENRES].join(', ')})`);
     if (INCLUDE_GENRES.size) console.log(`  (--include-genres: keeping only orphans tagged to any of: ${[...INCLUDE_GENRES].join(', ')})`);
     console.log('');
@@ -164,8 +180,10 @@ async function main() {
     //    those tracks reappear as orphans and get queued for a fresh RapidAPI
     //    attempt.
     console.log('Fetching track_analyses...');
-    const taRows = await fetchAllPaginated('track_analyses', { select: 'spotify_id,status' }, 'spotify_id');
-    const consideredTouched = taRows.filter((r) => !REQUEUE_STATUSES.has(r.status));
+    const taRows = await fetchAllPaginated('track_analyses', { select: ERRORS_SINCE != null ? 'spotify_id,status,analyzed_at' : 'spotify_id,status' }, 'spotify_id');
+    const requeue = (r) => REQUEUE_STATUSES.has(r.status)
+        && !(r.status === 'error' && ERRORS_SINCE != null && !(Date.parse(r.analyzed_at) >= ERRORS_SINCE));
+    const consideredTouched = taRows.filter((r) => !requeue(r));
     const taSet = new Set(consideredTouched.map((r) => r.spotify_id));
     const requeuedCount = taRows.length - consideredTouched.length;
     console.log(`  track_analyses rows: ${taRows.length}${REQUEUE_STATUSES.size ? ` (${requeuedCount} status=${[...REQUEUE_STATUSES].join('/')} re-queued)` : ''}`);

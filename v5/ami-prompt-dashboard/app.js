@@ -46,22 +46,33 @@
 // Energy test playlists (added 2026-09-30) — under an Option 1 result, each
 // direction gets a "50 random tracks" button and an energy-range modal that
 // build real test playlists on Rubin's Spotify account — see test-playlists.js.
+//
+// Two decks (Ami, 2026-11-02) — steps 1–3 now test the split onboarding before
+// production gets it: step 1 builds an energetic deck and a calm deck of 6
+// (v7/generation/deck-directions.js, one call each, in parallel), step 2 marks
+// likes per deck, step 3 runs the two-sided taste profile
+// (v7/generation/taste-profile-decks.js), where a both-ways genre may be
+// approved twice. Production's onboarding still runs the 8-probe prompt.
 
+import { normalizeVenuePhrase } from '/v7/generation/musical-directions.js?v=02112026a';
 import {
-  EDITABLE_PROMPT_SECTION,
-  assembleSystemPrompt,
-  normalizeVenuePhrase,
-} from '/v7/generation/musical-directions.js?v=21102026b';
+  DECK_EDITABLE_PROMPT_SECTION,
+  assembleDeckSystemPrompt,
+  buildDeckUserMessage,
+  normalizeDeckDirections,
+} from '/v7/generation/deck-directions.js?v=02112026a';
 import {
-  EDITABLE_PROMPT_SECTION as TASTE_EDITABLE_PROMPT_SECTION,
-  assembleSystemPrompt as assembleTasteSystemPrompt,
-  buildUserMessage as buildTasteUserMessage,
-  normalizeTasteProfile,
-} from '/v7/generation/taste-profile.js?v=21102026a';
+  DECK_TASTE_EDITABLE_PROMPT_SECTION,
+  assembleDeckTasteSystemPrompt,
+  buildDeckTasteUserMessage,
+  normalizeDeckTasteProfile,
+  calmTop,
+} from '/v7/generation/taste-profile-decks.js?v=02112026a';
+import { DECK_WINDOWS } from '/shared/genre-sides.js?v=02112026a';
 import { callModel, parseJSONFromText, PROVIDER } from '/v7/generation/ai-provider.js?v=24102026a';
-import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=21102026a';
+import { generateForOption, formatOption1, formatOption2, EXPLANATION_HE, DEFAULT_EDITABLE } from './playlist-directions.js?v=02112026a';
 import { renderTestPlaylists } from './test-playlists.js?v=24102026a';
-import { mountTasteChatTab, onTasteTabShown } from './taste-chat-tab.js?v=21102026l';
+import { mountTasteChatTab, onTasteTabShown } from './taste-chat-tab.js?v=02112026a';
 import { mountEventChatTab } from './event-chat-tab.js?v=21102026c';
 
 // Match v6 production. Gemini 3.6-flash's hard output-token cap is 65536;
@@ -142,8 +153,8 @@ const els = {
   testPlaylistsHost:     $('testPlaylistsHost'),
 };
 
-// Last successful step-1 run: the directions (ranks renumbered 1..n, as
-// displayed) plus the business inputs that produced them. The taste profile
+// Last successful step-1 run: both decks' directions (energetic ranks 1–6,
+// calm 7–12, each tagged with `deck`) plus the business inputs that produced them. The taste profile
 // is built from this snapshot, so editing the inputs afterwards can't pair
 // new inputs with directions generated from old ones.
 let r1Run = null;
@@ -165,8 +176,18 @@ const playlistState = {
 };
 
 // Pre-fill the editors with the current defaults.
-els.promptEditor.value      = EDITABLE_PROMPT_SECTION;
-els.tastePromptEditor.value = TASTE_EDITABLE_PROMPT_SECTION;
+els.promptEditor.value      = DECK_EDITABLE_PROMPT_SECTION;
+els.tastePromptEditor.value = DECK_TASTE_EDITABLE_PROMPT_SECTION;
+
+// The decks in the order the owner sees them.
+const DECK_ORDER = ['energetic', 'calm'];
+const DECK_TITLES = {
+  energetic: `כיוונים אנרגטיים (ראשונים) — שירים באנרגיה ${DECK_WINDOWS.energetic.join('–')}`,
+  calm: `כיוונים רגועים — שירים באנרגיה ${DECK_WINDOWS.calm.join('–')}`,
+};
+const DECK_SHORT = { energetic: 'אנרגטיים', calm: 'רגועים' };
+// Round 2 opens for a deck with fewer likes than this (agreed 2026-11-02).
+const ROUND2_MIN_LIKES = 2;
 els.playlistEditors.option1.value = DEFAULT_EDITABLE.option1;
 els.playlistEditors.option2.value = DEFAULT_EDITABLE.option2;
 
@@ -280,33 +301,6 @@ function setStatusOn(el, text, kind) {
   el.className = 'status-line' + (kind ? ' ' + kind : '');
 }
 
-function buildUserMessage({ bizName, bizDesc, atmospheres, musicalEmphases }) {
-  const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
-  const atmLine  = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
-  let msg = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
-  if (typeof musicalEmphases === 'string' && musicalEmphases.trim().length) {
-    msg += `\nMusical emphases: ${musicalEmphases.trim()}`;
-  }
-  return msg;
-}
-
-// New schema is a flat `genres` list; older responses may still return
-// anchor + secondaries — fold both into one list if that happens.
-function directionGenres(d) {
-  return Array.isArray(d.genres) && d.genres.length
-    ? d.genres
-    : [d.anchor_genre, ...(Array.isArray(d.secondary_genres) ? d.secondary_genres : [])].filter(Boolean);
-}
-
-// Sort by the model's rank, then renumber 1..n so the ranks shown here are
-// the same ranks the taste-profile prompt receives in LIKED / DISLIKED.
-function prepareDirections(raw) {
-  return (Array.isArray(raw) ? raw : [])
-    .filter((d) => d && typeof d === 'object')
-    .sort((a, b) => (Number(a.rank) || 999) - (Number(b.rank) || 999))
-    .map((d, idx) => ({ ...d, rank: idx + 1, genres: directionGenres(d) }));
-}
-
 // Format one direction as a text block. Same format is what the copy button
 // puts on the clipboard. v7 directions carry no BPM, so the second line shows
 // the two preferences the taste profile carries through instead.
@@ -325,6 +319,16 @@ function formatDirection(d) {
 function formatDirections(directions) {
   if (!Array.isArray(directions) || !directions.length) return '(no directions returned)';
   return directions.map(formatDirection).join('\n\n');
+}
+
+// One deck's section of the step-1 result: its directions, the genres the
+// code dropped for being on the wrong side, or the deck's error.
+function formatDeck(r) {
+  const head = `===== ${DECK_TITLES[r.deck]} =====`;
+  if (r.error) return `${head}\n${r.error}${r.raw ? `\n\n${r.raw}` : ''}`;
+  const lines = [head, formatDirections(r.directions)];
+  if (r.dropped.length) lines.push(`\nDROPPED — not on this deck's side (${r.dropped.length}): ${r.dropped.join(', ')}`);
+  return lines.join('\n');
 }
 
 function formatError(parsed) {
@@ -359,56 +363,62 @@ async function onGenerate() {
 
   try {
     // normalizeForProdAssembly strips leftover Places sentinels and renames
-    // renamed Processing-Rules / Energy heading variants so prod's strict
-    // anchor-based Places injection still fires. Ami's textarea is not
-    // modified; only the version submitted to Gemini is normalized.
-    const system      = assembleSystemPrompt(normalizeForProdAssembly(edited.trimEnd()));
-    const userMessage = buildUserMessage({ bizName, bizDesc, atmospheres: atmos, musicalEmphases });
+    // renamed Processing-Rules heading variants so prod's strict anchor-based
+    // Places injection still fires. Ami's textarea is not modified; only the
+    // version submitted to Gemini is normalized.
+    const system = assembleDeckSystemPrompt(normalizeForProdAssembly(edited.trimEnd()));
+    const inputs = { bizName, bizDesc, atmospheres: atmos, musicalEmphases };
 
-    // No caching: Ami's edits change the prompt every call, so Anthropic
-    // caching would just add write premium with no hit. No-op on Gemini.
-    const { text, usage, elapsed } = await callModel({
-      system, userMessage, maxTokens: MAX_TOKENS, cache: false, label: 'ami',
-    });
+    // One call per deck, in parallel (they don't depend on each other).
+    // No caching: Ami's edits change the prompt every call.
+    const runDeck = async (deck) => {
+      const { text, usage, elapsed } = await callModel({
+        system, userMessage: buildDeckUserMessage({ deck, ...inputs }),
+        maxTokens: MAX_TOKENS, cache: false, label: 'ami-decks',
+      });
+      let parsed;
+      try {
+        parsed = parseJSONFromText(text);
+      } catch (e) {
+        return { deck, usage, elapsed, raw: text, error: `התגובה לא הייתה JSON תקין: ${e.message}` };
+      }
+      if (parsed?.error) return { deck, usage, elapsed, raw: formatError(parsed), error: `המודל החזיר שגיאה: ${parsed.error}` };
+      const norm = normalizeDeckDirections(parsed, deck);
+      if (!norm?.directions.length) return { deck, usage, elapsed, raw: text, error: 'לא חזרו כיוונים תקינים' };
+      return { deck, usage, elapsed, ...norm, phrase: normalizeVenuePhrase(parsed.venue_phrase_he) };
+    };
+    const results = await Promise.all(DECK_ORDER.map((deck) =>
+      runDeck(deck).catch((err) => ({ deck, error: `שגיאה: ${err.message || 'לא ידוע'}` }))));
 
-    let parsed;
-    try {
-      parsed = parseJSONFromText(text);
-    } catch (e) {
-      // Show raw text if JSON parse fails so Ami can see what came back.
-      renderResult(text, usage, elapsed);
-      setStatus(`התגובה לא הייתה JSON תקין: ${e.message}`, 'err');
+    // The phrase the onboarding's "הכל מוכן!" screen shows (2026-10-21) — from
+    // the energetic deck, the one the owner sees first.
+    const phrase = results.find((r) => r.phrase)?.phrase;
+    els.outputText.textContent = [
+      `משפט העסק (מסך "הכל מוכן!"): ${phrase || '(לא הוחזר)'}`,
+      ...results.map(formatDeck),
+    ].join('\n\n');
+    els.resultsCard.style.display = '';
+    els.usageLine.textContent = results
+      .map((r) => `${DECK_SHORT[r.deck]}: ${r.elapsed ? formatUsage(r.usage, r.elapsed) : '—'}`)
+      .join('   |   ');
+    els.resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    const failed = results.filter((r) => r.error);
+    if (failed.length) {
+      setStatus(`נכשל: ${failed.map((r) => `הכיוונים ה${DECK_SHORT[r.deck]}`).join(' + ')} — אפשר להריץ שוב`, 'err');
       return;
     }
-
-    if (parsed?.error) {
-      renderResult(formatError(parsed), usage, elapsed);
-      setStatus(`המודל החזיר שגיאה: ${parsed.error}`, 'err');
-      return;
-    }
-
-    const directions = prepareDirections(parsed.directions);
-    // The phrase the onboarding's "הכל מוכן!" screen shows (2026-10-21).
-    const phrase = normalizeVenuePhrase(parsed.venue_phrase_he);
-    renderResult(`משפט העסק (מסך "הכל מוכן!"): ${phrase || '(לא הוחזר)'}\n\n${formatDirections(directions)}`, usage, elapsed);
-    setStatus(`הוחזרו ${directions.length} כיוונים בזמן ${(elapsed / 1000).toFixed(1)} שניות`, 'ok');
-    if (directions.length) {
-      r1Run = { directions, inputs: { bizName, bizDesc, atmospheres: atmos, musicalEmphases } };
-      renderSwipeSimulation();
-    }
+    const directions = results.flatMap((r) => r.directions);
+    const slowest = Math.max(...results.map((r) => r.elapsed || 0));
+    setStatus(`הוחזרו ${directions.length} כיוונים (${results.map((r) => r.directions.length).join(' + ')}) בזמן ${(slowest / 1000).toFixed(1)} שניות`, 'ok');
+    r1Run = { directions, inputs };
+    renderSwipeSimulation();
   } catch (err) {
     setStatus(`שגיאה: ${err.message || 'לא ידוע'}`, 'err');
   } finally {
     els.generateBtn.disabled  = false;
     els.generateBtn.innerHTML = originalBtnHtml;
   }
-}
-
-function renderResult(text, usage, elapsed) {
-  els.outputText.textContent = text;
-  els.resultsCard.style.display = '';
-  els.usageLine.textContent = formatUsage(usage, elapsed);
-  els.resultsCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function formatUsage(usage, elapsed) {
@@ -435,21 +445,44 @@ function renderSwipeSimulation() {
   els.instPref.value = carriedPref(r1Run.directions, 'instrumentalness_preference');
   els.popPref.value  = carriedPref(r1Run.directions, 'popularity_preference');
 
-  els.swipeList.replaceChildren(...r1Run.directions.map(buildSwipeRow));
+  const parts = [];
+  for (const deck of DECK_ORDER) {
+    const title = document.createElement('div');
+    title.className = 'swipe-deck-title';
+    title.textContent = DECK_TITLES[deck];
+    const note = document.createElement('div');
+    note.className = 'swipe-deck-note';
+    note.dataset.deck = deck;
+    parts.push(title, note, ...r1Run.directions.filter((d) => d.deck === deck).map(buildSwipeRow));
+  }
+  els.swipeList.replaceChildren(...parts);
   updateRound2Field();
   els.swipeCard.style.display = '';
 }
 
-// Onboarding only opens Round 2 (and its emphases textarea) when Round 1
-// ended with fewer than 3 liked directions — `picked.length < 3` in
-// v7/app.js. Outside that, the field is disabled and its text isn't sent;
-// it's kept in the box so it comes back if Ami un-likes a direction.
+// Round 2 per deck (agreed 2026-11-02): a deck with fewer than
+// ROUND2_MIN_LIKES liked directions gets extra cards of its own energy. The
+// extra cards aren't simulated here; the Round 2 emphases textarea is open
+// while any deck would get them. Outside that, the field is disabled and its
+// text isn't sent; it's kept in the box so it comes back if Ami un-likes a
+// direction.
+function round2Decks() {
+  return DECK_ORDER.filter((deck) =>
+    r1Run.directions.filter((d) => d.deck === deck && decisions.get(d.rank) === 'like').length < ROUND2_MIN_LIKES);
+}
+
 function round2Open() {
-  return r1Run.directions.filter((d) => decisions.get(d.rank) === 'like').length < 3;
+  return round2Decks().length > 0;
 }
 
 function updateRound2Field() {
-  els.round2Emphases.disabled = !round2Open();
+  const open = round2Decks();
+  els.round2Emphases.disabled = !open.length;
+  for (const note of els.swipeList.querySelectorAll('.swipe-deck-note')) {
+    note.textContent = open.includes(note.dataset.deck)
+      ? `פחות מ-${ROUND2_MIN_LIKES} כיוונים אהובים — בפרודקשן יוצגו כאן בסבב 2 עוד 4 כיוונים באותה אנרגיה (לא מדומה כאן).`
+      : '';
+  }
 }
 
 function carriedPref(directions, field) {
@@ -550,16 +583,22 @@ async function onGenerateTasteProfile() {
   const { directions, inputs } = r1Run;
   const likedDirections    = directions.filter((d) => decisions.get(d.rank) === 'like');
   const dislikedDirections = directions.filter((d) => decisions.get(d.rank) !== 'like');
-  const superLikedGenres   = [...new Set(directions.flatMap((d) => [...(superLiked.get(d.rank) || [])]))];
+  const superLikedOn = (deck) => [...new Set(directions.filter((d) => d.deck === deck)
+    .flatMap((d) => [...(superLiked.get(d.rank) || [])]))];
+  const superLikedByDeck = { energetic: superLikedOn('energetic'), calm: superLikedOn('calm') };
+  // A super-like also marks its direction liked, so this covers both.
+  const decksLiked = {
+    energetic: likedDirections.some((d) => d.deck === 'energetic'),
+    calm: likedDirections.some((d) => d.deck === 'calm'),
+  };
 
-  const userMessage = buildTasteUserMessage({
+  const userMessage = buildDeckTasteUserMessage({
     ...inputs,
     round2Emphases:             round2Open() ? els.round2Emphases.value.trim() : '',
-    round1Directions:           directions,
-    round2Directions:           [],
+    directions,
     likedDirections,
     dislikedDirections,
-    superLikedGenres,
+    superLikedByDeck,
     instrumentalnessPreference: els.instPref.value,
     popularityPreference:       els.popPref.value,
   });
@@ -571,7 +610,7 @@ async function onGenerateTasteProfile() {
 
   try {
     const { text, usage, elapsed } = await callModel({
-      system: assembleTasteSystemPrompt(edited.trimEnd()),
+      system: assembleDeckTasteSystemPrompt(edited.trimEnd()),
       userMessage,
       maxTokens: MAX_TOKENS,
       cache: false,
@@ -593,14 +632,15 @@ async function onGenerateTasteProfile() {
       return;
     }
 
-    const profile = normalizeTasteProfile(parsed, { superLikedGenres });
+    const profile = normalizeDeckTasteProfile(parsed, { superLikedByDeck, decksLiked });
     if (!profile) {
       renderTasteResult(text, usage, elapsed);
       setTasteStatus('חסר energy_levels_total תקין בתגובה — מוצגת התגובה הגולמית', 'err');
       return;
     }
 
-    renderTasteResult(formatTasteProfile(profile, droppedGenres(parsed, profile)), usage, elapsed);
+    const sides = decksLiked.energetic && decksLiked.calm;
+    renderTasteResult(formatTasteProfile(profile, droppedGenres(parsed, profile), sides), usage, elapsed);
     setTasteStatus(
       `${profile.approved_genres.length} approved · ${profile.conditional_genres.length} conditional · ` +
       `${profile.excluded_genres.length} excluded — בזמן ${(elapsed / 1000).toFixed(1)} שניות`,
@@ -632,35 +672,54 @@ function droppedGenres(parsed, profile) {
   return [...new Set(listed.filter((g) => !kept.has(g.trim().toLowerCase())))];
 }
 
-function formatTasteProfile(profile, dropped) {
+// sides = both decks had likes: the scale's lower half is the calm side, the
+// upper half the energetic side, and a both-ways genre may be listed twice.
+function formatTasteProfile(profile, dropped, sides) {
   const N = profile.energy_levels_total;
+  const top = calmTop(N);
   const levels = [];
   for (let lvl = N; lvl >= 1; lvl--) levels.push(lvl);
+  const levelsOf = (list, g) => list.filter((e) => e.genre === g).map((e) => e.energy_level);
+  // Genres with an entry in each half (↕).
+  const twice = new Set([...profile.approved_genres, ...profile.conditional_genres].map((e) => e.genre).filter((g) => {
+    const ls = [...levelsOf(profile.approved_genres, g), ...levelsOf(profile.conditional_genres, g)];
+    return ls.some((l) => l <= top) && ls.some((l) => l > top);
+  }));
+  const mark = (g) => (sides && twice.has(g) ? `${g} ↕` : g);
+  const sideHead = (lvl) => {
+    if (!sides) return [];
+    if (lvl === N) return [`  ENERGETIC SIDE — levels ${top + 1}–${N}`];
+    if (lvl === top) return [`  CALM SIDE — levels 1–${top}`];
+    return [];
+  };
 
   const lines = [
     `Energy levels: ${N}   (level ${N} = highest energy for this owner, 1 = lowest)`,
+    sides
+      ? `Sides: calm = levels 1–${top}, energetic = levels ${top + 1}–${N}   (↕ = listed on both sides)`
+      : 'Sides: OFF — one deck had no likes, so the genres are placed across the whole scale, once each',
     `Instrumental: ${profile.instrumentalness_preference} · Popularity: ${profile.popularity_preference}`,
     '',
-    `APPROVED (${profile.approved_genres.length})`,
+    `APPROVED (${profile.approved_genres.length} entries · ${new Set(profile.approved_genres.map((e) => e.genre)).size} genres)`,
   ];
   for (const lvl of levels) {
-    const genres = profile.approved_genres.filter((e) => e.energy_level === lvl).map((e) => e.genre);
-    if (genres.length) lines.push(`  Level ${lvl}: ${genres.join(', ')}`);
+    lines.push(...sideHead(lvl));
+    const genres = profile.approved_genres.filter((e) => e.energy_level === lvl).map((e) => mark(e.genre));
+    if (genres.length) lines.push(`    Level ${lvl}: ${genres.join(', ')}`);
   }
 
   // Requested genres (2026-10-05): super-liked + named in the emphases. Always
-  // approved; Option 1 puts each one in every playlist of its energy tier.
-  const levelOf = new Map(profile.approved_genres.map((e) => [e.genre, e.energy_level]));
+  // approved; at least one of each day's playlists plays each of them.
   const requested = profile.requested_genres || [];
   lines.push('', `נתבקשו מפורשות ע"י סופר לייק או בדגשים המוזיקליים של הלקוח (${requested.length})`,
-    `  ${requested.map((g) => `${g} (Level ${levelOf.get(g) ?? '?'})`).join(', ') || '—'}`);
+    `  ${requested.map((g) => `${g} (Level ${levelsOf(profile.approved_genres, g).join('/') || '?'})`).join(', ') || '—'}`);
 
   lines.push('', `CONDITIONAL (${profile.conditional_genres.length})`);
   for (const lvl of levels) {
     const entries = profile.conditional_genres.filter((e) => e.energy_level === lvl);
     if (!entries.length) continue;
-    lines.push(`  Level ${lvl}:`);
-    for (const e of entries) lines.push(`    ${e.genre}${e.note_en ? ' — ' + e.note_en : ''}`);
+    lines.push(`  Level ${lvl}${sides ? (lvl > top ? ' (energetic)' : ' (calm)') : ''}:`);
+    for (const e of entries) lines.push(`    ${mark(e.genre)}${e.note_en ? ' — ' + e.note_en : ''}`);
   }
 
   lines.push('', `EXCLUDED (${profile.excluded_genres.length})`, `  ${profile.excluded_genres.join(', ') || '—'}`);

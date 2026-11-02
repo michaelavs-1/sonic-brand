@@ -46,7 +46,185 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-10-27 (latest) — 3 new genres; two of them join the Israeli exception
+## 2026-11-02 (latest) — Re-onboarding an existing owner: "known taste" and turned-down genres as optional inputs
+
+**Applies to:** Round 1 two-deck (`deck-directions.js` `DECK_INPUTS_SECTION`), Round 2 per deck (`refined-directions.js` `REFINED_DECK_INPUTS_SECTION`), two-sided taste profile (`taste-profile-decks.js` `INPUTS_SECTION`), and their user messages.
+
+Ami's dashboard can re-run the two-deck onboarding for a real business ("אונבורדינג מחדש", Roni 2026-11-02). It passes what we already know about the owner: their musical portrait (written from their chat) and the genres they turned down. A real onboarding never sends these, so its prompts and messages are unchanged in effect. Each of the three inputs sections gained this bullet:
+
+```
+- Optionally: **Known taste** and **turned-down genres** — only when Rubin re-runs the onboarding for an existing owner: a short portrait of their taste, written from their conversations with us, and the genres they turned down. Treat the portrait like the musical emphases (just below them in priority), and treat turned-down genres as exclusions.
+```
+
+The user message, when given, adds after the emphases (or Round 2 text):
+
+```
+Known taste (Rubin's portrait of this owner, from their conversations with us): <portrait>
+Genres the owner turned down (exclude them): <genre>, <genre>
+```
+
+Code: `generateDeckTasteProfile` also drops a turned-down genre from the profile unless it was super-liked in this run. The three generators (and `generateEnergyDirections`) take a `label`, so these runs log as `ami-reonboard`, `ami-reonboard-refined`, `ami-reonboard-taste`, `ami-reonboard-directions`.
+
+---
+
+## 2026-11-02 — Taste chat: the calm side and the energetic side
+
+**Applies to:** taste chat (`v7/generation/taste-chat-prompt.js`: new `SIDES` section in the editable part, new `GENRE_SIDES` block in the fixed part, two output-format notes, the per-turn context).
+
+Profiles from the two-deck onboarding have a calm side and an energetic side, and may approve a both-ways genre twice (entries below). The chat's code (`taste-ops.js`) used to keep one entry per genre, so the first change an owner confirmed would have deleted one side of every such genre. The code now keeps both sides (only for profiles with `business_taste_profiles.two_sided`, or a genre listed in both halves), and the prompt tells the model about them. Roni, 2026-11-02: one weight per genre, shared by both sides.
+
+New section `SIDES` (after "## What you can change"), in full:
+
+```
+## Calm side and energetic side (only when "## Taste profile" says this profile has sides)
+
+- Such a profile has a CALM side (the lower half of the scale) and an ENERGETIC side (the upper half), built from what the owner liked among calm samples and among energetic samples when they signed up. The calm side feeds the calm music (Option 1: the CALM tier and its playlists; Option 2: the calmer parts of the day), the energetic side the energetic music.
+- A genre can be on both sides (marked ↕, e.g. calm R&B and upbeat R&B): it is listed at two levels, and the two are different music. "Less R&B in the calm playlists" is not "less R&B".
+- Every genre has a side set by our music curator ("## Genre sides"): never put a calm-only genre on the energetic side or an energetic-only genre on the calm side — in add_genre, move_genre, set_requested and suggestions alike. A both-ways genre may be on either side, or both.
+- For a ↕ genre, say which side an op means with "tier": "high" (the energetic side) or "low" (the calm side):
+  - remove_genre with a tier takes it off that side only (the other side stays, and it isn't turned down); without a tier, off both sides and turned down.
+  - move_genre with a tier moves that side's entry, within its side.
+  - add_genre of a both-ways genre that's approved on one side, at a level of the other side, adds the other side.
+- One weight covers both sides of a genre (set_weight has no tier). For less of a ↕ genre on one side only, take it out of some recipes of that side (dir_remove), or off that side altogether (remove_genre with a tier).
+- When the owner names a ↕ genre without saying where ("פחות R&B"), look at "## What actually played" and today's playlists; if it's still unclear, ask one short question (in the calm music, the energetic music, or both?).
+```
+
+Fixed part: `## Genre sides (set by our music curator)` + Ami's list (`genreSidesList()`), after the Genre Universe. Output format: `remove_genre` — "(a ↕ genre: add "tier":"high" or "low" for one side only)"; `move_genre` — "(a ↕ genre: add "tier":"high" or "low" for the side it moves within)".
+
+Context (`formatTasteContext`), two-sided profiles only: a line "This profile has sides: calm = levels 1–h, energetic = levels h+1–N", `↕ both sides` in a genre's tag, and Option 2's levels labelled "(calm side)" / "(energetic side)". Older profiles see exactly what they saw before. `vetReply` keeps a suggestion of a calm-only / energetic-only genre on its side.
+
+---
+
+## 2026-11-02 — Option 1 recipes: a genre approved on both sides goes in both tiers
+
+**Applies to:** energy directions (`TIER_SPLIT_RULES_SECTION` in `v7/generation/energy-directions.js`).
+
+The two-sided taste profile (entry below) can approve a both-ways genre twice, once in each half of the owner's scale, so the Option 1 user message lists it in both tiers. The prompt said "Every approved genre lands in exactly one tier", which could make the model avoid using it in both. Changed (Roni, 2026-11-02):
+
+Was:
+```
+Every approved genre lands in exactly one tier based on its `energy_level`. Examples:
+```
+
+Now:
+```
+Each approved entry lands in one tier based on its `energy_level`. Examples:
+- N=4, midpoint 2: levels 3–4 are HIGH, levels 1–2 are LOW.
+- N=6, midpoint 3: levels 4–6 are HIGH, levels 1–3 are LOW.
+- N=2, midpoint 1: level 2 is HIGH, level 1 is LOW.
+
+**A genre approved on both sides.** Some genres have a calm side and an energetic side (e.g. `Rnb`), and the owner may like both: such a genre is listed in BOTH tiers, once with a HIGH level and once with a LOW level. Use it in both tiers: in HIGH directions it stands for its upbeat side, in LOW directions for its calm side — so pair it in each tier with genres whose same side sounds alike (calm `Rnb` with calm `Neo Soul`, upbeat `Rnb` with upbeat `Korean RnB`).
+```
+
+The normalizer already keeps such a genre in both tiers (`normalizeEnergyDirections`, same day). Level directions (Option 2) need no change: a genre at two levels simply appears in both levels' lists.
+
+---
+
+## 2026-11-02 — Two onboarding decks (energetic, then calm), Round 2 per deck, and a two-sided taste profile — NEW prompts
+
+**Applies to:** Round 1 (new two-deck variant, `v7/generation/deck-directions.js`) + Round 2 (new per-deck variant, `generateRefinedDeckDirections` in `v7/generation/refined-directions.js`) + taste profile (new two-sided variant, `v7/generation/taste-profile-decks.js`). The onboarding (`v7/app.js`) runs all three since 2026-11-02 (not deployed yet). Ami's prompt dashboard runs the decks and the taste profile (Round 2 isn't simulated there). The old 8-probe R1, the old R2 entry and `taste-profile.js`'s generator are no longer called by the onboarding.
+
+**Round 2, per-deck variant** — a deck the owner liked fewer than 2 cards of gets 4 more cards of the same energy, ranks 13–16 (energetic) / 17–20 (calm). One call per deck, in parallel, after one refinement question. It reuses the Round 2 Learning, Distinctness ("Round 1 required its 8 clusters" reads "its clusters"), Task Workflow, output format and error sections, plus the decks' `GENRE_SIDES_SECTION`. New intro and inputs (this deck's cards, decisions and super-likes, plus what the owner liked on the other deck as context only), and this section, in full:
+
+```
+## This Deck
+
+- **Only this deck's genres:** refining the ENERGETIC deck, use Energetic-only and Both-ways genres; refining the CALM deck, Calm-only and Both-ways genres (see Genre Energy Sides & Families). A genre from the other side is silently dropped downstream.
+- **Test this deck's side:** a Both-ways genre stands for its upbeat side on the energetic deck and its calm side on the calm deck. Cluster it with genres whose same side sounds alike, and include it only where that side fits the venue.
+- Every probe must satisfy these rules on top of the Task Workflow's list.
+```
+
+The user message ends: `Generate 4 refined diagnostic clusters for the ENERGETIC deck per the Round-2 Task Workflow.` (or CALM). Code: `normalizeDeckDirections` drops genres from the other side and keeps 4.
+
+**Live check of the onboarding's three calls (2026-11-02, Gemini direct, not stored):** "הגינה", a neighbourhood café (quiet mornings, livelier evenings), emphases "אוהבים ג׳אז וסול". Both decks in 23s. With 1 like on the energetic deck, its Round 2 gave 4 energetic-side cards (Ethio-Jazz / Afro Funk / Highlife, Swing Jazz / Afro Cuban Jazz, Anatolian Psychedelic Rock / Tishoumaren, Samba / Samba-Choro). Taste profile: N=4, Neo Soul and Jazz (Standards) requested, on the calm side.
+
+Ami's request (2026-11-02), agreed with Roni: the swipe deck splits into an ENERGETIC deck (first) and a CALM deck, 6 probes each. Energetic cards play songs at energy 60–80, calm cards at 30–50 (per-genre exception ranges for genres whose songs sit below 30 / above 80 — `shared/genre-sides.js`). Ami classified every genre as both ways / calm only / energetic only, in families (`shared/genre-sides.js`, rendered into both prompts by `genreSidesList()`); Jazz (Standards), Gypsy jazz, Argentine Tango and Acoustic Blues moved from "both" to calm-only because almost none of their songs reach 60–80. A both-ways genre goes on a deck only where that side fits the venue (Ami's Flamenco example), and may sit in the taste profile twice, once per side. Liked energetic-deck directions build the profile's energetic side (upper half of the scale), calm-deck likes the calm side, so Option 1's tiers follow the decks.
+
+**Round 1, two-deck variant** — one call per deck (the two are independent; the dashboard runs them in parallel). Ranks: energetic 1–6, calm 7–12. Reuses R1's `PROCESSING_RULES_SECTION`, `HOMOGENEITY_SECTION`, `ENERGY_PAIRING_SECTION`, `OUTPUT_LANGUAGE_SECTION`, `TITLE_RULES_SECTION`, `HEBREW_DESCRIPTION_SECTION`, `VENUE_PHRASE_SECTION` and the error contract (its "(produce 8 directions)" reads "(produce the deck)"). New sections, in full:
+
+```
+You design diagnostic taste probes for a public-facing-business playlist tool. The business owner swipes through two decks of probes: an ENERGETIC deck first, then a CALM deck. You build ONE deck per call — the user message says which — of 6 tightly-clustered "musical directions" from a fixed genre universe. Each direction is a small group of near-identical genres — same instrumentation family, same cultural register, same mood. The owner hears one representative song from each direction and likes or dislikes the whole cluster as one taste vector. On the energetic deck that song comes from the genres' energetic side (track energy 60–80 out of 100); on the calm deck from their calm side (energy 30–50). Downstream, the energetic deck shapes the owner's energetic daily playlists and the calm deck their calm ones; overlapping genres across two liked directions become a stronger signal, not a bug.
+```
+
+```
+## Deck Rules
+
+- **Only this deck's genres:** the ENERGETIC deck uses Energetic-only and Both-ways genres; the CALM deck uses Calm-only and Both-ways genres. A genre from the other side is silently dropped downstream.
+- **Test this deck's side:** a Both-ways genre on the energetic deck stands for its upbeat side, on the calm deck for its calm side. Cluster it with genres whose SAME side sounds alike (calm `Rnb` with calm `Neo Soul`; upbeat `Rnb` with upbeat `Korean RnB`).
+- **Both-ways genres by fit, never by default:** put a Both-ways genre on a deck only when that side of it suits this venue. It does not need to appear on both decks — a restaurant may suit upbeat `Flamenco` but not calm `Flamenco`, or the reverse.
+- **Spread across families:** the 6 probes of a deck come from as many different families as the venue allows. Two probes from the same family only when the venue strongly points there — and then they must still test clearly different taste vectors.
+- **Requested styles, per deck:** a style the owner explicitly asked for gets ONE direction on each deck whose side of it fits the venue — so a Both-ways style may be tested twice, once upbeat and once calm, but never twice on the same deck. This replaces the "only one direction" count in the Processing Rules; the rest of that rule stands.
+```
+
+```
+## Direction Distinctness
+
+The 6 clusters of a deck must represent distinctly different musical archetypes. Any two clusters should differ on at least two of: family, instrumentation family, cultural register, mood. If two of your clusters test the same taste vector you've wasted a probe slot — replace one of them with a new angle.
+
+**Overlapping genres across clusters are allowed.** If a genre legitimately sits at the intersection of two archetypes, it may appear in both. When the owner likes two clusters that share a genre, the overlap becomes a stronger genre-level taste signal downstream — a feature, not a duplicate.
+```
+
+```
+## Task Workflow
+
+1. **Filter Genre Universe:** Keep only this deck's genres (Deck Rules), then permanently eliminate irrelevant genres for this venue/brand based on exclusions and business fit — including Both-ways genres whose side for this deck doesn't suit the venue.
+2. **Build 6 Diagnostic Clusters:** Create 6 tightly-clustered directions from the surviving genres, spread across families, ensuring maximal diversity across the 6 probes. Only if this venue genuinely can't support 6 distinct probes on this side, return fewer (at least 3). Each direction must satisfy every rule above:
+   - Deck Rules (this deck's genres and side, families, requested styles per deck)
+   - Cluster Homogeneity & Broad Inter-Direction Diversity (single unified vibe per cluster; clusters as different from each other as the business allows)
+   - Direction Distinctness (6 different archetypes; overlapping genres between clusters are allowed)
+   - Critical Rules 0–0.3 (Electronic R&B isolation, Pure Pop isolation, DownTempo & LoFi independence, sound over geographic labels)
+   - Beat & Percussion Pairing
+   - Jazz Isolation Rule
+   - House & Techno Containment Rule
+   - Japanese Folk Restriction (from Processing Rules)
+   Each direction must include:
+   - **Genres list:** 3 to 6 genres from the pool that form a tight, near-identical cluster. Certain genres function well standalone or paired with one closely-related style (`Nu Metal`, `Indie Rock`, `Punk`, `Blues`, `Folk`, `Jazz House`) — these may form a 1–2 genre cluster if that best fits the venue's needs.
+3. **Rank Directions:** Rank directions by relevance to the business (best fit first).
+```
+
+Also new: `GENRE_SIDES_SECTION` (the three sides explained + Ami's list by side and family), `DECK_INPUTS_SECTION` (R1's inputs plus the deck), the output format (R1's, "6 directions (this deck only)"), and the user message's last line: `DECK: ENERGETIC — build the energetic deck: 6 probes from Energetic-only and Both-ways genres, each testing the upbeat side of its genres.` (calm: "…Calm-only and Both-ways genres, each testing the calm side…"). Code: `normalizeDeckDirections` drops genres from the wrong side (shown to Ami as DROPPED), ranks from the deck's start, puts house clusters last, keeps at most 6.
+
+**Taste profile, two-sided variant** — reuses `CORE_PHILOSOPHY_SECTION`, `HARD_BOUNDARY_RULES_SECTION`, the Processing Rules, `DEDUCTION_LOGIC_SECTION`, `GENRE_NAMING_DISCIPLINE` and the error contract from `taste-profile.js`. The intro, inputs (directions per deck, super-likes per deck) and output format (a both-ways genre may appear twice, one entry per half) are rewritten for the decks. New / changed sections, in full:
+
+```
+## Sides
+
+- **Each deck speaks for its own side.** A genre in a liked ENERGETIC-deck direction → its energetic side; in a liked CALM-deck direction → its calm side. A genre super-liked on a deck → `approved` on that deck's side.
+- **Dislikes are per side too.** Disliking the calm card of a Both-ways genre says nothing about its energetic side, and the reverse.
+- **Infer per side.** Tight-cluster neighbours and cross-pattern bridges (Deduction Logic) are inferred on a side from the likes on THAT side. Liking calm `Rnb` does not by itself approve upbeat `Rnb`.
+- **Calm-only and Energetic-only genres stay on their side**, wherever the evidence comes from.
+- **Requested genres** (emphases): approve on the side the owner's words point to ("calm jazz", "upbeat funk"); when unclear, on the side where they liked the closest genres; when still unclear, on the side that suits the venue — or on both, for a Both-ways genre that clearly fits both.
+- **One deck with no likes:** if the owner liked nothing on one deck (no liked direction, no super-like) and nothing in the emphases points to that side, don't build a one-sided scale. Ignore the sides: list every genre once and place all approved and conditional genres across the WHOLE scale relative to each other, as if there were no decks (Calm-only genres still below Energetic-only ones). This keeps both calm and energetic playlists possible.
+```
+
+Energy calibration — Step 1 as before (spread across both sides); new Step 2; Step 3's House and groove floors changed (Roni, 2026-11-02: Organic House out of the House rule, the groove rule on the energetic side only):
+
+```
+### Step 2: The two halves
+
+- **Calm half** = levels 1 to ⌊N/2⌋. **Energetic half** = the levels above it. (N=2: calm 1, energetic 2. N=3: calm 1, energetic 2–3. N=4: calm 1–2, energetic 3–4. N=5: calm 1–2, energetic 3–5. N=6: calm 1–3, energetic 4–6.)
+- Every calm-side entry sits in the calm half; every energetic-side entry in the energetic half. A Both-ways genre listed twice gets one level in each half.
+- Within each half, place entries relative to each other: the calmest at the bottom of the half, the most energetic at its top; same-energy entries share a level. The calmest calm-side genres sit at Level 1.
+- Exception: when one deck had no likes (see Sides), there are no halves — place everything across the whole scale relative to each other, Level 1 = calmest, Level N = most energetic.
+
+### Step 3: Energy Floor Restrictions (STRICT ENFORCEMENT)
+
+The **top two levels** are the highest and next-to-highest level (on a scale of 2 or 3 levels: only the top level). The **bottom two levels** are the lowest and next-to-lowest level (on a scale of 2 or 3 levels: only the lowest level).
+
+- **House Genres Floor:** Every House genre except `Organic House` (`Deep House`, `Tech House`, `Soulful House`, `Afro House`, `Jazz House`, `Hip House`) MUST sit in the top two levels — never lower. `Organic House` goes both ways: its energetic side sits in the energetic half like any energetic entry, and its calm side may sit in the calm half. Calm electronic genres are not House and may sit in the bottom two levels: `DownTempo`, `French DownTempo`, `Latin DownTempo`, `LoFi Beats`, `Trip Hop`, and `Electronic Chillout`.
+- **Electronic R&B Floor:** `Electronic R&B` is strictly a high-energy style and MUST sit in the top two levels.
+- **Rhythmic & Groove Genres Floor (energetic side only):** Rhythmic, groove-driven genres carry inherent bounce: the R&B family (`Rnb`, `Alternative R&B`, `French RnB`, `Japanese RnB`, `Korean RnB`, `Latin RnB`), `Neo Soul`, `Acid Jazz`, `AfroBeats`, and the Funk family (`Funk`, `Afro Funk`, `Italian Funk`, `French Funk`, `Greek Funk`, `Latin Funk`, `Arabic Funk`, `Brazilian Funk`). Their ENERGETIC-side entries ALWAYS sit above the owner's calmer approved genres (acoustic, ballads, jazz, bossa and the like) — mid-to-high on the scale, never in the bottom two levels while calmer APPROVED genres exist to fill those levels. Their CALM-side entries (the genre liked on the calm deck) are exempt: calm R&B is calm, and sits in the calm half with the other calm genres.
+  * **R&B Energy Level Exception:** On the energetic side, standard non-electronic R&B genres (`Rnb`, `Alternative R&B`, `French RnB`, `Japanese RnB`, `Korean RnB`, `Latin RnB`) **CAN** sit in the bottom two levels IF the top two levels are already heavily populated with distinctly higher-energy genres (e.g., House styles, `Nu Disco`, `Future Funk`, `Electronic R&B`, high-tempo Dance, etc.).
+- **When the floors give way:** Only when the owner has no calmer approved genre (e.g. a profile built only around house and dance music, or around R&B, funk and club music) does the calmest of these genres take Level 1. The lowest level must never be left without an approved genre.
+```
+
+Code: `normalizeDeckTasteProfile` — with likes on both decks, a calm-only genre left in the upper half moves to the top of the calm half (energetic-only: to the bottom of the energetic half), a both-ways genre keeps one entry per side, each super-like is approved on its deck's side, and the calm side shifts down so its calmest approved entry is at level 1. With one deck unliked: `taste-profile.js`'s rules (one entry per genre).
+
+**Live check (2026-11-02, direct Gemini, not stored):** "מרינה", a Mediterranean restaurant (quiet lunches, lively bar evenings), emphases "הרבה אר אנד בי, וגם פלמנקו". Both decks 6/6 in ~25s each, nothing dropped; R&B and Flamenco each got one direction per deck. With the first 3 of each deck liked and R&B super-liked on both: N=4, Rnb and Flamenco approved on both sides, the funk family on the energetic side, Rebetiko / Laiko / Fado / Bolero on the calm side.
+
+---
+
+## 2026-10-27 — 3 new genres; two of them join the Israeli exception
 
 **Applies to:** all v7 (source-of-truth edit; flows to every v7 prompt via imports). The R1 sub-rule edit applies to R1+R2.
 
@@ -2201,7 +2379,7 @@ Key sub-constants authored:
 > - **HIGH tier** = approved genres whose \`energy_level\` is in the UPPER half of the scale, i.e. \`energy_level > N/2\`.
 > - **LOW tier** = approved genres whose \`energy_level\` is in the LOWER half of the scale, i.e. \`energy_level <= N/2\`.
 >
-> Every approved genre lands in exactly one tier based on its \`energy_level\`. Examples:
+> Every approved genre lands in exactly one tier based on its `energy_level`. Examples:
 > - N=4, midpoint 2: levels 3–4 are HIGH, levels 1–2 are LOW.
 > - N=6, midpoint 3: levels 4–6 are HIGH, levels 1–3 are LOW.
 > - N=2, midpoint 1: level 2 is HIGH, level 1 is LOW.

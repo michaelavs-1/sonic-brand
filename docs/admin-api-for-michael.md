@@ -1,4 +1,4 @@
-# Rubin — Admin Dashboard: Build Brief + API Reference (v2, 2026-10-13; updated 2026-10-26)
+# Rubin — Admin Dashboard: Build Brief + API Reference (v2, 2026-10-13; updated 2026-11-02)
 
 > Give this document (or paste its contents) to your Claude / AI coding
 > assistant. It holds everything needed to build the admin dashboard: what
@@ -189,6 +189,10 @@ login. Below it, the tabs:
     chips and a badge: אהב (green) / לא אהב (grey) / לא סומן. Mark
     super-liked genres with a star.
     - Above the cards: "אהב X מתוך Y".
+    - **Cards with a `deck`** (the two-deck onboarding, 2026-11-02): two
+      groups, "מוזיקה אנרגטית" then "מוזיקה רגועה", each with its round 1,
+      then its round 2 after a divider, and its own "אהב X מתוך Y". Cards
+      without a `deck` (older accounts) are shown as one list, as above.
   - **Without (`cards` is `null`):** the note "החשבון נפתח לפני ששמרנו את
     הכרטיסים", then `genre_tally` as one bar per genre (likes vs dislikes),
     most liked first.
@@ -198,6 +202,10 @@ login. Below it, the tabs:
 - **The approved genres, one row per energy level**, calm (level 1) to
   energetic (level N), as chips:
   - for Option 1, label each row with its tier: רגוע / אנרגטי;
+  - when `two_sided` is true, label the lower half "צד רגוע" and the upper
+    half "צד אנרגטי" (the same split as the tiers), and mark chips with
+    `both_sides: true` (e.g. ↕, tooltip "מאושר גם ברגוע וגם באנרגטי") — such a
+    genre shows on two rows;
   - a star on requested genres (they sit in the directions that suit them, and
     one of each day's playlists plays a direction that holds them);
   - a small ↓ / ↑ on genres whose weight is below / above 1.
@@ -208,6 +216,8 @@ login. Below it, the tabs:
   - "נדחו בצ'אט" (rejected);
   - "לא נבחרו" (excluded: the count, then the list);
   - "הסבר המודל" (`reasoning_en`).
+- **"פרופילים קודמים"** (`archived`, collapsed, only when not empty): profiles
+  replaced by a re-onboarding — date, and the approved genres by level.
 - **"הפורטרט המוזיקלי"** (`portrait.text`, Hebrew), open by default: what the
   taste chat "remembers" about the owner. Show when it was last updated and
   from what (`source`), with earlier versions collapsed (`portrait_history`).
@@ -424,6 +434,14 @@ they're likely to enjoy (**approved**), each at an **energy level** from 1
 (calmest) to N. N (`energy_levels_total`, 2–6) is set per owner, and
 levels are relative to that owner's taste. In Option 1, the upper half of
 the levels is the **high tier** and the rest the **calm tier**.
+**Two-sided profiles** (`taste_profile.two_sided`, the onboarding of
+2026-11-02): the owner swiped an energetic deck and a calm deck. The lower
+half of the levels is then the **calm side** (from the calm deck's likes) and
+the upper half the **energetic side**, and a genre liked on both decks (calm
+R&B and upbeat R&B) is approved twice, once per side. Every genre has a side
+set by Rubin's music curator (calm only / energetic only / both ways), which
+holds in these profiles. Older profiles (`two_sided: false`) have one entry
+per genre.
 **Requested** genres are ones the owner explicitly asked for (super-liked or
 named in their text). They sit in the directions that suit them, and the
 day's playlists are picked so that at least one of them plays a direction
@@ -516,6 +534,8 @@ One row per business, newest first. No parameters.
 }
 ```
 
+- `approved_genre_count` — distinct approved genres (a genre approved on both
+  sides of a two-sided profile counts once).
 - `payment_status` — `paid`: a real payment exists. `no-payment`: the owner
   signed up while payments were switched off (true of every account until
   payments go live in production).
@@ -566,8 +586,8 @@ whether they really paid.
   "hours": { "hours": { "0": { "open": "09:00", "close": "23:00" }, "6": { "closed": true } }, "longest_minutes": 840, "updated_at": "…" },
   "swipe": {
     "cards": [
-      { "round": 1, "rank": 1, "title_en": "Groove Funk", "description_he": "…", "genres": ["Funk", "Afro Funk"], "verdict": "liked" },
-      { "round": 1, "rank": 2, "title_en": "…", "description_he": "…", "genres": ["…"], "verdict": "disliked" }
+      { "round": 1, "deck": "energetic", "rank": 1, "title_en": "Groove Funk", "description_he": "…", "genres": ["Funk", "Afro Funk"], "verdict": "liked" },
+      { "round": 1, "deck": "calm", "rank": 7, "title_en": "…", "description_he": "…", "genres": ["…"], "verdict": "disliked" }
     ],
     "genre_tally": [{ "genre": "Funk", "like": 1, "dislike": 0 }],
     "super_liked_genres": ["Funk"],
@@ -576,13 +596,20 @@ whether they really paid.
 }
 ```
 
-- `round2_emphases` — the extra text the owner may type when they liked
-  fewer than 3 cards and got a second round.
+- `round2_emphases` — the extra text the owner may type before a second
+  round (since 2026-11-02: when a deck got fewer than 2 likes; before, when
+  the owner liked fewer than 3 cards).
 - `hours.hours` — keys `0`–`6` are Sunday–Saturday. Each day is
   `{open, close}` or `{closed: true}`. A close earlier than the open means
   the venue closes after midnight.
-- `swipe.cards` — the swipe deck: each card the owner saw (8 in round 1, up
-  to 4 more in round 2) with its genres and what the owner did:
+- `swipe.cards` — the swipe deck: each card the owner saw with its genres
+  and what the owner did:
+  - since the onboarding of 2026-11-02: an energetic deck (ranks 1–6) then a
+    calm deck (7–12), and up to 4 more cards per deck in round 2 for a deck
+    with fewer than 2 likes (13–16 energetic, 17–20 calm). `deck` is
+    `"energetic"` or `"calm"`;
+  - before it: 8 cards in round 1, up to 4 more in round 2; `deck` is `null`
+    or missing;
   - `verdict` is `liked`, `disliked` or `not-swiped`;
   - **`null` for accounts that signed up before 2026-10-13** — that was not
     saved before.
@@ -597,9 +624,10 @@ whether they really paid.
 ```json
 {
   "energy_levels_total": 4,
+  "two_sided": false,
   "approved_by_level": [
-    { "level": 1, "tier": "low", "genres": [{ "genre": "Bossa Nova", "weight": 1, "requested": false }] },
-    { "level": 3, "tier": "high", "genres": [{ "genre": "Funk", "weight": 0.5, "requested": true }] }
+    { "level": 1, "tier": "low", "genres": [{ "genre": "Bossa Nova", "weight": 1, "requested": false, "both_sides": false }] },
+    { "level": 3, "tier": "high", "genres": [{ "genre": "Funk", "weight": 0.5, "requested": true, "both_sides": false }] }
   ],
   "approved_genres": [{ "genre": "Bossa Nova", "energy_level": 1 }],
   "conditional_genres": [{ "genre": "Trap", "energy_level": 4, "note_en": "…" }],
@@ -623,8 +651,15 @@ whether they really paid.
 
 - `approved_by_level` — the approved genres grouped for display, with each
   level's Option 1 tier.
+- `two_sided` (2026-11-02) — `true` for a profile from the two-deck
+  onboarding where the owner liked something on both decks: levels ≤ N/2 are
+  the calm side, the rest the energetic side. In such a profile a genre can
+  appear twice in `approved_genres` and `approved_by_level`, once per side,
+  and its chips carry `both_sides: true`. `false` for every older profile,
+  where `both_sides` is always `false`.
 - `weight` — set by the owner through the taste chat: 0.25, 0.5, 1
-  (normal), 1.5 or 2 = how often the genre plays.
+  (normal), 1.5 or 2 = how often the genre plays. One per genre: a genre on
+  both sides has the same weight on both.
 - `conditional_genres` — "maybe" genres. **Not used** to build playlists.
 - `excluded_genres` — every other genre in the catalog (132 in all).
 - `rejected_genres` — genres the owner turned down in the taste chat.
@@ -647,6 +682,11 @@ whether they really paid.
     in the last 7 days plays its well-known songs first, then its other songs,
     so playlists stay full. Each daily playlist's `played.popularity` shows
     where that happened (see `daily` below).
+- `archived` (2026-11-02) — earlier profiles, newest first, kept when Rubin's
+  team re-ran the onboarding for the business and replaced its profile:
+  `{ id, archived_at, reason: "reonboard", source, delivery_mode,
+  energy_levels_total, two_sided, approved_genres, profile (the whole old
+  row), option1_directions, level_directions }`. `[]` when never replaced.
 - The whole object is `null` if the business has no profile.
 
 #### `delivery`
@@ -811,6 +851,11 @@ what they think of the daily music.
 - `proposal` — the change the chat offered. `applied_at` is set once the
   owner confirmed it.
 - `changes` — newest first: every change made to the profile or directions.
+  - In a two-sided profile, `remove_genre` / `move_genre` ops may carry
+    `"tier"`: `"low"` = the calm side only, `"high"` = the energetic side only.
+  - A re-onboarding (2026-11-02) is one `source: "admin"` entry whose `ops`
+    start with `{"op":"reonboard","archive_id":…}`; the old profile is in
+    `taste_profile.archived`.
   - `source: "chat"` = the owner, through the chat;
   - `source: "admin"` = this API (`POST /directions`);
   - `before` / `after` = full snapshots;
@@ -955,6 +1000,19 @@ refused (`400`, the message says where the genre is) unless you send
 `"move": true`. Moving it also takes it out of the directions of its old
 tier / level, which changes other playlists — confirm with the admin first.
 
+**Two-sided profiles** (`taste_profile.two_sided`, 2026-11-02):
+
+- Adding a both-ways genre to a direction of the side it isn't on yet (e.g.
+  `Rnb` to a calm direction when R&B is approved only on the energetic side)
+  doesn't need `move: true`: it approves the genre on that side too, and it
+  then sits on both sides.
+- A calm-only genre can't go into an energetic direction, nor an
+  energetic-only one into a calm direction: `400` `nothing changed`, with
+  the reason in `dropped[].reason` (`"calm-only genre — only the calm side
+  (levels 1–2)"`, `"energetic-only genre — only the energetic side (levels
+  3–4)"`, `"already approved on that side"`). Show it to the admin.
+- Profiles with `two_sided: false` behave as described above.
+
 **Requested genres.** A requested genre (the owner super-liked it or named it
 in their emphases) sits only in the directions it suits, like any other genre,
 and at least one of the day's playlists plays a direction that holds it. So
@@ -995,7 +1053,9 @@ today's playlists, call `rebuild_today` (5.4).
 - `409` — `code` is one of:
   - `not-ready` — no profile, or no playlist type picked;
   - `nothing-to-change`;
-  - `nothing-to-undo`.
+  - `nothing-to-undo`;
+  - `reonboard` — the newest change is a re-onboarding, which undo can't
+    revert (the earlier profile is in `taste_profile.archived`).
 
 Example:
 
@@ -1247,7 +1307,9 @@ curl -s -H "Authorization: Bearer $RUBIN_ADMIN_KEY" https://robin-music.com/api/
 - **Picks follow the type.** Picks are stored for one type. After a switch,
   they're ignored until the owner switches back.
 - **Older accounts have less data.**
-  - `swipe.cards` is `null` before 2026-10-13;
+  - `swipe.cards` is `null` before 2026-10-13, and its cards have no `deck`
+    before the two-deck onboarding (2026-11-02);
+  - `taste_profile.two_sided` is `false` for every profile from before it;
   - `played.direction` is `null` on Option 1 playlists before 2026-10-13;
   - `super_liked_genres` is `null` before 2026-10-05.
 - **`business.paid_at` isn't proof of payment.** Use `payment.status`.

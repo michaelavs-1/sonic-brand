@@ -49,6 +49,7 @@ import {
   WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION,
   injectPlaces,
 } from './musical-directions.js';
+import { GENRE_SIDES_SECTION, normalizeDeckDirections } from './deck-directions.js';
 
 const MAX_TOKENS = 65536;
 
@@ -393,4 +394,148 @@ export async function generateRefinedMusicalDirections({
     return { error: 'matcher_error', reasoning_en: 'no valid directions returned' };
   }
   return { directions };
+}
+
+// ---------- Round 2 per deck (two onboarding decks, 2026-11-02) ----------
+//
+// A deck the owner liked fewer than 2 directions of gets 4 more cards of the
+// same energy. Same Round 2 rules as above (Learning, Distinctness, Task
+// Workflow, output format), told which deck it refines and kept to that
+// deck's genres (shared/genre-sides.js); the code drops a genre from the other
+// side. Ranks: energetic 13–16, calm 17–20 (after the decks' 1–12).
+
+export const R2_DECK_RANK_START = { energetic: 13, calm: 17 };
+
+const DECK_NAME = { energetic: 'ENERGETIC', calm: 'CALM' };
+
+const REFINED_DECK_INTRO = `You are refining one deck of diagnostic taste probes for a public-facing-business playlist tool. The owner swipes two decks of tightly-clustered "musical directions": an ENERGETIC deck (each card plays a song from its genres' energetic side) and a CALM deck (a song from their calm side). Each direction is a small group of near-identical genres (same instrumentation family, same cultural register, same mood). On the deck named in the user message, the owner liked fewer than 2. Your task now is to analyze their decisions on that deck — including which specific genres they super-liked a track from — and produce 4 brand-new diagnostic probes FOR THE SAME DECK that pin down the parts of their taste on that side the deck didn't. Each new probe is still a tight cluster, not a blended playlist. Downstream, the liked probes of each deck build that side of the owner's taste profile (energetic or calm daily playlists).`;
+
+const REFINED_DECK_INPUTS_SECTION = `## Inputs
+
+You will receive the onboarding inputs, the deck you are refining, and the owner's decisions on it.
+
+- Free-text description of the business (any language).
+- Optionally: Business name.
+- Optionally: Selected atmospheres (short adjectives from a fixed menu).
+- Optionally: **Musical emphases (from onboarding)** — the initial free-text preferences the owner supplied before hearing any tracks.
+- Optionally: **Round 2 refinement emphases** — free-text feedback the owner typed AFTER hearing the decks. Their freshest, most context-aware guidance. When present, this is the SINGLE STRONGEST signal you have — see Learning step 6. May be empty.
+- Optionally: Google Places context — factual metadata about the venue, same shape as Round 1.
+- **Deck** — ENERGETIC or CALM: the deck you are refining. Your 4 probes belong to it.
+- **Round 1 directions** — this deck's probes the owner saw, each with rank, title, genres, description, and instrumentalness_preference. The Liked / Disliked lists below refer to these ranks. May be empty if the deck failed to load — then you are exploring (Learning step 5).
+- **Liked directions** — the 0 or 1 probes of this deck the owner liked (may be empty).
+- **Disliked directions** — this deck's probes the owner swiped away.
+- **Super-liked genres** — specific GENRES (not whole directions) the owner super-liked a track from on this deck. Super-liking is a sharper signal than merely liking a direction: that genre carries extra positive weight. May be empty.
+- **Liked on the other deck** (context only) — what the owner liked on the other deck. It tells you about their wider taste (e.g. liking upbeat Funk hints that a calmer groove may work on the calm deck), but never build probes from the other side's genres.
+- Optionally: **Known taste** and **turned-down genres** — only when Rubin re-runs the onboarding for an existing owner: a short portrait of their taste, written from their conversations with us, and the genres they turned down. Treat the portrait like the musical emphases (just below them in priority), and treat turned-down genres as exclusions.`;
+
+const REFINED_DECK_RULES_SECTION = `## This Deck
+
+- **Only this deck's genres:** refining the ENERGETIC deck, use Energetic-only and Both-ways genres; refining the CALM deck, Calm-only and Both-ways genres (see Genre Energy Sides & Families). A genre from the other side is silently dropped downstream.
+- **Test this deck's side:** a Both-ways genre stands for its upbeat side on the energetic deck and its calm side on the calm deck. Cluster it with genres whose same side sounds alike, and include it only where that side fits the venue.
+- Every probe must satisfy these rules on top of the Task Workflow's list.`;
+
+function assembleRefinedDeckSystemPrompt() {
+  const editable = [
+    REFINED_DECK_INTRO,
+    GENRE_UNIVERSE_SECTION,
+    GENRE_SIDES_SECTION,
+    REFINED_DECK_INPUTS_SECTION,
+    PROCESSING_RULES_SECTION,
+    REFINED_DECK_RULES_SECTION,
+    HOMOGENEITY_SECTION,
+    ENERGY_PAIRING_SECTION,
+    LEARNING_LOGIC_SECTION,
+    REFINED_DISTINCTNESS_SECTION.replace('Round 1 required its 8 clusters', 'Round 1 required its clusters'),
+    REFINED_TASK_WORKFLOW,
+    OUTPUT_LANGUAGE_SECTION,
+    TITLE_RULES_SECTION,
+    HEBREW_DESCRIPTION_SECTION,
+  ].join('\n\n');
+  const fixed = [
+    REFINED_OUTPUT_FORMAT,
+    WHEN_NOT_TO_RETURN_DIRECTIONS_SECTION,
+    ROUND2_ADDITIONAL_ERROR,
+  ].join('\n\n');
+  return injectPlaces(editable) + '\n\n' + fixed;
+}
+
+const REFINED_DECK_SYSTEM_PROMPT = assembleRefinedDeckSystemPrompt();
+
+// Re-onboarding an existing owner (Ami's dashboard, 2026-11-02): what we
+// already know about them. Empty for a real onboarding.
+function knownTasteLines({ knownTaste, turnedDown }) {
+  let s = '';
+  if (typeof knownTaste === 'string' && knownTaste.trim()) s += `\nKnown taste (Rubin's portrait of this owner, from their conversations with us): ${knownTaste.trim()}`;
+  const out = Array.isArray(turnedDown) ? turnedDown.filter((g) => typeof g === 'string' && g) : [];
+  if (out.length) s += `\nGenres the owner turned down (exclude them): ${out.join(', ')}`;
+  return s;
+}
+
+function buildRefinedDeckUserMessage({
+  deck, bizName, bizDesc, atmospheres, musicalEmphases, round2Emphases, place,
+  deckDirections, likedDirections, dislikedDirections, superLikedGenres, otherDeckLiked,
+  knownTaste, turnedDown,
+}) {
+  const nameLine = (bizName && String(bizName).trim()) ? String(bizName).trim() : 'none';
+  const atmLine = Array.isArray(atmospheres) && atmospheres.length ? atmospheres.join(', ') : 'none';
+  let base = `Description: ${bizDesc}\nBusiness name: ${nameLine}\nAtmospheres: ${atmLine}`;
+  if (typeof musicalEmphases === 'string' && musicalEmphases.trim().length) {
+    base += `\nMusical emphases (from onboarding): ${musicalEmphases.trim()}`;
+  }
+  if (typeof round2Emphases === 'string' && round2Emphases.trim().length) {
+    base += `\nRound 2 refinement emphases (after hearing the decks — HIGHEST PRIORITY): ${round2Emphases.trim()}`;
+  }
+  base += knownTasteLines({ knownTaste, turnedDown });
+  const placeBlock = formatPlaceContext(place);
+  if (placeBlock) base += `\n${placeBlock}`;
+  const list = (arr) => (Array.isArray(arr) && arr.length ? arr : null);
+  const ranks = (arr) => (list(arr) ? arr.map((d) => d.rank).join(', ') : '(none)');
+  const other = list(otherDeckLiked)
+    ? otherDeckLiked.map((d) => `"${d.title_en}" — ${directionGenres(d).join(', ')}`).join('\n')
+    : '(none)';
+  return base
+    + `\n\nDeck: ${DECK_NAME[deck]}`
+    + `\n\nThis deck's Round 1 directions:\n\n${list(deckDirections) ? deckDirections.map(formatDirection).join('\n\n') : '(none — the deck failed to load)'}`
+    + `\n\nOwner's decisions on this deck:`
+    + `\n- LIKED (ranks): ${ranks(likedDirections)}`
+    + `\n- DISLIKED (ranks): ${ranks(dislikedDirections)}`
+    + `\n- SUPER-LIKED GENRES: ${list(superLikedGenres) ? superLikedGenres.join(', ') : '(none)'}`
+    + `\n\nLiked on the other deck (context only):\n${other}`
+    + `\n\nGenerate 4 refined diagnostic clusters for the ${DECK_NAME[deck]} deck per the Round-2 Task Workflow.`;
+}
+
+// → { directions: [≤ 4, tagged deck + round 2, ranks from R2_DECK_RANK_START] }
+//   or { error, reasoning_en }.
+export async function generateRefinedDeckDirections({
+  deck, bizName, bizDesc, atmospheres, musicalEmphases, round2Emphases, place,
+  deckDirections, likedDirections, dislikedDirections, superLikedGenres, otherDeckLiked,
+  onboardingSessionId, knownTaste, turnedDown, label = 'v7-onboarding-refined',
+}) {
+  if (!R2_DECK_RANK_START[deck]) return { error: 'matcher_error', reasoning_en: `unknown deck ${deck}` };
+  if (!bizDesc || typeof bizDesc !== 'string' || bizDesc.trim().length < 3) {
+    return { error: 'insufficient_description', reasoning_en: 'empty or too-short description' };
+  }
+  let parsed;
+  try {
+    const { text } = await callModel({
+      system: REFINED_DECK_SYSTEM_PROMPT,
+      userMessage: buildRefinedDeckUserMessage({
+        deck, bizName, bizDesc, atmospheres, musicalEmphases, round2Emphases, place,
+        deckDirections, likedDirections, dislikedDirections, superLikedGenres, otherDeckLiked,
+        knownTaste, turnedDown,
+      }),
+      maxTokens: MAX_TOKENS,
+      label,
+      onboardingSessionId,
+    });
+    parsed = parseJSONFromText(text);
+  } catch (e) {
+    return { error: 'matcher_error', reasoning_en: e.message };
+  }
+  if (parsed?.error) {
+    return { error: String(parsed.error), reasoning_en: typeof parsed.reasoning_en === 'string' ? parsed.reasoning_en : '' };
+  }
+  const norm = normalizeDeckDirections(parsed, deck, { rankStart: R2_DECK_RANK_START[deck], max: 4 });
+  if (!norm?.directions.length) return { error: 'matcher_error', reasoning_en: 'no valid directions returned' };
+  return { directions: norm.directions.map((d) => ({ ...d, round: 2 })) };
 }

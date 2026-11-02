@@ -109,7 +109,7 @@ You will receive:
 // scripts/_v7-backfill-requested-genres.mjs reads emphases with the same rule.
 export const REQUESTED_GENRES_RULE = `- **Requested genres:** List in \`requested_genres\` every genre the owner explicitly asked for in their Musical emphases or Round 2 refinement emphases — named, or referred to unmistakably, in any language (e.g. "אר אנד בי" → \`Rnb\`). Use the exact genre the owner meant: a request for R&B is \`Rnb\`, not \`French RnB\` or \`Alternative R&B\`. If they used a broad family word that covers several genres (e.g. "jazz", "ג'אז"), list only the one genre whose name matches that word most directly (e.g. \`Jazz (Standards)\`). Never list a genre the owner asked to avoid, a general leaning ("calm", "only hits"), or a genre you inferred. Do not list super-liked genres here — they are added automatically. Every requested genre MUST also be in \`approved_genres\`, with its energy level, whatever the other rules say: the owner asked for it, and their daily playlists will always include it.`;
 
-const PROCESSING_RULES_SECTION = `### Processing Rules:
+export const PROCESSING_RULES_SECTION = `### Processing Rules:
 
 - **Musical Emphases (highest priority):** Treat the emphases text as the strongest signal — above description, atmospheres, and Google context. Genres or families the owner named to INCLUDE: bias toward \`approved\`. Genres or families they named to EXCLUDE: leave them out of both lists (excluded) even if they appear in a liked direction. General leanings ("adventurous", "hits only", "familiar", "not too energetic") shape the whole profile, not just some genres.
 - **Round 2 refinement emphases (when present, HIGHEST priority):** Written after the user saw actual tracks — knows what they wanted more or less of. When it contradicts anything else (Round 1 emphases, atmospheres, direction-level likes/dislikes), IT WINS.
@@ -121,7 +121,7 @@ const PROCESSING_RULES_SECTION = `### Processing Rules:
 - **Atmospheres vs. Text:** Treat selected atmospheres as strong, authoritative signals. If the free-text description directly contradicts, prioritize the description and note the tension in \`reasoning_en\`.
 ${REQUESTED_GENRES_RULE}`;
 
-const DEDUCTION_LOGIC_SECTION = `## Deduction Logic
+export const DEDUCTION_LOGIC_SECTION = `## Deduction Logic
 
 Walk through all ${GENRES.length} canonical genres and assign each to EXACTLY ONE bucket: \`approved\`, \`conditional\`, or \`excluded\`. Only \`approved\` and \`conditional\` are written to the output. \`excluded\` is implicit: to exclude a genre, simply leave it out of both lists. This means a genre you forget to list is silently excluded — so make sure every genre that deserves \`approved\` or \`conditional\` is actually listed.
 
@@ -202,7 +202,7 @@ The **top two levels** are the highest and next-to-highest level (on a scale of 
 
 Excluded genres are not in the output at all, so they carry no level.`;
 
-const GENRE_NAMING_DISCIPLINE = `## Genre Naming Discipline
+export const GENRE_NAMING_DISCIPLINE = `## Genre Naming Discipline
 
 You must NEVER invent, modify, rename, translate, add qualifiers to, or otherwise alter any genre name. Use ONLY the exact strings as they appear in the Genre Universe above. Any string that is not verbatim in the Genre Universe will be silently dropped by downstream code — the user will lose those genres from their profile.
 
@@ -274,7 +274,7 @@ Hard invariants:
 Error case (return instead of a profile):
 {"error": "<code>", "reasoning_en": "one short English sentence"}`;
 
-const WHEN_NOT_TO_RETURN_A_PROFILE = `## When NOT to return a taste profile
+export const WHEN_NOT_TO_RETURN_A_PROFILE = `## When NOT to return a taste profile
 
 If the input signal is genuinely too thin or internally contradictory to produce a meaningful profile, return an error instead of forcing an output.
 

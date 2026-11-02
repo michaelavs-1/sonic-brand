@@ -10,8 +10,16 @@
 // directions, matching v5's runDirectionPreviewFlow contract.
 
 import { WAIT_DOTS_HTML, waitNodes } from '/v7/wait-dots.js?v=28092026a';
+import { deckWindow } from '/shared/genre-sides.js?v=02112026a';
 
 const HEADING = 'בחרו כיוונים מוזיקליים שמתאימים לעסק';
+// The two onboarding decks (Ami, 2026-11-02): energetic first, then calm.
+// The heading, then the deck's name under it in orange (Roni, 2026-11-02).
+const DECK_HEADING = 'בחרו כיוונים שמתאימים לעסק';
+const DECK_SUBHEADINGS = {
+  energetic: 'מוזיקה אנרגטית',
+  calm: 'מוזיקה רגועה',
+};
 
 // Play/pause glyphs are sized 36×36 (up from 22×22) so they fill more of
 // the 56px button and read as a proper media control rather than a small
@@ -173,6 +181,23 @@ function pickPreviewGenre(d) {
   return list.length ? list[Math.floor(Math.random() * list.length)] : null;
 }
 
+// One anchor-tracks spec for a direction + genre. A direction from one of the
+// two decks (d.deck, 2026-11-02) also carries its card's energy range: 60–80
+// energetic, 30–50 calm, or the genre's own exception range.
+function specFor(d, genre) {
+  const spec = {
+    rank: d.rank,
+    genre,
+    inst_pref: d.instrumentalness_preference || 'none',
+    pop_pref:  d.popularity_preference       || 'none',
+  };
+  if (genre && (d.deck === 'energetic' || d.deck === 'calm')) {
+    const [lo, hi] = deckWindow(genre, d.deck);
+    Object.assign(spec, { lo, hi });
+  }
+  return spec;
+}
+
 // fetchAnchorTracks — one random track per (rank, genre) spec, via v7's own
 // /api/v7/anchor-tracks → v7_anchor_tracks RPC (samples a few playlists of
 // the genre; no tempo parameter — v7 has no BPM). Callers construct specs —
@@ -195,6 +220,8 @@ async function fetchAnchorTracks(specs) {
     // (45-100 for Israeli genres); 'soft' biases hits first via ORDER BY.
     // The sole popularity control.
     pop_pref:  s.pop_pref  || 'none',
+    // The card's energy range (two decks) — a song inside it, else the nearest.
+    ...(Number.isFinite(s.lo) && Number.isFinite(s.hi) ? { lo: s.lo, hi: s.hi } : {}),
   }));
   const attempt = async () => {
     const r = await fetch('/api/v7/anchor-tracks', {
@@ -224,12 +251,7 @@ async function fetchAnchorTracks(specs) {
 // sharper positive signal for Round 2 than the whole direction's genre
 // list would be.
 async function fetchInitialPreviewTracks(directions) {
-  const specs = directions.map((d) => ({
-    rank: d.rank,
-    genre: pickPreviewGenre(d),
-    inst_pref: d.instrumentalness_preference || 'none',
-    pop_pref:  d.popularity_preference       || 'none',
-  })).filter((s) => s.genre);
+  const specs = directions.map((d) => specFor(d, pickPreviewGenre(d))).filter((s) => s.genre);
   if (!specs.length) return { byRank: {}, genreByRank: {} };
   const byRank = await fetchAnchorTracks(specs);
   const genreByRank = {};
@@ -301,6 +323,13 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
   // the earlier "super-liked directions" concept.
   const expectedTotal = Number.isFinite(opts.expectedTotal) ? opts.expectedTotal : 8;
   const superLikedGenres = opts.superLikedGenres || null;
+  // `opts.superLikedDecks` — optional Map<trackId, 'energetic' | 'calm'>: which
+  // deck each super-like came from (two decks, 2026-11-02), so the taste
+  // profile puts the super-liked genre on that side. `opts.heading` replaces
+  // the default heading; `opts.subheading` goes under it (the deck's name).
+  const superLikedDecks = opts.superLikedDecks || null;
+  const heading = opts.heading || HEADING;
+  const subheading = opts.subheading ? el('div', { class: 'swipe-deck-sub' }, opts.subheading) : null;
 
   // `opts.dislikedDirections` — optional Array<direction> the caller owns.
   // v7 treats dislikes as a real taste signal: every swipe-left pushes the
@@ -393,7 +422,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
     const btns = el('div', { class: 'swipe-actions' }, noBtn, yesBtn);
     void btns; // eslint: intentionally unused — see comment above
 
-    card.replaceChildren(el('h1', {}, HEADING), progLabel, progBar, deckWrap);
+    card.replaceChildren(el('h1', {}, heading), ...(subheading ? [subheading] : []), progLabel, progBar, deckWrap);
 
     const setProgress = () => {
       // Pin the denominator to the pipeline's expected total (2 pages × 4 in
@@ -739,12 +768,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       const walkCycle = async () => {
         for (let step = 0; step < cycleGenres.length; step++) {
           const idx = (cycleIdx + step) % cycleGenres.length;
-          const spec = {
-            rank: d.rank,
-            genre: cycleGenres[idx],
-            inst_pref: d.instrumentalness_preference || 'none',
-            pop_pref:  d.popularity_preference       || 'none',
-          };
+          const spec = specFor(d, cycleGenres[idx]);
           const hit = await drawUnique(spec);
           if (hit) { cycleIdx = (idx + 1) % cycleGenres.length; return { trackId: hit, genre: cycleGenres[idx] }; }
         }
@@ -874,6 +898,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         // remove this entry without affecting other super-likes that
         // happened to share the same genre from other cards.
         if (superLikedGenres && genreAtSuperLike) superLikedGenres.set(trackId, genreAtSuperLike);
+        if (superLikedDecks && d.deck) superLikedDecks.set(trackId, d.deck);
         likedDirections.push(d);
         // A super-like is a strong LIKE for the direction — bump the audit
         // tally the same as a plain like.
@@ -885,6 +910,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         showUndoToast(() => {
           if (superLikedTracks && !trackWasAlreadyLiked) superLikedTracks.delete(trackId);
           if (superLikedGenres) superLikedGenres.delete(trackId);
+          if (superLikedDecks) superLikedDecks.delete(trackId);
           const idx = likedDirections.lastIndexOf(d);
           if (idx !== -1) likedDirections.splice(idx, 1);
           bumpTally(d, 'like', -1);
@@ -1083,6 +1109,26 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, prepar
   return renderSwipeDeck(container, page1.previews, page1.trackMeta, prepared.page2Ready, superLikedTracks, { superLikedGenres, dislikedDirections, genreTally });
 }
 
+// ---------- The two onboarding decks (2026-11-02) ----------
+//
+// One deck at a time: `ready` is a preparePreview page (page1Ready = the
+// energetic deck, page2Ready = the calm deck). Resolves with the deck's liked
+// directions — [] when the owner liked none, or when the deck has no cards
+// (its model call or every anchor failed; that deck then gets Round 2).
+export async function runDeckFlow({ deck, ready, superLikedTracks, superLikedGenres, superLikedDecks, dislikedDirections, genreTally }) {
+  const container = document.querySelector('.screen-card');
+  if (!container) throw new Error('deck preview: .screen-card not found');
+  showLoading(container, deck === 'calm' ? 'טוענים שירים רגועים לדוגמא…' : 'טוענים שירים לדוגמא…');
+  const page = await ready;
+  if (!page?.previews?.length) return [];
+  return renderSwipeDeck(container, page.previews, page.trackMeta, null, superLikedTracks, {
+    expectedTotal: page.previews.length,
+    heading: DECK_HEADING,
+    subheading: DECK_SUBHEADINGS[deck],
+    superLikedGenres, superLikedDecks, dislikedDirections, genreTally,
+  });
+}
+
 // ---------- Round 2: refinement preview ----------
 //
 // Fires when Round 1's preview swipe deck yielded fewer than 3 liked
@@ -1095,7 +1141,7 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, prepar
 //   generateRefinedMusicalDirections. This flow does NOT trigger the R2
 //   Gemini call itself; the caller in app.js does that so the loading UI
 //   can render while the call is in flight.
-export async function runRefinedDirectionPreviewFlow({ refinedDirections, superLikedTracks, superLikedGenres, dislikedDirections, genreTally }) {
+export async function runRefinedDirectionPreviewFlow({ refinedDirections, superLikedTracks, superLikedGenres, superLikedDecks, dislikedDirections, genreTally }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('refined preview: .screen-card not found');
 
@@ -1127,7 +1173,7 @@ export async function runRefinedDirectionPreviewFlow({ refinedDirections, superL
     page1.trackMeta,
     null,
     superLikedTracks,
-    { expectedTotal: refinedDirections.length, superLikedGenres, dislikedDirections, genreTally },
+    { expectedTotal: refinedDirections.length, superLikedGenres, superLikedDecks, dislikedDirections, genreTally },
   );
 }
 
@@ -1194,12 +1240,19 @@ export function showR2FailureScreen({ hasR1Picks }) {
 // Matches the R1 emphases MIN_LEN=4 gating on המשך (short text gives no
 // useful signal), skip always enabled. Resolves with trimmed text (may
 // be empty).
-export function runRefinedEmphasesStep({ initialValue = '' } = {}) {
+// `decks` (two decks, 2026-11-02): the decks that get Round 2 — the heading
+// names the one the owner liked little of.
+const REFINED_EMPHASES_HEADINGS = {
+  energetic: 'לא בחרתם הרבה מהמוזיקה האנרגטית — נציע לכם עוד קצת על סמך מה שכן אהבתם. תרצו גם לדייק אותנו?',
+  calm: 'לא בחרתם הרבה מהמוזיקה הרגועה — נציע לכם עוד קצת על סמך מה שכן אהבתם. תרצו גם לדייק אותנו?',
+  both: 'לא בחרתם הרבה — נציע לכם עוד קצת מוזיקה על סמך מה שכן אהבתם. תרצו גם לדייק אותנו?',
+};
+export function runRefinedEmphasesStep({ initialValue = '', decks = [] } = {}) {
   const card = document.querySelector('.screen-card');
   if (!card) throw new Error('refined emphases: .screen-card not found');
 
   const heading = document.createElement('h1');
-  heading.textContent = 'לא בחרת הרבה - נציע לך עוד קצת מוזיקה על סמך מה שכן אהבת. תרצה גם לדייק אותנו?';
+  heading.textContent = REFINED_EMPHASES_HEADINGS[decks.length === 1 ? decks[0] : 'both'];
 
   const wrap = document.createElement('div');
   wrap.className = 'input-wrap';

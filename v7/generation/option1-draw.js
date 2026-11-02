@@ -36,21 +36,27 @@ export function tierPopularity(accountPref, tiers, tier) {
 
 // requestedGenres: [string]; approvedGenres: [{genre, energy_level}].
 // → { high: [genre], low: [genre] } — each requested genre in the tier of its
-// approved energy level. A requested genre that isn't approved is skipped
-// (the taste profile always approves them, so it means the data is stale).
+// approved energy level, or in both tiers when it's approved on both sides (a
+// both-ways genre in the two-deck taste profile, 2026-11-02). A requested
+// genre that isn't approved is skipped (the taste profile always approves
+// them, so it means the data is stale).
 export function requestedByTier(requestedGenres, approvedGenres, n) {
-  const levelOf = new Map();
+  const entries = new Map();
   for (const a of Array.isArray(approvedGenres) ? approvedGenres : []) {
     const g = typeof a === 'string' ? a : a?.genre;
-    if (g) levelOf.set(String(g).toLowerCase(), { genre: g, level: Number(a?.energy_level) });
+    const level = Number(a?.energy_level);
+    if (!g || !Number.isFinite(level)) continue;
+    const k = String(g).toLowerCase();
+    if (!entries.has(k)) entries.set(k, []);
+    entries.get(k).push({ genre: g, level });
   }
   const out = { high: [], low: [] };
   const seen = new Set();
   for (const r of Array.isArray(requestedGenres) ? requestedGenres : []) {
-    const hit = levelOf.get(String(r || '').toLowerCase());
-    if (!hit || seen.has(hit.genre) || !Number.isFinite(hit.level)) continue;
-    seen.add(hit.genre);
-    out[tierOfLevel(hit.level, n)].push(hit.genre);
+    const hits = entries.get(String(r || '').toLowerCase());
+    if (!hits || seen.has(hits[0].genre)) continue;
+    seen.add(hits[0].genre);
+    for (const t of new Set(hits.map((h) => tierOfLevel(h.level, n)))) out[t].push(hits[0].genre);
   }
   return out;
 }

@@ -20,6 +20,11 @@
      4. We verify state matches INTERNAL_ADMIN_API_KEY, then exchange the code
         for access_token + refresh_token using Rubin app credentials.
      5. We render an HTML page showing both tokens for copy-paste.
+
+   More Spotify accounts (2026-11-03): log the browser into the other account
+   and run the same flow; its token goes in SPOTIFY_ACCOUNT_<ID>_REFRESH_TOKEN
+   (api/_spotify-accounts.js). The account must be on the Robin app's user
+   list in the Spotify dashboard (Development Mode, 25 users).
 */
 
 const REDIRECT_URI = 'http://127.0.0.1:3000/api/new/rubin-oauth-callback';
@@ -55,6 +60,9 @@ function renderSuccess(tokens) {
   <p>Add to <code>.env.local</code>:</p>
   <pre>RUBIN_REFRESH_TOKEN=${esc(tokens.refresh_token || '')}</pre>
   <p>Then restart <code>vercel dev</code>.</p>
+  <p>Seeding another Spotify account (logged in as that account)? Use its own variable instead, named after
+  its id in <code>spotify_accounts</code>, e.g. for <code>robin-2</code>:</p>
+  <pre>SPOTIFY_ACCOUNT_ROBIN_2_REFRESH_TOKEN=${esc(tokens.refresh_token || '')}</pre>
 
   <h2>access_token (valid ~1 hour — for immediate Stage-1 verification)</h2>
   <pre>${esc(tokens.access_token || '')}</pre>

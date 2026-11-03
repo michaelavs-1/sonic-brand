@@ -33,6 +33,7 @@ import { guard } from '../../v6/ratelimit.js';
 import {
   fetchTracksWithHistory, recordTrackHistory, spotifyCall, addAllTracks,
 } from '../../v6/account/_daily-builder.js';
+import { playlistSpotifyAccount } from '../../_spotify-accounts.js';
 import { verifyUser, readHours, readSettings, auditSetting } from './_settings-helpers.js';
 import { ownedBusiness, selfOrigin } from './_special-events.js';
 import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.js';
@@ -163,12 +164,14 @@ export default async function handler(req, res) {
       const next = mergeAtRandom(kept, fresh);
       if (!next.length) return fail(res, 409, 'no-tracks', 'לא מצאנו שירים מתאימים — נסו כיוון אחר.');
 
-      // Spotify: replace the items (100 per call), then add the rest.
+      // Spotify: replace the items (100 per call), then add the rest. On the
+      // account the playlist was made on (api/_spotify-accounts.js).
       const origin = selfOrigin(req);
+      const account = await playlistSpotifyAccount(row.spotify_id);
       await spotifyCall(origin, 'replace_tracks', {
-        playlist_id: row.spotify_id, uris: next.slice(0, 100).map((id) => `spotify:track:${id}`),
+        playlist_id: row.spotify_id, uris: next.slice(0, 100).map((id) => `spotify:track:${id}`), account,
       });
-      if (next.length > 100) await addAllTracks(origin, row.spotify_id, next.slice(100));
+      if (next.length > 100) await addAllTracks(origin, row.spotify_id, next.slice(100), account);
       if (fresh.length) await recordTrackHistory({ businessId, directionKey, spotifyIds: fresh });
 
       const expansion = {

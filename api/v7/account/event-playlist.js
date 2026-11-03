@@ -24,7 +24,8 @@
    Response: { ok: true, playlist: { id, url, label, trackCount, genres, bpmRange, eventId, expiresAt }, already? }
              409 { code: 'building' } | 410 { code: 'expired' } | 503 { code: 'spotify-paused' } | 4xx/5xx { error } */
 
-import { pgrSelect, pgrRpc, pgrUpsert } from '../../v5/supabase-client.js';
+import { pgrSelect, pgrRpc } from '../../v5/supabase-client.js';
+import { businessSpotifyAccount, upsertLedgerRow } from '../../_spotify-accounts.js';
 import { setCors }      from '../../v6/origin-guard.js';
 import { guard }        from '../../v6/ratelimit.js';
 import { spotifyCall, addAllTracks } from '../../v6/account/_daily-builder.js';
@@ -198,15 +199,16 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: `נמצאו רק ${spotifyIds.length} שירים מתאימים. נסחו את הבקשה אחרת בצ׳אט.` });
     }
 
-    // 3) Spotify on Rubin's account.
+    // 3) Spotify, on the business's account (api/_spotify-accounts.js).
     const cleanBiz     = String(biz.name || '').trim().slice(0, 40);
     const cleanEvent   = String(ev.name || 'פלייליסט').trim().slice(0, 40);
     const playlistName = `${cleanBiz ? cleanBiz + ' · ' : ''}${cleanEvent} · ${ilDateHe()}`.slice(0, 100);
+    const account = await businessSpotifyAccount(businessId);
     let created;
     try {
-      created = await spotifyCall(origin, 'create_playlist', { name: playlistName, description: `רובין · ${cleanEvent}` });
+      created = await spotifyCall(origin, 'create_playlist', { name: playlistName, description: `רובין · ${cleanEvent}`, account });
       if (!created?.id) throw new Error('create_playlist returned no id');
-      await addAllTracks(origin, created.id, spotifyIds);
+      await addAllTracks(origin, created.id, spotifyIds, account);
     } catch (e) {
       if (String(e.message || '').includes('spotify_paused')) {
         return res.status(503).json({ code: 'spotify-paused', error: 'Spotify עמוס כרגע. נסו שוב בעוד כמה דקות.' });
@@ -218,7 +220,7 @@ export default async function handler(req, res) {
     // 4) Expiry ledger (next 04:00 IL, swept by the expire cron) + dashboard row.
     const expiresAtIso = nextIl4amIso();
     try {
-      await pgrUpsert('created_playlists', {
+      await upsertLedgerRow({
         spotify_id:  created.id,
         name:        playlistName,
         expires_at:  expiresAtIso,
@@ -226,7 +228,8 @@ export default async function handler(req, res) {
         error:       null,
         owner_id:    user.id,
         business_id: businessId,
-      }, { onConflict: 'spotify_id' });
+        spotify_account_id: account,
+      });
     } catch (e) {
       console.error(`[v7 event-playlist] ledger write failed for ${created.id} — it won't expire on its own:`, e.message);
     }

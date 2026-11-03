@@ -31,7 +31,8 @@
        Postgres.
 */
 
-import { pgrRpc, pgrUpsert, pgrInsert, pgrSelect } from '../../v5/supabase-client.js';
+import { pgrRpc, pgrInsert, pgrSelect } from '../../v5/supabase-client.js';
+import { businessSpotifyAccount, upsertLedgerRow } from '../../_spotify-accounts.js';
 import { nextIl4amIso, directionKey }   from '../../../v6/generation/playlist-length.js';
 
 // Default freshness window for the dedup filter — tracks served to this
@@ -281,10 +282,12 @@ export async function spotifyCall(origin, action, body) {
   throw last?.error || new Error(`spotify ${action} failed`);
 }
 
-export async function addAllTracks(origin, playlistId, spotifyIds) {
+// account: the Spotify account the playlist lives on (api/_spotify-accounts.js);
+// omitted = 'robin-1'.
+export async function addAllTracks(origin, playlistId, spotifyIds, account) {
   for (let i = 0; i < spotifyIds.length; i += SPOTIFY_ADD_CHUNK) {
     const uris = spotifyIds.slice(i, i + SPOTIFY_ADD_CHUNK).map((id) => `spotify:track:${id}`);
-    await spotifyCall(origin, 'add_tracks', { playlist_id: playlistId, uris });
+    await spotifyCall(origin, 'add_tracks', { playlist_id: playlistId, uris, account });
   }
 }
 
@@ -310,7 +313,8 @@ export function playlistName(bizName, direction) {
 // Builds one Spotify playlist for one direction, registers a ledger row for
 // expiry, writes a history row per served track, and returns a row shaped
 // for INSERT into business_playlists. The batch caller then INSERTs all N
-// rows in one call.
+// rows in one call. The playlist is made on the business's Spotify account
+// (2026-11-03, api/_spotify-accounts.js), which the ledger records.
 export async function buildOneDailyPlaylist({
   origin, ownerId, businessId, direction, target, bizName, expiryIso,
 }) {
@@ -323,9 +327,10 @@ export async function buildOneDailyPlaylist({
 
   const name        = playlistName(bizName, direction);
   const description = direction.description_he || direction.title_en || '';
-  const created     = await spotifyCall(origin, 'create_playlist', { name, description });
+  const account     = await businessSpotifyAccount(businessId);
+  const created     = await spotifyCall(origin, 'create_playlist', { name, description, account });
   if (!created?.id) throw new Error('create_playlist returned no id');
-  await addAllTracks(origin, created.id, ids);
+  await addAllTracks(origin, created.id, ids, account);
 
   // Record every served track for next-day dedup. Best-effort — a failure
   // here doesn't undo the build, worst case is minor overlap tomorrow.
@@ -337,7 +342,7 @@ export async function buildOneDailyPlaylist({
   // playlists.
   const expiresAtIso = expiryIso || nextIl4amIso();
   try {
-    await pgrUpsert('created_playlists', {
+    await upsertLedgerRow({
       spotify_id:  created.id,
       name,
       expires_at:  expiresAtIso,
@@ -345,7 +350,8 @@ export async function buildOneDailyPlaylist({
       error:       null,
       owner_id:    ownerId || null,
       business_id: businessId,
-    }, { onConflict: 'spotify_id' });
+      spotify_account_id: account,
+    });
   } catch (e) {
     console.warn(`[daily-builder] ledger upsert failed for ${created.id}:`, e.message);
   }

@@ -55,8 +55,9 @@
 */
 
 import { randomUUID } from 'node:crypto';
-import { pgrSelect, pgrRpc, pgrUpsert } from '../../v5/supabase-client.js';
+import { pgrSelect, pgrRpc } from '../../v5/supabase-client.js';
 import { spotifyCall, addAllTracks, recordTrackHistory, playlistName } from '../../v6/account/_daily-builder.js';
+import { businessSpotifyAccount, upsertLedgerRow } from '../../_spotify-accounts.js';
 import { attachTrackGenres, insertPlaylistRows, buildOption2Batch as buildNaiveOption2Batch } from './_daily-builder.js';
 import {
   reconcileTimeline, groupForDay, mainGroup, businessWindowAt, energyAtFn, windowOf, defaultPoints,
@@ -439,23 +440,25 @@ export async function planFromInputs({ businessId, hours, timeline, approved, N,
 }
 
 // One mix → Spotify playlist + ledger + history + business_playlists-shaped row.
+// Made on the business's Spotify account (api/_spotify-accounts.js).
 // → { skipped:true, reason, title } | { skipped:false, row }  (row NOT inserted)
 export async function createTimelineMix({ origin, ownerId, businessId, bizName, title, tracks, expiryIso, meta }) {
   const ids = tracks.map((t) => t.id);
   if (!ids.length) return { skipped: true, reason: 'no tracks matched', title };
 
   const name = playlistName(bizName, { title_en: title });
-  const created = await spotifyCall(origin, 'create_playlist', { name, description: title });
+  const account = await businessSpotifyAccount(businessId);
+  const created = await spotifyCall(origin, 'create_playlist', { name, description: title, account });
   if (!created?.id) throw new Error('create_playlist returned no id');
-  await addAllTracks(origin, created.id, ids);
+  await addAllTracks(origin, created.id, ids, account);
   await recordTrackHistory({ businessId, directionKey: OPTION2_DIRECTION_KEY, spotifyIds: ids });
 
   const expiresAtIso = expiryIso || nextIl4amIso();
   try {
-    await pgrUpsert('created_playlists', {
+    await upsertLedgerRow({
       spotify_id: created.id, name, expires_at: expiresAtIso, deleted_at: null, error: null,
-      owner_id: ownerId || null, business_id: businessId,
-    }, { onConflict: 'spotify_id' });
+      owner_id: ownerId || null, business_id: businessId, spotify_account_id: account,
+    });
   } catch (e) {
     console.warn(`[v7 option2] ledger upsert failed for ${created.id}:`, e.message);
   }

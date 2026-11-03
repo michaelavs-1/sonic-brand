@@ -22,9 +22,14 @@
    The `origin` arg is the base URL to hit /api/new/spotify at. Server-to-
    server callers with a valid INTERNAL_API_KEY bypass origin-guard + rate
    limits — see api/v6/origin-guard.js and api/v6/ratelimit.js.
+
+   Spotify accounts (2026-11-03): each step runs on the account the playlist
+   was made on (the ledger's spotify_account_id, api/_spotify-accounts.js),
+   looked up here unless the caller passes `account`.
 */
 
 import { pgrPatch } from '../../v5/supabase-client.js';
+import { playlistSpotifyAccount } from '../../_spotify-accounts.js';
 
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || '';
 
@@ -71,10 +76,12 @@ export async function postSpotify(origin, action, body) {
  * @param {string} args.spotifyId   Spotify playlist id to expire
  * @param {string} [args.name]      Current playlist name (used for the "(expired) <name>" rename)
  * @param {string} [args.label]     Alternate name source if `name` is missing
+ * @param {string} [args.account]   Spotify account the playlist is on (default: the ledger's)
  * @returns {Promise<{ok: true, gone?: boolean}>}
  * @throws if any non-404 step fails; caller decides whether to swallow.
  */
-export async function expirePlaylistNow({ origin, spotifyId, name, label }) {
+export async function expirePlaylistNow({ origin, spotifyId, name, label, account }) {
+  const acct = account || await playlistSpotifyAccount(spotifyId);
   const originalName = name || label || 'playlist';
   const newName = originalName.startsWith('(expired) ')
     ? originalName
@@ -85,7 +92,7 @@ export async function expirePlaylistNow({ origin, spotifyId, name, label }) {
   // 1. Rename (best-effort; if the playlist is already gone we skip
   // straight to marking deleted below).
   try {
-    await postSpotify(origin, 'update_playlist', { playlist_id: spotifyId, name: newName });
+    await postSpotify(origin, 'update_playlist', { playlist_id: spotifyId, name: newName, account: acct });
   } catch (e) {
     if (isGone(e)) gone = true;
     else console.warn(`[expire-playlist] ${spotifyId} rename failed (continuing):`, e.message);
@@ -94,7 +101,7 @@ export async function expirePlaylistNow({ origin, spotifyId, name, label }) {
   // 2. Empty tracks.
   if (!gone) {
     try {
-      await postSpotify(origin, 'replace_tracks', { playlist_id: spotifyId, uris: [] });
+      await postSpotify(origin, 'replace_tracks', { playlist_id: spotifyId, uris: [], account: acct });
     } catch (e) {
       if (isGone(e)) gone = true;
       else throw e;
@@ -104,7 +111,7 @@ export async function expirePlaylistNow({ origin, spotifyId, name, label }) {
   // 3. Unfollow (best-effort).
   if (!gone) {
     try {
-      await postSpotify(origin, 'unfollow_playlist', { playlist_id: spotifyId });
+      await postSpotify(origin, 'unfollow_playlist', { playlist_id: spotifyId, account: acct });
     } catch (e) {
       if (isGone(e)) gone = true;
       else console.warn(`[expire-playlist] ${spotifyId} unfollow failed (continuing):`, e.message);

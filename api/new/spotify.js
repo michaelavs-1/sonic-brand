@@ -1,6 +1,7 @@
 import { requireSiteOrInternal, isInternal, setCors } from '../v6/origin-guard.js';
 import { guard } from '../v6/ratelimit.js';
 import { sendAlert } from '../_alert.js';
+import { DEFAULT_SPOTIFY_ACCOUNT, SPOTIFY_ACCOUNT_RE, spotifyAccountEnv } from '../_spotify-accounts.js';
 
 // Emergency kill switch for Spotify WRITE operations. Flip to `true` to
 // freeze all writes (create_playlist / add_tracks / update_playlist /
@@ -27,6 +28,11 @@ const SPOTIFY_WRITES_DISABLED = false;
      - Client Credentials: SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET (Michael's app — grandfathered)
      - User token:         RUBIN_REFRESH_TOKEN + RUBIN_SPOTIFY_CLIENT_ID + RUBIN_SPOTIFY_CLIENT_SECRET
                            (seed RUBIN_REFRESH_TOKEN once via /api/new/rubin-oauth-callback)
+   Spotify accounts (2026-11-03): a write may name `account` (e.g. 'robin-2'),
+   and is then made with that account's token (env vars per account, see
+   api/_spotify-accounts.js). No `account` = 'robin-1', the RUBIN_* account
+   above, exactly as before. The pause switch and the daily write counter stay
+   shared by every account.
 
    Resilience layer (added 2026-08-29 post-Aug-22-incident):
      1. Every upstream Spotify fetch has an AbortController 15s timeout —
@@ -48,9 +54,8 @@ const SPOTIFY_WRITES_DISABLED = false;
 let ccToken  = null;
 let ccExpiry = 0;
 
-let userToken   = null;
-let userExpiry  = 0;
-let userRefresh = null;
+// One user token per Spotify account: account id → { token, expiry, refresh }.
+const userTokens = new Map();
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
@@ -209,17 +214,18 @@ async function getCCToken() {
   return ccToken;
 }
 
-async function refreshUserToken() {
-  if (!userRefresh) {
-    const envToken = process.env.RUBIN_REFRESH_TOKEN;
-    if (!envToken) {
-      throw new Error('RUBIN_REFRESH_TOKEN not set — seed it via /api/new/rubin-oauth-callback once, then add it to env.');
+async function refreshUserToken(account) {
+  const env = spotifyAccountEnv(account);
+  const slot = userTokens.get(account) || {};
+  if (!slot.refresh) {
+    if (!env.refreshToken) {
+      throw new Error(`${env.refreshVar} not set (Spotify account ${account}) — seed it via /api/new/rubin-oauth-callback once, then add it to env.`);
     }
-    userRefresh = envToken;
+    slot.refresh = env.refreshToken;
   }
 
-  const clientId     = process.env.RUBIN_SPOTIFY_CLIENT_ID;
-  const clientSecret = process.env.RUBIN_SPOTIFY_CLIENT_SECRET;
+  const clientId     = env.clientId;
+  const clientSecret = env.clientSecret;
   if (!clientId || !clientSecret) {
     throw new Error('RUBIN_SPOTIFY_CLIENT_ID / RUBIN_SPOTIFY_CLIENT_SECRET not set');
   }
@@ -233,30 +239,32 @@ async function refreshUserToken() {
     },
     body: new URLSearchParams({
       grant_type: 'refresh_token',
-      refresh_token: userRefresh,
+      refresh_token: slot.refresh,
     }),
   });
   if (!r.ok) {
     const txt = await r.text().catch(() => '');
-    throw new Error(`Rubin user token refresh failed: ${r.status} ${txt.slice(0, 200)}`);
+    throw new Error(`Spotify user token refresh failed (account ${account}): ${r.status} ${txt.slice(0, 200)}`);
   }
   const data = await r.json();
-  userToken  = data.access_token;
-  userExpiry = Date.now() + (data.expires_in * 1000) - 60000;
+  slot.token  = data.access_token;
+  slot.expiry = Date.now() + (data.expires_in * 1000) - 60000;
 
   // Spotify may rotate the refresh_token. Use the new one in-process; if it persists,
-  // update RUBIN_REFRESH_TOKEN env so the next cold start picks up the latest.
-  if (data.refresh_token && data.refresh_token !== userRefresh) {
-    console.warn('[rubin] Spotify rotated the refresh_token. Update RUBIN_REFRESH_TOKEN env var to:', data.refresh_token);
-    userRefresh = data.refresh_token;
+  // update the account's env var so the next cold start picks up the latest.
+  if (data.refresh_token && data.refresh_token !== slot.refresh) {
+    console.warn(`[spotify] Spotify rotated the refresh_token of account ${account}. Update ${env.refreshVar} env var to:`, data.refresh_token);
+    slot.refresh = data.refresh_token;
   }
 
-  return userToken;
+  userTokens.set(account, slot);
+  return slot.token;
 }
 
-async function getUserToken() {
-  if (userToken && Date.now() < userExpiry) return userToken;
-  return refreshUserToken();
+async function getUserToken(account) {
+  const slot = userTokens.get(account);
+  if (slot?.token && Date.now() < slot.expiry) return slot.token;
+  return refreshUserToken(account);
 }
 
 // -------- Synthetic response objects --------
@@ -276,10 +284,12 @@ function synthResp(status, bodyObj) {
 
 // -------- The upstream call --------
 
-async function spotifyCall(url, init, tokenKind) {
-  // Global pause applies to user-token calls only. CC calls hit Michael's
-  // app which is on a different quota bucket and hasn't been the source
-  // of any block we've seen.
+// account: which Spotify account a user-token call acts as ('robin-1' when
+// the request named none). Ignored for CC calls.
+async function spotifyCall(url, init, tokenKind, account = DEFAULT_SPOTIFY_ACCOUNT) {
+  // Global pause applies to user-token calls only (every account). CC calls
+  // hit Michael's app which is on a different quota bucket and hasn't been
+  // the source of any block we've seen.
   if (tokenKind === 'user') {
     const pause = await checkPause();
     if (pause) {
@@ -293,7 +303,9 @@ async function spotifyCall(url, init, tokenKind) {
     }
   }
 
-  const getToken = async () => (tokenKind === 'user' ? getUserToken() : getCCToken());
+  const getToken = async () => (tokenKind === 'user' ? getUserToken(account) : getCCToken());
+  // Log tag: the account, only when it isn't the usual one.
+  const who = tokenKind === 'user' && account !== DEFAULT_SPOTIFY_ACCOUNT ? `user[${account}]` : tokenKind;
 
   const doFetch = async (t) => {
     const ctl = new AbortController();
@@ -307,7 +319,7 @@ async function spotifyCall(url, init, tokenKind) {
       });
     } catch (e) {
       if (e.name === 'AbortError') {
-        console.warn(`[spotify] ${tokenKind} ${init?.method || 'GET'} ${url} — TIMEOUT after ${UPSTREAM_TIMEOUT_MS}ms`);
+        console.warn(`[spotify] ${who} ${init?.method || 'GET'} ${url} — TIMEOUT after ${UPSTREAM_TIMEOUT_MS}ms`);
         return synthResp(504, { error: 'spotify_upstream_timeout', hint: `no response from Spotify within ${UPSTREAM_TIMEOUT_MS}ms` });
       }
       throw e;
@@ -328,7 +340,7 @@ async function spotifyCall(url, init, tokenKind) {
 
     if (r.status >= 400) {
       const reason = bodyJson?.error?.reason || null;
-      console.warn(`[spotify] ${tokenKind} ${init?.method || 'GET'} ${url} → ${r.status}${reason ? ` reason=${reason}` : ''}: ${bodyText.slice(0, 500)}`);
+      console.warn(`[spotify] ${who} ${init?.method || 'GET'} ${url} → ${r.status}${reason ? ` reason=${reason}` : ''}: ${bodyText.slice(0, 500)}`);
     }
 
     // Wrap into the same synthetic shape as the paused/timeout paths so callers
@@ -350,7 +362,7 @@ async function spotifyCall(url, init, tokenKind) {
   // 401 = token expired mid-flight. Refresh + retry once. Never counts against
   // the pause switch (this is a benign token-lifecycle case).
   if (r.status === 401) {
-    if (tokenKind === 'user') { userToken = null; userExpiry = 0; }
+    if (tokenKind === 'user') { const slot = userTokens.get(account); if (slot) { slot.token = null; slot.expiry = 0; } }
     else                      { ccToken   = null; ccExpiry   = 0; }
     token = await getToken();
     r = await doFetch(token);
@@ -366,7 +378,7 @@ async function spotifyCall(url, init, tokenKind) {
     const retryAfter = parseInt(r.headers?.get?.('retry-after') || '0', 10);
     if (retryAfter >= PAUSE_TRIGGER_SEC) {
       const untilMs = Date.now() + retryAfter * 1000;
-      await setPause(untilMs, `429 Retry-After=${retryAfter}s on ${init?.method || 'GET'} ${url}`);
+      await setPause(untilMs, `429 Retry-After=${retryAfter}s on ${init?.method || 'GET'} ${url} (account ${account})`);
     }
   }
 
@@ -379,7 +391,7 @@ async function spotifyCall(url, init, tokenKind) {
     const reason = r._bodyJson?.error?.reason || null;
     if (reason === 'QUOTA_EXCEEDED') {
       const untilMs = Date.now() + QUOTA_EXCEEDED_TTL * 1000;
-      await setPause(untilMs, `403 QUOTA_EXCEEDED on ${init?.method || 'GET'} ${url}`);
+      await setPause(untilMs, `403 QUOTA_EXCEEDED on ${init?.method || 'GET'} ${url} (account ${account})`);
     }
   }
 
@@ -429,6 +441,12 @@ export default async function handler(req, res) {
     if (playlist_id !== undefined && !/^[A-Za-z0-9]{22}$/.test(String(playlist_id))) {
       return res.status(400).json({ error: { status: 400, message: 'Invalid base62 id' } });
     }
+    // Which Spotify account a write acts as (2026-11-03). None = 'robin-1'.
+    const { account: accountRaw } = req.body || {};
+    if (accountRaw != null && !SPOTIFY_ACCOUNT_RE.test(String(accountRaw))) {
+      return res.status(400).json({ error: 'account invalid' });
+    }
+    const account = accountRaw ? String(accountRaw) : DEFAULT_SPOTIFY_ACCOUNT;
 
     if (SPOTIFY_WRITES_DISABLED && WRITE_ACTIONS.has(action)) {
       console.warn(`[spotify] WRITE BLOCKED (SPOTIFY_WRITES_DISABLED constant): ${action}`);
@@ -466,7 +484,7 @@ export default async function handler(req, res) {
         // invite-collaborator model, and ours have no invited collaborators, so even
         // Rubin (owner, and `added_by` on every track) got no per-track Remove.
         body: JSON.stringify({ name, description: description || '', public: true, collaborative: false }),
-      }, 'user');
+      }, 'user', account);
       const data = await r.json().catch(() => ({}));
       return res.status(r.status).json(data);
     }
@@ -483,7 +501,7 @@ export default async function handler(req, res) {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ uris: batch }),
-        }, 'user');
+        }, 'user', account);
         const data = await r.json().catch(() => ({}));
         results.push({ status: r.status, body: data });
       }
@@ -501,7 +519,7 @@ export default async function handler(req, res) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
-      }, 'user');
+      }, 'user', account);
       return res.status(r.status).json(r.status === 200 ? { ok: true } : await r.json().catch(() => ({})));
     }
 
@@ -516,7 +534,7 @@ export default async function handler(req, res) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ uris }),
-      }, 'user');
+      }, 'user', account);
       const data = await r.json().catch(() => ({}));
       return res.status(r.status).json(data);
     }
@@ -526,7 +544,7 @@ export default async function handler(req, res) {
       if (!playlist_id) return res.status(400).json({ error: 'playlist_id required' });
       const r = await spotifyCall(`https://api.spotify.com/v1/playlists/${playlist_id}/followers`, {
         method: 'DELETE',
-      }, 'user');
+      }, 'user', account);
       return res.status(r.status).json(r.status === 200 ? { ok: true } : await r.json().catch(() => ({})));
     }
 

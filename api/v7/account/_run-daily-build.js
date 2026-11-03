@@ -23,6 +23,7 @@
 import { pgrSelect, pgrPatch } from '../../v5/supabase-client.js';
 import { buildOneDailyPlaylist } from '../../v6/account/_daily-builder.js';
 import { postSpotify } from '../../v6/account/_expire-playlist.js';
+import { playlistSpotifyAccounts } from '../../_spotify-accounts.js';
 import { subscriptionEnded, SUBSCRIPTION_ENDED_MESSAGE } from './_subscription.js';
 import { logDailyBuilds } from './_build-log.js';
 import { planOption1, planOption2, attachTrackGenres, insertPlaylistRows } from './_daily-builder.js';
@@ -196,6 +197,8 @@ export async function runDailyBuild(opts, { beforeStream = () => {}, send }) {
         console.warn(`${tag} reading the old playlists' names failed:`, e.message);
       }
     }
+    // …and the Spotify account each was made on (api/_spotify-accounts.js).
+    const spotifyAccountOf = await playlistSpotifyAccounts(oldRows.map((r) => r.spotify_id));
     // Each old playlist leaves the dashboard as its replacement lands. On
     // Spotify (Ami, 2026-10-21 — owners who saved the playlists saw 8 with the
     // same names until closing + 2h) it's renamed "… (הוחלף)" right away and
@@ -221,7 +224,9 @@ export async function runDailyBuild(opts, { beforeStream = () => {}, send }) {
         const name = spotifyName.get(r.spotify_id);
         if (name && !name.endsWith(REPLACED_SUFFIX)) {
           try {
-            await postSpotify(origin, 'update_playlist', { playlist_id: r.spotify_id, name: `${name}${REPLACED_SUFFIX}` });
+            await postSpotify(origin, 'update_playlist', {
+              playlist_id: r.spotify_id, name: `${name}${REPLACED_SUFFIX}`, account: spotifyAccountOf.get(r.spotify_id),
+            });
           } catch (e) {
             console.warn(`${tag} renaming old playlist ${r.spotify_id} failed:`, e.message);
           }

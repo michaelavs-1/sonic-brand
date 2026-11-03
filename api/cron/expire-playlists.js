@@ -34,6 +34,7 @@
 import { timingSafeEqual } from 'node:crypto';
 import { pgrSelect, pgrPatch } from '../v5/supabase-client.js';
 import { expirePlaylistNow } from '../v6/account/_expire-playlist.js';
+import { playlistSpotifyAccounts } from '../_spotify-accounts.js';
 import { sendAlert } from '../_alert.js';
 import { markCronRunning } from '../_cron-running.js';
 
@@ -138,6 +139,9 @@ export default async function handler(req, res) {
   // /api/alert-probe (which awaits) worked fine. Await at the end.
   const alertPromises = [];
 
+  // The Spotify account each playlist was made on (2026-11-03), in one read.
+  const accountOf = await playlistSpotifyAccounts(expired.map((row) => row.spotify_id));
+
   for (const row of expired) {
     try {
       // expirePlaylistNow handles rename + empty + unfollow (404-tolerant)
@@ -147,6 +151,7 @@ export default async function handler(req, res) {
         origin:    SPOTIFY_BASE,
         spotifyId: row.spotify_id,
         name:      row.name,
+        account:   accountOf.get(row.spotify_id),
       });
       results.succeeded += 1;
       results.details.push({ spotify_id: row.spotify_id, ok: true });

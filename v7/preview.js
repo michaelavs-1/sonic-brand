@@ -483,7 +483,8 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
     const btns = el('div', { class: 'swipe-actions' }, noBtn, yesBtn);
     void btns; // eslint: intentionally unused — see comment above
 
-    card.replaceChildren(el('h1', {}, heading), ...(subheading ? [subheading] : []), progLabel, progBar, deckWrap);
+    const headingEl = el('h1', {}, heading);
+    card.replaceChildren(headingEl, ...(subheading ? [subheading] : []), progLabel, progBar, deckWrap);
 
     const setProgress = () => {
       // Pin the denominator to the pipeline's expected total (2 pages × 4 in
@@ -1172,21 +1173,22 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
     };
 
     // The picture before the first card (opts.intro), in the card frame the
-    // deck then shows its cards in, under the deck's heading and progress
-    // (Roni, 2026-11-03): the line on a panel at the top, "קדימה" at the
-    // bottom. The swipe rails stay hidden until the owner taps it. That tap
-    // also lets the browser start the first card's song by itself.
+    // deck then shows its cards in: its line at the top, "קדימה" at the
+    // bottom. The deck's top (heading, deck name, progress) and the swipe
+    // rails stay hidden until the owner taps it, and appear with the first
+    // card (Ami, 2026-11-03). That tap also lets the browser start the first
+    // card's song by itself.
     const showIntro = ({ image, text }) => {
       setProgress();
       // The first card's song loads while the picture is up.
       if (previews[0]) preloadSong(`spotify:track:${previews[0].trackId}`);
-      const rails = [railNo, railYes, railSuper];
-      for (const n of rails) n.style.display = 'none';
+      const hidden = [headingEl, subheading, progLabel, progBar, railNo, railYes, railSuper].filter(Boolean);
+      for (const n of hidden) n.style.display = 'none';
       deck.replaceChildren(deckIntroCard({
         image,
         text,
         onGo: () => {
-          for (const n of rails) n.style.display = '';
+          for (const n of hidden) n.style.display = '';
           showCard();
         },
       }));

@@ -1894,9 +1894,11 @@
       background: linear-gradient(to top, rgba(5, 10, 15, .7), transparent);
     }
 
-    /* The line sits right on the picture, large, in the app's dark blue
-       (Roni, 2026-11-03; it had a dark see-through panel until then); a soft
-       light glow keeps it readable on the darker parts of the pictures. */
+    /* The line sits right on the picture, large, white with an outline in the
+       app's dark blue (Roni, 2026-11-03; before that the same day: on a dark
+       see-through panel, then dark blue with a light glow). The outline is
+       eight 2px shadows, not -webkit-text-stroke, which thins the letters
+       where paint-order isn't supported. */
     .deck-intro-copy {
       position: absolute;
       top: 14px;
@@ -1910,8 +1912,12 @@
       font-size: 26px;
       font-weight: 800;
       line-height: 1.25;
-      color: var(--card);
-      text-shadow: 0 0 2px rgba(255, 255, 255, .9), 0 0 10px rgba(255, 255, 255, .85), 0 0 22px rgba(255, 255, 255, .6);
+      letter-spacing: .05em;
+      color: #fff;
+      text-shadow:
+        -2px -2px 0 var(--card), 0 -2px 0 var(--card), 2px -2px 0 var(--card),
+        -2px 0 0 var(--card), 2px 0 0 var(--card),
+        -2px 2px 0 var(--card), 0 2px 0 var(--card), 2px 2px 0 var(--card);
       text-wrap: balance;
     }
 
@@ -3022,7 +3028,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/app.js?v=03112026e"></script>
+  <script type="module" src="/v7/app.js?v=03112026f"></script>
 </body>
 
 </html>

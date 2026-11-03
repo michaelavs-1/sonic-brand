@@ -60,7 +60,7 @@ import {
   showRestartOnboardingScreen,
   preparePreview,
   preloadDeckIntros,
-} from '/v7/preview.js?v=03112026d';
+} from '/v7/preview.js?v=03112026e';
 // v7 has NO per-direction playlist build at onboarding — directions are
 // diagnostic probes, not playlist seeds. After the swipe deck the flow goes
 // "הכל מוכן!" → registration → payment → taste-profile (the point where

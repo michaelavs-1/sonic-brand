@@ -150,8 +150,8 @@ Ami's redesign of the swipe step, planned with Roni. **The onboarding runs it (`
     - anything else, or a missing / unknown value, → `food-drink` (`normalizeVenueCategory`).
     - It comes from the first deck's call (`state.venueCategory`, reset with the venue phrase).
   - **The slide** (`showIntro` in `v7/preview.js`, CSS `.deck-intro` in `v7/index.html`): shown once the deck's songs are ready.
-    - **Where:** under the deck's own heading, "מוזיקה רגועה / אנרגטית" and progress ("1/6"), inside the card frame the cards then appear in (`.deck-intro-card`). Roni, 2026-11-03: the first version replaced the heading with its own headline ("בחירת כיוונים רגועים / אנרגטיים"), dropped the same day.
-    - **Inside the frame:** the picture, its line right on it (26px, bold, the app's dark blue `--card`, a soft light glow so it reads on the darker parts, lines balanced; Roni, 2026-11-03, after versions on a dark see-through panel and in white), and "קדימה" at the bottom. The swipe rails stay hidden until the tap.
+    - **Where:** inside the card frame the cards then appear in (`.deck-intro-card`). The deck's top (heading, "מוזיקה רגועה / אנרגטית", progress) is hidden while the picture is up and appears with the first card (Ami, 2026-11-03). Earlier the same day it was first a separate slide with its own headline ("בחירת כיוונים רגועים / אנרגטיים"), then under the deck's top.
+    - **Inside the frame:** the picture, its line right on it (26px, bold, letters spaced .05em, white with a 2px outline in the app's dark blue `--card`, drawn as eight text-shadows; lines balanced; Roni, 2026-11-03, after versions on a dark see-through panel, in white with a shadow, and in dark blue with a light glow), and "קדימה" at the bottom. The swipe rails stay hidden until the tap.
     - calm: "נתחיל בלשמוע אופציות שיתאימו למקום באווירה הנינוחה יותר";
     - energetic: "עכשיו נבחר אופציות שיתאימו למקום באנרגיה גבוהה ומהנה".
   - **Preloading:** both pictures of the category load as soon as the first deck's call returns (`preloadDeckIntros`). The slide waits up to 2.5s for its picture.

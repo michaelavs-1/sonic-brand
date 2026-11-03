@@ -14,13 +14,15 @@
 // emails a magic link. Email verification is REQUIRED (like v6) — the owner
 // enters /v7/account only by clicking that link.
 //
-// Two decks (Ami, 2026-11-02): the swipe step is an ENERGETIC deck of 6, then
-// a CALM deck of 6 (v7/generation/deck-directions.js — both requested at
-// once). Each card plays a song from its deck's energy range. A deck with
-// fewer than 2 likes gets 4 more cards of the same energy (Round 2 per deck,
-// after both decks). The taste profile is two-sided
-// (v7/generation/taste-profile-decks.js): energetic-deck likes build the
-// energetic side, calm-deck likes the calm side.
+// Two decks (Ami, 2026-11-02): the swipe step is a CALM deck of 6, then an
+// ENERGETIC deck of 6 (calm first since 2026-11-03; DECK_ORDER in
+// v7/generation/deck-directions.js — both requested at once). Each deck opens
+// with a picture for the venue's category (food-drink / beauty / clothing,
+// named by the model) and "קדימה"; each card plays a song from its deck's
+// energy range, by itself. A deck with fewer than 3 likes gets 4 more cards of
+// the same energy (Round 2 per deck, after both decks). The taste profile is
+// two-sided (v7/generation/taste-profile-decks.js): energetic-deck likes build
+// the energetic side, calm-deck likes the calm side.
 //
 // Bench mode (/v7/?bench=1, 2026-11-02): Ami's prompt dashboard opens this page
 // in a window to re-run the swipe step for a real business. The dashboard
@@ -38,8 +40,8 @@
 import { runAtmosphereSelection, preloadAtmosphereBubbles } from '/v7/atmosphere.js?v=24102026a';
 import { runEmphasesStep } from '/v7/emphases.js?v=03102026a';
 import { runHoursSelection } from '/v7/hours-selector.js?v=29092026a';
-import { generateDeckDirections } from '/v7/generation/deck-directions.js?v=02112026a';
-import { generateRefinedDeckDirections } from '/v7/generation/refined-directions.js?v=02112026a';
+import { generateDeckDirections, DECK_ORDER, DEFAULT_VENUE_CATEGORY } from '/v7/generation/deck-directions.js?v=03112026a';
+import { generateRefinedDeckDirections, ROUND2_MIN_LIKES } from '/v7/generation/refined-directions.js?v=03112026a';
 import { generateDeckTasteProfile } from '/v7/generation/taste-profile-decks.js?v=02112026a';
 // derivePopularityWindow was removed 2026-09-02 — atmospheres no longer
 // derive a popularity window. Atmosphere strings still enter the prompt
@@ -57,7 +59,8 @@ import {
   showR2FailureScreen,
   showRestartOnboardingScreen,
   preparePreview,
-} from '/v7/preview.js?v=02112026b';
+  preloadDeckIntros,
+} from '/v7/preview.js?v=03112026d';
 // v7 has NO per-direction playlist build at onboarding — directions are
 // diagnostic probes, not playlist seeds. After the swipe deck the flow goes
 // "הכל מוכן!" → registration → payment → taste-profile (the point where
@@ -128,15 +131,19 @@ const state = {
   // atmospheres or emphases.
   hours: null,                // { 0: { closed: true } | { open, close }, ..., 6: ... }
   longestMinutes: 0,          // longest open window across days — feeds daily-playlist target
-  // The energetic deck (ranks 1–6). page2Promise is the calm deck's call
-  // (→ { directions } | { error }); calmDirections holds its directions once
-  // the owner reaches it (ranks 7–12).
+  // The deck the owner swipes first (DECK_ORDER: the calm deck, ranks 7–12,
+  // since 2026-11-03). page2Promise is the other deck's call (→ { directions }
+  // | { error }); secondDeckDirections holds its directions once the owner
+  // reaches it (the energetic deck, ranks 1–6). Each direction carries `deck`.
   directions: null,
   page2Promise: null,
-  calmDirections: null,
+  secondDeckDirections: null,
   // Round 1's short phrase for the business ("המסעדה הסקסית"), shown on the
   // "הכל מוכן!" screen before sign-up (2026-10-21). null = left out.
   venuePhrase: null,
+  // 'food-drink' | 'beauty' | 'clothing' — picks the picture shown before each
+  // deck (2026-11-03). From the first deck's call.
+  venueCategory: null,
   picked: null,
   results: null,
   // ---- v7-only signal accumulation ----
@@ -244,8 +251,9 @@ function invalidateFrom(step) {
   if (step <= 3) {
     state.directions = null;
     state.venuePhrase = null;
+    state.venueCategory = null;
     state.page2Promise = null;
-    state.calmDirections = null;
+    state.secondDeckDirections = null;
     // round2Emphases is feedback on a specific R1 outcome — clear
     // whenever directions regenerate so it doesn't leak stale context
     // into the next R2 attempt.
@@ -301,9 +309,6 @@ function carryPref(directionSets, field) {
   return 'none';
 }
 
-// Round 2 opens for a deck the owner liked fewer than this many cards of.
-const ROUND2_MIN_LIKES = 2;
-const DECKS = ['energetic', 'calm'];
 
 // Every card the owner was dealt: the energetic deck (ranks 1–6), the calm
 // deck (7–12) and any Round 2 cards (13–16 energetic, 17–20 calm) — ranks are
@@ -311,7 +316,7 @@ const DECKS = ['energetic', 'calm'];
 // profile, whose LIKED / DISLIKED lists refer to these ranks.
 function allCardsSeen() {
   const byRank = new Map();
-  for (const d of [state.directions || [], state.calmDirections || [], state.round2Directions || []].flat()) {
+  for (const d of [state.directions || [], state.secondDeckDirections || [], state.round2Directions || []].flat()) {
     if (d && Number.isFinite(d.rank) && !byRank.has(d.rank)) byRank.set(d.rank, d);
   }
   return [...byRank.values()].sort((a, b) => a.rank - b.rank);
@@ -932,8 +937,9 @@ async function goToStep(start) {
         if (!sameAtmos) {
           state.directions = null;
           state.venuePhrase = null;
+          state.venueCategory = null;
           state.page2Promise = null;
-          state.calmDirections = null;
+          state.secondDeckDirections = null;
           state.picked = null;
           state.results = null;
           state.round2Emphases = '';
@@ -961,8 +967,9 @@ async function goToStep(start) {
         if (emphases !== state.musicalEmphases) {
           state.directions = null;
           state.venuePhrase = null;
+          state.venueCategory = null;
           state.page2Promise = null;
-          state.calmDirections = null;
+          state.secondDeckDirections = null;
           state.picked = null;
           state.results = null;
           state.round2Emphases = '';
@@ -1001,6 +1008,7 @@ async function goToStep(start) {
           // immediately; page 2 anchors chain onto Gemini's second call).
           preparedPromise = rawDirections.then((r) => {
             if (r?.error) return emptyPreparedPreview();
+            preloadDeckIntros(r.venueCategory || DEFAULT_VENUE_CATEGORY);
             return preparePreview({
               directions: r.directions,
               page2Promise: r.page2Promise,
@@ -1047,6 +1055,7 @@ async function goToStep(start) {
           );
           preparedPromise = rawDirections.then((r) => {
             if (r?.error) return emptyPreparedPreview();
+            preloadDeckIntros(r.venueCategory || DEFAULT_VENUE_CATEGORY);
             return preparePreview({
               directions: r.directions,
               page2Promise: r.page2Promise,
@@ -1075,13 +1084,16 @@ async function goToStep(start) {
           state.directions = dResult.directions;
           state.page2Promise = dResult.page2Promise;
           state.venuePhrase = dResult.venuePhrase || null;
+          state.venueCategory = dResult.venueCategory || null;
         }
 
-        // The two decks, one after the other: energetic (page 1 of the
-        // prepared preview), then calm (page 2). Shared references — the
-        // decks mutate the super-like maps, the dislikes and the audit tally
-        // directly.
+        // The two decks, one after the other, in DECK_ORDER: calm (page 1 of
+        // the prepared preview), then energetic (page 2). Each opens with its
+        // picture for the venue's category (2026-11-03). Shared references —
+        // the decks mutate the super-like maps, the dislikes and the audit
+        // tally directly.
         const deckOpts = {
+          category: state.venueCategory || DEFAULT_VENUE_CATEGORY,
           superLikedTracks: state.superLikedTracks,
           superLikedGenres: state.superLikedGenres,
           superLikedDecks: state.superLikedDecks,
@@ -1092,26 +1104,27 @@ async function goToStep(start) {
           directions: state.directions,
           page2Promise: state.page2Promise,
         }).catch(() => emptyPreparedPreview()), signal);
-        const energeticPicked = await abortable(runDeckFlow({ deck: 'energetic', ready: prepared.page1Ready, ...deckOpts }), signal);
-        const calmResult = await abortable(Promise.resolve(state.page2Promise).catch(() => null), signal);
-        state.calmDirections = calmResult && !calmResult.error && Array.isArray(calmResult.directions)
-          ? calmResult.directions : [];
-        const calmPicked = await abortable(runDeckFlow({ deck: 'calm', ready: prepared.page2Ready, ...deckOpts }), signal);
-        const picked = [...energeticPicked, ...calmPicked];
+        const [firstDeck, secondDeck] = DECK_ORDER;
+        const firstPicked = await abortable(runDeckFlow({ deck: firstDeck, ready: prepared.page1Ready, ...deckOpts }), signal);
+        const secondResult = await abortable(Promise.resolve(state.page2Promise).catch(() => null), signal);
+        state.secondDeckDirections = secondResult && !secondResult.error && Array.isArray(secondResult.directions)
+          ? secondResult.directions : [];
+        const secondPicked = await abortable(runDeckFlow({ deck: secondDeck, ready: prepared.page2Ready, ...deckOpts }), signal);
+        const picked = [...firstPicked, ...secondPicked];
 
         // Round 2 refined directions, captured if Round 2 fires — fed to the
         // background taste-profile call (and its retry) below.
         state.round2Directions = null;
 
-        // Round 2 per deck (2026-11-02): a deck with fewer than 2 liked cards
-        // (a deck that failed to load counts as 0) gets 4 more cards of its
-        // own energy. One refinement question first — its text goes to every
+        // Round 2 per deck (2026-11-02): a deck with fewer than ROUND2_MIN_LIKES
+        // (3 since 2026-11-03) liked cards (a deck that failed to load counts
+        // as 0) gets 4 more cards of its own energy. One refinement question first — its text goes to every
         // deck's Round 2 call as the HIGHEST-priority signal — then the decks'
-        // calls run in parallel and their cards are shown in one deck
-        // (energetic first). If the owner ends with 0 likes overall, they get
-        // the restart-onboarding screen.
+        // calls run in parallel and their cards are shown in one deck (in
+        // DECK_ORDER: calm first). If the owner ends with 0 likes overall,
+        // they get the restart-onboarding screen.
         let mergedPicked = picked;
-        const thinDecks = DECKS.filter((deck) => picked.filter((d) => d.deck === deck).length < ROUND2_MIN_LIKES);
+        const thinDecks = DECK_ORDER.filter((deck) => picked.filter((d) => d.deck === deck).length < ROUND2_MIN_LIKES);
         if (thinDecks.length) {
           const round2Emphases = await abortable(
             runRefinedEmphasesStep({ initialValue: state.round2Emphases, decks: thinDecks }),
@@ -1119,7 +1132,8 @@ async function goToStep(start) {
           );
           state.round2Emphases = round2Emphases;
 
-          const deckCards = { energetic: state.directions || [], calm: state.calmDirections || [] };
+          const dealt = [...(state.directions || []), ...(state.secondDeckDirections || [])];
+          const deckCards = Object.fromEntries(DECK_ORDER.map((deck) => [deck, dealt.filter((d) => d.deck === deck)]));
           const slByDeck = superLikedByDeck();
 
           // Retry loop: if no Round 2 deck could be built (model errors, or no

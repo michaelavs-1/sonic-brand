@@ -13,13 +13,68 @@ import { WAIT_DOTS_HTML, waitNodes } from '/v7/wait-dots.js?v=28092026a';
 import { deckWindow } from '/shared/genre-sides.js?v=02112026a';
 
 const HEADING = 'בחרו כיוונים מוזיקליים שמתאימים לעסק';
-// The two onboarding decks (Ami, 2026-11-02): energetic first, then calm.
+// The two onboarding decks (Ami, 2026-11-02): calm first, then energetic
+// since 2026-11-03 (the order is DECK_ORDER in deck-directions.js).
 // The heading, then the deck's name under it in orange (Roni, 2026-11-02).
-const DECK_HEADING = 'בחרו כיוונים שמתאימים לעסק';
-const DECK_SUBHEADINGS = {
+export const DECK_HEADING = 'בחרו כיוונים שמתאימים לעסק';
+export const DECK_SUBHEADINGS = {
   energetic: 'מוזיקה אנרגטית',
   calm: 'מוזיקה רגועה',
 };
+
+// The picture before each deck (Ami, 2026-11-03): one per venue category and
+// deck (v7/images/deck-intro/), with a line and "קדימה", inside the deck's
+// card frame under the deck's own heading. The category is the first deck
+// call's venue_category; anything else gets food-drink.
+const DECK_INTRO_TEXT = {
+  calm: { text: 'נתחיל בלשמוע אופציות שיתאימו למקום באווירה הנינוחה יותר' },
+  energetic: { text: 'עכשיו נבחר אופציות שיתאימו למקום באנרגיה גבוהה ומהנה' },
+};
+const DECK_INTRO_FILE = { 'food-drink': 'food-drink', beauty: 'beauty', clothing: 'clothes' };
+const deckIntroImage = (category, deck) =>
+  `/v7/images/deck-intro/${DECK_INTRO_FILE[category] || DECK_INTRO_FILE['food-drink']}-${deck}.jpeg`;
+
+// Pictures already requested: src → { img, loaded }. Kept so the requests
+// aren't dropped, and so the slide can wait for its picture.
+const _introLoads = new Map();
+function loadIntroImage(src) {
+  if (!_introLoads.has(src)) {
+    const img = new Image();
+    const loaded = new Promise((resolve) => { img.onload = img.onerror = () => resolve(); });
+    img.src = src;
+    _introLoads.set(src, { img, loaded });
+  }
+  return _introLoads.get(src).loaded;
+}
+
+// Fetches both pictures of the venue's category ahead of time (as soon as the
+// first deck's call returns), so each slide shows at once.
+export function preloadDeckIntros(category) {
+  for (const deck of Object.keys(DECK_INTRO_TEXT)) loadIntroImage(deckIntroImage(category, deck));
+}
+
+// The picture and line for a deck → { image, text }, or null for a deck with
+// no picture.
+export function deckIntroFor(category, deck) {
+  return DECK_INTRO_TEXT[deck] ? { image: deckIntroImage(category, deck), ...DECK_INTRO_TEXT[deck] } : null;
+}
+
+// The picture card before a deck, inside the swipe card's frame: the picture,
+// its line on a panel, "קדימה" at the bottom (`onGo`). Built here so a design
+// sandbox can show the exact same card without the onboarding.
+export function deckIntroCard({ image, text, onGo }) {
+  const go = el('button', { class: 'btn btn-primary deck-intro-go', type: 'button' }, 'קדימה');
+  if (onGo) go.addEventListener('click', onGo, { once: true });
+  return el('div', { class: 'preview-card swipe-card swipe-card2 deck-intro-card' },
+    el('div', { class: 'deck-intro' },
+      el('img', { class: 'deck-intro-img', src: image, alt: '' }),
+      el('div', { class: 'deck-intro-copy' },
+        el('div', { class: 'deck-intro-text' }, text),
+      ),
+      el('div', { class: 'deck-intro-foot' }, go),
+    ),
+  );
+}
 
 // Play/pause glyphs are sized 36×36 (up from 22×22) so they fill more of
 // the 56px button and read as a proper media control rather than a small
@@ -54,12 +109,12 @@ function fmtTime(ms) {
 // ---------- Spotify IFrame API singleton ----------
 let _apiPromise = null;
 
-// ---------- one-time swap-button cue ----------
-// The first time a song plays for 3 seconds in this onboarding, the swap
-// button pops (×1.25) with a light sweep so owners notice it exists
-// (Roni, 2026-10-26; chosen on a standalone test page). Once per page load,
-// so Round 2 doesn't repeat it. CSS: .swap-btn.swap-cue in v7/index.html.
-let swapCueDone = false;
+// ---------- swap-button cue ----------
+// 3 seconds into each card's song, the swap button pops (×1.25) with a light
+// sweep so owners notice it exists (Roni, 2026-10-26; chosen on a standalone
+// test page). Once per card since 2026-11-03 (until then once per page load),
+// and not again on a card whose swap button was used. CSS: .swap-btn.swap-cue
+// in v7/index.html.
 const SWAP_CUE_DELAY_MS = 3000;
 const SWAP_CUE_TOTAL_MS = 1700;   // pop 1200ms + the sweep that starts at 420ms
 function getSpotifyIframeApi() {
@@ -330,6 +385,12 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
   const superLikedDecks = opts.superLikedDecks || null;
   const heading = opts.heading || HEADING;
   const subheading = opts.subheading ? el('div', { class: 'swipe-deck-sub' }, opts.subheading) : null;
+  // `opts.intro` — { image, text }: a picture shown in the deck's card frame
+  // before the first card, until the owner taps "קדימה" (2026-11-03).
+  // `opts.autoplay` — each card's song starts by itself once the card and its
+  // artwork are on screen (default on, 2026-11-03).
+  const intro = opts.intro || null;
+  const autoplay = opts.autoplay !== false;
 
   // `opts.dislikedDirections` — optional Array<direction> the caller owns.
   // v7 treats dislikes as a real taste signal: every swipe-left pushes the
@@ -449,6 +510,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         if (page2 && Array.isArray(page2.previews) && page2.previews.length) {
           previews.push(...page2.previews);
           Object.assign(trackMeta, page2.trackMeta || {});
+          prefetchArt(page2.previews);
         }
         // If we've been waiting on page 2 (the "loading more" state), the
         // waitingResume closure below is set and will fire showCard again.
@@ -475,10 +537,81 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       railSuper.style.opacity = '';
     };
 
-    const destroyController = () => {
-      try { controller?.destroy(); } catch { }
-      controller = null;
+    // ---- Two Spotify player slots that take turns (2026-11-03) ----
+    // One plays the card on screen; the other loads the next card's song in
+    // advance (the first card's while the deck's picture is up). A player
+    // created when its card appears started the song ~0.5–0.7s later (~1.7s
+    // for the deck's first card); one loaded in advance ~0.2s (headless
+    // Chrome, muted, Spotify's real player, 2026-11-03). The slots live in the
+    // deck, under the cards (.sw2-players in v7/index.html), so they survive
+    // a card change.
+    const players = [0, 1].map(() => ({ box: el('div', { class: 'sw2-player' }), uri: null, created: null, onUpdate: null }));
+    deckWrap.prepend(el('div', { class: 'sw2-players', 'aria-hidden': 'true' }, ...players.map((pl) => pl.box)));
+    let activePlayer = null;
+    const withPlayer = (pl, fn) => pl?.created?.then((c) => { try { fn(c); } catch { } });
+    // Puts a song in a slot: always a fresh Spotify player (one per song, as
+    // before the slots), the slot's old one removed.
+    const loadInto = (pl, uri) => {
+      if (pl.uri === uri) return;
+      withPlayer(pl, (c) => c.destroy());
+      pl.uri = uri;
+      const mount = el('div');
+      pl.box.replaceChildren(mount);
+      pl.created = new Promise((res) => {
+        api.createController(mount, { uri, width: '100%', height: 80 }, (c) => {
+          if (pl.uri !== uri) { try { c.destroy(); } catch { } return; }   // replaced meanwhile
+          c.addListener('playback_update', (e) => { if (pl.uri === uri) pl.onUpdate?.(e?.data || {}); });
+          res(c);
+        });
+      });
     };
+    // Removes a slot's player (stops its song).
+    const clearPlayer = (pl) => {
+      withPlayer(pl, (c) => c.destroy());
+      pl.box.replaceChildren();
+      pl.uri = null;
+      pl.created = null;
+      pl.onUpdate = null;
+    };
+    // The player for the card on screen: the one that already has its song,
+    // else the other one. The previous card's player is removed, not just
+    // paused: with a paused player still there, the songs from the third card
+    // on stuck buffering at 0:00 in every test run (2026-11-03). So at most
+    // two players exist: the card's, and the next card's loading.
+    const takePlayer = (uri, onUpdate) => {
+      if (activePlayer && activePlayer.uri !== uri) clearPlayer(activePlayer);
+      const pl = players.find((x) => x.uri === uri) || players.find((x) => x !== activePlayer) || players[0];
+      loadInto(pl, uri);
+      pl.onUpdate = onUpdate;
+      activePlayer = pl;
+      return pl;
+    };
+    // Loads a song into the player that isn't playing, for the next card.
+    const preloadSong = (uri) => {
+      const pl = players.find((x) => x !== activePlayer);
+      if (pl && uri) loadInto(pl, uri);
+    };
+    // Stops the card's song (a swipe, the "loading more" wait).
+    const stopPlayback = () => {
+      controller = null;
+      if (activePlayer) { activePlayer.onUpdate = null; withPlayer(activePlayer, (c) => c.pause()); }
+    };
+    // The deck is done: both players go.
+    const destroyPlayers = () => {
+      stopPlayback();
+      for (const pl of players) { withPlayer(pl, (c) => c.destroy()); pl.created = null; pl.uri = null; }
+    };
+
+    // Every card's artwork, fetched up front: autoplay waits for a card's
+    // artwork, so it should already be in the browser's cache.
+    const artPrefetch = [];
+    const prefetchArt = (list) => {
+      for (const pv of list) {
+        const src = trackMeta[pv.trackId]?.art;
+        if (src) { const img = new Image(); img.src = src; artPrefetch.push(img); }
+      }
+    };
+    prefetchArt(previews);
 
     const showCard = () => {
       busy = false;
@@ -487,7 +620,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         if (!page2Settled) {
           // Page 2 is still loading — show a brief "loading more" state and
           // resume when page2Ready resolves (see waitingResume above).
-          destroyController();
+          stopPlayback();
           deck.replaceChildren(
             // .in-deck modifier flex-centers the content vertically INSIDE
             // the deck's bounds and adds top padding equal to the swipe-up
@@ -506,7 +639,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
           waitingResume = showCard;
           return;
         }
-        destroyController();
+        destroyPlayers();
         resolve(likedDirections);
         return;
       }
@@ -515,12 +648,8 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       const d = p.direction;
       const m = trackMeta[p.trackId] || {};
 
-      const mount = el('div', { class: 'preview-spotify-mount' });
-      // The iframe lives inside .sw2-artwrap as a nearly-invisible overlay
-      // (see CSS): the visible viewport keeps the media pipeline active, and
-      // the custom play button drives it via the IFrame API.
-      const embedWrap = el('div', { class: 'sw2-embed-hidden' }, mount);
-
+      // The song plays in one of the deck's two players (see takePlayer); the
+      // custom play button drives it via the IFrame API.
       const playBtn = el('button', { class: 'sw2-play', type: 'button', 'aria-label': 'נגן' });
       playBtn.innerHTML = PLAY_ICON;
 
@@ -531,7 +660,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       const artImg = m.art
         ? el('img', { class: 'sw2-art', src: m.art, alt: '' })
         : el('div', { class: 'sw2-art sw2-art-ph' }, '🎵');
-      const artWrap = el('div', { class: 'sw2-artwrap' }, artImg, spotifyBadge(), playBtn, embedWrap);
+      const artWrap = el('div', { class: 'sw2-artwrap' }, artImg, spotifyBadge(), playBtn);
 
       const titleEl = el('div', { class: 'sw2-title', dir: 'ltr' }, m.name || '');
       const artistEl = el('div', { class: 'sw2-artist', dir: 'ltr' }, m.artist || '');
@@ -667,8 +796,10 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         pbTotal.textContent = '0:00';
       }
 
-      // Swap-button cue timer (see swapCueDone above). Starts on play, is
-      // cleared on pause, and fires only if this card is still on screen.
+      // Swap-button cue timer (see SWAP_CUE_DELAY_MS above). Once per card:
+      // starts on play, is cleared on pause, and fires only if this card is
+      // still on screen.
+      let swapCueDone = false;
       let swapCueTimer = null;
       const swapCueFire = () => {
         swapCueTimer = null;
@@ -683,42 +814,88 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
         if (!swapCueTimer) swapCueTimer = setTimeout(swapCueFire, SWAP_CUE_DELAY_MS);
       };
 
-      let pendingPlay = false;
-      const wireController = (mountNode) => {
-        api.createController(mountNode, { uri: cardEl.dataset.uri, width: '100%', height: 80 }, (c) => {
-          if (!cardEl.isConnected) { try { c.destroy(); } catch { } return; }
+      // Play when the player is ready: 'auto' = autoplay, once the artwork
+      // has loaded too (the card is fully on screen); 'user' = the owner
+      // tapped play before the player existed. The Spotify API queues play()
+      // sent before the embed has loaded and runs it once it's ready. If the
+      // browser blocks autoplay, the button simply goes back to play.
+      let pendingPlay = autoplay ? 'auto' : false;
+      playBtn.classList.toggle('waiting', !!pendingPlay);
+      const whenArtShown = () => new Promise((resolve) => {
+        if (artImg.tagName !== 'IMG' || artImg.complete) { resolve(); return; }
+        const t = setTimeout(resolve, 3000);
+        const done = () => { clearTimeout(t); resolve(); };
+        artImg.addEventListener('load', done, { once: true });
+        artImg.addEventListener('error', done, { once: true });
+      });
+      const startPlayback = (c) => {
+        if (!pendingPlay || controller !== c || !cardEl.isConnected) return;
+        pendingPlay = false;
+        playBtn.classList.remove('waiting');
+        try { c.play(); } catch { }
+      };
+      // The next card's song goes into the other player once this card's song
+      // has really played a second (or 2s after it started; Spotify's position
+      // updates are sparse). Loading it as the song was only starting stalled
+      // the song (measured 2026-11-03: "playing" but stuck at 0:00). If the
+      // song isn't playing 4s in (autoplay blocked, paused), the next one
+      // loads anyway.
+      let nextLoaded = false;
+      let songStarted = false;
+      const preloadNext = () => {
+        if (nextLoaded || !cardEl.isConnected) return;
+        nextLoaded = true;
+        const next = previews[index + 1];
+        if (next) preloadSong(`spotify:track:${next.trackId}`);
+      };
+      setTimeout(() => { if (pbState.isPaused) preloadNext(); }, 4000);
+
+      const onPlayback = (dd) => {
+        const paused = dd.isPaused !== false;
+        playBtn.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
+        swapCueOnPlayback(paused);
+        if (!paused && dd.position >= 1000) preloadNext();
+        else if (!paused && !songStarted) { songStarted = true; setTimeout(preloadNext, 2000); }
+        // Capture position/duration into pbState so the RAF loop and
+        // seek/scrub UI reflect the actual iframe state.
+        if (typeof dd.duration === 'number' && dd.duration > 0) pbState.duration = dd.duration;
+        if (typeof dd.position === 'number' && Date.now() >= pbState.seekLockUntil) {
+          pbState.lastPosition = dd.position;
+          pbState.lastTimestamp = Date.now();
+        }
+        pbState.isPaused = paused;
+      };
+      // Puts `uri` on this card: in the player that loaded it in advance, or
+      // the other one; `inPlace` (the swap button) keeps the card's player so
+      // the next card's song stays loaded in the other.
+      const useSong = (uri, { inPlace = false } = {}) => {
+        controller = null;
+        let pl;
+        if (inPlace && activePlayer) {
+          pl = activePlayer;
+          pl.onUpdate = onPlayback;
+          loadInto(pl, uri);
+        } else {
+          pl = takePlayer(uri, onPlayback);
+        }
+        pl.created.then((c) => {
+          if (!cardEl.isConnected || activePlayer !== pl || pl.uri !== uri) return;
           controller = c;
-          c.addListener('playback_update', (e) => {
-            const dd = e?.data || {};
-            const paused = dd.isPaused !== false;
-            playBtn.innerHTML = paused ? PLAY_ICON : PAUSE_ICON;
-            swapCueOnPlayback(paused);
-            // Capture position/duration into pbState so the RAF loop and
-            // seek/scrub UI reflect the actual iframe state.
-            if (typeof dd.duration === 'number' && dd.duration > 0) pbState.duration = dd.duration;
-            if (typeof dd.position === 'number' && Date.now() >= pbState.seekLockUntil) {
-              pbState.lastPosition = dd.position;
-              pbState.lastTimestamp = Date.now();
-            }
-            pbState.isPaused = paused;
-          });
-          // If the user clicked play before the controller was ready, honour
-          // it now. Otherwise stay paused — autoplay is browser-blocked and
-          // trying anyway just noises up the console.
-          if (pendingPlay) {
-            pendingPlay = false;
-            playBtn.classList.remove('waiting');
-            try { c.play(); } catch { }
-          }
+          if (pendingPlay === 'user') startPlayback(c);
+          else if (pendingPlay === 'auto') whenArtShown().then(() => startPlayback(c));
         });
       };
-      wireController(mount);
+      useSong(cardEl.dataset.uri);
 
       playBtn.addEventListener('click', () => {
         if (controller) {
+          // A tap while autoplay is still waiting for the artwork plays now
+          // (togglePlay from paused), instead of a second play() later.
+          pendingPlay = false;
+          playBtn.classList.remove('waiting');
           try { controller.togglePlay(); } catch { }
         } else {
-          pendingPlay = true;
+          pendingPlay = 'user';
           playBtn.classList.add('waiting');
         }
       });
@@ -799,19 +976,15 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
           trackMeta[nextId] = m2;
           cardEl.dataset.trackId = nextId;
           cardEl.dataset.uri = `spotify:track:${nextId}`;
-          destroyController();
-          pendingPlay = false;
-          playBtn.classList.remove('waiting');
+          // The new song plays by itself too, once its artwork is in.
+          pendingPlay = autoplay ? 'auto' : false;
+          playBtn.classList.toggle('waiting', !!pendingPlay);
           playBtn.innerHTML = PLAY_ICON;
           resetPbState();
           if (artImg.tagName === 'IMG' && m2.art) artImg.src = m2.art;
           titleEl.textContent = m2.name || '';
           artistEl.textContent = m2.artist || '';
-          embedWrap.querySelector('.preview-spotify-mount')?.remove();
-          embedWrap.querySelector('iframe')?.remove();
-          const newMount = el('div', { class: 'preview-spotify-mount' });
-          embedWrap.append(newMount);
-          wireController(newMount);
+          useSong(cardEl.dataset.uri, { inPlace: true });
           swap.innerHTML = SWAP_BUTTON_HTML;
         } catch {
           swap.innerHTML = SWAP_BUTTON_HTML;
@@ -837,7 +1010,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       const decide = (like) => {
         if (busy) return;
         busy = true;
-        destroyController();
+        stopPlayback();
         if (like) {
           likedDirections.push(d);
         } else if (dislikedDirections) {
@@ -887,7 +1060,7 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       const superLike = () => {
         if (busy) return;
         busy = true;
-        destroyController();
+        stopPlayback();
         const trackId = cardEl.dataset.trackId || p.trackId;
         const genreAtSuperLike = currentGenre;
         // Only .delete on undo if this call was the one that added it;
@@ -998,7 +1171,29 @@ async function renderSwipeDeck(card, initialPreviews, initialTrackMeta, page2Rea
       artWrap.addEventListener('pointercancel', endDrag);
     };
 
-    showCard();
+    // The picture before the first card (opts.intro), in the card frame the
+    // deck then shows its cards in, under the deck's heading and progress
+    // (Roni, 2026-11-03): the line on a panel at the top, "קדימה" at the
+    // bottom. The swipe rails stay hidden until the owner taps it. That tap
+    // also lets the browser start the first card's song by itself.
+    const showIntro = ({ image, text }) => {
+      setProgress();
+      // The first card's song loads while the picture is up.
+      if (previews[0]) preloadSong(`spotify:track:${previews[0].trackId}`);
+      const rails = [railNo, railYes, railSuper];
+      for (const n of rails) n.style.display = 'none';
+      deck.replaceChildren(deckIntroCard({
+        image,
+        text,
+        onGo: () => {
+          for (const n of rails) n.style.display = '';
+          showCard();
+        },
+      }));
+    };
+
+    if (intro) showIntro(intro);
+    else showCard();
   });
 }
 
@@ -1111,20 +1306,28 @@ export async function runDirectionPreviewFlow({ directions, page2Promise, prepar
 
 // ---------- The two onboarding decks (2026-11-02) ----------
 //
-// One deck at a time: `ready` is a preparePreview page (page1Ready = the
-// energetic deck, page2Ready = the calm deck). Resolves with the deck's liked
-// directions — [] when the owner liked none, or when the deck has no cards
-// (its model call or every anchor failed; that deck then gets Round 2).
-export async function runDeckFlow({ deck, ready, superLikedTracks, superLikedGenres, superLikedDecks, dislikedDirections, genreTally }) {
+// One deck at a time: `ready` is a preparePreview page (page1Ready = the deck
+// shown first, page2Ready = the other; DECK_ORDER in deck-directions.js).
+// Once the deck's songs are ready it opens with its picture for the venue's
+// `category` (2026-11-03). Resolves with the deck's liked directions — [] when
+// the owner liked none, or when the deck has no cards (its model call or every
+// anchor failed; that deck then gets Round 2, and no picture is shown).
+export async function runDeckFlow({ deck, ready, category, superLikedTracks, superLikedGenres, superLikedDecks, dislikedDirections, genreTally }) {
   const container = document.querySelector('.screen-card');
   if (!container) throw new Error('deck preview: .screen-card not found');
-  showLoading(container, deck === 'calm' ? 'טוענים שירים רגועים לדוגמא…' : 'טוענים שירים לדוגמא…');
+  showLoading(container, deck === 'energetic' ? 'טוענים שירים אנרגטיים לדוגמא…' : 'טוענים שירים לדוגמא…');
+  const image = deckIntroImage(category, deck);
+  const imageLoaded = loadIntroImage(image);
   const page = await ready;
   if (!page?.previews?.length) return [];
+  // Give the picture a moment so the slide doesn't open empty; it's usually
+  // in already (preloadDeckIntros).
+  await Promise.race([imageLoaded, new Promise((r) => setTimeout(r, 2500))]);
   return renderSwipeDeck(container, page.previews, page.trackMeta, null, superLikedTracks, {
     expectedTotal: page.previews.length,
     heading: DECK_HEADING,
     subheading: DECK_SUBHEADINGS[deck],
+    intro: deckIntroFor(category, deck),
     superLikedGenres, superLikedDecks, dislikedDirections, genreTally,
   });
 }

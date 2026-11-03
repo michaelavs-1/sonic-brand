@@ -11,6 +11,7 @@ import {
 } from '../shared/genre-sides.js';
 import {
   normalizeDeckDirections, assembleDeckSystemPrompt, buildDeckUserMessage, DECK_EDITABLE_PROMPT_SECTION,
+  DECK_ORDER, VENUE_CATEGORIES, DEFAULT_VENUE_CATEGORY, normalizeVenueCategory,
 } from '../v7/generation/deck-directions.js';
 import {
   normalizeDeckTasteProfile, buildDeckTasteUserMessage, assembleDeckTasteSystemPrompt, DECK_TASTE_EDITABLE_PROMPT_SECTION,
@@ -91,6 +92,22 @@ test('deck prompts assemble with Places injected and no undefined', () => {
   assert.ok(buildDeckUserMessage({ deck: 'calm', bizDesc: 'בית קפה' }).includes('DECK: CALM'));
   const tsys = assembleDeckTasteSystemPrompt(DECK_TASTE_EDITABLE_PROMPT_SECTION);
   assert.ok(tsys.includes('## Sides') && tsys.includes('except `Organic House`') && !/undefined/.test(tsys));
+});
+
+test('calm deck first (2026-11-03); the prompt says so and asks for the venue category', () => {
+  assert.deepEqual(DECK_ORDER, ['calm', 'energetic']);
+  const sys = assembleDeckSystemPrompt(DECK_EDITABLE_PROMPT_SECTION);
+  assert.ok(sys.includes('a CALM deck first, then an ENERGETIC deck'));
+  assert.ok(sys.includes('## Rules for the Venue Category') && sys.includes('"venue_category": "food-drink"'));
+});
+
+test('venue category: the three categories pass, anything else is food-drink', () => {
+  assert.deepEqual(VENUE_CATEGORIES, ['food-drink', 'beauty', 'clothing']);
+  assert.equal(normalizeVenueCategory('beauty'), 'beauty');
+  assert.equal(normalizeVenueCategory(' Clothing '), 'clothing');
+  assert.equal(normalizeVenueCategory('food-drink'), 'food-drink');
+  for (const v of [undefined, null, '', 'gym', 'clothes', 42]) assert.equal(normalizeVenueCategory(v), DEFAULT_VENUE_CATEGORY, String(v));
+  assert.equal(DEFAULT_VENUE_CATEGORY, 'food-drink');
 });
 
 test('taste-profile user message lists both decks and the super-likes per deck', () => {

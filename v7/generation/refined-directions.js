@@ -398,17 +398,20 @@ export async function generateRefinedMusicalDirections({
 
 // ---------- Round 2 per deck (two onboarding decks, 2026-11-02) ----------
 //
-// A deck the owner liked fewer than 2 directions of gets 4 more cards of the
-// same energy. Same Round 2 rules as above (Learning, Distinctness, Task
+// A deck the owner liked fewer than ROUND2_MIN_LIKES directions of gets 4 more
+// cards of the same energy. Same Round 2 rules as above (Learning, Distinctness, Task
 // Workflow, output format), told which deck it refines and kept to that
 // deck's genres (shared/genre-sides.js); the code drops a genre from the other
 // side. Ranks: energetic 13–16, calm 17–20 (after the decks' 1–12).
 
 export const R2_DECK_RANK_START = { energetic: 13, calm: 17 };
+// Round 2 opens for a deck with fewer likes than this (Roni, 2026-11-03: 3,
+// was 2). The onboarding, this prompt and Ami's dashboard all read it here.
+export const ROUND2_MIN_LIKES = 3;
 
 const DECK_NAME = { energetic: 'ENERGETIC', calm: 'CALM' };
 
-const REFINED_DECK_INTRO = `You are refining one deck of diagnostic taste probes for a public-facing-business playlist tool. The owner swipes two decks of tightly-clustered "musical directions": an ENERGETIC deck (each card plays a song from its genres' energetic side) and a CALM deck (a song from their calm side). Each direction is a small group of near-identical genres (same instrumentation family, same cultural register, same mood). On the deck named in the user message, the owner liked fewer than 2. Your task now is to analyze their decisions on that deck — including which specific genres they super-liked a track from — and produce 4 brand-new diagnostic probes FOR THE SAME DECK that pin down the parts of their taste on that side the deck didn't. Each new probe is still a tight cluster, not a blended playlist. Downstream, the liked probes of each deck build that side of the owner's taste profile (energetic or calm daily playlists).`;
+const REFINED_DECK_INTRO = `You are refining one deck of diagnostic taste probes for a public-facing-business playlist tool. The owner swipes two decks of tightly-clustered "musical directions": an ENERGETIC deck (each card plays a song from its genres' energetic side) and a CALM deck (a song from their calm side). Each direction is a small group of near-identical genres (same instrumentation family, same cultural register, same mood). On the deck named in the user message, the owner liked fewer than ${ROUND2_MIN_LIKES}. Your task now is to analyze their decisions on that deck — including which specific genres they super-liked a track from — and produce 4 brand-new diagnostic probes FOR THE SAME DECK that pin down the parts of their taste on that side the deck didn't. Each new probe is still a tight cluster, not a blended playlist. Downstream, the liked probes of each deck build that side of the owner's taste profile (energetic or calm daily playlists).`;
 
 const REFINED_DECK_INPUTS_SECTION = `## Inputs
 

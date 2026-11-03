@@ -833,9 +833,10 @@
       flex-shrink: 0;
     }
 
-    /* One-time cue (2026-10-26): 3s into the first song that plays, the pill
-       pops to ×1.25 over 1.2s and a light sweep crosses it as it settles.
-       preview.js adds .swap-cue once and removes it when the animation ends. */
+    /* Cue (2026-10-26): 3s into a card's song, the pill pops to ×1.25 over
+       1.2s and a light sweep crosses it as it settles. preview.js adds
+       .swap-cue once per card (once per page until 2026-11-03) and removes it
+       when the animation ends. */
     .swap-btn {
       position: relative;
     }
@@ -1855,6 +1856,100 @@
       margin: -4px 0 8px;
     }
 
+    /* The picture before each deck (2026-11-03): inside the swipe card's frame,
+       under the deck's heading and progress; the line on top, "קדימה" at the
+       bottom. preview.js showIntro. */
+    .swipe-card2.deck-intro-card {
+      padding: 12px;
+    }
+
+    .deck-intro {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 8 / 9;
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--bg-2);
+      animation: deckIntroIn .35s ease both;
+    }
+
+    .deck-intro-img {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    /* Shading behind the button */
+    .deck-intro::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 30%;
+      pointer-events: none;
+      background: linear-gradient(to top, rgba(5, 10, 15, .7), transparent);
+    }
+
+    /* The line sits right on the picture, large, in the app's dark blue
+       (Roni, 2026-11-03; it had a dark see-through panel until then); a soft
+       light glow keeps it readable on the darker parts of the pictures. */
+    .deck-intro-copy {
+      position: absolute;
+      top: 14px;
+      left: 14px;
+      right: 14px;
+      z-index: 1;
+      text-align: center;
+    }
+
+    .deck-intro-text {
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1.25;
+      color: var(--card);
+      text-shadow: 0 0 2px rgba(255, 255, 255, .9), 0 0 10px rgba(255, 255, 255, .85), 0 0 22px rgba(255, 255, 255, .6);
+      text-wrap: balance;
+    }
+
+    .deck-intro-foot {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 20px;
+      z-index: 1;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* "קדימה": larger text in the same box as before (Roni, 2026-11-03):
+       170×53, 170×48 on a phone, as the regular button measured. */
+    .deck-intro-go {
+      min-width: 170px;
+      height: 53px;
+      padding-block: 0;
+      font-size: 21px;
+      line-height: 1;
+    }
+
+    @media (max-width: 480px) {
+      .deck-intro-go {
+        height: 48px;
+      }
+    }
+
+    @keyframes deckIntroIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .deck-intro { animation: none; }
+    }
+
     .swipe-progress-label {
       font-size: 13px;
       color: var(--muted);
@@ -2233,17 +2328,27 @@
 
     /* Michael's original hid the Spotify iframe fully offscreen (left:-9999px), */
     /* but browsers throttle/suspend media in offscreen iframes so playback fails. */
-    /* Fix: keep the iframe inside .sw2-artwrap as a nearly-invisible overlay — */
-    /* still in the visible viewport so media stays active, but visually covered */
-    /* by the album art (z-index) and interaction-blocked by pointer-events:none. */
-    .sw2-embed-hidden {
+    /* The deck's two Spotify players (2026-11-03; preview.js takePlayer). They
+       live in the deck, not in a card, so one can load the next card's song
+       ahead of time. Kept in the visible viewport, where the artwork sits, so
+       media stays active, but nearly invisible, covered by the card (first
+       child of .sw2-deckwrap, no z-index) and interaction-blocked. Until
+       2026-11-03 each card had its own player inside .sw2-artwrap. */
+    .sw2-players {
       position: absolute;
-      inset: 0;
+      top: 90px;
+      left: 50%;
+      width: 230px;
+      height: 80px;
+      margin-left: -115px;
       opacity: .01;
       pointer-events: none;
-      overflow: hidden;
-      border-radius: 14px;
-      z-index: 1
+      overflow: hidden
+    }
+
+    .sw2-player {
+      position: absolute;
+      inset: 0
     }
 
     .sw2-art {
@@ -2917,7 +3022,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/app.js?v=02112026c"></script>
+  <script type="module" src="/v7/app.js?v=03112026e"></script>
 </body>
 
 </html>

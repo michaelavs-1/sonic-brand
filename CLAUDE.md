@@ -10,7 +10,7 @@ The codebase contains multiple parallel "versions" that coexist. **v7 is the cur
 | Version | State | Where |
 |---|---|---|
 | v6 | **Pages not served since 2026-10-24 (`/v6` redirects to `/`; the root moved to v7 on 2026-09-28), and NO v6 accounts exist** (all deleted 2026-09-24); its daily cron is hard-disabled. Its signup endpoint was removed on 2026-10-25 (it created a login + business with no payment, and v7's account pages would have served it). Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. Full v6 docs: [docs/v6-reference.md](docs/v6-reference.md). | `v6/`, `api/v6/` |
-| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** **Every account was deleted on 2026-10-24** (Roni's tests, Ami's five venues, one outside tester), before real payments went live in production; `payment_checkouts` keeps their payment rows. Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 142-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built and switched on per environment by `V7_PAYMENTS_ENABLED` — on in Development, and **on in Production since 2026-10-24** (with coupons; every earlier account was deleted first, so no production account predates payment) (see [docs/v7-payments.md](docs/v7-payments.md)). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Since 2026-11-02 the swipe step is two decks (energetic, then calm) and the taste profile can be two-sided. Ami tunes the onboarding prompts via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
+| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** **Every account was deleted on 2026-10-24** (Roni's tests, Ami's five venues, one outside tester), before real payments went live in production; `payment_checkouts` keeps their payment rows. Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 142-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built and switched on per environment by `V7_PAYMENTS_ENABLED` — on in Development, and **on in Production since 2026-10-24** (with coupons; every earlier account was deleted first, so no production account predates payment) (see [docs/v7-payments.md](docs/v7-payments.md)). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Since 2026-11-02 the swipe step is two decks (calm, then energetic since 2026-11-03), each opening with a picture for the kind of business, and the taste profile can be two-sided. Ami tunes the onboarding prompts via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
 | v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend isn't served since 2026-10-24 (and couldn't generate any more: it called `/api/v5/anthropic`, removed the same day). `v5/ami-prompt-dashboard/` lives here (admin key required, see § AMI'S DASHBOARD) but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
 | v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. Only `/v4/ami` is served since 2026-10-24. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
 | v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). Not served since 2026-10-24. | `v3/`, `v2/` |
@@ -97,18 +97,23 @@ Onboarding pipeline (BUILT — orchestrated by `v7/app.js`), as it runs since 20
 description + business name + atmospheres + musical emphases + Google Places
        ↓
 Stage 1: v7/generation/deck-directions.js (generateDeckDirections)
-         → two calls at once while the owner picks hours: the ENERGETIC deck (6 probes, ranks 1–6,
-           cards play energy 60–80) and the CALM deck (6 probes, ranks 7–12, energy 30–50);
-           each deck only from its side's genres + the both-ways ones (shared/genre-sides.js)
-           + venue_phrase_he, a short phrase for the business ("המסעדה הסקסית") for the "הכל מוכן!" screen
+         → two calls at once while the owner picks hours: the CALM deck (6 probes, ranks 7–12,
+           cards play energy 30–50; shown first since 2026-11-03) and the ENERGETIC deck (6 probes,
+           ranks 1–6, energy 60–80); each deck only from its side's genres + the both-ways ones
+           (shared/genre-sides.js)
+           + from the calm deck's call: venue_phrase_he, a short phrase for the business
+           ("המסעדה הסקסית") for the "הכל מוכן!" screen, and venue_category (food-drink / beauty /
+           clothing) for the pictures before the decks
          label='v7-onboarding' (both calls)
        ↓
-[owner swipes the energetic deck, then the calm deck]
+[per deck, calm then energetic: a picture for the venue's category + "קדימה", then the owner
+ swipes the deck; each card's song plays by itself]
        ↓
-Stage 2 (per deck, only for a deck with fewer than 2 likes of 6):
+Stage 2 (per deck, only for a deck with fewer than 3 likes of 6; ROUND2_MIN_LIKES, 2 until 2026-11-03):
          one refinement question first (optional Round 2 emphases), then
          v7/generation/refined-directions.js (generateRefinedDeckDirections), the thin decks in parallel
          → 4 more probes of that deck's energy (ranks 13–16 energetic, 17–20 calm), shown as one deck
+           (calm first)
          label='v7-onboarding-refined'
        ↓
 [owner swipes the Round 2 cards]
@@ -130,11 +135,41 @@ Stage 3: v7/generation/taste-profile-decks.js (generateDeckTasteProfile)
 Daily v7 playlist builder (BUILT — Option 1 / Option 2, see § v7 daily runtime below)
 ```
 
-### Two onboarding decks — energetic, then calm (Ami, 2026-11-02; LIVE)
+### Two onboarding decks — calm, then energetic (Ami, 2026-11-02; LIVE)
 
 Ami's redesign of the swipe step, planned with Roni. **The onboarding runs it (`v7/app.js`), in production since the 2026-11-02 evening deploy (commit f41cbec).** The old generators (8-probe Round 1, its Round 2, the one-sided taste profile) are no longer called by the onboarding; what still uses them is listed in [docs/v7-onboarding-before-decks.md](docs/v7-onboarding-before-decks.md), including the two live walkthroughs, which don't exercise the decks.
 - **Migration** [`2026-11-02-v7-anchor-tracks-energy.sql`](v5/precompute/migrations/2026-11-02-v7-anchor-tracks-energy.sql) (the card's energy range in `v7_anchor_tracks`), **RUN 2026-11-02**. Without it the extra fields are ignored and cards play songs of any energy. Check: `node scripts/test-anchor-tracks-energy.mjs` (read-only; before the migration, 19 of 42 cards landed in range by chance).
-- **The decks:** an energetic deck first, then a calm deck, 6 probes each (ranks 1–6 / 7–12). Energetic cards play songs at energy 60–80, calm cards at 30–50.
+- **The decks:** a calm deck first, then an energetic deck, 6 probes each. The order is `DECK_ORDER` in `deck-directions.js` (Ami, 2026-11-03; energetic came first until then). Calm cards play songs at energy 30–50, energetic cards at 60–80.
+  - **Ranks didn't change with the order:** energetic 1–6, calm 7–12. They're IDs in the prompts and the stored cards, so `onboarding_probes` still lists the energetic deck first (sorted by rank).
+- **The picture before each deck** (Ami, 2026-11-03):
+  - **Pictures:** six in `v7/images/deck-intro/`, one per category and deck: `food-drink-` / `beauty-` / `clothes-` + `calm` / `energetic` `.jpeg`. Clothes are 924×1152, the rest 976×1098; the slide crops them to 8:9.
+  - **Category:** the model names it in the deck call (`venue_category`, `VENUE_CATEGORY_SECTION`):
+    - `food-drink`: serves food or drink;
+    - `beauty`: hair, cosmetics or beauty;
+    - `clothing`: a clothing shop;
+    - anything else, or a missing / unknown value, → `food-drink` (`normalizeVenueCategory`).
+    - It comes from the first deck's call (`state.venueCategory`, reset with the venue phrase).
+  - **The slide** (`showIntro` in `v7/preview.js`, CSS `.deck-intro` in `v7/index.html`): shown once the deck's songs are ready.
+    - **Where:** under the deck's own heading, "מוזיקה רגועה / אנרגטית" and progress ("1/6"), inside the card frame the cards then appear in (`.deck-intro-card`). Roni, 2026-11-03: the first version replaced the heading with its own headline ("בחירת כיוונים רגועים / אנרגטיים"), dropped the same day.
+    - **Inside the frame:** the picture, its line right on it (26px, bold, the app's dark blue `--card`, a soft light glow so it reads on the darker parts, lines balanced; Roni, 2026-11-03, after versions on a dark see-through panel and in white), and "קדימה" at the bottom. The swipe rails stay hidden until the tap.
+    - calm: "נתחיל בלשמוע אופציות שיתאימו למקום באווירה הנינוחה יותר";
+    - energetic: "עכשיו נבחר אופציות שיתאימו למקום באנרגיה גבוהה ומהנה".
+  - **Preloading:** both pictures of the category load as soon as the first deck's call returns (`preloadDeckIntros`). The slide waits up to 2.5s for its picture.
+  - **No slide** for a deck that failed to load, or before the Round 2 cards. Bench mode (Ami's re-onboarding window) shows the slides too.
+  - **Checked** only as static screenshots in headless Chrome (all six pictures at phone width), not in the live flow yet.
+- **Autoplay** (Roni, 2026-11-03; `renderSwipeDeck` `opts.autoplay`, default on):
+  - Each card's song starts by itself once the card and its artwork are on screen. So does a song brought in by the swap button. The play / pause button stays.
+  - **How:** the Spotify iframe is created with `allow="autoplay"`, and `play()` sent before the player has loaded is queued by Spotify's API until it's ready.
+  - **Songs load ahead (two player slots, 2026-11-03):**
+    - **Where the players live:** in the deck (`.sw2-players`, under the cards, nearly invisible), not in each card. Until then each card created its own player inside `.sw2-artwrap` when it appeared.
+    - **Preloading:** one slot plays the card on screen, the other loads the next card's song. The first card's song loads while the deck's picture is up. The next song starts loading once the current one has played a second (or 2s after it started); loading it at the very start of a song stalled that song.
+    - **One player per song:** every song gets a fresh player. Spotify's `loadUri` reloads the player's page anyway.
+    - **The previous card's player is removed at the next card,** not kept paused. With a paused one still there, every song from the third card on stuck buffering at 0:00. At most two players exist.
+    - **Artwork:** every card's artwork is fetched when the deck opens, since autoplay waits for it.
+    - **Measured** in headless Chrome, muted, with Spotify's real player and four test songs. The first card went from 1.6s to 0.8s after "קדימה"; the later cards from 0.5–0.7s to 0.17–0.32s after they appear. A further ~0.3s could come from starting the song at the swipe instead of after the 300ms fly-off; not done, since the song is meant to start with its card.
+    - **Test browsers must run with `--mute-audio`:** headless Chrome plays through the machine's speakers.
+  - **Depends on the browser:** it allows it after the owner's taps ("קדימה", the swipes). Where it's blocked, the button simply shows play. Untested on a phone so far.
+- **Swap-button cue on every card** (Roni, 2026-11-03): the pop and sweep of "שמעו שיר נוסף מהכיוון הזה" come 3s into each card's song. Until then, only on the first song of the page. Not again on a card whose swap button was used.
 - **Genre sides** (`shared/genre-sides.js`, Ami's classification):
   - 70 genres go both ways (incl. Country, IndieTronica, Jazz House and Swing Jazz, missing from Ami's sheet: both ways by Roni's decision, no family), 31 energetic only, 41 calm only.
   - A deck uses its own side's genres plus the both-ways ones. A both-ways genre goes on a deck only where that side fits the venue.
@@ -147,9 +182,9 @@ Ami's redesign of the swipe step, planned with Roni. **The onboarding runs it (`
   - They are to apply to the onboarding cards AND the daily playlists. Borderline genres (Deep House, UKG, Dabke, Samba, Hip House, Bhangra Hip Hop…) stay on 60–80 (Roni).
 - **Two-sided taste profile** (`v7/generation/taste-profile-decks.js`): energetic-deck likes build the energetic side (upper half of the scale), calm-deck likes the calm side, so Option 1's tiers follow the decks. The rules are under "The taste-profile stage" below.
 - **Recipe code accepts a genre on both sides:** `requestedByTier`, `normalizeEnergyDirections`, `approvedByLevel` / `normalizeLevelDirections`, and the Option 1 recipe prompt says such a genre may sit in recipes of both tiers. One-sided profiles are unaffected.
-- **The flow** (`v7/app.js`): both decks are requested at once while the owner picks hours (`generateDeckDirections`: the energetic deck is the page 1 of `preparePreview`, the calm deck its page 2). The owner swipes the energetic deck, then the calm deck (`runDeckFlow` in `v7/preview.js`, a heading per deck). Each card's song comes from its deck's range (`specFor` → `/api/v7/anchor-tracks` `lo` / `hi`).
-  - **Round 2 per deck:** a deck with fewer than 2 likes of 6 (a deck that failed to load counts as 0) gets 4 more cards of its energy (`generateRefinedDeckDirections` in `refined-directions.js`; ranks 13–16 energetic, 17–20 calm).
-    - One refinement question comes first, worded for the deck(s) concerned. The decks' Round 2 calls then run in parallel and their cards are shown in one deck, energetic first. 0 likes overall → the restart screen, as before.
+- **The flow** (`v7/app.js`): both decks are requested at once while the owner picks hours (`generateDeckDirections`: the calm deck is page 1 of `preparePreview`, the energetic deck its page 2). The owner swipes the calm deck, then the energetic deck (`runDeckFlow` in `v7/preview.js`, a picture and a heading per deck). Each card's song comes from its deck's range (`specFor` → `/api/v7/anchor-tracks` `lo` / `hi`).
+  - **Round 2 per deck:** a deck with fewer than 3 likes of 6 (`ROUND2_MIN_LIKES` in `refined-directions.js`, read by the onboarding, the Round 2 prompt and Ami's dashboard; 2 until 2026-11-03; a deck that failed to load counts as 0) gets 4 more cards of its energy (`generateRefinedDeckDirections` in `refined-directions.js`; ranks 13–16 energetic, 17–20 calm).
+    - One refinement question comes first, worded for the deck(s) concerned. The decks' Round 2 calls then run in parallel and their cards are shown in one deck, calm first. 0 likes overall → the restart screen, as before.
     - Not generated in the background during the calm deck, as first planned: the refinement question comes first, and its text goes into every Round 2 call.
   - **Super-likes** remember their deck (`state.superLikedDecks`), so the profile approves the genre on that side.
   - **Signup** stores each card's `deck` in `onboarding_probes`, up to 20 cards (`_taste-profile.js`).
@@ -536,7 +571,7 @@ The Home tab's chat for the DAILY music. It replaced the dormant v6 "חידוד�
 
 ### v7 onboarding + signup runtime — BUILT
 
-- **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (the swipe decks: `runDeckFlow` for the energetic + calm decks since 2026-11-02, then the Round 2 cards) / `result.js` ("הכל מוכן!" + registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → energetic deck → calm deck → (Round 2 for a deck with <2 likes; since 2026-11-02, see "Two onboarding decks") → "הכל מוכן!" → registration → payment (Hyp; the placeholder screen while `PAYMENTS_ENABLED = false`) → taste-profile bar → `/v7/account`.
+- **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (the swipe decks: `runDeckFlow` for the energetic + calm decks since 2026-11-02, then the Round 2 cards) / `result.js` ("הכל מוכן!" + registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → calm deck → energetic deck (each opening with its picture; calm first since 2026-11-03) → (Round 2 for a deck with <3 likes; since 2026-11-02, see "Two onboarding decks") → "הכל מוכן!" → registration → payment (Hyp; the placeholder screen while `PAYMENTS_ENABLED = false`) → taste-profile bar → `/v7/account`.
 - **Account** (`v7/account/`): `index.html` + `app.js` (delivery-mode gate, energy-directions build, shuffle warning) + `taste-chat.js` (the Home tab's "שינויים בפרופיל המוזיקלי שלכם" chat) + `energy-timeline-editor.js`. `direction-chat.js` (v6's chat) is still in the folder but no longer mounted.
   - **Home tab, top to bottom:** the daily playlists; today's special-playlist cards ("פלייליסטים אחרים", always visible); the special-playlists chat ("צריכים משהו אחר היום?"; see "v7 special playlists" above); the **"שינויים בפרופיל המוזיקלי שלכם"** chat (see "v7 taste chat" above). The two chats swapped places on 2026-10-26 (Roni); the taste chat used to come first.
   - **Like / dislike per daily playlist** (Roni, 2026-10-26). Two bare icons to the right of each daily playlist's "▶ פתח" (`buildFeedbackIcons` in `v7/account/app.js`): a thumbs-up outlined in green and a thumbs-down outlined in red, filled with their colour (with a pop) once chosen.
@@ -574,7 +609,7 @@ The Home tab's chat for the DAILY music. It replaced the dormant v6 "חידוד�
   - **The phrase** is Round 1's `venue_phrase_he` (prompt `VENUE_PHRASE_SECTION`; cleaned by `normalizeVenuePhrase`, null when unusable). Without a phrase the sentence skips it; without a name it reads "רובין בנה לכם פרופיל מוזיקה." A name that doesn't start in Hebrew gets "ל־".
   - **Behind the screen** the taste profile is still being built; the bar after payment waits for it.
   - **Elsewhere:** the registration screen is now headed "הרשמה" with "שמרו את הפרופיל המוזיקלי שלכם והתחילו לקבל פלייליסטים יומיים" under it (it was "הכל מוכן! הירשמו עכשיו"). Ami's dashboard shows the phrase above its Round 1 result.
-- **Direction ranks are globally unique across rounds and decks** (since 2026-11-02): energetic deck 1–6, calm deck 7–12 (`DECK_RANK_START` in `v7/generation/deck-directions.js`), Round 2 energetic 13–16 and calm 17–20 (`R2_DECK_RANK_START` in `refined-directions.js`). The Round 2 and taste-profile prompts reference LIKED/DISLIKED by rank. In `v7/app.js`, `state.directions` holds the energetic deck, `state.calmDirections` the calm deck and `state.round2Directions` the Round 2 cards (`allCardsSeen()` joins them), so the taste-profile retry can rebuild the same call.
+- **Direction ranks are globally unique across rounds and decks** (since 2026-11-02): energetic deck 1–6, calm deck 7–12 (`DECK_RANK_START` in `v7/generation/deck-directions.js`), Round 2 energetic 13–16 and calm 17–20 (`R2_DECK_RANK_START` in `refined-directions.js`). The Round 2 and taste-profile prompts reference LIKED/DISLIKED by rank. In `v7/app.js`, `state.directions` holds the deck shown first (calm, since 2026-11-03), `state.secondDeckDirections` the other one (energetic; it was `state.calmDirections` while the energetic deck came first) and `state.round2Directions` the Round 2 cards. `allCardsSeen()` joins them, sorted by rank, so the taste-profile retry can rebuild the same call. Code that needs one deck filters by each direction's `deck`.
 - **Endpoints**: `api/v7/anchor-tracks.js` (swipe-deck anchors → `v7_anchor_tracks` RPC, anon key — see the bpm_range note above) + `api/v7/payment/`: `checkout.js`, `return.js`, `status.js`, `_hyp.js` (see [docs/v7-payments.md](docs/v7-payments.md)) + `api/v7/account/`: `signup.js`, `save-taste-profile.js`, `set-delivery-mode.js`, `save-energy-directions.js`, `generate-daily.js`, `_daily-builder.js`, among others (the special-playlists and taste chats, the subscription, daily status…; the full list is under § FILE STRUCTURE).
 - **Live verification scripts** (self-cleaning, throwaway user/business, safe against prod): `scripts/_v7-walkthrough.mjs` (Phase A onboarding→signup→account) and `scripts/_v7-phaseb-walkthrough.mjs` (Phase B daily builders + v7 cron + expiry). Both still generate with the pre-2026-11-02 generators (8-probe R1 + the one-sided taste profile), not the two decks. `/v7/?reset=1` (and the account app) clears the Supabase session for re-testing, same as v6.
 
@@ -588,17 +623,21 @@ sonic-brand/
 ├── v7/                                     ← BUILT + LIVE-VERIFIED. Parallel runtime; served at `/` since 2026-09-28.
 │   ├── index.html                          ← Onboarding shell + v7 CSS
 │   ├── app.js                              ← Onboarding orchestrator: desc→places→atmospheres→emphases→hours
-│   │                                          →energetic deck→calm deck→(Round 2 per deck with <2 likes)→"הכל מוכן!"
-│   │                                          →registration→payment→taste-profile bar→account (decks since 2026-11-02).
+│   │                                          →calm deck→energetic deck (each opens with its picture)→(Round 2 per deck with
+│   │                                          <3 likes)→"הכל מוכן!"→registration→payment→taste-profile bar→account (decks
+│   │                                          since 2026-11-02, calm first since 2026-11-03).
 │   │                                          Bench mode `?bench=1` (startBench / benchFinish) for Ami's re-onboarding.
 │   ├── atmosphere.js / atmosphere-bubbles.js / emphases.js / hours-selector.js  ← ports of the v6 steps
-│   ├── preview.js                          ← Swipe decks: runDeckFlow (energetic, then calm, a heading + orange subheading
-│   │                                          per deck; 2026-11-02) + the Round 2 refinement question per deck. Anchors via
-│   │                                          /api/v7/anchor-tracks → v7_anchor_tracks (no BPM; the deck's energy range
-│   │                                          as lo/hi via specFor) — NOT v6's /api/v5/anchor-tracks. Swap-button cue (2026-10-26):
-│   │                                          the first time a song plays 3s, "שמעו שיר נוסף מהכיוון הזה" pops (×1.25)
-│   │                                          with a light sweep, once per page load (swapCueDone; CSS .swap-btn.swap-cue
-│   │                                          in v7/index.html).
+│   ├── preview.js                          ← Swipe decks: runDeckFlow (calm, then energetic since 2026-11-03; a heading + orange
+│   │                                          subheading + progress per deck, and its picture in the card frame first, showIntro) + the
+│   │                                          Round 2 refinement question per deck. Each card's song plays by itself (autoplay,
+│   │                                          2026-11-03), from two player slots in the deck that load the next song ahead. Anchors via /api/v7/anchor-tracks → v7_anchor_tracks (no BPM; the
+│   │                                          deck's energy range as lo/hi via specFor) — NOT v6's /api/v5/anchor-tracks.
+│   │                                          Swap-button cue (2026-10-26): 3s into each card's song (once per page until
+│   │                                          2026-11-03), "שמעו שיר נוסף מהכיוון הזה" pops (×1.25) with a light sweep
+│   │                                          (CSS .swap-btn.swap-cue in v7/index.html).
+│   ├── images/deck-intro/                  ← The six pictures before the decks (2026-11-03): food-drink / beauty / clothes ×
+│   │                                          calm / energetic (.jpeg). Picked by the model's venue_category.
 │   ├── result.js                           ← "הכל מוכן!" (runReadyStep, 2026-10-21) + registration (email + password + check-email) + payment (Hyp iframe; placeholder while off) +
 │   │                                          taste-profile bar → signup → "בדקו את המייל ✉️" (resend re-posts signup
 │   │                                          with resendFor)
@@ -639,8 +678,9 @@ sonic-brand/
 │       ├── musical-directions.js           ← R1 diagnostic taste probes (8, 4+4 split). label='v7-onboarding'. Not called by
 │       │                                      the onboarding since 2026-11-02; its sections (processing rules, homogeneity,
 │       │                                      pairing, titles, Hebrew description, venue phrase, injectPlaces) build the decks.
-│       ├── deck-directions.js              ← The two onboarding decks (energetic / calm, 6 each; 2026-11-02):
+│       ├── deck-directions.js              ← The two onboarding decks (calm / energetic, 6 each; 2026-11-02):
 │       │                                      generateDeckDirections. normalizeDeckDirections drops wrong-side genres.
+│       │                                      DECK_ORDER (calm first, 2026-11-03); venue_category + normalizeVenueCategory.
 │       ├── taste-profile-decks.js          ← Two-sided taste profile for the decks (a both-ways genre may sit twice;
 │       │                                      2026-11-02): generateDeckTasteProfile, run by the onboarding.
 │       ├── refined-directions.js           ← R2 refinement (4 probes, fires when R1 picks < 3).
@@ -949,6 +989,7 @@ sonic-brand/
 │   ├── admin-api-for-michael-update-2026-11-02.md ← Re-onboarding: `taste_profile.archived`, undo's 409 `reonboard`. The two decks: swipe cards' `deck`, `two_sided` profiles + `both_sides`
 │   │                                          chips, direction-edit refusals by side, distinct genre count.
 │   ├── admin-api-for-michael-update-2026-11-03.md ← A like no longer asks why: `reason` only on dislikes (no API change).
+│   ├── admin-api-for-michael-update-2026-11-03-decks.md ← The calm deck first; Round 2 below 3 likes (no API change).
 │   └── playlist-opens-delta.md             ← Focused delta doc for the 2026-08-30 addition of business_playlist_opens
 │                                             tracking + the new fields on /api/internal/business.
 ├── hyp-support/                            ← Gitignored, local only. Request/response logs prepared for Hyp support
@@ -1685,13 +1726,14 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
 Ami also has a separate **prompt-tuning dashboard** at `/v5/ami-prompt-dashboard/`. Since 2026-10-24 the whole folder is behind the admin key (`middleware.js`): since 2026-11-02 a page of ours asks for the key in one field (until then it was the browser's Basic-auth box, with a username field nothing checked). The page sends the key in a header (`x-ami-key`), not the body, because `vercel dev` hands middleware an empty body (the first version of the page worked in a direct test but was always refused under `vercel dev`). A right key gets a 30-day HttpOnly cookie holding a hash of the key (`ami_dash`, path `/v5/ami-prompt-dashboard`), and the page also saves the key in localStorage `ami-admin-key`, so the taste-chat tab and test playlists don't ask again. Rotating the key logs everyone out. The tab's "יציאה" clears only the localStorage entry, not the cookie.
 **The onboarding tab, steps 1–3** test the onboarding's prompts as production runs them: since 2026-11-02 the two decks and the two-sided taste profile (§ V7 ARCHITECTURE → "Two onboarding decks"). Before then they ran the 8-probe R1 prompt and the one-sided taste profile: [docs/v7-onboarding-before-decks.md](docs/v7-onboarding-before-decks.md).
 - **Shared:** `callModel` + `PROVIDER` come from **`/v7/generation/ai-provider.js`**, so the dashboard follows v7's provider (Gemini 3.6-flash, thinking=high; decoupled from v6's switch). Ami tunes v7's prompts, NOT v6's: Roni explicitly said no v6/v7 toggle at the dashboard level.
-- **Step 1 — the deck prompt:** `DECK_EDITABLE_PROMPT_SECTION` from `/v7/generation/deck-directions.js`, assembled with `assembleDeckSystemPrompt` (through `normalizeForProdAssembly`, below). It runs twice in parallel, energetic + calm (`buildDeckUserMessage`, `normalizeDeckDirections`; label `ami-decks`), and lists each deck with the genres the code dropped for being on the wrong side.
+- **Step 1 — the deck prompt:** `DECK_EDITABLE_PROMPT_SECTION` from `/v7/generation/deck-directions.js`, assembled with `assembleDeckSystemPrompt` (through `normalizeForProdAssembly`, below). It runs twice in parallel, calm + energetic (`buildDeckUserMessage`, `normalizeDeckDirections`; label `ami-decks`), and lists each deck with the genres the code dropped for being on the wrong side. Decks and step 2's groups follow `DECK_ORDER` (calm first since 2026-11-03).
+  - Above the decks: the venue phrase and, since 2026-11-03, the venue category the model picked (in Hebrew), which picks the picture before each deck. A value the code doesn't know shows as the food-drink default, with the raw value.
   - A "דגשים מוזיקליים" textarea mirrors the onboarding field, so Ami can test emphases + instrumentalness + popularity classification end-to-end. Each returned direction shows its `instrumentalness_preference` / `popularity_preference`.
   - Atmospheres behave as in production: the checked names become an `Atmospheres: …` line in the user message and nothing else.
 - **Step 2 — swipe simulation** (shown once step 1 returns directions), the cards grouped by deck:
   - each direction gets "אהבתי" / "לא בשבילי" (default לא בשבילי); clicking a genre chip super-likes it and marks its direction liked, and disliking a direction clears its super-likes, the same rules as onboarding;
-  - a deck with fewer than 2 likes is marked as one that would get Round 2. Round 2 itself isn't simulated;
-  - an optional Round 2 refinement emphases textarea, enabled only while a deck has fewer than 2 likes (when disabled its text stays in the box but isn't sent);
+  - a deck with fewer than 3 likes (`ROUND2_MIN_LIKES`) is marked as one that would get Round 2. Round 2 itself isn't simulated;
+  - an optional Round 2 refinement emphases textarea, enabled only while a deck has fewer than 3 likes (when disabled its text stays in the box but isn't sent);
   - the two carried preferences (prefilled with the `carryPref` rule, overridable for testing).
 - **Step 3 — taste-profile editor:** `DECK_TASTE_EDITABLE_PROMPT_SECTION` from `/v7/generation/taste-profile-decks.js`, assembled with `assembleDeckTasteSystemPrompt`; the user message comes from `buildDeckTasteUserMessage` and the response goes through `normalizeDeckTasteProfile`, so a dashboard run sees what production would.
   - Output: the calm and energetic sides (↕ = a genre on both), approved / conditional by energy level, the requested genres (titled "נתבקשו מפורשות ע"י סופר לייק או בדגשים המוזיקליים של הלקוח", super-likes included), the computed excluded list, a "DROPPED" line for genres the model listed but production would discard, and `reasoning_en`.
@@ -1817,7 +1859,7 @@ The admin console API under `api/internal/*`, for Michael's dashboard (his own r
   - `selectOrEmpty` answers `[]` when a table or column is missing, so views degrade before a migration;
   - also auth-user listing, `logAdminAction`, Israel dates.
 - **`_library.js`** reads the profile and both libraries, with the taste chat's keys: `H1`/`C1` for Option 1, `L2-1` for Option 2. The order matches `stateFromRows` in `taste-ops.js`. **`_daily-view.js`** groups daily rows by business day (`il_date` from Option 2's meta, else the label's date, else the creation date). It also adds each row's slot, what it played and its opens. Since 2026-10-22 Option 1's `played.energy` = `{range, today_only}` (the energy circles: `{usual, direction: 'more'|'calmer', at}` or null).
-- **Telling Michael about changes:** only a new dated update file (`docs/admin-api-for-michael-update-<date>.md`). Roni sends each one to him by hand, and he never goes back to the full doc, so **never update the full doc** (Roni, 2026-11-03; until then it was kept merged too, so it holds the changes up to 2026-11-02). Updates so far: 2026-10-22, 2026-10-26, 2026-11-02, 2026-11-03 (a like no longer asks why).
+- **Telling Michael about changes:** only a new dated update file (`docs/admin-api-for-michael-update-<date>.md`). Roni sends each one to him by hand, and he never goes back to the full doc, so **never update the full doc** (Roni, 2026-11-03; until then it was kept merged too, so it holds the changes up to 2026-11-02). Updates so far: 2026-10-22, 2026-10-26, 2026-11-02, 2026-11-03 (a like no longer asks why), 2026-11-03-decks (the calm deck first, Round 2 below 3 likes).
 
 **Read endpoints:**
 - **`GET /users`** — one row per business. Adds the playlist type, approved-genre count and opens (7 days / total), the special-request and taste-chat counts, the last build, and playlist likes / dislikes + `last_playlist_feedback_at` (2026-10-26). Payment is `payment_status`: `paid` = a paid `payment_checkouts` row; `no-payment` = signed up while payments were off, when `businesses.paid_at` is only the signup time.
@@ -2119,7 +2161,7 @@ Then count OK tracks per genre with `node v4/precompute/genre-status.mjs` (read-
 ## KNOWN ISSUES / ROUGH EDGES
 
 1. **`GOOGLE_PLACES_API_KEY` may be empty in Vercel** — endpoint silently no-ops. Check with a debug-length endpoint if uncertain. Places confirmation step is optional in v6.
-2. **Spotify iframe autoplay blocked** in preview swipe deck. Custom play button on the artwrap requires user gesture. This is expected browser behavior; not a bug.
+2. **Spotify iframe autoplay depends on the browser.** Since 2026-11-03 each swipe card's song starts by itself, after the owner's taps ("קדימה" on the deck's picture, the swipes). A browser that still blocks it leaves the song paused, and the custom play button on the artwork starts it. Expected browser behaviour, not a bug. Not tried on a phone yet.
 3. **Track pool coverage varies by genre** — niche genres (e.g., Klezmer, Medieval music) have small pools. Event playlists floor at 5 tracks; below that the endpoint returns an error asking user to describe differently.
 4. **v5 tests + v3/v4 legacy scripts** may reference stale endpoints. Prefer building fresh under `scripts/` for new tools.
 5. **Prod deploys are manual** (`vercel --prod`). Easy to forget after code changes.

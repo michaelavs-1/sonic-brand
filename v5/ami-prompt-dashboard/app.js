@@ -47,20 +47,26 @@
 // direction gets a "50 random tracks" button and an energy-range modal that
 // build real test playlists on Rubin's Spotify account — see test-playlists.js.
 //
-// Two decks (Ami, 2026-11-02) — steps 1–3 now test the split onboarding before
-// production gets it: step 1 builds an energetic deck and a calm deck of 6
-// (v7/generation/deck-directions.js, one call each, in parallel), step 2 marks
-// likes per deck, step 3 runs the two-sided taste profile
+// Two decks (Ami, 2026-11-02) — steps 1–3 test the split onboarding the site
+// runs: step 1 builds a calm deck and an energetic deck of 6
+// (v7/generation/deck-directions.js, one call each, in parallel; calm first
+// since 2026-11-03, as the owner sees them), step 2 marks likes per deck,
+// step 3 runs the two-sided taste profile
 // (v7/generation/taste-profile-decks.js), where a both-ways genre may be
-// approved twice. Production's onboarding still runs the 8-probe prompt.
+// approved twice. Step 1 also shows the venue category the model picked,
+// which chooses the picture before each deck (2026-11-03).
 
 import { normalizeVenuePhrase } from '/v7/generation/musical-directions.js?v=02112026a';
 import {
   DECK_EDITABLE_PROMPT_SECTION,
+  DECK_ORDER,
   assembleDeckSystemPrompt,
   buildDeckUserMessage,
   normalizeDeckDirections,
-} from '/v7/generation/deck-directions.js?v=02112026a';
+  normalizeVenueCategory,
+} from '/v7/generation/deck-directions.js?v=03112026a';
+// Round 2 opens for a deck with fewer likes than this (3 since 2026-11-03), as in the onboarding.
+import { ROUND2_MIN_LIKES } from '/v7/generation/refined-directions.js?v=03112026a';
 import {
   DECK_TASTE_EDITABLE_PROMPT_SECTION,
   assembleDeckTasteSystemPrompt,
@@ -179,15 +185,14 @@ const playlistState = {
 els.promptEditor.value      = DECK_EDITABLE_PROMPT_SECTION;
 els.tastePromptEditor.value = DECK_TASTE_EDITABLE_PROMPT_SECTION;
 
-// The decks in the order the owner sees them.
-const DECK_ORDER = ['energetic', 'calm'];
+// The decks are listed in the order the owner sees them (DECK_ORDER, from
+// deck-directions.js: calm first since 2026-11-03).
 const DECK_TITLES = {
-  energetic: `כיוונים אנרגטיים (ראשונים) — שירים באנרגיה ${DECK_WINDOWS.energetic.join('–')}`,
-  calm: `כיוונים רגועים — שירים באנרגיה ${DECK_WINDOWS.calm.join('–')}`,
+  calm: `כיוונים רגועים (ראשונים) — שירים באנרגיה ${DECK_WINDOWS.calm.join('–')}`,
+  energetic: `כיוונים אנרגטיים — שירים באנרגיה ${DECK_WINDOWS.energetic.join('–')}`,
 };
+const CATEGORY_HE = { 'food-drink': 'אוכל ושתייה', beauty: 'שיער, קוסמטיקה ויופי', clothing: 'חנות בגדים' };
 const DECK_SHORT = { energetic: 'אנרגטיים', calm: 'רגועים' };
-// Round 2 opens for a deck with fewer likes than this (agreed 2026-11-02).
-const ROUND2_MIN_LIKES = 2;
 els.playlistEditors.option1.value = DEFAULT_EDITABLE.option1;
 els.playlistEditors.option2.value = DEFAULT_EDITABLE.option2;
 
@@ -385,16 +390,25 @@ async function onGenerate() {
       if (parsed?.error) return { deck, usage, elapsed, raw: formatError(parsed), error: `המודל החזיר שגיאה: ${parsed.error}` };
       const norm = normalizeDeckDirections(parsed, deck);
       if (!norm?.directions.length) return { deck, usage, elapsed, raw: text, error: 'לא חזרו כיוונים תקינים' };
-      return { deck, usage, elapsed, ...norm, phrase: normalizeVenuePhrase(parsed.venue_phrase_he) };
+      return {
+        deck, usage, elapsed, ...norm,
+        phrase: normalizeVenuePhrase(parsed.venue_phrase_he),
+        category: parsed.venue_category,
+      };
     };
     const results = await Promise.all(DECK_ORDER.map((deck) =>
       runDeck(deck).catch((err) => ({ deck, error: `שגיאה: ${err.message || 'לא ידוע'}` }))));
 
-    // The phrase the onboarding's "הכל מוכן!" screen shows (2026-10-21) — from
-    // the energetic deck, the one the owner sees first.
+    // The phrase the onboarding's "הכל מוכן!" screen shows (2026-10-21) and the
+    // category that picks the picture before each deck (2026-11-03) — from the
+    // deck the owner sees first, as in production.
     const phrase = results.find((r) => r.phrase)?.phrase;
+    const rawCategory = results.find((r) => r.category !== undefined)?.category;
+    const category = normalizeVenueCategory(rawCategory);
+    const categoryNote = rawCategory === category ? '' : ` (המודל החזיר ${JSON.stringify(rawCategory ?? null)} — ברירת המחדל)`;
     els.outputText.textContent = [
       `משפט העסק (מסך "הכל מוכן!"): ${phrase || '(לא הוחזר)'}`,
+      `סוג העסק (קובע את התמונה לפני הכיוונים הרגועים ולפני האנרגטיים): ${CATEGORY_HE[category]}${categoryNote}`,
       ...results.map(formatDeck),
     ].join('\n\n');
     els.resultsCard.style.display = '';

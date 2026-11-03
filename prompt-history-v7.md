@@ -46,7 +46,58 @@ downstream parsing means schema history matters for debugging old rows.
 
 ---
 
-## 2026-11-02 (latest) — Re-onboarding an existing owner: "known taste" and turned-down genres as optional inputs
+## 2026-11-03 (latest) — Round 2 per deck opens below 3 likes, not 2
+
+**Applies to:** Round 2 per deck (`refined-directions.js` `REFINED_DECK_INTRO`).
+
+Roni: a deck needs at least 3 liked directions of 6; with fewer, it gets Round 2 (was: fewer than 2). The number is now one constant, `ROUND2_MIN_LIKES` in `refined-directions.js`, read by the onboarding (`v7/app.js`), this prompt and Ami's dashboard. The sentence in `REFINED_DECK_INTRO`:
+
+```
+On the deck named in the user message, the owner liked fewer than ${ROUND2_MIN_LIKES}.
+```
+
+(was the literal "fewer than 2.")
+
+---
+
+## 2026-11-03 — Two-deck onboarding: the calm deck first, and the venue's category
+
+**Applies to:** Round 1 two-deck (`deck-directions.js`: `DECK_INTRO`, new `VENUE_CATEGORY_SECTION` in the editable part, `DECK_OUTPUT_FORMAT`).
+
+Ami asked for the calm deck to come first, and for a picture before each deck chosen by the kind of business: food and drink, hair / cosmetics / beauty, or a clothing shop (anything else gets food and drink). The model names the category in the same call that builds the deck, next to the venue phrase; the onboarding takes it from the deck shown first (now the calm one). Card ranks don't change (energetic 1–6, calm 7–12), so the Round 2 and taste-profile prompts are untouched.
+
+`DECK_INTRO`, the order sentence:
+
+```
+The business owner swipes through two decks of probes: a CALM deck first, then an ENERGETIC deck.
+```
+
+(was: "an ENERGETIC deck first, then a CALM deck.")
+
+New `VENUE_CATEGORY_SECTION`, after `VENUE_PHRASE_SECTION`:
+
+```
+## Rules for the Venue Category (`venue_category`)
+
+Alongside the directions, return the business's category. It picks the illustration the owner sees before each deck. Exactly one of:
+- `"food-drink"` — the business serves food or drink: restaurants, cafés, bars, pubs, wine bars, bakeries, ice-cream and juice shops, hotel bars and lobbies.
+- `"beauty"` — the business deals with hair, cosmetics or beauty: hair salons, barbershops, nail and beauty salons, spas, cosmetics and makeup shops, beauty clinics.
+- `"clothing"` — a shop that sells clothing: fashion boutiques, clothing, shoe and accessories stores.
+
+Decide from the description, the business name and the Google Places context. A business that fits none of them (a gym, an office, a bookstore, a furniture store…) gets `"food-drink"`. One that fits two (a café inside a clothing store) gets the one its description centres on.
+```
+
+`DECK_OUTPUT_FORMAT`: the JSON example gains `"venue_category": "food-drink"` after `venue_phrase_he`, and a line after it:
+
+```
+The `venue_category` field is one of `"food-drink"` | `"beauty"` | `"clothing"`. See the Rules for the Venue Category.
+```
+
+Code: `normalizeVenueCategory` keeps the three values and turns anything else (missing, misspelled) into `food-drink`. `DECK_ORDER = ['calm', 'energetic']` sets which deck `generateDeckDirections` awaits first (its answer gives the venue phrase and category) and the order the owner sees.
+
+---
+
+## 2026-11-02 — Re-onboarding an existing owner: "known taste" and turned-down genres as optional inputs
 
 **Applies to:** Round 1 two-deck (`deck-directions.js` `DECK_INPUTS_SECTION`), Round 2 per deck (`refined-directions.js` `REFINED_DECK_INPUTS_SECTION`), two-sided taste profile (`taste-profile-decks.js` `INPUTS_SECTION`), and their user messages.
 

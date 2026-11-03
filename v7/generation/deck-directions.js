@@ -1,7 +1,8 @@
-// v7 onboarding probes in two decks (Ami, 2026-11-02) — energetic first, then
-// calm, 6 probes each. Replaces musical-directions.js's 8 mixed probes in the
-// onboarding (generateDeckDirections, label 'v7-onboarding'); Ami's prompt
-// dashboard runs the same prompt.
+// v7 onboarding probes in two decks (Ami, 2026-11-02) — calm first, then
+// energetic (energetic was first until 2026-11-03), 6 probes each. Replaces
+// musical-directions.js's 8 mixed probes in the onboarding
+// (generateDeckDirections, label 'v7-onboarding'); Ami's prompt dashboard
+// runs the same prompt.
 //
 // Same probe idea as musical-directions.js: each direction is a tight cluster
 // of near-identical genres, the owner hears one song from it and likes or
@@ -17,8 +18,11 @@
 //   - Ami's families spread a deck's 6 probes across different musical worlds.
 //   - A requested style gets one direction per deck its side fits (was: one
 //     direction in all).
+//   - The model also names the venue's category (venue_category: food-drink /
+//     beauty / clothing, 2026-11-03), which picks the picture shown before each
+//     deck (v7/images/deck-intro/).
 // One call per deck; the two are independent, so they can run in parallel.
-// Ranks: energetic deck 1–6, calm deck 7–12.
+// Ranks: energetic deck 1–6, calm deck 7–12, whatever order they're shown in.
 //
 // Shared rules are imported from musical-directions.js. Bare imports only
 // (server-reachable).
@@ -40,10 +44,21 @@ import {
 
 export const DECK_SIZE = 6;
 export const DECK_RANK_START = { energetic: 1, calm: 1 + DECK_SIZE };
+// The order the owner swipes the decks in (Ami, 2026-11-03: calm first).
+export const DECK_ORDER = ['calm', 'energetic'];
+
+// The venue's category, for the picture before each deck (Ami, 2026-11-03).
+// Anything that fits none of them gets food-drink.
+export const VENUE_CATEGORIES = ['food-drink', 'beauty', 'clothing'];
+export const DEFAULT_VENUE_CATEGORY = 'food-drink';
+export function normalizeVenueCategory(v) {
+  const s = typeof v === 'string' ? v.trim().toLowerCase() : '';
+  return VENUE_CATEGORIES.includes(s) ? s : DEFAULT_VENUE_CATEGORY;
+}
 
 // ---------- Prompt sub-constants ----------
 
-const DECK_INTRO = `You design diagnostic taste probes for a public-facing-business playlist tool. The business owner swipes through two decks of probes: an ENERGETIC deck first, then a CALM deck. You build ONE deck per call — the user message says which — of ${DECK_SIZE} tightly-clustered "musical directions" from a fixed genre universe. Each direction is a small group of near-identical genres — same instrumentation family, same cultural register, same mood. The owner hears one representative song from each direction and likes or dislikes the whole cluster as one taste vector. On the energetic deck that song comes from the genres' energetic side (track energy ${DECK_WINDOWS.energetic[0]}–${DECK_WINDOWS.energetic[1]} out of 100); on the calm deck from their calm side (energy ${DECK_WINDOWS.calm[0]}–${DECK_WINDOWS.calm[1]}). Downstream, the energetic deck shapes the owner's energetic daily playlists and the calm deck their calm ones; overlapping genres across two liked directions become a stronger signal, not a bug.`;
+const DECK_INTRO = `You design diagnostic taste probes for a public-facing-business playlist tool. The business owner swipes through two decks of probes: a CALM deck first, then an ENERGETIC deck. You build ONE deck per call — the user message says which — of ${DECK_SIZE} tightly-clustered "musical directions" from a fixed genre universe. Each direction is a small group of near-identical genres — same instrumentation family, same cultural register, same mood. The owner hears one representative song from each direction and likes or dislikes the whole cluster as one taste vector. On the energetic deck that song comes from the genres' energetic side (track energy ${DECK_WINDOWS.energetic[0]}–${DECK_WINDOWS.energetic[1]} out of 100); on the calm deck from their calm side (energy ${DECK_WINDOWS.calm[0]}–${DECK_WINDOWS.calm[1]}). Downstream, the energetic deck shapes the owner's energetic daily playlists and the calm deck their calm ones; overlapping genres across two liked directions become a stronger signal, not a bug.`;
 
 const DECK_INPUTS_SECTION = `## Inputs
 
@@ -97,6 +112,15 @@ const DECK_TASK_WORKFLOW = `## Task Workflow
    - **Genres list:** 3 to 6 genres from the pool that form a tight, near-identical cluster. Certain genres function well standalone or paired with one closely-related style (\`Nu Metal\`, \`Indie Rock\`, \`Punk\`, \`Blues\`, \`Folk\`, \`Jazz House\`) — these may form a 1–2 genre cluster if that best fits the venue's needs.
 3. **Rank Directions:** Rank directions by relevance to the business (best fit first).`;
 
+const VENUE_CATEGORY_SECTION = `## Rules for the Venue Category (\`venue_category\`)
+
+Alongside the directions, return the business's category. It picks the illustration the owner sees before each deck. Exactly one of:
+- \`"food-drink"\` — the business serves food or drink: restaurants, cafés, bars, pubs, wine bars, bakeries, ice-cream and juice shops, hotel bars and lobbies.
+- \`"beauty"\` — the business deals with hair, cosmetics or beauty: hair salons, barbershops, nail and beauty salons, spas, cosmetics and makeup shops, beauty clinics.
+- \`"clothing"\` — a shop that sells clothing: fashion boutiques, clothing, shoe and accessories stores.
+
+Decide from the description, the business name and the Google Places context. A business that fits none of them (a gym, an office, a bookstore, a furniture store…) gets \`"food-drink"\`. One that fits two (a café inside a clothing store) gets the one its description centres on.`;
+
 export const DECK_EDITABLE_PROMPT_SECTION = [
   DECK_INTRO,
   GENRE_UNIVERSE_SECTION,
@@ -112,6 +136,7 @@ export const DECK_EDITABLE_PROMPT_SECTION = [
   TITLE_RULES_SECTION,
   HEBREW_DESCRIPTION_SECTION,
   VENUE_PHRASE_SECTION,
+  VENUE_CATEGORY_SECTION,
 ].join('\n\n');
 
 const DECK_OUTPUT_FORMAT = `## Output format
@@ -131,8 +156,11 @@ Normal case:
     }
     // ... ${DECK_SIZE} directions (this deck only)
   ],
-  "venue_phrase_he": "Hebrew phrase: the type of business + one adjective (see Rules for the Venue Phrase)"
+  "venue_phrase_he": "Hebrew phrase: the type of business + one adjective (see Rules for the Venue Phrase)",
+  "venue_category": "food-drink"
 }
+
+The \`venue_category\` field is one of \`"food-drink"\` | \`"beauty"\` | \`"clothing"\`. See the Rules for the Venue Category.
 
 The \`instrumentalness_preference\` field is one of \`"none"\` | \`"soft"\` | \`"hard"\`. See the "Instrumentalness preference" sub-rule under Processing Rules for when to use each. Default is \`"none"\`.
 
@@ -257,30 +285,37 @@ async function callDeck(deck, inputs) {
     }
     const norm = normalizeDeckDirections(parsed, deck);
     if (!norm?.directions.length) return { error: 'matcher_error', reasoning_en: `no valid directions in the ${deck} deck` };
-    return { directions: norm.directions, venuePhrase: normalizeVenuePhrase(parsed.venue_phrase_he) };
+    return {
+      directions: norm.directions,
+      venuePhrase: normalizeVenuePhrase(parsed.venue_phrase_he),
+      venueCategory: normalizeVenueCategory(parsed.venue_category),
+    };
   } catch (e) {
     return { error: 'matcher_error', reasoning_en: e.message };
   }
 }
 
-// Both decks are requested at once. Resolves with the energetic deck (the one
-// the owner swipes first) as `directions`; the calm deck comes as
+// Both decks are requested at once. Resolves with the deck the owner swipes
+// first (DECK_ORDER: calm) as `directions`; the other deck comes as
 // `page2Promise` → { directions } | { error } — the same shape the swipe
 // deck's preparePreview already takes for its second page. An error on the
-// energetic deck fails the whole step (the venue-related codes —
-// not_a_music_venue… — come back the same from both calls).
+// first deck fails the whole step (the venue-related codes —
+// not_a_music_venue… — come back the same from both calls). The venue phrase
+// and category come from the first deck's answer.
 // knownTaste / turnedDown / label: re-onboarding an existing owner only.
 export async function generateDeckDirections({ bizName, bizDesc, atmospheres, musicalEmphases, place, onboardingSessionId, knownTaste, turnedDown, label }) {
   if (!bizDesc || typeof bizDesc !== 'string' || bizDesc.trim().length < 3) {
     return { error: 'insufficient_description', reasoning_en: 'empty or too-short description' };
   }
   const inputs = { bizName, bizDesc, atmospheres, musicalEmphases, place, onboardingSessionId, knownTaste, turnedDown, label };
-  const calm = callDeck('calm', inputs);
-  const energetic = await callDeck('energetic', inputs);
-  if (energetic.error) return energetic;
+  const [firstDeck, secondDeck] = DECK_ORDER;
+  const second = callDeck(secondDeck, inputs);
+  const first = await callDeck(firstDeck, inputs);
+  if (first.error) return first;
   return {
-    directions: energetic.directions,
-    page2Promise: calm.then(({ directions, error, reasoning_en }) => (error ? { error, reasoning_en } : { directions })),
-    venuePhrase: energetic.venuePhrase,
+    directions: first.directions,
+    page2Promise: second.then(({ directions, error, reasoning_en }) => (error ? { error, reasoning_en } : { directions })),
+    venuePhrase: first.venuePhrase,
+    venueCategory: first.venueCategory,
   };
 }

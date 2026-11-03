@@ -774,6 +774,33 @@
       margin-bottom: 6px;
     }
 
+    /* Energy editor (Track cleanup, 2026-11-03): above the analysis grid. */
+    .energy-editor {
+      margin-bottom: 10px;
+    }
+
+    .energy-edit-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .energy-edit-row .k {
+      color: var(--muted);
+    }
+
+    .energy-input {
+      width: 70px;
+      background: var(--bg-2);
+      color: var(--text);
+      border: 1px solid var(--border-2);
+      border-radius: 8px;
+      font-size: 12px;
+      font-family: inherit;
+      padding: 4px 6px;
+    }
+
     .track-analysis-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
@@ -1313,7 +1340,7 @@
 
     <div class="track-cleanup-section">
       <h2>Track cleanup</h2>
-      <p class="hint">Remove a single Spotify track from the DB, change which genres it's in, or add a missing track to a genre</p>
+      <p class="hint">Remove a single Spotify track from the DB, change which genres it's in or its energy, or add a missing track to a genre</p>
       <div class="track-cleanup-input-row">
         <input type="text" id="trackLookupInput"
           placeholder="Spotify track ID, open.spotify.com/track/... URL, or spotify:track:... URI" />
@@ -1382,7 +1409,7 @@
     </div>
   </div>
 
-  <script src="/v4/ami/app.js?v=01112026a"></script>
+  <script src="/v4/ami/app.js?v=03112026a"></script>
 </body>
 
 </html>

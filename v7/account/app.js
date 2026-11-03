@@ -2373,9 +2373,10 @@ function buildPlaylistRow(p) {
 
 // ---------- like / dislike on a daily playlist (Roni, 2026-10-26) ----------
 // Two bare thumb icons beside each daily playlist's "▶ פתח". A tap records the
-// verdict at once (so a skipped modal still counts) and opens a modal asking
-// what the owner liked or didn't, with an optional field: "שלח" saves the
-// text, "דלג" closes and leaves the verdict. Tapping the lit icon clears it.
+// verdict at once. A like is just stored (Roni, 2026-11-03: no modal); a
+// dislike also opens a modal asking what the owner didn't like, with an
+// optional field: "שלח" saves the text, "דלג" closes and leaves the verdict.
+// Tapping the lit icon clears it.
 // Server: api/v7/account/playlist-feedback.js (needs the 2026-10-26 migration).
 
 const FEEDBACK_ICONS = {
@@ -2446,7 +2447,9 @@ async function onFeedbackTap(p, verdict) {
   if (feedback.busy) return;
   const before = feedbackFor(p.id);
   const clearing = before?.verdict === verdict;
-  const next = clearing ? null : { verdict, reason: before?.reason || '' };
+  // A new verdict starts without a reason: the stored one belonged to the
+  // other verdict, and the server drops it too.
+  const next = clearing ? null : { verdict, reason: '' };
   const wrap = feedbackRowFor(p.id);
 
   // The icon and the modal both answer the tap at once; the write follows in
@@ -2454,7 +2457,7 @@ async function onFeedbackTap(p, verdict) {
   const map = state.dashboard?.feedbackBySpotifyId;
   if (next) map?.set(p.id, next); else map?.delete(p.id);
   paintFeedback(wrap, next?.verdict || null, !clearing);
-  if (!clearing) openFeedbackModal(p, verdict);
+  if (!clearing && verdict === 'dislike') openFeedbackModal(p);
 
   feedback.busy = true;
   try {
@@ -2476,15 +2479,12 @@ async function onFeedbackTap(p, verdict) {
   }
 }
 
-function openFeedbackModal(p, verdict) {
-  feedback.pending = { id: p.id, verdict };
-  $('feedbackTitle').textContent = verdict === 'like' ? 'מה אהבתם בפלייליסט?' : 'מה לא אהבתם בפלייליסט?';
+// Dislikes only (a like is just stored).
+function openFeedbackModal(p) {
+  feedback.pending = { id: p.id, verdict: 'dislike' };
   $('feedbackText').textContent = undatedLabel(p.label) || 'הפלייליסט';
   const input = $('feedbackInput');
-  input.value = feedbackFor(p.id)?.reason || '';
-  input.placeholder = verdict === 'like'
-    ? 'לדוגמה: השירים התאימו בדיוק לשעות הבוקר'
-    : 'לדוגמה: יותר מדי שירים שקטים בשעות העומס';
+  input.value = '';
   $('feedbackSend').disabled = false;
   $('feedbackModal').classList.remove('hide');
   setTimeout(() => input.focus(), 50);

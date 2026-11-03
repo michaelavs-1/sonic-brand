@@ -7,8 +7,8 @@
    Spotify-side track count (best-effort — 404 fine if Spotify has removed
    the playlist), and reports the DB state: how many playlist_genres rows,
    how many playlist_tracks rows, distinct genres list, and how many of
-   those tracks currently have a track_analyses row (useful signal for
-   Ami before deciding to delete).
+   those tracks have a usable analysis and how many a failed one (useful
+   signal for Ami before deciding to delete).
 
    Accepted input shapes:
      - Bare 22-char playlist ID       37i9dQZF1DXcBWIGoYBM5M
@@ -129,10 +129,17 @@ export default async function handler(req, res) {
 
         // How many of the playlist's tracks are analyzed? Chunk via
         // pgrSelectIn so a big playlist doesn't blow the URL length limit.
+        // A failed analysis ('error' / 'not_found') is still a track_analyses
+        // row but never plays, so it counts as failed, not analyzed
+        // (2026-11-03: both used to count as analyzed).
         let analyzedCount = 0;
+        let failedCount = 0;
         if (spotifyIds.length) {
-            const analyzedRows = await pgrSelectIn('track_analyses', 'spotify_id', spotifyIds, { select: 'spotify_id' });
-            analyzedCount = (analyzedRows || []).length;
+            const analyzedRows = await pgrSelectIn('track_analyses', 'spotify_id', spotifyIds, { select: 'spotify_id,status' });
+            for (const r of analyzedRows || []) {
+                if (r.status === 'ok') analyzedCount++;
+                else failedCount++;
+            }
         }
 
         return res.status(200).json({
@@ -144,6 +151,7 @@ export default async function handler(req, res) {
             playlistGenresCount: (genreRows || []).length,
             playlistTracksCount: spotifyIds.length,
             analyzedCount,
+            failedCount,
             genres,
         });
     } catch (err) {

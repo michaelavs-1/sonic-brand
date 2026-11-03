@@ -910,7 +910,7 @@ function renderTrackLookupResult({ mode, track, message }) {
     if (deleteBtn) deleteBtn.addEventListener('click', runTrackDelete);
     if (undoBtn)   undoBtn.addEventListener('click',   runTrackUndo);
     if (addBtn)    addBtn.addEventListener('click',    openAddTrackModal);
-    if (mode === 'found') renderGenreEditor();
+    if (mode === 'found') { renderGenreEditor(); renderEnergyEditor(); }
 }
 
 // "Add to DB" (Ami, 2026-10-26): a track that isn't in the DB joins one genre
@@ -1090,18 +1090,99 @@ async function runGenreUndo() {
     }
 }
 
+// Energy editor (Ami, 2026-11-03 — /api/v4/ami-track-energy): the track's
+// energy (0–100) as a field, for tracks with a usable analysis. Save writes
+// track_analyses.energy, which every energy range reads (daily playlists,
+// onboarding cards) from their next build on. The analysis service's own value
+// stays in raw_analysis, so an edited track shows it, with a button to put it
+// back.
+function rawAnalysisOf(a) {
+    let raw = a?.raw_analysis;
+    if (typeof raw === 'string') {
+        try { raw = JSON.parse(raw); } catch { raw = null; }
+    }
+    return raw || null;
+}
+
+function analysisEnergyOf(a) {
+    const v = rawAnalysisOf(a)?.energy;
+    const n = typeof v === 'number' ? v : (typeof v === 'string' ? parseFloat(v) : NaN);
+    return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function renderEnergyEditor() {
+    const box = $('energyEditor');
+    const t = currentTrack;
+    const a = t?.analysis;
+    if (!box || !a) return;
+    const original = analysisEnergyOf(a);
+    const edited = (a.energy ?? null) !== original;
+    const note = !edited ? ''
+        : original !== null ? `Changed by hand — the analysis said ${original}. `
+        : 'Changed by hand — the analysis had no energy for this track. ';
+
+    box.innerHTML = `
+        <div class="energy-edit-row">
+            <span class="k">energy:</span>
+            <input type="number" class="energy-input" min="0" max="100" step="1" value="${a.energy ?? ''}" placeholder="none" />
+            <button class="genre-save-btn energy-save-btn" disabled>Save energy</button>
+            ${edited && original !== null ? `<button class="genre-undo-btn energy-restore-btn">Back to ${original}</button>` : ''}
+        </div>
+        <div class="genre-edit-hint">${escapeHtml(note)}0 = calmest, 100 = most energetic. Decides which daily playlists and
+            onboarding cards can use this track, from their next build on.</div>`;
+
+    const input = box.querySelector('.energy-input');
+    const save  = box.querySelector('.energy-save-btn');
+    const valid = () => {
+        const v = input.value.trim() === '' ? NaN : Number(input.value);
+        return Number.isInteger(v) && v >= 0 && v <= 100 && v !== a.energy ? v : null;
+    };
+    input.addEventListener('input', () => { save.disabled = valid() === null; });
+    input.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' && valid() !== null) runEnergySave(valid());
+    });
+    save.addEventListener('click', () => { if (valid() !== null) runEnergySave(valid()); });
+    box.querySelector('.energy-restore-btn')?.addEventListener('click', () => runEnergySave(original));
+}
+
+async function runEnergySave(value) {
+    const t = currentTrack;
+    if (!t?.analysis) return;
+    const box = $('energyEditor');
+    box?.querySelectorAll('button, input').forEach((el) => { el.disabled = true; });
+    const save = box?.querySelector('.energy-save-btn');
+    if (save) save.innerText = 'Saving...';
+    try {
+        const r = await amiFetch('/api/v4/ami-track-energy', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ spotifyId: t.spotifyId, energy: value }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+        if (!data.unchanged) {
+            showBanner(`Saved energy for "${t.title}": ${data.energy} (was ${data.before ?? 'none'}).`, 'success');
+        }
+        // Only this one column changed, so the card isn't looked up again.
+        t.analysis.energy = data.energy;
+    } catch (err) {
+        showBanner(`Saving energy failed: ${err.message}`);
+    }
+    if (currentTrack === t) renderEnergyEditor();
+}
+
 // Full track_analyses row from api/v4/ami-track-lookup.js: typed audio-feature
 // columns rendered as a key/value grid, plus the raw_analysis jsonb blob in a
 // collapsed <details> so Ami can see everything RapidAPI returned without it
 // dominating the card by default. Loudness has no typed column, so it's read
-// from raw_analysis (RapidAPI sends it as text, e.g. "-10 dB").
+// from raw_analysis (RapidAPI sends it as text, e.g. "-10 dB"). Energy is the
+// editor above the grid when the analysis is usable (renderEnergyEditor).
 function renderTrackAnalysis(a) {
-    let raw = a.raw_analysis;
-    if (typeof raw === 'string') {
-        try { raw = JSON.parse(raw); } catch { raw = null; }
-    }
+    const raw = rawAnalysisOf(a);
+    const energyEditable = a.status === 'ok';
     const fields = [
-        ['popularity', a.popularity], ['tempo', a.tempo], ['energy', a.energy],
+        ['popularity', a.popularity], ['tempo', a.tempo],
+        ...(energyEditable ? [] : [['energy', a.energy]]),
         ['danceability', a.danceability], ['valence', a.valence],
         ['acousticness', a.acousticness], ['instrumentalness', a.instrumentalness],
         ['loudness', raw?.loudness || null],
@@ -1127,6 +1208,7 @@ function renderTrackAnalysis(a) {
     return `
         <div class="track-analysis">
             <div class="track-analysis-title">Analysis</div>
+            ${energyEditable ? '<div class="energy-editor" id="energyEditor"></div>' : ''}
             <div class="track-analysis-grid">${cells}</div>
             ${rawHtml}
         </div>`;
@@ -1278,6 +1360,11 @@ function renderPlaylistLookupResult({ mode, playlist, message }) {
     const analyzedBadge = mode === 'deleted'
         ? ''
         : `${p.analyzedCount ?? '?'} / ${p.playlistTracksCount ?? '?'} analyzed`;
+    // Tracks whose analysis failed are in the DB but never play (they wait
+    // for a retry scan). Before 2026-11-03 they counted as analyzed.
+    const failedBadge = (mode !== 'deleted' && p.failedCount > 0)
+        ? `${p.failedCount} failed analysis`
+        : '';
     const spotifyBadge = (mode !== 'deleted' && Number.isFinite(p.spotifyTotal))
         ? `Spotify: ${p.spotifyTotal} tracks`
         : (mode !== 'deleted' && p.spotifyMissing ? 'Spotify: not found' : '');
@@ -1309,6 +1396,7 @@ function renderPlaylistLookupResult({ mode, playlist, message }) {
                 <span class="track-badge">${escapeHtml(inDbBadge)}</span>
                 <span class="track-badge">${escapeHtml(genresBadge)}</span>
                 ${analyzedBadge ? `<span class="track-badge">${escapeHtml(analyzedBadge)}</span>` : ''}
+                ${failedBadge ? `<span class="track-badge warn">${escapeHtml(failedBadge)}</span>` : ''}
                 ${spotifyBadge ? `<span class="track-badge">${escapeHtml(spotifyBadge)}</span>` : ''}
                 <a class="track-badge track-playlist-link" href="https://open.spotify.com/playlist/${encodeURIComponent(p.playlistId)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.playlistId)}</a>
             </div>

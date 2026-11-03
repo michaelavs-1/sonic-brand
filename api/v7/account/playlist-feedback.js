@@ -2,11 +2,11 @@
    The owner's like / dislike on one daily playlist (v7 Home tab, 2026-10-26).
 
    Two bare icons sit beside each daily playlist's "▶ פתח" button. The client
-   posts twice at most per verdict: once the moment the icon is tapped (the
-   verdict alone), and again from the modal's "שלח" if the owner typed what
-   they liked or didn't. "דלג" posts nothing, so the verdict stands on its
-   own. Tapping the lit icon again posts verdict 'clear', which deletes the
-   row.
+   posts the verdict alone the moment an icon is tapped. A like is just that
+   (Roni, 2026-11-03: no modal, and the server stores no reason with it). A
+   dislike opens a modal, and its "שלח" posts again with what the owner
+   didn't like; "דלג" posts nothing, so the verdict stands on its own.
+   Tapping the lit icon again posts verdict 'clear', which deletes the row.
 
    One row per (business, playlist) — the CURRENT verdict, replaced in place.
    The playlist's name, genres and tracks are not copied: business_playlists
@@ -68,14 +68,24 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, feedback: null });
     }
 
-    // `reason` is optional and only sent by the modal's "שלח". An absent key
-    // leaves whatever is stored alone (the icon tap must not wipe a reason
-    // the owner typed a moment earlier); an empty string clears it.
+    // `reason` belongs to a dislike, sent only by the modal's "שלח". A like
+    // never keeps one (likes have no modal since 2026-11-03; text a like got
+    // before then stays until the owner changes or clears it). For a dislike, an absent key
+    // leaves a stored dislike's reason alone (the icon tap must not wipe text
+    // the owner sent a moment earlier) but drops the text of an earlier
+    // like; an empty string clears it.
     const hasReason = Object.prototype.hasOwnProperty.call(req.body || {}, 'reason');
     const row = { business_id, spotify_id, verdict, updated_at: new Date().toISOString() };
-    if (hasReason) {
+    if (verdict === 'like') {
+      row.reason = null;
+    } else if (hasReason) {
       const text = typeof req.body.reason === 'string' ? req.body.reason.trim().slice(0, MAX_REASON) : '';
       row.reason = text || null;
+    } else {
+      const prev = await pgrSelect('business_playlist_feedback',
+        { business_id: `eq.${business_id}`, spotify_id: `eq.${spotify_id}` },
+        { select: 'verdict', limit: 1, useService: true });
+      if (prev?.[0] && prev[0].verdict !== verdict) row.reason = null;
     }
     await pgrUpsert('business_playlist_feedback', row, { onConflict: 'business_id,spotify_id' });
 

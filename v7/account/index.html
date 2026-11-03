@@ -4000,14 +4000,16 @@
   </div>
 
 
-  <!-- Like / dislike on a daily playlist (2026-10-26). The verdict is already
-       saved by the time this opens; the field is optional and "דלג" just
-       closes. See the feedback block in app.js. -->
+  <!-- Dislike on a daily playlist (2026-10-26; dislikes only since 2026-11-03,
+       a like is just stored). The verdict is already saved by the time this
+       opens; the field is optional and "דלג" just closes. See the feedback
+       block in app.js. -->
   <div class="gd-overlay hide" id="feedbackModal">
     <div class="gd-modal">
-      <h3 id="feedbackTitle"></h3>
+      <h3>מה לא אהבתם בפלייליסט?</h3>
       <p id="feedbackText"></p>
-      <textarea class="input fb-input" id="feedbackInput" rows="3" maxlength="500"></textarea>
+      <textarea class="input fb-input" id="feedbackInput" rows="3" maxlength="500"
+        placeholder="לדוגמה: יותר מדי שירים שקטים בשעות העומס"></textarea>
       <div class="gd-actions">
         <button class="btn" id="feedbackSend" type="button">שלח</button>
         <button class="btn-ghost" id="feedbackSkip" type="button">דלג</button>
@@ -4114,7 +4116,7 @@
     </div>
   </div>
 
-  <script type="module" src="/v7/account/app.js?v=02112026a"></script>
+  <script type="module" src="/v7/account/app.js?v=03112026a"></script>
 </body>
 
 </html>

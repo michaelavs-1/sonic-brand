@@ -10,7 +10,7 @@ The codebase contains multiple parallel "versions" that coexist. **v7 is the cur
 | Version | State | Where |
 |---|---|---|
 | v6 | **Pages not served since 2026-10-24 (`/v6` redirects to `/`; the root moved to v7 on 2026-09-28), and NO v6 accounts exist** (all deleted 2026-09-24); its daily cron is hard-disabled. Its signup endpoint was removed on 2026-10-25 (it created a login + business with no payment, and v7's account pages would have served it). Michael's v4 UI shell + our v5 pipeline (Claude musical directions). Its code (`api/v6/*`, `v6/generation/*`) is still heavily reused by v7. Full v6 docs: [docs/v6-reference.md](docs/v6-reference.md). | `v6/`, `api/v6/` |
-| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** **Every account was deleted on 2026-10-24** (Roni's tests, Ami's five venues, one outside tester), before real payments went live in production; `payment_checkouts` keeps their payment rows. Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 142-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built and switched on per environment by `V7_PAYMENTS_ENABLED` — on in Development, and **on in Production since 2026-10-24** (with coupons; every earlier account was deleted first, so no production account predates payment) (see [docs/v7-payments.md](docs/v7-payments.md)). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Ami still tunes the R1 prompt via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
+| **v7** | **Current active version. Runtime built + live-verified (2026-09-23).** **Every account was deleted on 2026-10-24** (Roni's tests, Ami's five venues, one outside tester), before real payments went live in production; `payment_checkouts` keeps their payment rows. Full parallel onboarding→signup→account→daily-cron runtime under `/v7`, separate from v6, and served at the site root (`/`) since 2026-09-28. Reframes onboarding directions as diagnostic taste PROBES that dissolve into a flat 142-genre bucketed taste profile at signup. Signup fires AFTER the payment step — a real Hyp payment (₪200/month subscription) is built and switched on per environment by `V7_PAYMENTS_ENABLED` — on in Development, and **on in Production since 2026-10-24** (with coupons; every earlier account was deleted first, so no production account predates payment) (see [docs/v7-payments.md](docs/v7-payments.md)). The owner enters the account only via the emailed magic link (email verification required, like v6). Daily playlists via two delivery modes (Option 1 / Option 2). v7's daily cron is now the ONLY scheduled daily builder — v6's is shut off. Since 2026-11-02 the swipe step is two decks (energetic, then calm) and the taste profile can be two-sided. Ami tunes the onboarding prompts via the Ami dashboard. See § V7 ARCHITECTURE and § OPEN QUESTIONS FOR V7 PIPELINE BUILD. | `v7/`, `api/v7/`, `api/cron/v7-generate-daily.js`, `shared/`, `prompt-history-v7.md` |
 | v5 | Reference. `/api/v5/*` endpoints are still called by v6 (`anchor-tracks`, `direction-tracks`, `databox-atmospheres`, `prewarm`, `record-playlist`). The `v5/` frontend isn't served since 2026-10-24 (and couldn't generate any more: it called `/api/v5/anthropic`, removed the same day). `v5/ami-prompt-dashboard/` lives here (admin key required, see § AMI'S DASHBOARD) but as of 2026-09-23 imports from `v7/generation/musical-directions.js`. | `v5/`, `api/v5/` |
 | v4 | Michael's fork. A snapshot lives at `michael-v4-snapshot/` (gitignored, used as UI reference for v6). Our own `v4/` also exists — has the Ami dashboard and precompute infra. Only `/v4/ami` is served since 2026-10-24. | `v4/`, `api/v4/`, `michael-v4-snapshot/` |
 | v3, v2 | Historical. Legacy pipelines. Broken in places (dead Spotify endpoints — see deprecations below). Not served since 2026-10-24. | `v3/`, `v2/` |
@@ -58,13 +58,15 @@ v6's pages aren't served since 2026-10-24, and it has no accounts and no daily c
 
 ## V7 ARCHITECTURE (runtime built + live-verified 2026-09-23)
 
-v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoints, signup, taste-profile bucketing, two daily-playlist delivery modes, and its own daily cron). It was built and live-end-to-end-verified on 2026-09-23 against `vercel dev` → prod Supabase. v6's code is untouched but its pages aren't served (since 2026-10-24); v7 is reached at `/v7` and, since 2026-09-28, at the site root `/`. The version split is enforced by `businesses.version` ('v6' default, 'v7' stamped at v7 signup): v6's daily cron is now shut off and v7's targets only `version='v7'` businesses (see § VERCEL DEPLOYMENT and the v7 cron mechanism). Ami still tunes the R1 prompt via the Ami dashboard (imports v7's prompt + ai-provider since 2026-09-23). A short list of intentionally-deferred decisions remains — see § OPEN QUESTIONS FOR V7 PIPELINE BUILD.
+v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoints, signup, taste-profile bucketing, two daily-playlist delivery modes, and its own daily cron). It was built and live-end-to-end-verified on 2026-09-23 against `vercel dev` → prod Supabase. v6's code is untouched but its pages aren't served (since 2026-10-24); v7 is reached at `/v7` and, since 2026-09-28, at the site root `/`. The version split is enforced by `businesses.version` ('v6' default, 'v7' stamped at v7 signup): v6's daily cron is now shut off and v7's targets only `version='v7'` businesses (see § VERCEL DEPLOYMENT and the v7 cron mechanism). Ami tunes the onboarding prompts via the Ami dashboard (it imports v7's prompts + ai-provider: the R1 prompt since 2026-09-23, the two-deck prompts since 2026-11-02). The onboarding before the two decks (8-probe Round 1, Round 2 under 3 likes, one-sided taste profile; 2026-09-23 → 2026-11-02) is documented in **[docs/v7-onboarding-before-decks.md](docs/v7-onboarding-before-decks.md)**. A short list of intentionally-deferred decisions remains — see § OPEN QUESTIONS FOR V7 PIPELINE BUILD.
 
 ### Design shift from v6
 
+These rules live in R1's prompt sections (`v7/generation/musical-directions.js`). The two-deck prompts import those sections, so the rules still shape every onboarding card.
+
 - **v6 directions were curated blends.** Each picked direction became the seed for a real playlist post-signup. Multi-Cultural Fusion and Cross-Regional blends were actively encouraged within a direction. Rules like Jazz Isolation and House Containment framed pairings as "can blend with X" — an appropriate framing for the diverse-playlist world.
 - **v7 directions are diagnostic PROBES.** Each is a small cluster of near-identical genres (same energy tier / instrumentation family / cultural register / mood — 4 axes; no tempo axis after 2026-09-23). Liking or disliking one representative track flags the whole cluster as one taste vector. Downstream, the picked directions DISSOLVE into a flat liked-genres list — playlists are built off that list, NOT per-direction. Overlapping genres across two liked directions become a stronger genre-level signal, not a duplicate.
-- **Rules rewritten for the shift.** `BEAT_PERCUSSION_RULE` was rewritten as a "Groove-Family Disambiguation" that explicitly splits RnB / Funk / Neo Soul / Hip Hop / Trap-Drill into five disjoint tight-cluster families (v6's version listed those first four in a single example set, which the model read as a single-cluster license — barbershop-bug root cause). `JAZZ_ISOLATION_RULE` was simplified to remove the explicit "Ethio-Jazz and Acid Jazz can blend with Afro/Funk/R&B styles" clause. `MULTI_CULTURAL_RULE` (v6 §3) and `EQUAL_GENRE_WEIGHT_RULE` (v6 §4) were dropped entirely. New sections `HOMOGENEITY_SECTION` and `DISTINCTNESS_SECTION` codify the tight-cluster / 8-distinct-archetypes design.
+- **Rules rewritten for the shift.** `BEAT_PERCUSSION_RULE` was rewritten as a "Groove-Family Disambiguation" that explicitly splits RnB / Funk / Neo Soul / Hip Hop / Trap-Drill into five disjoint tight-cluster families (v6's version listed those first four in a single example set, which the model read as a single-cluster license — barbershop-bug root cause). `JAZZ_ISOLATION_RULE` was simplified to remove the explicit "Ethio-Jazz and Acid Jazz can blend with Afro/Funk/R&B styles" clause. `MULTI_CULTURAL_RULE` (v6 §3) and `EQUAL_GENRE_WEIGHT_RULE` (v6 §4) were dropped entirely. New sections `HOMOGENEITY_SECTION` and `DISTINCTNESS_SECTION` codify the tight-cluster / 8-distinct-archetypes design (the decks keep `HOMOGENEITY_SECTION` and have their own `DECK_DISTINCTNESS_SECTION`, 6 distinct probes per deck).
 - **Ami's R1 rewrite (2026-09-30), carried into R2.** Details in `prompt-history-v7.md`.
   - **Requested styles:** each style the owner asks for gets ONE direction, and the rest map what else they like. In R2 it gets one of the 4 clusters again, with different companion genres than its R1 direction.
   - **Variety:** the widest variety the business allows *between* directions, never within one.
@@ -89,30 +91,32 @@ v7 is a full parallel runtime under `/v7` (onboarding UI, account UI, API endpoi
 
 ### The three v7 prompt stages
 
-Onboarding pipeline (BUILT — orchestrated by `v7/app.js`):
+Onboarding pipeline (BUILT — orchestrated by `v7/app.js`), as it runs since 2026-11-02 (see "Two onboarding decks"). The pipeline before then: [docs/v7-onboarding-before-decks.md](docs/v7-onboarding-before-decks.md).
 
 ```
 description + business name + atmospheres + musical emphases + Google Places
        ↓
-Stage 1: v7/generation/musical-directions.js
-         → 8 diagnostic probes (4+4 split, page 2 fires while owner interacts with page 1)
+Stage 1: v7/generation/deck-directions.js (generateDeckDirections)
+         → two calls at once while the owner picks hours: the ENERGETIC deck (6 probes, ranks 1–6,
+           cards play energy 60–80) and the CALM deck (6 probes, ranks 7–12, energy 30–50);
+           each deck only from its side's genres + the both-ways ones (shared/genre-sides.js)
            + venue_phrase_he, a short phrase for the business ("המסעדה הסקסית") for the "הכל מוכן!" screen
-         label='v7-onboarding'
+         label='v7-onboarding' (both calls)
        ↓
-[owner swipes swipe-deck]
+[owner swipes the energetic deck, then the calm deck]
        ↓
-Stage 2 (only if fewer than 3 R1 picks):
-         v7/generation/refined-directions.js
-         + optional Round 2 refinement emphases textarea (per v6 pattern)
-         → 4 refined probes mapping the neighbourhood of the liked probes
-           (re-confirm a liked vector with fresh genres + adjacent archetypes
-           that move 1–2 of its 4 axes); ranks 9–12
+Stage 2 (per deck, only for a deck with fewer than 2 likes of 6):
+         one refinement question first (optional Round 2 emphases), then
+         v7/generation/refined-directions.js (generateRefinedDeckDirections), the thin decks in parallel
+         → 4 more probes of that deck's energy (ranks 13–16 energetic, 17–20 calm), shown as one deck
          label='v7-onboarding-refined'
        ↓
-[owner swipes refined deck]
+[owner swipes the Round 2 cards]
        ↓
-Stage 3: v7/generation/taste-profile.js
-         → full-catalog (142-genre) bucketing + per-user energy scale + carry-through prefs
+Stage 3: v7/generation/taste-profile-decks.js (generateDeckTasteProfile)
+         → full-catalog (142-genre) bucketing + per-user energy scale + carry-through prefs,
+           TWO-SIDED when both decks got likes (calm side = levels ≤ N/2, energetic side = the rest;
+           a both-ways genre may be approved once per side)
          label='v7-taste-profile'
        ↓
 ["הכל מוכן!" (Robin introduces the business: name + Round 1's phrase) → registration (email + password; a registered email is stopped here) → payment (Hyp iframe; placeholder while
@@ -126,10 +130,10 @@ Stage 3: v7/generation/taste-profile.js
 Daily v7 playlist builder (BUILT — Option 1 / Option 2, see § v7 daily runtime below)
 ```
 
-### Two onboarding decks — energetic, then calm (Ami, 2026-11-02; IN PROGRESS)
+### Two onboarding decks — energetic, then calm (Ami, 2026-11-02; LIVE)
 
-Ami's redesign of the swipe step, planned with Roni. **The onboarding runs it (`v7/app.js`, 2026-11-02; not deployed yet, being tested locally).** The 8-probe Round 1 (`musical-directions.js`), the old Round 2 entry (`generateRefinedMusicalDirections`) and `taste-profile.js`'s generator are no longer called by the onboarding; their sections are still imported by the new modules, the taste chat and the backfill scripts.
-- **Needs migration** [`2026-11-02-v7-anchor-tracks-energy.sql`](v5/precompute/migrations/2026-11-02-v7-anchor-tracks-energy.sql) (the card's energy range in `v7_anchor_tracks`). Without it the extra fields are ignored and cards play songs of any energy. Check after: `node scripts/test-anchor-tracks-energy.mjs` (read-only; before the migration, 19 of 42 cards landed in range by chance).
+Ami's redesign of the swipe step, planned with Roni. **The onboarding runs it (`v7/app.js`), in production since the 2026-11-02 evening deploy (commit f41cbec).** The old generators (8-probe Round 1, its Round 2, the one-sided taste profile) are no longer called by the onboarding; what still uses them is listed in [docs/v7-onboarding-before-decks.md](docs/v7-onboarding-before-decks.md), including the two live walkthroughs, which don't exercise the decks.
+- **Migration** [`2026-11-02-v7-anchor-tracks-energy.sql`](v5/precompute/migrations/2026-11-02-v7-anchor-tracks-energy.sql) (the card's energy range in `v7_anchor_tracks`), **RUN 2026-11-02**. Without it the extra fields are ignored and cards play songs of any energy. Check: `node scripts/test-anchor-tracks-energy.mjs` (read-only; before the migration, 19 of 42 cards landed in range by chance).
 - **The decks:** an energetic deck first, then a calm deck, 6 probes each (ranks 1–6 / 7–12). Energetic cards play songs at energy 60–80, calm cards at 30–50.
 - **Genre sides** (`shared/genre-sides.js`, Ami's classification):
   - 70 genres go both ways (incl. Country, IndieTronica, Jazz House and Swing Jazz, missing from Ami's sheet: both ways by Roni's decision, no family), 31 energetic only, 41 calm only.
@@ -141,25 +145,19 @@ Ami's redesign of the swipe step, planned with Roni. **The onboarding runs it (`
   - 10–30: LoFi Beats, Jazz (Standards);
   - 80–100: Uplifting & Vocal Trance, Punk, Nu Metal, Tech House, Progressive & Psy Trance, Dubstep.
   - They are to apply to the onboarding cards AND the daily playlists. Borderline genres (Deep House, UKG, Dabke, Samba, Hip House, Bhangra Hip Hop…) stay on 60–80 (Roni).
-- **Two-sided taste profile** (`v7/generation/taste-profile-decks.js`):
-  - Energetic-deck likes build the energetic side (upper half of the scale, `level > N/2`), calm-deck likes the calm side, so Option 1's tiers follow the decks.
-  - A both-ways genre may be approved twice, once per side. Organic House is out of the House floor; the groove floor applies to the energetic side only (Roni).
-  - One deck with no likes → no sides: the old relative placement, one entry per genre.
-- **Recipe code already accepts a genre on both sides:** `requestedByTier`, `normalizeEnergyDirections`, `approvedByLevel` / `normalizeLevelDirections`. Nothing changes for today's profiles.
+- **Two-sided taste profile** (`v7/generation/taste-profile-decks.js`): energetic-deck likes build the energetic side (upper half of the scale), calm-deck likes the calm side, so Option 1's tiers follow the decks. The rules are under "The taste-profile stage" below.
+- **Recipe code accepts a genre on both sides:** `requestedByTier`, `normalizeEnergyDirections`, `approvedByLevel` / `normalizeLevelDirections`, and the Option 1 recipe prompt says such a genre may sit in recipes of both tiers. One-sided profiles are unaffected.
 - **The flow** (`v7/app.js`): both decks are requested at once while the owner picks hours (`generateDeckDirections`: the energetic deck is the page 1 of `preparePreview`, the calm deck its page 2). The owner swipes the energetic deck, then the calm deck (`runDeckFlow` in `v7/preview.js`, a heading per deck). Each card's song comes from its deck's range (`specFor` → `/api/v7/anchor-tracks` `lo` / `hi`).
   - **Round 2 per deck:** a deck with fewer than 2 likes of 6 (a deck that failed to load counts as 0) gets 4 more cards of its energy (`generateRefinedDeckDirections` in `refined-directions.js`; ranks 13–16 energetic, 17–20 calm).
     - One refinement question comes first, worded for the deck(s) concerned. The decks' Round 2 calls then run in parallel and their cards are shown in one deck, energetic first. 0 likes overall → the restart screen, as before.
     - Not generated in the background during the calm deck, as first planned: the refinement question comes first, and its text goes into every Round 2 call.
   - **Super-likes** remember their deck (`state.superLikedDecks`), so the profile approves the genre on that side.
   - **Signup** stores each card's `deck` in `onboarding_probes`, up to 20 cards (`_taste-profile.js`).
-- **Stages:**
-  - **1** — Ami's dashboard (done).
-  - **2** — the decks in the onboarding (built 2026-11-02; migration + Roni's test pending, then deploy).
-  - **3** — downstream of a genre held twice:
-    - **Done (2026-11-02):** the Option 1 recipe prompt; the taste chat; the admin API, with an update file for Michael ([docs/admin-api-for-michael-update-2026-11-02.md](docs/admin-api-for-michael-update-2026-11-02.md)).
-    - **Not done:** the exception ranges in both daily builders.
-- **Two-sided profiles** (`business_taste_profiles.two_sided`, migration [`2026-11-02-v7-two-sided-profiles.sql`](v5/precompute/migrations/2026-11-02-v7-two-sided-profiles.sql), default false):
-  - **Run the migration before deploying.** Without it signup saves the profile without the flag, and the chat then recognises a two-sided profile only by a genre listed in both halves.
+- **Still open:**
+  - the exception ranges in both daily builders (the cards use them; the daily playlists don't yet);
+  - ask Ami what "Turkish Funk" is (a row in his sheet, with no playlists, not in the genre list).
+- **Two-sided profiles** (`business_taste_profiles.two_sided`, migration [`2026-11-02-v7-two-sided-profiles.sql`](v5/precompute/migrations/2026-11-02-v7-two-sided-profiles.sql), **RUN 2026-11-02**, default false):
+  - Without the migration, signup saves the profile without the flag, and the chat then recognises a two-sided profile only by a genre listed in both halves.
   - Set at signup when the owner liked something on both decks (`normalizeDeckTasteProfile` → `two_sided`).
   - **Taste chat** (`taste-ops.js`): a both-ways genre keeps one entry per side.
     - `remove_genre` / `move_genre` take an optional `tier` ('high' = energetic side, 'low' = calm side). Without it, `remove_genre` acts on both sides; `move_genre` moves the entry on the target level's side.
@@ -169,7 +167,7 @@ Ami's redesign of the swipe step, planned with Roni. **The onboarding runs it (`
     - Before this, `stateFromRows` kept one entry per genre, so the first confirmed change would have deleted the other side and stripped it from that tier's recipes.
   - **Profiles without the flag behave exactly as before.** Checked 2026-11-02 on all 6 profiles in the database: the admin views, the counts, and a load-and-save through the chat leave them unchanged.
   - **Taste chat prompt:** a `SIDES` section and the curator's list; the per-turn context marks the sides and the ↕ genres (two-sided profiles only).
-  - **Admin API:** `taste_profile.two_sided`; `approved_by_level[].genres[].both_sides`; `/users` `approved_genre_count` counts distinct genres; `/directions` `placeGenre` adds a both-ways genre's other side without `move`; the swipe cards carry `deck`.
+  - **Admin API:** `taste_profile.two_sided`; `approved_by_level[].genres[].both_sides`; `/users` `approved_genre_count` counts distinct genres; `/directions` `placeGenre` adds a both-ways genre's other side without `move`; the swipe cards carry `deck`. Michael's update file: [docs/admin-api-for-michael-update-2026-11-02.md](docs/admin-api-for-michael-update-2026-11-02.md).
   - Tests: `node --test scripts/test-genre-sides.mjs` (incl. the chat on a two-sided profile).
 - **Re-onboarding an existing business** (Ami's dashboard, taste-chat tab, "אונבורדינג מחדש"; Roni 2026-11-02):
   - **The onboarding page's bench mode** (`/v7/?bench=1`, `startBench` / `benchFinish` in `v7/app.js`). The dashboard opens the real onboarding page in a window and sends, by `postMessage` (same origin only), the business's inputs: description, name, emphases, atmospheres (from the owner's auth metadata) and Google place, plus its taste portrait (`knownTaste`) and turned-down genres (`turnedDown`).
@@ -180,24 +178,27 @@ Ami's redesign of the swipe step, planned with Roni. **The onboarding runs it (`
     2. write the change-log row (`ops[0] = {op:'reonboard', archive_id}`, source admin; required — it stops the owner's undo from reaching changes made on the old profile);
     3. write the new profile (as signup does) + library, then the tried chat changes.
   - **Neither undo reverts a re-onboarding:** the admin console's answers `409 reonboard`, and the owner's chat undo stops at admin changes. The way back is the archive.
-  - **Needs migration** [`2026-11-02-v7-taste-profile-archive.sql`](v5/precompute/migrations/2026-11-02-v7-taste-profile-archive.sql).
+  - **Migration** [`2026-11-02-v7-taste-profile-archive.sql`](v5/precompute/migrations/2026-11-02-v7-taste-profile-archive.sql), **RUN 2026-11-02**.
   - **Tests:**
-    - `scripts/_admin-api-walkthrough.mjs` section [7]: archive, replace, weights carried, the undo refusal, the business page.
+    - `scripts/_admin-api-walkthrough.mjs` section [7]: archive, replace, weights carried, the undo refusal, the business page (69 passed, 2026-11-02).
     - The window flow itself is untested in a browser so far.
-- **Ask Ami after the build:** what "Turkish Funk" is (in his sheet, not in the genre list).
 - Tests: `node --test scripts/test-genre-sides.mjs`. History: `prompt-history-v7.md` 2026-11-02.
 
 ### The taste-profile stage (new for v7)
 
-Runs once after R1+R2 resolve, before any playlist is built. Extrapolates from the sparse swipe-deck signal (up to 12 probes across R1+R2 + per-direction like/dislike + per-track super-likes) to a full-catalog taste profile.
+Runs once after the swipe step resolves, before any playlist is built: **`v7/generation/taste-profile-decks.js`** (`generateDeckTasteProfile`, since 2026-11-02; label `v7-taste-profile`). It extrapolates from the sparse swipe signal (up to 20 cards from the two decks, per-direction like/dislike, per-track super-likes, each remembered with its deck) to a full-catalog taste profile.
+- **Its prompt** = `v7/generation/taste-profile.js`'s core philosophy, hard boundaries, processing rules, deduction logic and naming rules, plus its own sides, inputs, energy-calibration and output sections.
+- **`taste-profile.js`'s own generator** (one-sided, from the 8-probe onboarding) isn't called by the onboarding any more. How it differed: [docs/v7-onboarding-before-decks.md](docs/v7-onboarding-before-decks.md).
 
-Output shape (after `normalizeTasteProfile` — the model itself does NOT emit `excluded_genres`, see below):
+Output shape (after `normalizeDeckTasteProfile` — the model itself does NOT emit `excluded_genres`, see below):
 
 ```json
 {
   "energy_levels_total": 4,
   "approved_genres": [
     {"genre": "Hip Hop", "energy_level": 4},
+    {"genre": "Rnb", "energy_level": 3},                      // liked on the energetic deck
+    {"genre": "Rnb", "energy_level": 1},                      // ...and on the calm deck: once per side
     {"genre": "Neo Soul", "energy_level": 2}
   ],
   "conditional_genres": [
@@ -205,13 +206,20 @@ Output shape (after `normalizeTasteProfile` — the model itself does NOT emit `
   ],
   "excluded_genres": ["Chamber music", "Medieval Music"],   // computed in code
   "requested_genres": ["Hip Hop"],                          // super-liked + named in the emphases; always approved
+  "two_sided": true,                                        // likes on both decks
   "instrumentalness_preference": "none",
   "popularity_preference": "none",
   "reasoning_en": "..."
 }
 ```
 
-Bucketing rules (in the prompt). Since 2026-10-21 the prompt is **precision first**: approve only high-confidence genres, and when in doubt make it conditional or leave it out (Ami; from 2026-09-30 it was the opposite, "approve as many genres as the owner would enjoy"; history in `prompt-history-v7.md`). Expect fewer approved genres per new owner (the 13 existing profiles have a median of 32):
+**Sides** (only when both decks got a like; `two_sided`, stored in `business_taste_profiles.two_sided`):
+- The calm side is levels ≤ N/2, the energetic side the rest. Each deck's likes build its side.
+- A both-ways genre (`shared/genre-sides.js`) keeps at most one entry per side, so it may be approved twice. Every other genre has one entry: a calm-only genre the model put on the energetic side moves to the top of the calm half, an energetic-only one on the calm side to the bottom of the energetic half.
+- A super-liked genre is approved on its deck's side.
+- One deck with no likes → no sides: one entry per genre, levels relative to the owner's whole range (as before the decks).
+
+Bucketing rules (in the prompt). Since 2026-10-21 the prompt is **precision first**: approve only high-confidence genres, and when in doubt make it conditional or leave it out (Ami; from 2026-09-30 it was the opposite, "approve as many genres as the owner would enjoy"; history in `prompt-history-v7.md`). Expect fewer approved genres per new owner (the 13 profiles of 2026-10-21 had a median of 32):
 - **approved** — any of:
   - a genre in a liked direction, a super-liked genre, or one requested in emphases;
   - a tight-cluster neighbour of one, only when all 4 axes match and it fits the venue perfectly;
@@ -228,45 +236,52 @@ Energy calibration:
 - Each approved/conditional genre gets an `energy_level` 1..N. **RELATIVE to the user's own range**, not absolute. Hip Hop is level N for a mostly-chill user; level 3 for a rave user who also picked Dubstep. Same-energy genres get the same level.
 - Excluded genres get no level.
 - **Energy floors (2026-10-21, Ami + Roni).** "Top two levels" = the highest and next-to-highest; "bottom two" = the lowest and next-to-lowest. On a 2- or 3-level scale, both mean a single level (the top / the bottom).
-  - **House** (Deep, Tech, Organic, Soulful, Afro, Jazz, Hip House) and **Electronic R&B** always sit in the top two levels.
+  - **House** (Deep, Tech, Soulful, Afro, Jazz, Hip House) and **Electronic R&B** always sit in the top two levels. Organic House goes both ways since 2026-11-02, so it's out of this rule: its calm side may sit in the calm half.
   - **Calm electronic genres** may sit at the bottom: DownTempo (+ French / Latin), LoFi Beats, Trip Hop, Electronic Chillout. Other electronic genres aren't restricted.
-  - **Groove genres** (the R&B family, Neo Soul, Acid Jazz, AfroBeats, the Funk family; since 2026-09-30) sit above the owner's calmer approved genres, never in the bottom two levels. Exception: standard R&B may go down there when the top two levels are full of clearly more energetic genres.
+  - **Groove genres** (the R&B family, Neo Soul, Acid Jazz, AfroBeats, the Funk family; since 2026-09-30) sit above the owner's calmer approved genres, never in the bottom two levels. Exception: standard R&B may go down there when the top two levels are full of clearly more energetic genres. Since 2026-11-02 this applies to their ENERGETIC-side entries only: a groove genre liked on the calm deck is calm, and sits in the calm half.
   - **They all give way** only when the owner has nothing calmer: the calmest of them takes level 1, so the lowest level is never empty.
-  - **Safety net:** if the model still leaves level 1 without an approved genre, `normalizeTasteProfile` shifts every level down and shrinks N (never below 2). This keeps Option 1's calm tier from coming out empty.
-  - Tests: `node --test scripts/test-taste-profile-normalize.mjs`.
+  - **Safety net** in the normalizer, keeping Option 1's calm tier from coming out empty:
+    - with sides: the calm half shifts down so the calmest approved calm entry is at level 1 (N unchanged);
+    - without sides: if level 1 has no approved genre, every level shifts down and N shrinks (never below 2).
+  - Tests: `node --test scripts/test-genre-sides.mjs scripts/test-taste-profile-normalize.mjs`.
 
-Hard schema invariant: every one of the 142 canonical genres must land in EXACTLY ONE bucket. `normalizeTasteProfile` in `v7/generation/taste-profile.js` guarantees this by construction — `excluded_genres` = every canonical genre not in approved or conditional (any `excluded_genres` the model sends anyway is ignored); approved wins over conditional on duplicates; case drift is canonicalised via a lowercase→canonical map; invented genres (e.g. "Slow Funk") are dropped; energy levels clamped to `[1..N]`.
+Hard schema invariant: every one of the 142 canonical genres must land in EXACTLY ONE bucket (with sides: a both-ways genre in at most one bucket per side, approved winning over conditional on the same side). The normalizers (`normalizeDeckTasteProfile`, and `normalizeTasteProfile` in `taste-profile.js`) guarantee this by construction:
+- `excluded_genres` = every canonical genre not in approved or conditional (any `excluded_genres` the model sends anyway is ignored);
+- approved wins over conditional on duplicates;
+- case drift is canonicalised via a lowercase→canonical map, and invented genres (e.g. "Slow Funk") are dropped;
+- energy levels are clamped to `[1..N]`.
 
 **Requested genres (Ami, 2026-10-05).** `requested_genres` = the genres the owner asked for explicitly:
 - **Sources:** every super-liked genre (added in code, from the swipe deck's list) + every genre named in the musical emphases or Round 2 text (listed by the model, rule `REQUESTED_GENRES_RULE`). Exact genres: "R&B" → `Rnb`, not `French RnB`.
-- **Always approved:** `normalizeTasteProfile` forces each one in — out of conditional with its level there, or at the middle of the scale if the model left it out of both lists.
+- **Always approved:** the normalizer forces each one in — out of conditional with its level there, or at the middle of the scale if the model left it out of both lists. With sides, a super-liked genre is approved on its deck's side, and a genre named in the text on the side of its conditional entry (else its own side; a both-ways genre at the middle of the scale).
 - **Heard every day, in both options** (Roni, 2026-10-26; until then: Option 1 put each one in EVERY playlist of its tier, and Option 2 ignored them). A requested genre sits only in the recipes it genuinely suits, like any other genre, and the DAILY DRAW is what guarantees it: at least one of the day's playlists plays a recipe that holds it. Both recipe prompts must therefore put each requested genre in at least one recipe of its tier / level, and both normalizers give it a recipe of its own when the model didn't. When a tier / level holds more requested genres than two recipes can carry, the day covers as many as it can and the rest come first on the days after (the priority order rotates with the business day) — nothing is forced into a recipe it doesn't fit. No weight bump goes with it (Roni: the guarantee is the whole of the special treatment; the taste chat can still raise a genre's weight). Option 2 caveat: a requested genre is heard only if the day's curve reaches its energy level.
   - **Option 1** (`pickTierPair` in `v7/generation/option1-draw.js`): the pair is drawn among the pairs of the tier that play the most of its requested genres, and inside those the usual rules hold (the first at random, the second the least like it).
   - **Option 2** (`applyRequestedCoverage` + `requestedPerLevel` in `v7/generation/timeline-assembler.js`): after the daily rotation and before the admin's picks, one mix moves to the nearest direction of the level that improves the day's coverage; the two mixes stay on different directions.
   - Tests: `node --test scripts/test-option1-draw.mjs scripts/test-energy-timeline.mjs`.
 - **Stored** with the super-liked genres and the Round 2 text (migration `2026-10-05-v7-requested-genres.sql`). Accounts from before 2026-10-05: `scripts/_v7-backfill-requested-genres.mjs` reconstructs them (see its header).
 
-**No Places injection at this stage.** Google Places was already baked into R1/R2 when the model built the probes the user swiped on.
+**No Places injection at this stage.** Google Places was already baked into the deck prompts (R1/R2 before 2026-11-02) when the model built the probes the user swiped on.
 - The taste profile was originally designed as a property of the USER only.
 - Since 2026-09-30, the venue does cut INFERRED genres (Ami's Venue Context Cutoff), using the description + atmospheres already in the user message.
 
 ### Prompt stack
 
-All five v7 prompts (R1, R2, taste profile, Option-1 energy directions, Option-2 level directions) route through **`v7/generation/ai-provider.js`** — same shape as v6's (model `gemini-3.6-flash`, thinking `high`) but INDEPENDENT: changing v6's settings doesn't touch v7. Gemini is the only provider since 2026-10-24 (the Anthropic path and `/api/v5/anthropic` were removed); `PROVIDER` stays as a label. Ami's dashboard (which imports from v7's ai-provider since 2026-09-23) follows v7's settings.
+Every v7 prompt (the onboarding's two decks, their Round 2 and the two-sided taste profile since 2026-11-02; the older R1, R2 and taste profile; Option-1 energy directions; Option-2 level directions; and the server-side chats) routes through **`v7/generation/ai-provider.js`** — same shape as v6's (model `gemini-3.6-flash`, thinking `high`) but INDEPENDENT: changing v6's settings doesn't touch v7. Gemini is the only provider since 2026-10-24 (the Anthropic path and `/api/v5/anthropic` were removed); `PROVIDER` stays as a label. Ami's dashboard (which imports from v7's ai-provider since 2026-09-23) follows v7's settings.
 
 `gemini_call_log.label` values in use:
 - v6: `onboarding` (R1), `onboarding-refined` (R2), plus post-signup labels for event chat / direction-edit chat / preview-direction.
-- v7: `v7-onboarding` (R1), `v7-onboarding-refined` (R2), `v7-taste-profile`, `v7-energy-directions` (Option-1 energy-tier generation at the delivery-mode gate), `v7-level-directions` (Option-2 per-level libraries, when Option 2 is chosen and the stored library doesn't fit the profile; the 2026-09-28 test runs used `v7-level-directions-test`), `v7-event-chat` + `v7-event-playlist` (special playlists, since 2026-10-03; both called server-side), `v7-taste-chat` (the taste chat, since 2026-10-13; server-side), `v7-taste-portrait` (the owner's musical portrait, since 2026-10-21; server-side).
+- v7: `v7-onboarding` (R1; since 2026-11-02 the two deck calls, so two rows per onboarding), `v7-onboarding-refined` (R2; since 2026-11-02 one row per thin deck), `v7-taste-profile`, `v7-energy-directions` (Option-1 energy-tier generation at the delivery-mode gate), `v7-level-directions` (Option-2 per-level libraries, when Option 2 is chosen and the stored library doesn't fit the profile; the 2026-09-28 test runs used `v7-level-directions-test`), `v7-event-chat` + `v7-event-playlist` (special playlists, since 2026-10-03; both called server-side), `v7-taste-chat` (the taste chat, since 2026-10-13; server-side), `v7-taste-portrait` (the owner's musical portrait, since 2026-10-21; server-side).
+- Ami's dashboards: `ami-decks` (onboarding tab step 1, since 2026-11-02), `ami-taste-profile`, `ami-energy-directions` / `ami-level-directions`, `ami-taste-chat`, `ami-event-chat` / `ami-event-playlist`, and the re-onboarding runs `ami-reonboard` / `ami-reonboard-refined` / `ami-reonboard-taste` / `ami-reonboard-directions` (2026-11-02).
 
 Admin API `/api/internal/gemini-spend`'s `by_label[]` breaks these out separately, so v7 spend is trackable from day one of runtime.
 
 ### v7 does NOT emit `bpm_range`
 
 Removed 2026-09-23. v7's homogeneity axes (energy / instrumentation / register / mood) don't include tempo. The `validateBpmRange` function was deleted from both v7 files; `validateDirection` no longer checks BPM. Downstream:
-- **Swipe deck → its own RPC, no tempo at all.** v7's preview (R1, R2 and the swap button) calls `/api/v7/anchor-tracks` → **`v7_anchor_tracks(p_specs)`** (migration `v5/precompute/migrations/2026-09-24-v7-anchor-tracks.sql`, **RUN 2026-09-24**). Specs are `{rank, genre, inst_pref, pop_pref}`. Per spec it samples 8 random playlists tagged with the genre, takes their tracks, applies the inst/pop filters and biases, and picks one at random; a second tier re-samples 200 playlists only for specs the first tier couldn't satisfy. Work is bounded by the sample, so it's fast regardless of genre, and it runs on the normal **anon** key like v6's endpoint. v6's `v5_anchor_tracks` + `/api/v5/anchor-tracks` are untouched and still v6-only.
+- **Swipe deck → its own RPC, no tempo at all.** v7's preview (both decks, Round 2 and the swap button) calls `/api/v7/anchor-tracks` → **`v7_anchor_tracks(p_specs)`** (migration `v5/precompute/migrations/2026-09-24-v7-anchor-tracks.sql`, **RUN 2026-09-24**). Specs are `{rank, genre, inst_pref, pop_pref}`, plus optional `lo` / `hi` (an energy range, 0–100) since 2026-11-02 (migration `2026-11-02-v7-anchor-tracks-energy.sql`, RUN; the two decks' cards send it). Per spec it samples 8 random playlists tagged with the genre, takes their tracks, applies the inst/pop filters and biases (and, with a range, keeps only in-range songs), and picks one at random; a second tier re-samples 200 playlists only for specs the first tier couldn't satisfy, taking the song closest to the range (inside first, then 5 points out, then 10…), so a card is never dropped for lack of an in-range song. Work is bounded by the sample, so it's fast regardless of genre, and it runs on the normal **anon** key like v6's endpoint. v6's `v5_anchor_tracks` + `/api/v5/anchor-tracks` are untouched and still v6-only.
 - **Daily builders still pass `0–300`.** `api/v7/account/_daily-builder.js` reuses v6's `v6_direction_tracks_recent`, which REQUIRES `bpm_lo`/`bpm_hi` (NULLs would make `tempo BETWEEN NULL AND NULL` drop every row), so v7 directions carry `bpm_range:{min:0,max:300}` as a no-op tempo filter. That runs server-side on the service key, so it isn't subject to the anon 3s limit.
 
-**Why the swipe deck needed its own function (measured 2026-09-23).** `v5_anchor_tracks` picks its one track with `ORDER BY random() LIMIT 1` over *every* track matching genre + tempo + popularity. `track_analyses` has a tempo index, so its cost tracks the tempo window, not the genre: a `0–300` spec cost ~2× a v6-style narrow window even for small genres. A 4-card v7 call (~4.6s wall-clock) blew the anon role's 3s `statement_timeout` on 6/6 calls → 57014 → empty deck → forced into R2, which failed the same way. A service-key workaround briefly shipped on 2026-09-23 and was replaced by `v7_anchor_tracks` on 2026-09-24.
+**Why the swipe deck got its own function:** `v5_anchor_tracks`'s cost follows the tempo window, and a tempo-free v7 call blew the anon role's 3s limit (measured 2026-09-23; details in [docs/v7-onboarding-before-decks.md](docs/v7-onboarding-before-decks.md)).
 
 ### v7 persists a taste profile, NOT `business_directions`
 
@@ -521,11 +536,14 @@ The Home tab's chat for the DAILY music. It replaced the dormant v6 "חידוד�
 
 ### v7 onboarding + signup runtime — BUILT
 
-- **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (R1 + R2 swipe decks) / `result.js` ("הכל מוכן!" + registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → energetic deck → calm deck → (Round 2 for a deck with <2 likes; since 2026-11-02, see "Two onboarding decks") → "הכל מוכן!" → registration → payment (Hyp; the placeholder screen while `PAYMENTS_ENABLED = false`) → taste-profile bar → `/v7/account`.
+- **Client** (`v7/`): `index.html` + `app.js` (state machine) + `atmosphere.js` / `atmosphere-bubbles.js` / `emphases.js` / `hours-selector.js` / `preview.js` (the swipe decks: `runDeckFlow` for the energetic + calm decks since 2026-11-02, then the Round 2 cards) / `result.js` ("הכל מוכן!" + registration + payment + taste-profile bar — its fill runs 35s via `.taste-profile-fill`; the swipe-deck loaders keep 25s). Funnel: desc → places → atmospheres → emphases → hours → energetic deck → calm deck → (Round 2 for a deck with <2 likes; since 2026-11-02, see "Two onboarding decks") → "הכל מוכן!" → registration → payment (Hyp; the placeholder screen while `PAYMENTS_ENABLED = false`) → taste-profile bar → `/v7/account`.
 - **Account** (`v7/account/`): `index.html` + `app.js` (delivery-mode gate, energy-directions build, shuffle warning) + `taste-chat.js` (the Home tab's "שינויים בפרופיל המוזיקלי שלכם" chat) + `energy-timeline-editor.js`. `direction-chat.js` (v6's chat) is still in the folder but no longer mounted.
   - **Home tab, top to bottom:** the daily playlists; today's special-playlist cards ("פלייליסטים אחרים", always visible); the special-playlists chat ("צריכים משהו אחר היום?"; see "v7 special playlists" above); the **"שינויים בפרופיל המוזיקלי שלכם"** chat (see "v7 taste chat" above). The two chats swapped places on 2026-10-26 (Roni); the taste chat used to come first.
   - **Like / dislike per daily playlist** (Roni, 2026-10-26). Two bare icons to the right of each daily playlist's "▶ פתח" (`buildFeedbackIcons` in `v7/account/app.js`): a thumbs-up outlined in green and a thumbs-down outlined in red, filled with their colour (with a pop) once chosen.
-    - **A tap** saves the verdict at once (`POST /api/v7/account/playlist-feedback`, verdict `like` / `dislike`) and opens `#feedbackModal` straight away: "מה אהבתם בפלייליסט?" / "מה לא אהבתם בפלייליסט?" with an optional text field. "שלח" closes the modal at once, shows "תודה, נשמר ✓" and saves the text in the background (a failure toasts "ההסבר לא נשמר — אפשר לנסות שוב"); "דלג" just closes. Tapping the lit icon again clears the verdict (`clear` deletes the row).
+    - **A tap** saves the verdict at once (`POST /api/v7/account/playlist-feedback`, verdict `like` / `dislike`).
+      - **A like** is just stored: no modal, no text (Roni, 2026-11-03; until then it opened "מה אהבתם בפלייליסט?"). The server stores a like with `reason` null.
+      - **A dislike** also opens `#feedbackModal` straight away: "מה לא אהבתם בפלייליסט?" with an optional text field. "שלח" closes the modal at once, shows "תודה, נשמר ✓" and saves the text in the background (a failure toasts "ההסבר לא נשמר — אפשר לנסות שוב"); "דלג" just closes.
+      - A changed verdict drops the old one's text (server-side too). Tapping the lit icon again clears the verdict (`clear` deletes the row).
     - **Per playlist, so per day:** tomorrow's playlists are new rows, so their icons start empty.
     - **Stored** in `business_playlist_feedback` (see DATA MODEL); the dashboard reads its own rows directly (owner RLS). Nothing in the builders reads it yet: it's for Roni / Ami / Michael's console (`feedback` on each daily playlist, `playlist_feedback` on the business page, like / dislike counts on the list).
   - **The two chats** are identical collapsible dropdown cards, closed by default (same `.hours-toggle` pattern as the Profile sections).
@@ -550,15 +568,15 @@ The Home tab's chat for the DAILY music. It replaced the dormant v6 "חידוד�
   - **Existing accounts** got a shared password via `scripts/set-v7-passwords.mjs <password> --before=<date>` (dry run by default; `--confirm`; only owners of a v7 business created before the date, so a re-run can't overwrite owner-chosen passwords).
   - **Supabase dashboard settings** (manual): Auth → Email: "Confirm email" is meant to be on, but **on 2026-10-24 it was OFF** (`/auth/v1/settings`: `mailer_autoconfirm: true`), and "Allow new users to sign up" and the Spotify provider were on, so anyone with the public key could create a confirmed login (tested). Such a login can't create a business (INSERT revoked) or use anything, but it's a login without payment; turning those three off was recommended and is still open. Nothing in v7 needs them: signup creates logins through the admin API, the verification email uses `create_user: false`, login is by password. Also: minimum password length 8, password requirements "Digits, lowercase and uppercase letters", leaked-password protection on; Email Templates → "Reset Password" in Hebrew (same design as the magic-link email). If the rule changes, change `shared/password-rules.js` with it.
   - Tests: `scripts/test-v7-signup-passwords.mjs` (check-email + every signup rule against `vercel dev`, throwaway `@example.invalid` users, self-cleaning).
-- **Email verification is REQUIRED (like v6; decided 2026-09-24).** Nothing in the v7 funnel logs the owner in. After payment, the bar awaits the taste profile, THEN `api/v7/account/signup.js` runs ("no non-paying clients" — no account before payment): it checks the paid Hyp checkout, creates/updates the user + a `businesses` row (`version='v7'`, `paid_at` = the payment time) and claims the checkout (while payments are switched off: no checkout is required and `paid_at` = signup time), **saves the taste profile** (`business_taste_profiles`, via the shared `_taste-profile.js` row builder, with the super-liked genres + Round 2 text since 2026-10-05, and the swipe cards with their verdicts since 2026-10-13 — `onboarding_probes`, built by `onboardingProbes()` in `v7/app.js` for the admin console) BEFORE emailing, backfills `gemini_call_log` once (all onboarding calls incl. the taste profile have resolved by then), and finally emails the one-time magic link (`/auth/v1/otp`, fatal if it fails). The client shows "בדקו את המייל ✉️" with a "לא הגיע? שלחו שוב" resend that re-posts the same (idempotent) payload. The resend waits out a 60-second countdown ("אפשר לשלוח שוב בעוד 0:59") that starts when the screen appears and restarts after every resend or 429 — Supabase sends at most one login email per user per ~60s. Clicking the link verifies the email and lands on `/v7/account`. Returning owners are looked up via the admin user list's `?filter=` — NOT admin `generate_link`, which counts as a login-link send and tripped Supabase's ~60s per-user email interval (the reason v7's email never arrived before 2026-09-24; v6's signup still uses `generate_link` for returning users). A too-soon resend gets a friendly 429. Test scripts skip the email with `skipEmail:true` + a valid `x-sonic-internal` header (their addresses are `@example.invalid`) and mint their own session via admin `generate_link` + `verify`. Caveat: an owner who pays and then closes the tab before signup finishes has a paid, unclaimed `payment_checkouts` row but no account (Hyp has no server callback to create it from). Reopening onboarding in the same browser skips the payment step via the localStorage checkout id; otherwise find it in `payment_checkouts` (status `paid`, `business_id` null).
+- **Email verification is REQUIRED (like v6; decided 2026-09-24).** Nothing in the v7 funnel logs the owner in. After payment, the bar awaits the taste profile, THEN `api/v7/account/signup.js` runs ("no non-paying clients" — no account before payment): it checks the paid Hyp checkout, creates/updates the user + a `businesses` row (`version='v7'`, `paid_at` = the payment time) and claims the checkout (while payments are switched off: no checkout is required and `paid_at` = signup time), **saves the taste profile** (`business_taste_profiles`, via the shared `_taste-profile.js` row builder, with the super-liked genres + Round 2 text since 2026-10-05, and the swipe cards with their verdicts since 2026-10-13 — `onboarding_probes`, built by `onboardingProbes()` in `v7/app.js` for the admin console, with each card's `deck` and up to 20 cards since 2026-11-02 — and the `two_sided` flag since 2026-11-02) BEFORE emailing, backfills `gemini_call_log` once (all onboarding calls incl. the taste profile have resolved by then), and finally emails the one-time magic link (`/auth/v1/otp`, fatal if it fails). The client shows "בדקו את המייל ✉️" with a "לא הגיע? שלחו שוב" resend that re-posts the same (idempotent) payload. The resend waits out a 60-second countdown ("אפשר לשלוח שוב בעוד 0:59") that starts when the screen appears and restarts after every resend or 429 — Supabase sends at most one login email per user per ~60s. Clicking the link verifies the email and lands on `/v7/account`. Returning owners are looked up via the admin user list's `?filter=` — NOT admin `generate_link`, which counts as a login-link send and tripped Supabase's ~60s per-user email interval (the reason v7's email never arrived before 2026-09-24; v6's signup still uses `generate_link` for returning users). A too-soon resend gets a friendly 429. Test scripts skip the email with `skipEmail:true` + a valid `x-sonic-internal` header (their addresses are `@example.invalid`) and mint their own session via admin `generate_link` + `verify`. Caveat: an owner who pays and then closes the tab before signup finishes has a paid, unclaimed `payment_checkouts` row but no account (Hyp has no server callback to create it from). Reopening onboarding in the same browser skips the payment step via the localStorage checkout id; otherwise find it in `payment_checkouts` (status `paid`, `business_id` null).
 - **"הכל מוכן!" screen (Ami, 2026-10-21; `runReadyStep` in `v7/result.js`).** Right after the last swipe, before registration, with the progress bar still up.
   - **Text:** "רובין בנה ל<name>, <phrase> שלכם, פרופיל מוזיקה. כדי להתחיל לקבל כל יום פלייליסטים מותאמים אישית - סיימו את ההרשמה", plus the button "סיימו את ההרשמה". The mascot is the page's brand logo, copied at load and shown big.
   - **The phrase** is Round 1's `venue_phrase_he` (prompt `VENUE_PHRASE_SECTION`; cleaned by `normalizeVenuePhrase`, null when unusable). Without a phrase the sentence skips it; without a name it reads "רובין בנה לכם פרופיל מוזיקה." A name that doesn't start in Hebrew gets "ל־".
   - **Behind the screen** the taste profile is still being built; the bar after payment waits for it.
   - **Elsewhere:** the registration screen is now headed "הרשמה" with "שמרו את הפרופיל המוזיקלי שלכם והתחילו לקבל פלייליסטים יומיים" under it (it was "הכל מוכן! הירשמו עכשיו"). Ami's dashboard shows the phrase above its Round 1 result.
-- **Direction ranks are globally unique across rounds:** R1 = 1–8 (page 1 = 1–4, page 2 = 5–8), R2 = **9–12** (`R2_RANK_START` in `v7/generation/refined-directions.js`). The R2 and taste-profile prompts reference LIKED/DISLIKED by rank, so `v7/app.js round1DirectionsSeen()` passes page 1 **plus** every page-2 direction that was liked/disliked (`state.directions` alone is page 1 only). `state.round2Directions` holds the R2 set so the taste-profile retry can rebuild the same call.
+- **Direction ranks are globally unique across rounds and decks** (since 2026-11-02): energetic deck 1–6, calm deck 7–12 (`DECK_RANK_START` in `v7/generation/deck-directions.js`), Round 2 energetic 13–16 and calm 17–20 (`R2_DECK_RANK_START` in `refined-directions.js`). The Round 2 and taste-profile prompts reference LIKED/DISLIKED by rank. In `v7/app.js`, `state.directions` holds the energetic deck, `state.calmDirections` the calm deck and `state.round2Directions` the Round 2 cards (`allCardsSeen()` joins them), so the taste-profile retry can rebuild the same call.
 - **Endpoints**: `api/v7/anchor-tracks.js` (swipe-deck anchors → `v7_anchor_tracks` RPC, anon key — see the bpm_range note above) + `api/v7/payment/`: `checkout.js`, `return.js`, `status.js`, `_hyp.js` (see [docs/v7-payments.md](docs/v7-payments.md)) + `api/v7/account/`: `signup.js`, `save-taste-profile.js`, `set-delivery-mode.js`, `save-energy-directions.js`, `generate-daily.js`, `_daily-builder.js`, among others (the special-playlists and taste chats, the subscription, daily status…; the full list is under § FILE STRUCTURE).
-- **Live verification scripts** (self-cleaning, throwaway user/business, safe against prod): `scripts/_v7-walkthrough.mjs` (Phase A onboarding→signup→account) and `scripts/_v7-phaseb-walkthrough.mjs` (Phase B daily builders + v7 cron + expiry). `/v7/?reset=1` (and the account app) clears the Supabase session for re-testing, same as v6.
+- **Live verification scripts** (self-cleaning, throwaway user/business, safe against prod): `scripts/_v7-walkthrough.mjs` (Phase A onboarding→signup→account) and `scripts/_v7-phaseb-walkthrough.mjs` (Phase B daily builders + v7 cron + expiry). Both still generate with the pre-2026-11-02 generators (8-probe R1 + the one-sided taste profile), not the two decks. `/v7/?reset=1` (and the account app) clears the Supabase session for re-testing, same as v6.
 
 ---
 
@@ -570,10 +588,14 @@ sonic-brand/
 ├── v7/                                     ← BUILT + LIVE-VERIFIED. Parallel runtime; served at `/` since 2026-09-28.
 │   ├── index.html                          ← Onboarding shell + v7 CSS
 │   ├── app.js                              ← Onboarding orchestrator: desc→places→atmospheres→emphases→hours
-│   │                                          →R1 swipe→(R2 if <3)→registration→payment→taste-profile bar→account.
+│   │                                          →energetic deck→calm deck→(Round 2 per deck with <2 likes)→"הכל מוכן!"
+│   │                                          →registration→payment→taste-profile bar→account (decks since 2026-11-02).
+│   │                                          Bench mode `?bench=1` (startBench / benchFinish) for Ami's re-onboarding.
 │   ├── atmosphere.js / atmosphere-bubbles.js / emphases.js / hours-selector.js  ← ports of the v6 steps
-│   ├── preview.js                          ← R1 + R2 swipe decks. Anchors via /api/v7/anchor-tracks → v7_anchor_tracks
-│   │                                          (no BPM) — NOT v6's /api/v5/anchor-tracks. Swap-button cue (2026-10-26):
+│   ├── preview.js                          ← Swipe decks: runDeckFlow (energetic, then calm, a heading + orange subheading
+│   │                                          per deck; 2026-11-02) + the Round 2 refinement question per deck. Anchors via
+│   │                                          /api/v7/anchor-tracks → v7_anchor_tracks (no BPM; the deck's energy range
+│   │                                          as lo/hi via specFor) — NOT v6's /api/v5/anchor-tracks. Swap-button cue (2026-10-26):
 │   │                                          the first time a song plays 3s, "שמעו שיר נוסף מהכיוון הזה" pops (×1.25)
 │   │                                          with a light sweep, once per page load (swapCueDone; CSS .swap-btn.swap-cue
 │   │                                          in v7/index.html).
@@ -585,8 +607,7 @@ sonic-brand/
 │   │                                          { promise, finish, destroy }; ensureHypPaymentStyles for non-onboarding pages.
 │   ├── wait-dots.js                        ← Animated "…" for WAITING messages (dots appear in order, then clear), used by
 │   │                                          the onboarding and account apps; injects its own CSS. setWaitText(el, text) /
-│   │                                          waitNodes(text) turn every "…" / "..." into the animation and "
-" into <br>;
+│   │                                          waitNodes(text) turn every "…" / "..." into the animation and "\n" into <br>;
 │   │                                          WAIT_DOTS_HTML for innerHTML templates. Placeholders keep a plain "…".
 │   ├── test-timeline/index.html            ← SANDBOX (not linked from the app; /v7/test-timeline). Redirected to / since
 │   │                                          2026-10-24, locally too: to use it, remove its two lines from vercel.json's
@@ -615,15 +636,20 @@ sonic-brand/
 │       │                                      sizes, per-track random genre, two disjoint mixes. Daily direction
 │       │                                      rotation (pickLevelDirections) + applyRequestedCoverage /
 │       │                                      requestedPerLevel (2026-10-26). Bare imports.
-│       ├── musical-directions.js           ← R1 diagnostic taste probes (8, 4+4 split). label='v7-onboarding'.
+│       ├── musical-directions.js           ← R1 diagnostic taste probes (8, 4+4 split). label='v7-onboarding'. Not called by
+│       │                                      the onboarding since 2026-11-02; its sections (processing rules, homogeneity,
+│       │                                      pairing, titles, Hebrew description, venue phrase, injectPlaces) build the decks.
 │       ├── deck-directions.js              ← The two onboarding decks (energetic / calm, 6 each; 2026-11-02):
 │       │                                      generateDeckDirections. normalizeDeckDirections drops wrong-side genres.
 │       ├── taste-profile-decks.js          ← Two-sided taste profile for the decks (a both-ways genre may sit twice;
 │       │                                      2026-11-02): generateDeckTasteProfile, run by the onboarding.
 │       ├── refined-directions.js           ← R2 refinement (4 probes, fires when R1 picks < 3).
-│       │                                      label='v7-onboarding-refined'. Imports R1 sub-constants.
+│       │                                      label='v7-onboarding-refined'. Imports R1 sub-constants. Since 2026-11-02
+│       │                                      also generateRefinedDeckDirections: Round 2 per deck (ranks 13–16 / 17–20),
+│       │                                      the one the onboarding calls.
 │       ├── taste-profile.js                ← Full 142-genre bucketing + dynamic 2-6 energy levels.
-│       │                                      Runs once after R1/R2 resolve, before signup. Output:
+│       │                                      Its generator ran before signup until 2026-11-02 (now taste-profile-decks.js,
+│       │                                      which imports its sections and helpers). Output:
 │       │                                      approved/conditional/excluded + energy_levels_total +
 │       │                                      per-genre energy_level + inst_pref/pop_pref carry-through.
 │       │                                      label='v7-taste-profile'. NO Places injection (the venue only
@@ -679,14 +705,14 @@ sonic-brand/
 │                                              The old "THREE code locations" invariant collapsed to this
 │                                              file on 2026-09-23.
 ├── v5/                                     ← Reference; standalone flow still runnable
-│   ├── ami-prompt-dashboard/               ← Ami's prompt-tuning dashboard. Since 2026-09-23 imports
-│   │                                          EDITABLE_PROMPT_SECTION + assembleSystemPrompt from
-│   │                                          `/v7/generation/musical-directions.js` (was v5). Also imports
-│   │                                          callModel/PROVIDER from `/v7/generation/ai-provider.js` (was v6).
-│   │                                          Since 2026-09-28 also edits + tests the v7 taste-profile prompt
-│   │                                          (swipe simulation → `/v7/generation/taste-profile.js`), and
-│   │                                          step 4 shows the Option-1 / Option-2 directions built from the
-│   │                                          profile (`playlist-directions.js`; each option's prompt editable).
+│   ├── ami-prompt-dashboard/               ← Ami's prompt-tuning dashboard (behind middleware.js). Steps 1–3 edit + test
+│   │                                          the onboarding prompts: since 2026-11-02 the two decks
+│   │                                          (`/v7/generation/deck-directions.js`) → swipe simulation → the
+│   │                                          two-sided taste profile (`taste-profile-decks.js`); the R1 prompt +
+│   │                                          `taste-profile.js` before. callModel/PROVIDER from
+│   │                                          `/v7/generation/ai-provider.js`. Step 4 shows the Option-1 / Option-2
+│   │                                          directions built from the profile (`playlist-directions.js`; each
+│   │                                          option's prompt editable).
 │   │                                          Since 2026-09-30, Option-1 energy test playlists per direction
 │   │                                          (`test-playlists.js` → api/v7/ami/test-playlist.js).
 │   │                                          Since 2026-10-21 in tabs: אונבורדינג (all of the above) / צ'אט
@@ -860,6 +886,7 @@ sonic-brand/
 │   │   ├── ami-track-delete.js             ← Archive a track's rows into `deleted_tracks` then remove live rows
 │   │   ├── ami-track-restore.js            ← One-shot restore from the `deleted_tracks` archive
 │   │   ├── ami-track-genres.js             ← Track cleanup's genre editor: set a track's genres / undo (2026-10-05)
+│   │   ├── ami-track-energy.js             ← Track cleanup's energy field: sets track_analyses.energy (2026-11-03)
 │   │   ├── _track-genres.js                ← Genre-edit logic: plan, "manual:<genre>" placements, undo restore
 │   │   ├── ami-playlist-lookup.js          ← Sibling of ami-track-lookup for playlist IDs. Handles mobile-share
 │   │   │                                      short links (open.spotify.com/s/…) via HTTP redirect-follow.
@@ -911,14 +938,17 @@ sonic-brand/
 ├── docs/
 │   ├── v6-reference.md                     ← The v6 documentation moved out of CLAUDE.md on 2026-10-03.
 │   ├── v7-payments.md                      ← v7 payments + subscriptions (Hyp), moved out of CLAUDE.md on 2026-10-13.
+│   ├── v7-onboarding-before-decks.md       ← The onboarding before the two decks (8-probe R1, R2, one-sided taste profile,
+│   │                                          Ami's old steps 1–3; 2026-09-23 → 2026-11-02), moved out of CLAUDE.md 2026-11-03.
 │   ├── admin-api-for-michael.md            ← Instructions Michael feeds his own Claude to build his admin dashboard.
-│   │                                          Kept in sync with /api/internal/* endpoint shape.
+│   │                                          Frozen since 2026-11-03 (holds changes to 2026-11-02): updates go in dated files only.
 │   ├── admin-api-for-michael-update-2026-10-22.md ← What changed since the 2026-10-14 version Michael has (portrait,
 │   │                                          energy circles, calm 30–60, pairing rules, names, replace, taste-bench).
 │   ├── admin-api-for-michael-update-2026-10-26.md ← Requested genres no longer in every recipe; like / dislike per
 │   │                                          daily playlist (feedback fields on /users, /business).
-│   ├── admin-api-for-michael-update-2026-11-02.md ← The two decks: swipe cards' `deck`, `two_sided` profiles + `both_sides`
+│   ├── admin-api-for-michael-update-2026-11-02.md ← Re-onboarding: `taste_profile.archived`, undo's 409 `reonboard`. The two decks: swipe cards' `deck`, `two_sided` profiles + `both_sides`
 │   │                                          chips, direction-edit refusals by side, distinct genre count.
+│   ├── admin-api-for-michael-update-2026-11-03.md ← A like no longer asks why: `reason` only on dislikes (no API change).
 │   └── playlist-opens-delta.md             ← Focused delta doc for the 2026-08-30 addition of business_playlist_opens
 │                                             tracking + the new fields on /api/internal/business.
 ├── hyp-support/                            ← Gitignored, local only. Request/response logs prepared for Hyp support
@@ -1032,13 +1062,16 @@ sonic-brand/
 │   └── mirror-live-site.mjs                ← Pull deployed static assets via HTTP
 ├── benchmark-results/                      ← JSON outputs from benchmark script
 ├── prompt-history.md                       ← Audit log for v6 EDITABLE_PROMPT_SECTION changes
-├── prompt-history-v7.md                    ← Audit log for v7 prompts (R1, R2, taste-profile)
+├── prompt-history-v7.md                    ← Audit log for every v7 prompt (onboarding decks, R1, R2, taste profiles, recipes, chats)
 ├── tests/                                  ← Legacy test scripts (mostly v3/v4 era)
 ├── .env.local                              ← Gitignored. Has ANTHROPIC_KEY, GEMINI_API_KEY, RUBIN_*, SUPABASE_*,
 │                                              UPSTASH_REDIS_REST_KV_REST_API_URL/TOKEN, INTERNAL_API_KEY,
 │                                              INTERNAL_ADMIN_API_KEY, CRON_SECRET, TRACK_ANALYSIS_*,
 │                                              SUPABASE_AUTH (Resend key — see "Alerts via Resend"),
 │                                              ALERT_EMAIL_FROM / ALERT_EMAIL_TO (optional overrides)
+├── middleware.js                           ← Vercel Routing Middleware: the admin-key page + cookie on /v5/ami-prompt-dashboard
+│                                              (2026-10-24; key page since 2026-11-02). The key travels in header x-ami-key,
+│                                              not the body: vercel dev hands middleware an empty body.
 ├── vercel.json                             ← Function timeouts, cron schedule (two: expire + generate-daily),
 │                                              rewrites (incl. `/` → `/v7/index.html`), security headers
 └── CLAUDE.md                               ← This file
@@ -1393,7 +1426,7 @@ Default `'none'`.
 - **The rule:** the Israeli genres (`בלדות ישראליות`, `פופ מזרחית`, `מזרחית ישנה`, `רוק ישראלי`, `שירי ארץ ישראל`, `שירי יום הזיכרון והשואה`, plus `פופ ישראלי` and `היפ הופ ישראלי` since 2026-10-15, and `אינדי ישראלי` and `פופ אמוני ישראלי` since 2026-10-27) use **40** (Roni, 2026-10-14). From 2026-10-11 it was 45, the median of their catalog; Ami asked for 30 on 2026-10-14, which let 84% count as hits, so Roni settled on 40 the same day. Of the original six genres' 3,399 analysed tracks, 30+ = 2,845, **40+ = 2,293 (67%)**, 45+ = 1,768, 60+ = 257 (measured 2026-10-14). Every other genre keeps 60. It applies to both `'hard'` (filter) and `'soft'` (hits first).
 - **Where the numbers live:** the SQL function **`hit_popularity_floor(genre)`**, the only place they're written. A track's floor is that of the genre it was found through; a track found through two requested genres is a hit if it clears either floor. **A new Israeli genre must be added there too** (and in `v5/precompute/v5-rpc-functions.sql`, which carries the same definition).
 - **Functions that use it:** `v7_anchor_tracks` (swipe deck), `v6_direction_tracks_recent` (Option 1), `v7_timeline_pool` (Option 2), `v5_direction_tracks` (special playlists), `v7_energy_tracks` (Ami's test playlists). `v5_anchor_tracks` (v6 swipe deck only) still uses 60.
-- **The prompt:** v7 R1's sub-rule (imported by R2) names the exception, so the model doesn't avoid Israeli genres when hits are asked for. v6's prompt still says 60–100.
+- **The prompt:** v7 R1's sub-rule (imported by R2 and, since 2026-11-02, by the deck prompts) names the exception, so the model doesn't avoid Israeli genres when hits are asked for. v6's prompt still says 60–100.
 - **Migrations:** [`2026-10-11-israeli-hit-floor.sql`](v5/precompute/migrations/2026-10-11-israeli-hit-floor.sql) (the floor function + every track function reading it), [`2026-10-14-v7-popularity.sql`](v5/precompute/migrations/2026-10-14-v7-popularity.sql) (the floor to 30 + `popularity_tiers`), then [`2026-10-14-israeli-hit-floor-40.sql`](v5/precompute/migrations/2026-10-14-israeli-hit-floor-40.sql) (the floor to 40), then [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql) (the two new Israeli genres), then [`2026-10-27-israeli-hit-floor-indie-emuni.sql`](v5/precompute/migrations/2026-10-27-israeli-hit-floor-indie-emuni.sql) (two more; **RUN 2026-11-02**: `hit_popularity_floor` returns 40 for both, and a hits-only draw of 40 swipe cards per genre had none under 40 and about half at 40–59). The first four RUN by 2026-10-20 (`hit_popularity_floor` returns 40 for both new genres). The function's parameter is `p_genre` (an RPC call with `genre` gets PGRST202). Check after: `node scripts/test-israeli-hit-floor.mjs` (read-only, reads `.env.local` itself).
 
 **Only hits where there are enough (v7, Ami 2026-10-14).** A strict hits-only draw starved niche styles: 37 of the 132 genres have fewer than 25 hits, and an Option 1 calm playlist of three niche styles came out at 17 songs instead of 129 (measured 2026-10-14). Now, with `'hard'`:
@@ -1482,7 +1515,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 - `business_events` — { id, business_id, name, description, created_at, **genre_source** (`'daily'|'event'`, v7, added 2026-10-03 by migration `2026-10-03-v7-event-genre-source.sql`; NULL = `'event'`) }. Owner's chat-generated one-off event descriptions. In v7 each row is one special playlist for its day (04:00 → 04:00 IL): the card is hidden after that, but the row stays as history.
 - `super_liked_tracks` — { id, business_id, spotify_id, created_at, deleted_at (nullable, added 2026-09-05), UNIQUE(business_id, spotify_id) }. Persisted at signup from `state.superLikedTracks`; also topped up by the direction-edit preview modal when the owner taps super-like on a track. Nothing consumes yet — captured for future taste-tuning. **Soft-delete via `deleted_at`**: un-super-liking sets `deleted_at = now()` rather than removing the row (so a track's engagement history isn't lost even if the owner toggles it off). Re-super-liking clears `deleted_at` back to NULL via the upsert path. Future readers should filter `deleted_at IS NULL` to see "currently super-liked."
 - `business_playlist_opens` — { id bigserial, business_id, spotify_id, source ('home-daily' | 'home-event' | future), opened_at }. Append-only engagement log. One row per dashboard "▶ פתח" click. Not FK'd to `business_playlists` (matches `super_liked_tracks` pattern) — join manually on `spotify_id` when analyzing. `business_playlists` rows are never deleted (only `expires_at`-gated), so a click yesterday still resolves to its direction / genres / track_ids today. Client writes via fire-and-forget `POST /api/v6/account/log-playlist-open`; navigation to Spotify is never blocked on the write. Added 2026-08-26.
-- `business_playlist_feedback` — { id bigserial, business_id (FK, cascade), spotify_id (not FK'd, like `business_playlist_opens`), verdict ('like'|'dislike'), reason (text, nullable — what the owner typed in the modal), created_at, updated_at, UNIQUE(business_id, spotify_id) }. The owner's CURRENT verdict on one v7 daily playlist, replaced in place, deleted on clear. Written by `POST /api/v7/account/playlist-feedback` (service role); owner-scoped RLS SELECT for the dashboard; read by the admin API. Migration [`2026-10-26-v7-playlist-feedback.sql`](v5/precompute/migrations/2026-10-26-v7-playlist-feedback.sql), **RUN** (10 rows on 2026-11-02); without it the endpoint answers 501 `needs-migration`.
+- `business_playlist_feedback` — { id bigserial, business_id (FK, cascade), spotify_id (not FK'd, like `business_playlist_opens`), verdict ('like'|'dislike'), reason (text, nullable — what the owner typed in the dislike modal; a like has none since 2026-11-03), created_at, updated_at, UNIQUE(business_id, spotify_id) }. The owner's CURRENT verdict on one v7 daily playlist, replaced in place, deleted on clear. Written by `POST /api/v7/account/playlist-feedback` (service role); owner-scoped RLS SELECT for the dashboard; read by the admin API. Migration [`2026-10-26-v7-playlist-feedback.sql`](v5/precompute/migrations/2026-10-26-v7-playlist-feedback.sql), **RUN** (10 rows on 2026-11-02); without it the endpoint answers 501 `needs-migration`.
 - `business_direction_chats` — { id, business_id, role ('user'|'assistant'), content (raw JSON for assistant / plain text for user), proposal (jsonb — parsed structured payload attached to an assistant turn: `{kind, direction_id?, updates?, spec?}`), selected_direction_id (nullable FK, which card the owner had selected when they sent this), created_at }. Rolling per-business message log for the profile-tab direction-edit chat. Client renders the transcript on tab open; server loads the tail (last 40) as Gemini chat history each turn. **Since 2026-10-13 also v7's taste chat log** (`api/v7/account/taste-chat.js`, same session model): its assistant rows carry `proposal = {kind:'taste', state, summary_he, ops, new_genres, suggestions, timeline_hint, offer_new_mix, linked (the songs resolved from Spotify links this session), applied_at once applied}`; `selected_direction_id` stays null.
 - `business_direction_changes` — { id, business_id, direction_id (nullable — null when the pre-insert direction hasn't landed yet), kind ('add'|'edit'|'remove'), before (jsonb direction snapshot), after (jsonb direction snapshot), message_id_first, message_id_last (nullable FKs into business_direction_chats — the message range that produced this change), playlist_action ('rebuilt'|'expired'|'kept'|'renamed'|null), applied_at }. Written by `/api/v6/account/apply-direction-change` on every commit; surfaced by the internal admin API as the audit feed per business. `'renamed'` was added 2026-09-02 for the cosmetic-only edit fast path (title / description-only chat edits) — see the migration `2026-09-02-direction-changes-renamed-action.sql`.
 - `business_settings_changes` — { id bigserial, business_id, field (text — `'name'` or `'hours'`), before (jsonb), after (jsonb), changed_at }. Audit log for business-level settings that upsert in-place (i.e. don't produce a versioned history on their own). Written by `api/v6/account/update-business-name.js` and `api/v6/account/update-hours.js` on every non-no-op save. `field` is free text (no CHECK-enum) so future settings can join without another migration; for `'name'` the before/after are JSON-quoted strings, for `'hours'` they're `{hours, longest_minutes}` objects. Added 2026-09-05 (migration `2026-09-05-owner-change-history.sql`). v7 also writes `daily_energy_nudge` (the energy circles, `{playlist, window}`; also the one-a-day counter), alongside `delivery_mode`, `energy_timeline` and `daily_playlists_replaced`.
@@ -1491,7 +1524,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 **v7 production data (owned by v7 signup + account; migration `2026-09-23-v7-tables.sql`, RUN):**
 - `business_taste_profile_archive` — taste profiles replaced by a re-onboarding (migration `2026-11-02-v7-taste-profile-archive.sql`). { id bigserial, business_id (FK, cascade), profile (jsonb — the whole old row), option1_directions / level_directions (jsonb — the old active libraries), delivery_mode, reason ('reonboard'), source ('ami-dashboard'), archived_at }. Written BEFORE a replacement (`api/internal/taste-bench.js` `replaceProfile`); shown on the admin business page as `taste_profile.archived`. RLS on, no policies; grants to service_role.
 - `business_taste_profiles.two_sided` (boolean, default false; migration `2026-11-02-v7-two-sided-profiles.sql`): a profile from the two-deck onboarding with likes on both decks — levels ≤ N/2 are the calm side, the rest the energetic side, and a both-ways genre may be approved once per side (see "Two onboarding decks" in § V7 ARCHITECTURE).
-- `business_taste_profiles` — one row per v7 business (PK `business_id`). The flat, full-catalog taste profile produced by `v7/generation/taste-profile.js` and persisted by `signup.js` at onboarding (before the verification email goes out). Columns: { business_id (uuid PK), energy_levels_total (int 2..6), approved_genres (jsonb — [{genre, energy_level}]), conditional_genres (jsonb — [{genre, energy_level, note_en}]; **DATA ONLY, builders ignore it**), excluded_genres (jsonb — [string]), instrumentalness_preference (text), popularity_preference (text), reasoning_en (text), audit_tally (jsonb, analytics), **requested_genres** (jsonb — [string], the genres at least one of each day's playlists must play — see "Requested genres" in § V7 ARCHITECTURE), **super_liked_genres** (jsonb — [string]), **round2_emphases** (text), **genre_weights** (jsonb `{genre: w}` — the taste chat's weights, only ≠ 1; NULL = all 1), **rejected_genres** (jsonb — [string], genres the owner turned down; the chat's deck never offers them), **onboarding_probes** (jsonb — [{round, rank, title_en, description_he, genres, verdict: liked|disliked|not-swiped}], the swipe cards the owner saw; 2026-10-13, migration `2026-10-13-admin-console.sql`; NULL = signed up before), **popularity_tiers** (jsonb `{high, low}` — Option 1's "well-known songs" per tier, set by the taste chat; written only when the two differ; NULL = both follow `popularity_preference`; 2026-10-14, migration `2026-10-14-v7-popularity.sql`) }. `requested_genres`, `super_liked_genres` and `round2_emphases` were added 2026-10-05 (migration `2026-10-05-v7-requested-genres.sql`; NULL = signed up before); `genre_weights` and `rejected_genres` on 2026-10-13 (migration `2026-10-13-v7-taste-chat.sql`; NULL until the owner uses the taste chat). Writers fall back to saving without them if the migration hasn't run. Owner-scoped RLS SELECT; service-role writes. Replaces `business_directions` as v7's taste source of truth.
+- `business_taste_profiles` — one row per v7 business (PK `business_id`). The flat, full-catalog taste profile produced by `v7/generation/taste-profile-decks.js` (since 2026-11-02; `taste-profile.js` before) and persisted by `signup.js` at onboarding (before the verification email goes out). Columns: { business_id (uuid PK), energy_levels_total (int 2..6), approved_genres (jsonb — [{genre, energy_level}]), conditional_genres (jsonb — [{genre, energy_level, note_en}]; **DATA ONLY, builders ignore it**), excluded_genres (jsonb — [string]), instrumentalness_preference (text), popularity_preference (text), reasoning_en (text), audit_tally (jsonb, analytics), **requested_genres** (jsonb — [string], the genres at least one of each day's playlists must play — see "Requested genres" in § V7 ARCHITECTURE), **super_liked_genres** (jsonb — [string]), **round2_emphases** (text), **genre_weights** (jsonb `{genre: w}` — the taste chat's weights, only ≠ 1; NULL = all 1), **rejected_genres** (jsonb — [string], genres the owner turned down; the chat's deck never offers them), **onboarding_probes** (jsonb — [{round, deck, rank, title_en, description_he, genres, verdict: liked|disliked|not-swiped}], the swipe cards the owner saw, up to 20; `deck` = 'energetic' | 'calm' since 2026-11-02, null before; 2026-10-13, migration `2026-10-13-admin-console.sql`; NULL = signed up before), **two_sided** (boolean, see the entry just above), **popularity_tiers** (jsonb `{high, low}` — Option 1's "well-known songs" per tier, set by the taste chat; written only when the two differ; NULL = both follow `popularity_preference`; 2026-10-14, migration `2026-10-14-v7-popularity.sql`) }. `requested_genres`, `super_liked_genres` and `round2_emphases` were added 2026-10-05 (migration `2026-10-05-v7-requested-genres.sql`; NULL = signed up before); `genre_weights` and `rejected_genres` on 2026-10-13 (migration `2026-10-13-v7-taste-chat.sql`; NULL until the owner uses the taste chat). Writers fall back to saving without them if the migration hasn't run. Owner-scoped RLS SELECT; service-role writes. Replaces `business_directions` as v7's taste source of truth.
 - `business_v7_settings` — one row per v7 business (PK `business_id`). { business_id (uuid PK), delivery_mode (text CHECK IN ('option1','option2'); NULL until the gate is picked), timeline (jsonb — Option 2's energy timeline, v2 shape `{version:2, groups:[{days, open, close, points:[{m,e}]}]}`, see § V7 ARCHITECTURE "Option 2: energy timeline"), **energy_windows** (jsonb `{high:[min,max], low:[min,max]}` — Option 1's windows moved by the taste chat; NULL = 50–80 / 30–60 (20–50 until 2026-10-21); 2026-10-13), updated_at (bumped only by delivery-mode changes) }. Written by `set-delivery-mode.js`, `update-timeline.js`, and `update-hours.js` (reconciliation). Changes are audited in `business_settings_changes` (fields `delivery_mode`, `energy_timeline`; plus `daily_playlists_replaced` per "replace now").
 - **`track_analyses.duration_sec`** (int, added 2026-09-24, migration `2026-09-24-v7-timeline-pool.sql`) — track length parsed from `raw_analysis->>'duration'` ("m:ss"), filled by a `BEFORE INSERT OR UPDATE OF raw_analysis` trigger (covers every analysis writer) + a one-time backfill. Used by the Option-2 builder via the `v7_timeline_pool` RPC.
 - `business_v7_directions` — Option-1 energy-tiered directions: a library of up to 30 per business (populated at mode selection via `save-energy-directions.js`, which replaces the whole set and keeps at most 30; `rank` is bookkeeping only — the daily draw is random). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_tier (text CHECK IN ('high','low')), rank (int), title_en (text), genres (jsonb — [string], canonical), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active. Only Option 1 uses this; Option 2 uses `business_v7_level_directions` (below).
@@ -1499,7 +1532,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 - `business_taste_changes` — every change the taste chat applied (same migration). { id bigserial, business_id (FK, cascade), delivery_mode, ops (jsonb — the applied ops), summary_he, before / after (jsonb — taste-ops.js snapshots), message_id (FK → business_direction_chats, SET NULL), applied_at, undone_at, **source** ('chat' | 'admin', default 'chat'; 2026-10-13, migration `2026-10-13-admin-console.sql`) }. Undo restores `before` of the newest row that isn't undone (the owner's undo: only when that row isn't an admin change). RLS on, no policies.
 - `business_taste_portraits` — the owner's musical portrait, every version (migration `2026-10-21-v7-taste-portraits.sql`). { id bigserial, business_id (FK, cascade), portrait_he (text, Hebrew), source ('onboarding' | 'chat' | 'backfill'), message_id (FK → business_direction_chats, SET NULL — the success that led to it), created_at }. The newest row is the current portrait. RLS on, no policies. See "v7 taste chat".
 - `business_v7_daily_picks` — the admin console's daily picks (migration `2026-10-13-admin-console.sql`). { id bigserial, business_id (FK, cascade), il_date (date — the business day), mode ('option1'|'option2'), slot ('high-1'… / 'mix-1:L3'), title_en, genres (jsonb, copied), energy_range (jsonb, Option 2), source_direction_id (uuid, may be gone), created_at, UNIQUE(business_id, il_date, slot) }. Read by the builders (see "Admin daily picks" in § V7 ARCHITECTURE). RLS on, no policies.
-- `admin_actions` — every write made through the admin console (same migration). { id bigserial, business_id (FK, SET NULL; null for coupons), action ('direction:add_genre', 'daily_pick:set', 'daily:rebuild_today', 'coupon:create', …), detail (jsonb), created_at }. RLS on, no policies.
+- `admin_actions` — every write made through the admin console (same migration). { id bigserial, business_id (FK, SET NULL; null for coupons and track energy edits), action ('direction:add_genre', 'daily_pick:set', 'daily:rebuild_today', 'coupon:create', 'track:energy' (Ami's Track cleanup, 2026-11-03), …), detail (jsonb), created_at }. RLS on, no policies.
 - `v7_daily_build_log` — what happened when a business's daily playlists were built, or why not (migration `2026-10-06-v7-daily-build-log.sql`). { id bigserial, business_id (FK → businesses ON DELETE CASCADE), il_date, source ('cron'|'dashboard'), outcome ('built'|'partial'|'zero-built'|'build-failed'|'no-directions'|… or 'nothing-to-build:<reason>'), built, failed, detail (error text), created_at }. Written by the v7 cron (all but routine skips) and `generate-daily.js`; read by `daily-status.js`. RLS on, no policies.
 - `business_v7_level_directions` — Option-2 per-energy-level direction libraries (migration `2026-09-28-v7-level-directions.sql`). { id (uuid PK), business_id (FK→businesses ON DELETE CASCADE), energy_level (int CHECK 1..6), rank (int — rotation order within the level), title_en (text, internal), genres (jsonb — canonical, all approved at that level), profile_key (text — `levelProfileKey` of the taste profile it was built from), **energy_range** (jsonb [min, max] — the recipe's own range, set by the taste chat; NULL = its level's default; 2026-10-13), active (bool DEFAULT true), created_at }. Partial index on (business_id) WHERE active; owner-scoped RLS SELECT. Written by `save-level-directions.js` (replace-all) and `scripts/_v7-regenerate-level-directions.mjs`; separate from Option 1's table, so switching types never touches it. See "Option 2: level directions" in § V7 ARCHITECTURE.
 - **v7 `business_playlists` rows insert `direction_id: null`** — that column is an FK to v6's `business_directions`; a `business_v7_directions` id would violate it (the two are different tables). See the v7 daily runtime mechanism in § V7 ARCHITECTURE.
@@ -1522,7 +1555,7 @@ The legacy `auth.users.raw_user_meta_data.sonic` blob (v6, before the per-busine
 
 ### Track pool coverage
 
-**144,625 successfully-analyzed tracks** (`status = ok`) in `track_analyses` as of 2026-10-27 (143,268 on 2026-10-22, 142,929 on 2026-10-20, 135,845 on 2026-10-13, 128,652 on 2026-09-28, ~121k on 2026-09-08); the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, Israeli genres, Japanese Folk through early September; the 8 genres added 2026-09-26 — Afro Cuban Jazz, Doo-Wop, Electronic R&B, French Touch, Italian Folk, Mo Town, Soft Pop Hits, Surf Rock; the 8 added 2026-10-13 — Andean Chill, Brazilian Funk, French Musette, Hip House, Jangle pop, Latin DownTempo, Latin RnB, Trip Hop; the 4 added 2026-10-15 — Acoustic Blues, Future Funk, פופ ישראלי, היפ הופ ישראלי; the 2 added 2026-10-20 — Electronic Chillout, Meditative Ambient; Morna, added 2026-10-22; the 3 added 2026-10-27 — Bhangra Hip Hop, אינדי ישראלי, פופ אמוני ישראלי). On 2026-10-27, 12,703 more sat at `status = 'error'` (16,300 on 2026-10-08), almost all from genres older than the latest rounds, waiting for `--retry-errors` runs; 6,846 were `not_found`. This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses WHERE status = 'ok'` in Supabase (from a script, use the service key: the anon key's count returned a bare 500 on 2026-10-13, likely its 3s timeout). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (142 entries as of 2026-10-27, `shared/genre-universe.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
+**147,386 successfully-analyzed tracks** (`status = ok`) in `track_analyses` as of 2026-11-03, with 15,146 at `error` and 1,635 at `not_found`, in the middle of the retry run described below (144,625 on 2026-10-27, 143,268 on 2026-10-22, 142,929 on 2026-10-20, 135,845 on 2026-10-13, 128,652 on 2026-09-28, ~121k on 2026-09-08); the count has grown incrementally as batch runs digest new genres (jazzhop, latin funk, Alternative R&B, Hawaii ukulele music, Musica Tropical, Israeli genres, Japanese Folk through early September; the 8 genres added 2026-09-26 — Afro Cuban Jazz, Doo-Wop, Electronic R&B, French Touch, Italian Folk, Mo Town, Soft Pop Hits, Surf Rock; the 8 added 2026-10-13 — Andean Chill, Brazilian Funk, French Musette, Hip House, Jangle pop, Latin DownTempo, Latin RnB, Trip Hop; the 4 added 2026-10-15 — Acoustic Blues, Future Funk, פופ ישראלי, היפ הופ ישראלי; the 2 added 2026-10-20 — Electronic Chillout, Meditative Ambient; Morna, added 2026-10-22; the 3 added 2026-10-27 — Bhangra Hip Hop, אינדי ישראלי, פופ אמוני ישראלי). On 2026-10-27, 12,703 more sat at `status = 'error'` (16,300 on 2026-10-08), almost all from genres older than the latest rounds, waiting for `--retry-errors` runs; 6,846 were `not_found`. Of those 12,703 errors, 12,190 had failed once in a one-try pass and were never retried (the scoped retry runs only covered the genres being added at the time). **On 2026-11-01 Roni started one try for every error and `not_found` track** (`dry-run-orphans.mjs --include-not-found --include-errors` + `batch.mjs --retry-not-found --retry-errors --max-error-retries=0 --max-rapidapi-calls=45000`, 19,438 tracks). By 2026-11-03 09:00 it had done 10,795: 2,778 analysed, 8,010 failed again (only ~9% succeeding that day), ~230 tracks an hour, 30,903 of the month's 50,000 calls used. A "not found" left over from the June–July scans often comes back with data now; songs failing again keep `error`, which is why the error count rose while `not_found` fell. This is the pool `v5_direction_tracks` and `v6_direction_tracks_recent` select from. To get the current authoritative count, run `SELECT count(*) FROM track_analyses WHERE status = 'ok'` in Supabase (from a script, use the service key: the anon key's count returned a bare 500 on 2026-10-13, likely its 3s timeout). **Do not trust exploration-agent estimates over this number** — an Explore agent once returned a bogus 31k and misled a planning session. Distribution across the canonical genre list (142 entries as of 2026-10-27, `shared/genre-universe.js`) is uneven; biz types added earlier (café, pizzeria) have deeper pools than newly-added Latin / Asian / world-fusion genres.
 
 ---
 
@@ -1593,7 +1626,7 @@ Belt-and-suspenders. `pgrRequest` catches errors whose message contains `"57014"
 | Feature | Model | Where selected | Rationale |
 |---|---|---|---|
 | v6 Musical directions (main flow) | `gemini-3.6-flash`, thinking=high | `v6/generation/ai-provider.js` `PROVIDER='gemini'` | Faster + cheaper than Sonnet at comparable quality once thinking=high is set; better JSON compliance with `responseMimeType`. The Anthropic path was removed on 2026-10-24; going back would mean restoring `api/v5/anthropic.js` and the `callAnthropic` branch from git history. |
-| v7 Musical directions (R1 + R2 + taste-profile + energy-directions + level-directions) | `gemini-3.6-flash`, thinking=high | `v7/generation/ai-provider.js` `PROVIDER='gemini'` | INDEPENDENT of v6's switch. Same values today but decoupled — flipping v6's PROVIDER does not affect v7 or Ami's dashboard (which imports v7's ai-provider since 2026-09-23). Labels for `gemini_call_log`: `v7-onboarding`, `v7-onboarding-refined`, `v7-taste-profile`, `v7-energy-directions`, `v7-level-directions`. |
+| v7 onboarding + recipes (the two decks, Round 2 per deck, the two-sided taste profile; energy-directions; level-directions) | `gemini-3.6-flash`, thinking=high | `v7/generation/ai-provider.js` `PROVIDER='gemini'` | INDEPENDENT of v6's switch. Same values today but decoupled — flipping v6's PROVIDER does not affect v7 or Ami's dashboard (which imports v7's ai-provider since 2026-09-23). Labels for `gemini_call_log`: `v7-onboarding`, `v7-onboarding-refined`, `v7-taste-profile`, `v7-energy-directions`, `v7-level-directions`. |
 | Event chat (special-events dashboard) | `gemini-3.6-flash`, thinking=low | hardcoded in `api/v6/account/event-chat.js` (v6) and `api/v7/account/event-chat.js` (v7) | Multi-turn JSON, low latency for a chat feel. Prompts in `v6/generation/event-chat-prompt.js` / `v7/generation/event-chat-prompt.js`. |
 | v7 taste chat ("שינויים בפרופיל המוזיקלי שלכם") | `gemini-3.6-flash`, thinking=medium, max_tokens=12000 | hardcoded in `api/v7/account/taste-chat.js` (label `v7-taste-chat`) | Medium, not low: the chat places genres by the coherence rules and works out what dominates, which low thinking did poorly in v6's chat. Prompt in `v7/generation/taste-chat-prompt.js`. |
 | Direction-edit chat (profile-tab) | `gemini-3.6-flash`, thinking=low, max_tokens=3000 | hardcoded in `api/v6/account/direction-chat.js` | Same rationale as event chat — multi-turn JSON, low latency. Prompt in `v6/generation/direction-edit-chat-prompt.js`. Kept distinct from the ai-provider switch used for musical directions. |
@@ -1640,63 +1673,30 @@ Ami has a dashboard at `v4/ami/` for maintaining the Data Box / atmospheres tabl
   - **Analysis is local only.** The server never analyses tracks (Roni, 2026-10-26), so the track waits for Roni's next scan and doesn't play until then. It isn't written to the Data Box sheet: the sheet holds playlist links, and we only read it.
   - **The scans pick it up without extra steps** (see § COMMON TASKS → Precompute): `dry-run-fill.mjs` queues every unanalysed track in a manual playlist, whatever `--genres` says; `dry-run-orphans.mjs` never drops manual-playlist tracks through its genre flags, so `--include-errors` retries their failures too. `sheet-status.mjs` lists the ones waiting.
   - **Checked 2026-10-26** in-process against prod: add, duplicate refused, bad genre refused, listed as waiting by `sheet-status.mjs`, undo.
-- **Playlist cleanup** (`ami-playlist-lookup.js` / `-delete.js` / `-restore.js`, added 2026-08-30) — the playlist equivalent. Lookup uses the same input parsing (bare id / URL / URI / mobile-share link resolved via redirect-follow) and reports playlist_genres row count + distinct genres + track_analyses coverage of the playlist's tracks. Delete archives every `playlist_genres` + `playlist_tracks` row for that `playlist_id` into `deleted_playlists`, then removes the live rows. **Critically does NOT touch `track_analyses`** — those audio-features rows are shared with any other playlist those tracks live in, and are expensive to rebuild via RapidAPI. If Ami wants a track's cache gone too, she uses the track-cleanup flow one-at-a-time. Restore replays the archive and drops the archive row for a re-deletable state.
+- **Energy editor** (Ami, 2026-11-03 — `ami-track-energy.js`). In Track cleanup's Analysis box, a track with a usable analysis (status ok) shows its energy as a field (0–100, whole numbers) with "Save energy".
+  - **Saving** sets `track_analyses.energy`, the column every energy range reads: both daily builders, the onboarding cards, the energy circles, Ami's test playlists. It applies from the next build; playlists already on Spotify keep their songs.
+  - **The original stays:** only the column changes. `raw_analysis.energy` keeps the analysis service's value (equal to the column in every row until an edit), so an edited track shows "Changed by hand — the analysis said N" and a "Back to N" button.
+  - **Not editable:** tracks with no analysis or a failed one (they don't play). A re-analysis would overwrite an edit, but the scans only re-analyse failed tracks.
+  - **Logged** in `admin_actions` (`track:energy`, no business; `{spotify_id, before, after, analysis}`).
+- **Playlist cleanup** (`ami-playlist-lookup.js` / `-delete.js` / `-restore.js`, added 2026-08-30) — the playlist equivalent. Lookup uses the same input parsing (bare id / URL / URI / mobile-share link resolved via redirect-follow) and reports playlist_genres row count + distinct genres + track_analyses coverage of the playlist's tracks: "N / M analyzed" counts only usable analyses, and a red "K failed analysis" badge the failed ones (since 2026-11-03; before, a failed analysis counted as analyzed). "Spotify: N tracks" is the playlist on Spotify TODAY, not what we copied: curators add and remove songs, Spotify may list a song under another ID than the one we stored, and tracks Ami takes out of the genre leave our rows, so the two counts differ for reasons other than failed scans (Ami's "Best Alternative Soul & RnB", 2026-11-03: 158 on Spotify, 114 in our rows, 44 of the same songs under other IDs, 44 failed analyses). Delete archives every `playlist_genres` + `playlist_tracks` row for that `playlist_id` into `deleted_playlists`, then removes the live rows. **Critically does NOT touch `track_analyses`** — those audio-features rows are shared with any other playlist those tracks live in, and are expensive to rebuild via RapidAPI. If Ami wants a track's cache gone too, she uses the track-cleanup flow one-at-a-time. Restore replays the archive and drops the archive row for a re-deletable state.
 - `ami-cron-tick.js` — **cron schedule REMOVED from `vercel.json` on 2026-08-13**. Endpoint file kept so the batch worker can be revived, but no longer runs hourly. Was the driver for the RapidAPI-based track analysis pipeline; when we stopped needing it, keeping the hourly tick just consumed function invocations and served no purpose. Re-add `{"path": "/api/v4/ami-cron-tick", "schedule": "* * * * *"}` to `vercel.json crons` to bring it back.
 - `ami-sync-usage.js`, `ami-reorder.js` — housekeeping
 
-Ami also has a separate **prompt-tuning dashboard** at `/v5/ami-prompt-dashboard/`. Since 2026-10-24 the whole folder is behind the admin key (`middleware.js`): since 2026-11-02 a page of ours asks for the key in one field (until then it was the browser's Basic-auth box, with a username field nothing checked). A right key gets a 30-day HttpOnly cookie holding a hash of the key (`ami_dash`, path `/v5/ami-prompt-dashboard`), and the page also saves the key in localStorage `ami-admin-key`, so the taste-chat tab and test playlists don't ask again. Rotating the key logs everyone out. The tab's "יציאה" clears only the localStorage entry, not the cookie.
-Since 2026-09-23 it imports `EDITABLE_PROMPT_SECTION` + `assembleSystemPrompt`
-from **`/v7/generation/musical-directions.js`** (was v5) and `callModel` +
-`PROVIDER` from **`/v7/generation/ai-provider.js`** (was v6). It lets Ami edit
-+ preview the v7 R1 prompt output before it goes to prod. Ami is tuning
-against v7's R1 prompt, NOT v6's — Roni explicitly said no v6/v7 toggle at
-the dashboard level. The dashboard uses whatever provider v7's `ai-provider.js`
-points at (currently Gemini 3.6-flash, thinking=high — same values as v6's
-copy, but decoupled: flipping v6's PROVIDER doesn't affect the dashboard).
-He also has a "דגשים מוזיקליים" textarea there that mirrors the onboarding
-field, so he can test emphases + instrumentalness + popularity classification
-behavior end-to-end. Each returned direction shows its
-`instrumentalness_preference` / `popularity_preference` (since 2026-09-28).
-Atmospheres behave as in v7 production: the checked names become an
-`Atmospheres: …` line in the user message and nothing else. The dashboard
-used to show a "Popularity window" derived from them (v5's
-`derivePopularityWindow`); it was display-only and misleading, since
-production dropped atmosphere-derived popularity on 2026-09-02, so it was
-removed 2026-09-28.
-
-**Taste-profile prompt (added 2026-09-28).** Two more steps follow the R1
-step on the same page:
-- **Step 2 — swipe simulation** (shown once step 1 returns directions): each
-  direction gets "אהבתי" / "לא בשבילי" (default לא בשבילי); clicking a genre
-  chip super-likes it and marks its direction liked, and disliking a direction
-  clears its super-likes — same rules as onboarding. Plus an optional Round 2
-  refinement emphases textarea, enabled only while fewer than 3 directions
-  are liked (production's `picked.length < 3` Round 2 trigger; when disabled
-  its text stays in the box but isn't sent), and the two carried preferences
-  (prefilled with the `carryPref` rule, overridable for testing).
-- **Step 3 — taste-profile editor**: `EDITABLE_PROMPT_SECTION` from
-  `v7/generation/taste-profile.js`, assembled with that module's
-  `assembleSystemPrompt`; the user message comes from its exported
-  `buildUserMessage` and the response goes through its exported
-  `normalizeTasteProfile`, so a dashboard run sees exactly what production
-  would. Output: approved / conditional by energy level, the requested
-  genres (titled "נתבקשו מפורשות ע"י סופר לייק או בדגשים המוזיקליים של הלקוח",
-  super-likes included), the computed excluded list, a "DROPPED" line for
-  genres the model listed but production would discard, and `reasoning_en`.
-  Logged as `label='ami-taste-profile'`.
-- Round 2 is not simulated (the taste profile gets "Round 2 directions: (not
-  fired)"). The business inputs used are the ones from the last step-1 run;
-  re-running step 1 resets the swipe simulation.
-- **Since 2026-11-02, steps 1–3 test the two-deck onboarding** (§ V7 ARCHITECTURE
-  → "Two onboarding decks"), not production's current one:
-  - step 1 runs `deck-directions.js` twice in parallel (energetic + calm, label
-    `ami-decks`) and lists each deck with the genres the code dropped for being
-    on the wrong side;
-  - step 2 groups the cards by deck and marks a deck that would get Round 2
-    (fewer than 2 likes);
-  - step 3 runs `taste-profile-decks.js` and shows the calm and energetic sides
-    (↕ = a genre on both).
-  The text above about production's modules describes the dashboard before then.
+Ami also has a separate **prompt-tuning dashboard** at `/v5/ami-prompt-dashboard/`. Since 2026-10-24 the whole folder is behind the admin key (`middleware.js`): since 2026-11-02 a page of ours asks for the key in one field (until then it was the browser's Basic-auth box, with a username field nothing checked). The page sends the key in a header (`x-ami-key`), not the body, because `vercel dev` hands middleware an empty body (the first version of the page worked in a direct test but was always refused under `vercel dev`). A right key gets a 30-day HttpOnly cookie holding a hash of the key (`ami_dash`, path `/v5/ami-prompt-dashboard`), and the page also saves the key in localStorage `ami-admin-key`, so the taste-chat tab and test playlists don't ask again. Rotating the key logs everyone out. The tab's "יציאה" clears only the localStorage entry, not the cookie.
+**The onboarding tab, steps 1–3** test the onboarding's prompts as production runs them: since 2026-11-02 the two decks and the two-sided taste profile (§ V7 ARCHITECTURE → "Two onboarding decks"). Before then they ran the 8-probe R1 prompt and the one-sided taste profile: [docs/v7-onboarding-before-decks.md](docs/v7-onboarding-before-decks.md).
+- **Shared:** `callModel` + `PROVIDER` come from **`/v7/generation/ai-provider.js`**, so the dashboard follows v7's provider (Gemini 3.6-flash, thinking=high; decoupled from v6's switch). Ami tunes v7's prompts, NOT v6's: Roni explicitly said no v6/v7 toggle at the dashboard level.
+- **Step 1 — the deck prompt:** `DECK_EDITABLE_PROMPT_SECTION` from `/v7/generation/deck-directions.js`, assembled with `assembleDeckSystemPrompt` (through `normalizeForProdAssembly`, below). It runs twice in parallel, energetic + calm (`buildDeckUserMessage`, `normalizeDeckDirections`; label `ami-decks`), and lists each deck with the genres the code dropped for being on the wrong side.
+  - A "דגשים מוזיקליים" textarea mirrors the onboarding field, so Ami can test emphases + instrumentalness + popularity classification end-to-end. Each returned direction shows its `instrumentalness_preference` / `popularity_preference`.
+  - Atmospheres behave as in production: the checked names become an `Atmospheres: …` line in the user message and nothing else.
+- **Step 2 — swipe simulation** (shown once step 1 returns directions), the cards grouped by deck:
+  - each direction gets "אהבתי" / "לא בשבילי" (default לא בשבילי); clicking a genre chip super-likes it and marks its direction liked, and disliking a direction clears its super-likes, the same rules as onboarding;
+  - a deck with fewer than 2 likes is marked as one that would get Round 2. Round 2 itself isn't simulated;
+  - an optional Round 2 refinement emphases textarea, enabled only while a deck has fewer than 2 likes (when disabled its text stays in the box but isn't sent);
+  - the two carried preferences (prefilled with the `carryPref` rule, overridable for testing).
+- **Step 3 — taste-profile editor:** `DECK_TASTE_EDITABLE_PROMPT_SECTION` from `/v7/generation/taste-profile-decks.js`, assembled with `assembleDeckTasteSystemPrompt`; the user message comes from `buildDeckTasteUserMessage` and the response goes through `normalizeDeckTasteProfile`, so a dashboard run sees what production would.
+  - Output: the calm and energetic sides (↕ = a genre on both), approved / conditional by energy level, the requested genres (titled "נתבקשו מפורשות ע"י סופר לייק או בדגשים המוזיקליים של הלקוח", super-likes included), the computed excluded list, a "DROPPED" line for genres the model listed but production would discard, and `reasoning_en`.
+  - Logged as `label='ami-taste-profile'`.
+- The business inputs used are the ones from the last step-1 run; re-running step 1 resets the swipe simulation.
 
 **Daily playlist directions (added 2026-09-28).** Step 4 appears once step 3
 returns a taste profile with approved genres:
@@ -1786,7 +1786,9 @@ buttons (`v5/ami-prompt-dashboard/test-playlists.js`):
 
 The dashboard's prompt assembly runs through a **lenient wrapper**
 `normalizeForProdAssembly` in `v5/ami-prompt-dashboard/app.js` (added 2026-08-30)
-before calling the prod `assembleSystemPrompt` helper. It renames any
+before calling the prod assembler (`assembleDeckSystemPrompt` since
+2026-11-02, R1's `assembleSystemPrompt` before; both place Places with R1's
+`injectPlaces`). It renames any
 "### … Processing Rules:" heading to the exact form prod's strict
 `injectPlaces()` anchors on, so Ami's edits don't have to preserve it —
 without this, Ami saw cryptic "התגובה לא הייתה JSON תקין" errors when the
@@ -1807,7 +1809,7 @@ expiry.
 
 ## INTERNAL ADMIN API (Michael's dashboard)
 
-The admin console API under `api/internal/*`, for Michael's dashboard (his own repo, deployed to the `sonic-brand-preview` Vercel project — not in this repo). **Rebuilt for v7 on 2026-10-13** around Michael's 12-item list, and since then it also WRITES. **The reference Michael's Claude builds from is [docs/admin-api-for-michael.md](docs/admin-api-for-michael.md)** It holds the build brief (section 1: the pages, what each shows per Michael's 12 items, a "done when" checklist), every field and action, and the v1 → v2 field map. Keep it in sync with any change here.
+The admin console API under `api/internal/*`, for Michael's dashboard (his own repo, deployed to the `sonic-brand-preview` Vercel project — not in this repo). **Rebuilt for v7 on 2026-10-13** around Michael's 12-item list, and since then it also WRITES. **The reference Michael's Claude was built from is [docs/admin-api-for-michael.md](docs/admin-api-for-michael.md)** (the 2026-10-13/14 version he has). It holds the build brief (section 1: the pages, what each shows per Michael's 12 items, a "done when" checklist), every field and action, and the v1 → v2 field map. It is not updated any more: changes go only in dated update files (below).
 
 - **Auth:** one shared bearer token, `INTERNAL_ADMIN_API_KEY` (`Authorization: Bearer <key>` or `x-internal-admin-key`). CORS `*`, methods GET/POST/PATCH/DELETE (`_guard.js`). Fail-CLOSED when the env is missing. No rate limit. The key can now change customers' playlists, so the doc tells Michael to keep it server-side.
 - **Helpers:** `_admin.js` holds the shared pieces:
@@ -1815,7 +1817,7 @@ The admin console API under `api/internal/*`, for Michael's dashboard (his own r
   - `selectOrEmpty` answers `[]` when a table or column is missing, so views degrade before a migration;
   - also auth-user listing, `logAdminAction`, Israel dates.
 - **`_library.js`** reads the profile and both libraries, with the taste chat's keys: `H1`/`C1` for Option 1, `L2-1` for Option 2. The order matches `stateFromRows` in `taste-ops.js`. **`_daily-view.js`** groups daily rows by business day (`il_date` from Option 2's meta, else the label's date, else the creation date). It also adds each row's slot, what it played and its opens. Since 2026-10-22 Option 1's `played.energy` = `{range, today_only}` (the energy circles: `{usual, direction: 'more'|'calmer', at}` or null).
-- **Telling Michael about changes:** he already gave his Claude the full doc, so changes go in a dated update file (`docs/admin-api-for-michael-update-<date>.md`, Roni 2026-10-22), and the full doc is kept merged too.
+- **Telling Michael about changes:** only a new dated update file (`docs/admin-api-for-michael-update-<date>.md`). Roni sends each one to him by hand, and he never goes back to the full doc, so **never update the full doc** (Roni, 2026-11-03; until then it was kept merged too, so it holds the changes up to 2026-11-02). Updates so far: 2026-10-22, 2026-10-26, 2026-11-02, 2026-11-03 (a like no longer asks why).
 
 **Read endpoints:**
 - **`GET /users`** — one row per business. Adds the playlist type, approved-genre count and opens (7 days / total), the special-request and taste-chat counts, the last build, and playlist likes / dislikes + `last_playlist_feedback_at` (2026-10-26). Payment is `payment_status`: `paid` = a paid `payment_checkouts` row; `no-payment` = signed up while payments were off, when `businesses.paid_at` is only the signup time.
@@ -1836,7 +1838,8 @@ The admin console API under `api/internal/*`, for Michael's dashboard (his own r
 - **`/coupons`** (GET + POST + PATCH) manages `payment_coupons`.
   - Shows usage counts from `payment_checkouts`, and `coupons_enabled` = this deployment's `V7_COUPONS_ENABLED`.
   - Percent 1–99. 100% is refused for good: Hyp ignores a ₪0 first payment and charges the full monthly price (checked 2026-10-24, see docs/v7-payments.md). Codes are never deleted, only switched off.
-- **`/taste-bench`** (GET + POST, 2026-10-21) — for Ami's prompt dashboard, not Michael's console. GET `?id=` returns the taste chat's context for a business; POST `{ business_id, ops, summary_he, switch? }` saves what Ami tried: a playlist-type switch (`{ mode, library }`), then the changes (re-run on the current profile, logged as admin).
+- **`/taste-bench`** (GET + POST, 2026-10-21) — for Ami's prompt dashboard, not Michael's console. GET `?id=` returns the taste chat's context for a business, plus `reonboard {atmospheres, place}` (2026-11-02, the inputs the re-onboarding window needs besides the business row); POST `{ business_id, ops, summary_he, switch? }` saves what Ami tried: a playlist-type switch (`{ mode, library }`), then the changes (re-run on the current profile, logged as admin). POST with `replace` (2026-11-02) is a re-onboarding: archive first, then the change-log row, then the new profile + library (`replaceProfile`; see "Two onboarding decks" in § V7 ARCHITECTURE; `admin_actions` `taste:reonboard`).
+- **Re-onboarding in the read endpoints** (2026-11-02): `/business` has `taste_profile.archived` (the archived profiles, newest first) and `taste_profile.two_sided`; `/directions` `undo` answers `409` `reonboard` when the newest change is a re-onboarding.
 
 **Migration** [`v5/precompute/migrations/2026-10-13-admin-console.sql`](v5/precompute/migrations/2026-10-13-admin-console.sql) — **RUN 2026-10-13.** On a database without it:
 - the reads work, with the new fields empty;
@@ -1846,6 +1849,7 @@ The admin console API under `api/internal/*`, for Michael's dashboard (his own r
 **Live test:** `node --env-file=.env.local scripts/_admin-api-walkthrough.mjs`.
 - Runs against `vercel dev` on a throwaway business + coupon, and cleans up after itself. No Spotify, no Gemini.
 - Covers the reads, every direction action, picks + both planners, the owner's `generate-daily` refusals, and coupons.
+- 2026-11-02: 69 passed, including section [7], the re-onboarding (archive, replace, weights carried, the undo refusal, the business page).
 - 2026-10-21: 57 passed, including Ami's taste bench: load a business; save a change (the weight lands in the profile, logged as an admin change); save a type switch both ways (mode, library, the Option 2 timeline, the audit).
 - 2026-10-13, after the migration: 45 passed. That run found that a pick for one Option 2 mix could leave both mixes on the same direction at that level. Fixed: `applyOption2Picks` now moves the unpicked mix to the next different direction.
 
@@ -1932,14 +1936,17 @@ All set in Vercel cloud env. `.env.local` also has them for local dev (`vercel d
 
 ## PROMPT EDITING PROTOCOL
 
-Eleven prompts (musical directions, the v7 prompts built on them, v7's special-playlist prompts, the taste chat and the owner's musical portrait) exist across two versions, tracked in two audit-log files:
+Fourteen prompts (musical directions, the v7 prompts built on them incl. the two-deck onboarding's three, v7's special-playlist prompts, the taste chat and the owner's musical portrait) exist across two versions, tracked in two audit-log files:
 
 **v6 (production)** — tracked in `prompt-history.md`:
 - **v6 Round 1** — `EDITABLE_PROMPT_SECTION` + `FIXED_PROMPT_SECTION` in `v6/generation/musical-directions.js`, both composed from named sub-constants. Mirrored byte-for-byte in `v5/generation/musical-directions.js` (kept for legacy `v5/app.js` — no longer read by Ami's dashboard).
 - **v6 Round 2** — R2-specific sub-constants inside `v6/generation/refined-directions.js`, composed on top of shared sub-constants imported from R1's file. No v5 mirror (R2 is v6-only).
 
 **v7 (runtime built)** — tracked in `prompt-history-v7.md`:
-- **v7 Round 1** — `v7/generation/musical-directions.js`. Diagnostic taste probes (see § V7 ARCHITECTURE). What Ami's dashboard tunes against.
+- **v7 Round 1 two-deck** — `v7/generation/deck-directions.js` (2026-11-02). The energetic and calm decks the onboarding runs; built from v7 R1's sub-constants plus its own deck sections (`GENRE_SIDES_SECTION`, `DECK_RULES_SECTION`…). What Ami's dashboard's step 1 tunes since 2026-11-02. `Applies to: Round 1 two-deck`.
+- **v7 Round 2 per deck** — `generateRefinedDeckDirections` in `v7/generation/refined-directions.js` (2026-11-02; `REFINED_DECK_*` sections). `Applies to: Round 2 per deck`.
+- **v7 Two-sided taste profile** — `v7/generation/taste-profile-decks.js` (2026-11-02). Imports the taste profile's sections. `Applies to: two-sided taste profile`.
+- **v7 Round 1** — `v7/generation/musical-directions.js`. Diagnostic taste probes (see § V7 ARCHITECTURE). Not run by the onboarding since 2026-11-02, but its sub-constants build the deck prompts, so an edit here changes them too.
 - **v7 Round 2** — `v7/generation/refined-directions.js`. Imports shared sub-constants from v7 R1.
 - **v7 Taste profile** — `v7/generation/taste-profile.js`. Full-catalog bucketing (every genre in `shared/genre-universe.js` — 142 as of 2026-10-27; the prompt reads the count from the list) + per-user energy scale.
 - **v7 Energy directions** — `v7/generation/energy-directions.js`. Option-1 energy-tiered directions from `approved_genres`. `Applies to: energy directions`.
@@ -1950,7 +1957,7 @@ Eleven prompts (musical directions, the v7 prompts built on them, v7's special-p
 - **v7 Taste portrait** — `v7/generation/taste-portrait-prompt.js`. Writes / rewrites the owner's musical portrait the taste chat reads (2026-10-21). `Applies to: taste portrait`.
 
 **Any edit to any prompt** appends a NEW entry at the top of the correct history file (v6 edits → `prompt-history.md`; v7 edits → `prompt-history-v7.md`). Each entry MUST include:
-- An **Applies to:** line. For v6: `Round 1` / `Round 2` / `both`. For v7: `Round 1` / `Round 2` / `taste profile` / `R1+R2` / `energy directions` / `level directions` / `event chat` / `event playlist` / `taste chat` / `taste portrait` / `all v7`.
+- An **Applies to:** line. For v6: `Round 1` / `Round 2` / `both`. For v7: `Round 1` / `Round 2` / `taste profile` / `R1+R2` / `Round 1 two-deck` / `Round 2 per deck` / `two-sided taste profile` / `energy directions` / `level directions` / `event chat` / `event playlist` / `taste chat` / `taste portrait` / `all v7`.
 - Today's date + one-sentence summary of what changed and why
 - The FULL text of the changed sub-constants (for substantive content changes) OR a clear diff description (for structural/refactor changes with byte-identical output). Never delete old entries — the files are the audit log.
 
@@ -2057,7 +2064,13 @@ Older knobs still in use:
 - **Tab 1** "לפי מקומות" (gid `0`): business types → genres. Read by `api/v4/databox.js`.
 - **Tab 2** "לפי ז׳אנרים" (gid `1199564828`): genre → up to 15 playlist links, data from row 7. Read by `api/v4/databox-genres.js`.
 - **"What did Ami add?"** = `node v4/precompute/sheet-status.mjs` (2026-10-26; read-only, no `vercel dev`, ~1 min). It compares Tab 2 with `playlist_genres` (playlists not yet in the DB) and with `shared/genre-universe.js` (genres not in the prompts), and lists Ami's manual tracks waiting for an analysis or whose analysis failed. Both of those ride along with the usual scan lines: step 1/2 below queues the waiting ones, step 3 retries the failed ones. Then refresh the baseline with `node v4/precompute/snapshot-databox.mjs` (needs `vercel dev`), so the next check can diff against it.
-- **State on 2026-10-27: the sheet, the DB and the genre list match.** All 142 sheet genres are in `shared/genre-universe.js`, every sheet playlist is in the DB (Spotify's own `37i9dQZF1D…` playlists are skipped), and the DB has no playlist or genre the sheet doesn't list. No track is waiting for a first analysis. The latest genres, `Bhangra Hip Hop` (2 playlists), `אינדי ישראלי` (12) and `פופ אמוני ישראלי` (9), joined the list on 2026-10-27 (Ami, 2026-10-24 / 26).
+- **State on 2026-11-03** (`sheet-status.mjs`):
+  - 3 sheet playlists aren't in the DB yet: Latin Funk 2, Amapiano 1.
+  - The sheet has a 143rd genre row, `Turkish Funk`, with no playlists, which isn't in the genre list (Ami is to explain it).
+  - 18 of Ami's manual tracks are waiting: 11 never analysed, 7 failed.
+  - Otherwise the sheet, the DB and the genre list match, including the two playlists retagged on 2026-11-01 (below).
+- **State on 2026-10-27: the sheet, the DB and the genre list matched.** All 142 sheet genres were in `shared/genre-universe.js`, every sheet playlist was in the DB (Spotify's own `37i9dQZF1D…` playlists are skipped), and the DB had no playlist or genre the sheet didn't list. The latest genres, `Bhangra Hip Hop` (2 playlists), `אינדי ישראלי` (12) and `פופ אמוני ישראלי` (9), joined the list on 2026-10-27 (Ami, 2026-10-24 / 26).
+- **Changing a playlist's genre in the DB must be mirrored in the sheet.** Ami's sheet scan (`ami-scan.js`) copies the sheet's playlist → genre pairs into `playlist_genres`, so it would undo the change. On 2026-11-01 two Alternative R&B playlists were retagged Electronic R&B directly in prod (`playlist_genres` row replaced, position after the genre's last playlist), and Ami moved their links to the Electronic R&B row. Tracks that also sit in other playlists keep those playlists' genres; making them one genre only is the Track cleanup genre editor's job.
   - **A genre with few playlists can skip step 1 below.** Its "first 2 playlists" step is there so that every new genre gets some coverage early. With one small genre, run step 2 (all its playlists) and then step 3, as for Morna on 2026-10-22: 76 minutes for step 2, which left 241 of its tracks failed, then 4.4 hours for the retry.
   - **Earlier rounds:** `Morna` (7 playlists) joined on 2026-10-22. `Electronic Chillout` and `Meditative Ambient` (Ami, 2026-10-15 / 16) joined the list on 2026-10-20 after all three steps. The 4 genres added 2026-10-15 (`Acoustic Blues`, `Future Funk`, `פופ ישראלי`, `היפ הופ ישראלי`) finished their error retry by 2026-10-16. The two Israeli ones joined `hit_popularity_floor` in migration [`2026-10-15-israeli-hit-floor-new-genres.sql`](v5/precompute/migrations/2026-10-15-israeli-hit-floor-new-genres.sql), RUN by 2026-10-20.
   - **Spelling:** the list doesn't have to match the sheet's case (the sheet has "Desi Lofi", "Jazzhop" and "electronic chillout"; the list has `Desi LoFi`, `JazzHop` and `Electronic Chillout`). Matching ignores case, but the spelling must be the same.
@@ -2075,7 +2088,7 @@ Older knobs still in use:
 - `--exclude-genres="a,b,c"` — drops orphans whose playlist is tagged to any of the listed genres. Use when a specific genre's playlists are causing upstream storms and you want to keep filling everything else without touching the DB (they stay orphans, no blacklist).
 - `--include-genres="a,b,c"` (added 2026-09-26) — the inverse: keeps ONLY orphans whose playlist is tagged to one of the listed genres. Use it to scan newly added genres first (e.g. the first playlists of each new genre, then the rest). If both flags are passed, `--exclude-genres` is ignored.
 - `--include-errors` — also queues tracks currently at `status='error'`. Pair with `batch.mjs --retry-errors`, or batch skips them.
-- `--errors-since=<date or ISO time>` (2026-11-01; with `--include-errors` only) — re-queues only the errors recorded since then (`track_analyses.analyzed_at`), so a retry covers just the failures of a run you made. Most older errors already went through retry runs. In the working tree, not committed yet on 2026-11-02.
+- `--errors-since=<date or ISO time>` (2026-11-01; with `--include-errors` only) — re-queues only the errors recorded since then (`track_analyses.analyzed_at`), so a retry covers just the failures of a run you made. Don't use it to skip "already retried" errors: on 2026-11-01, 12,190 of the 12,703 errors had been tried only once (see § DATA MODEL → Track pool coverage).
 - `--include-not-found` (2026-11-01) — also queues tracks at `status='not_found'`. Pair with `batch.mjs --retry-not-found`. "Not found" means the analysis service had no audio data for the track at the time, and it isn't final: a song not found on 2026-06-16 came back with full data on 2026-11-01. On that day 6,844 tracks were `not_found` (6,365 of them scanned in June–July), 6,720 of them in catalog playlists, where they never play. One call per track unless the service errors.
 - Neither genre flag drops tracks in `manual:<genre>` playlists (Ami's manual tracks, 2026-10-26), so every orphan or error run includes them.
 

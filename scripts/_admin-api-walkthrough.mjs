@@ -170,9 +170,7 @@ try {
   ok([3, 4].includes(await approvedLevel('Brazilian Funk')), 'the added genre is approved in the high tier');
 
   r = await admin('POST', 'directions', { business_id: businessId, action: 'add_genre', direction: 'H2', genre: 'Bossa Nova' });
-  ok(r.status === 400 && /move:true/.test(r.data.error || ''), 'a calm genre into a high direction → refused without move', JSON.stringify(r.data));
-  r = await admin('POST', 'directions', { business_id: businessId, action: 'add_genre', direction: 'H2', genre: 'Bossa Nova', move: true });
-  ok(r.status === 200 && (await approvedLevel('Bossa Nova')) >= 3, 'with move:true it moves to the high tier', JSON.stringify(r.data).slice(0, 300));
+  ok(r.status === 200 && /moved/.test((r.data.warnings || []).join()) && (await approvedLevel('Bossa Nova')) >= 3, 'a calm genre into a high direction → moved to the high tier, with a warning', JSON.stringify(r.data).slice(0, 300));
   ok(!r.data.directions.find((d) => d.key === 'C1').genres.includes('Bossa Nova'), '…and leaves the calm direction');
 
   r = await admin('POST', 'directions', { business_id: businessId, action: 'replace_genre', direction: 'H2', genre: 'Disco', with: 'Latin Funk' });
@@ -182,11 +180,10 @@ try {
   r = await admin('POST', 'directions', { business_id: businessId, action: 'remove_genre', direction: 'H1', genre: 'Afro Funk' });
   ok(r.status === 200 && !r.data.directions.find((d) => d.key === 'H1').genres.includes('Afro Funk'), 'remove Afro Funk from H1');
 
-  // Ami's pairing rules (2026-10-21): DownTempo goes only with DownTempo.
+  // The console isn't held to Ami's pairing rules (Roni, 2026-11-05), and a
+  // genre the profile lacks is approved on the way in.
   r = await admin('POST', 'directions', { business_id: businessId, action: 'new_direction', tier: 'low', genres: ['Rnb', 'DownTempo'], title_en: 'Test low' });
-  ok(r.status === 400 && /DownTempo only with DownTempo/.test(JSON.stringify(r.data.dropped)), 'a direction that breaks a pairing rule → 400 with the rule', JSON.stringify(r.data));
-  r = await admin('POST', 'directions', { business_id: businessId, action: 'new_direction', tier: 'low', genres: ['Rnb'], title_en: 'Test low' });
-  ok(r.status === 200 && r.data.directions.some((d) => d.title_en === 'Test low' && d.energy_tier === 'low'), 'new calm direction');
+  ok(r.status === 200 && r.data.directions.find((d) => d.title_en === 'Test low' && d.energy_tier === 'low')?.genres.includes('DownTempo'), 'new calm direction, against a pairing rule, with an unapproved genre', JSON.stringify(r.data).slice(0, 300));
   const newKey = r.data.directions?.find((d) => d.title_en === 'Test low')?.key;
   r = await admin('POST', 'directions', { business_id: businessId, action: 'delete_direction', direction: newKey });
   ok(r.status === 200 && !r.data.directions.some((d) => d.title_en === 'Test low'), `delete ${newKey}`);

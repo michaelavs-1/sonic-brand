@@ -34,6 +34,14 @@
 // remove_genre / move_genre take an optional "tier" for one side. Profiles
 // from before (two_sided not true) keep one entry per genre and behave exactly
 // as before.
+//
+// The admin console (api/internal/directions.js) runs with { admin: true }
+// (Roni, 2026-11-05): adding or removing a genre is never refused or undone.
+// No pairing rules, no side rules, nothing is rebuilt behind the edit, and a
+// requested genre taken out of its last recipe stops being requested. Everything
+// else (the owner's chat, Ami's bench) keeps the rules. Finalize no longer
+// re-splits existing recipes, so a later chat turn doesn't undo an admin's
+// pairing.
 
 import { GENRES } from '../../shared/genre-universe.js';
 import { tierOfLevel, tierPopularity } from './option1-draw.js';
@@ -234,9 +242,10 @@ function listsBothHalves(profile, N) {
 
 // ---- lookups ----
 // What makes a profile entry unique: the genre — or, in a two-sided profile,
-// a both-ways genre + its side (one entry per side).
+// the genre + its side (one entry per side). Normally only a both-ways genre
+// has two; the admin console can give any genre a second side.
 function entryKey(s, g, L) {
-  return s.twoSided && genreSide(g) === 'both' ? `${g}|${tierOfLevel(L, s.N)}` : g;
+  return s.twoSided ? `${g}|${tierOfLevel(L, s.N)}` : g;
 }
 const isApproved = (s, g) => s.approved.some((a) => a.genre === g);
 // A genre's approved levels / tiers (two entries for a genre on both sides).
@@ -270,8 +279,8 @@ const fitsDir = (s, dir, g) => (s.mode === 'option2'
 // LoFi only with LoFi. They hold for requested genres too since 2026-10-26 —
 // a requested genre is an ordinary member of the recipes it sits in (before
 // that, Option 1 put it in every recipe of its tier, so it was exempt). An op
-// that would make a recipe break one is refused with the rule as its reason
-// (the admin console shows it; the chat drops the op).
+// that would make a recipe break one is dropped with the rule as its reason
+// (the chat's ops only; the admin console isn't held to them, 2026-11-05).
 function newIsolationBreak(s, before, after) {
   const was = splitRecipe(before).out.length;
   const now = splitRecipe(after).out;
@@ -352,10 +361,10 @@ const HANDLERS = {
     const L = Number(op.energy_level);
     if (s.twoSided) {
       if (!Number.isInteger(L) || L < 1 || L > s.N) return `energy_level must be 1..${s.N}`;
-      const block = sideBlock(s, g, L);
+      const block = ctx.admin ? null : sideBlock(s, g, L);
       if (block) return block;
       // A both-ways genre approved on one side may be added on the other.
-      if (tiersOf(s, g).has(tierOfLevel(L, s.N)) || (isApproved(s, g) && genreSide(g) !== 'both')) return 'already approved';
+      if (tiersOf(s, g).has(tierOfLevel(L, s.N)) || (!ctx.admin && isApproved(s, g) && genreSide(g) !== 'both')) return 'already approved';
     } else {
       if (isApproved(s, g)) return 'already approved';
       if (!Number.isInteger(L) || L < 1 || L > s.N) return `energy_level must be 1..${s.N}`;
@@ -377,7 +386,7 @@ const HANDLERS = {
     const a = entries.length === 1 ? entries[0] : entries.find((x) => tierOfLevel(x.energy_level, s.N) === tier);
     if (!a) return `not on the ${tier} side`;
     if (a.energy_level === L) return 'already at that level';
-    const block = sideBlock(s, g, L);
+    const block = ctx.admin ? null : sideBlock(s, g, L);
     if (block) return block;
     if (entries.some((x) => x !== a && tierOfLevel(x.energy_level, s.N) === tierOfLevel(L, s.N))) return 'already approved on that side';
     a.energy_level = L;
@@ -400,14 +409,14 @@ const HANDLERS = {
     return null;
   },
 
-  dir_add(s, op) {
+  dir_add(s, op, ctx) {
     const d = findDir(s, op.dir);
     if (!d) return 'no such recipe';
     const g = canonicalGenre(op.genre);
     if (!g || !isApproved(s, g)) return 'not one of the approved genres';
     if (!fitsDir(s, d, g)) return s.mode === 'option2' ? 'genre is at another energy level' : 'genre is in the other energy tier';
     if (!d.genres.includes(g)) {
-      const why = newIsolationBreak(s, d.genres, [...d.genres, g]);
+      const why = ctx.admin ? null : newIsolationBreak(s, d.genres, [...d.genres, g]);
       if (why) return why;
       d.genres.push(g);
     }
@@ -423,7 +432,7 @@ const HANDLERS = {
     return null;
   },
 
-  dir_new(s, op) {
+  dir_new(s, op, ctx) {
     const genres = uniq((Array.isArray(op.genres) ? op.genres : []).map(canonicalGenre).filter(Boolean));
     if (s.mode === 'option2') {
       const L = Number(op.energy_level);
@@ -431,7 +440,7 @@ const HANDLERS = {
       if (s.levelDirs.filter((d) => d.energy_level === L).length >= MAX_LEVEL_DIRECTIONS) return 'that level already has the most recipes allowed';
       const fit = genres.filter((g) => levelsOf(s, g).has(L));
       if (!fit.length) return 'no approved genre of that level';
-      const why = newIsolationBreak(s, [], fit);
+      const why = ctx.admin ? null : newIsolationBreak(s, [], fit);
       if (why) return why;
       s.levelDirs.push({ key: nextKey(s, { level: L }), energy_level: L, title_en: String(op.title_en || '').slice(0, 120), genres: fit, energy_range: null });
       return null;
@@ -441,7 +450,7 @@ const HANDLERS = {
     if (s.option1Dirs.length >= MAX_OPTION1_DIRECTIONS) return 'the library already has the most recipes allowed';
     const fit = genres.filter((g) => tiersOf(s, g).has(tier));
     if (!fit.length) return 'no approved genre of that tier';
-    const why = newIsolationBreak(s, [], fit);
+    const why = ctx.admin ? null : newIsolationBreak(s, [], fit);
     if (why) return why;
     s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: String(op.title_en || '').slice(0, 120), genres: fit });
     return null;
@@ -535,11 +544,13 @@ export const OP_NAMES = Object.keys(HANDLERS);
 //   - drop empty recipes and repeated genre sets;
 //   - a genre the ops added or moved that no recipe of its tier/level plays
 //     gets a recipe of its own, and so does a requested genre no recipe plays
-//     (the daily draw can only guarantee the owner hears it through a recipe
-//     that holds it — 2026-10-26);
-//   - Option 1: a tier with approved genres but no recipe gets one with them;
-//   - the current mode's recipes follow the isolation rules (pairing-rules.js);
+//     at all (the daily draw can only guarantee the owner hears it through a
+//     recipe that holds it — 2026-10-26);
+//   - Option 1: a tier with approved genres but no recipe gets one with them,
+//     split by the isolation rules (pairing-rules.js);
 //   - requested / weights / rejected / conditional stay consistent.
+// With ctx.admin the admin's edit stands: nothing is created, and a requested
+// genre the ops took out of its last recipe stops being requested.
 function finalize(s, ctx) {
   // genre → its approved levels (two for a genre on both sides).
   const lv = new Map();
@@ -560,8 +571,17 @@ function finalize(s, ctx) {
   s.option1Dirs = clean(s.option1Dirs, (d, g) => inTier(g, d.energy_tier));
   s.levelDirs = clean(s.levelDirs, (d, g) => lv.get(g).has(d.energy_level));
 
+  const inLibrary = (g) => library(s).some((d) => d.genres.includes(g));
+  if (ctx.admin) {
+    s.requested = s.requested.filter((g) => {
+      const keep = !ctx.libraryBefore.has(g) || inLibrary(g);
+      if (!keep) ctx.notes.push(`${g} is no longer a requested genre (no direction plays it now)`);
+      return keep;
+    });
+  }
   // Per level / tier the genre sits in (both, for a genre on both sides).
-  for (const g of new Set([...ctx.touched, ...s.requested])) {
+  const needRecipe = ctx.admin ? [] : [...ctx.touched, ...s.requested.filter((g) => !inLibrary(g))];
+  for (const g of new Set(needRecipe)) {
     if (!lv.has(g)) continue;
     if (s.mode === 'option2') {
       for (const L of lv.get(g)) {
@@ -580,44 +600,28 @@ function finalize(s, ctx) {
       }
     }
   }
-  if (s.mode === 'option1') {
+  if (s.mode === 'option1' && !ctx.admin) {
+    let fixed = false;
     for (const tier of ['high', 'low']) {
       const genres = s.approved.filter((a) => tierOfLevel(a.energy_level, s.N) === tier).map((a) => a.genre);
-      if (genres.length && !s.option1Dirs.some((d) => d.energy_tier === tier)) {
-        s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: `All ${tier} genres`, genres });
-        ctx.notes.push(`the ${tier} tier had no recipe left — made one from all its genres`);
-      }
-    }
-  }
-
-  // The isolation rules on the current mode's library: catches what no op
-  // checks (the "all genres" recipe above, a library from before the rules).
-  // Same fix as the generators' normalizers — the larger side stays, genres
-  // taken out get a recipe of their own if no other recipe plays them.
-  const groups = s.mode === 'option2'
-    ? [...new Set(s.levelDirs.map((d) => d.energy_level))].map((L) => ({ L, dirs: s.levelDirs.filter((d) => d.energy_level === L) }))
-    : ['high', 'low'].map((tier) => ({ tier, dirs: s.option1Dirs.filter((d) => d.energy_tier === tier) }));
-  let fixed = false;
-  for (const { L, tier, dirs } of groups) {
-    if (!dirs.length) continue;
-    const res = enforceIsolation(dirs);
-    if (!res.notes.length) continue;
-    fixed = true;
-    dirs.forEach((d, k) => { d.genres = res.recipes[k].genres; });
-    for (const a of res.added) {
-      if (s.mode === 'option2') {
-        if (s.levelDirs.filter((d) => d.energy_level === L).length >= MAX_LEVEL_DIRECTIONS) break;
-        s.levelDirs.push({ key: nextKey(s, { level: L }), energy_level: L, title_en: a.title_en, genres: a.genres, energy_range: null });
-      } else {
+      if (!genres.length || s.option1Dirs.some((d) => d.energy_tier === tier)) continue;
+      s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: `All ${tier} genres`, genres });
+      ctx.notes.push(`the ${tier} tier had no recipe left — made one from all its genres`);
+      // Same fix as the generators' normalizers — the larger side stays, genres
+      // taken out get a recipe of their own. Only on this new recipe: existing
+      // ones may hold an admin's pairing.
+      const dirs = s.option1Dirs.filter((d) => d.energy_tier === tier);
+      const res = enforceIsolation(dirs);
+      if (!res.notes.length) continue;
+      fixed = true;
+      dirs.forEach((d, k) => { d.genres = res.recipes[k].genres; });
+      for (const a of res.added) {
         if (s.option1Dirs.length >= MAX_OPTION1_DIRECTIONS) break;
         s.option1Dirs.push({ key: nextKey(s, { tier }), energy_tier: tier, title_en: a.title_en, genres: a.genres });
       }
+      ctx.notes.push(...res.notes.map((n) => `pairing rules: ${n}`));
     }
-    ctx.notes.push(...res.notes.map((n) => `pairing rules: ${n}`));
-  }
-  if (fixed) {
-    if (s.mode === 'option2') s.levelDirs = clean(s.levelDirs, (d, g) => lv.get(g).has(d.energy_level));
-    else s.option1Dirs = clean(s.option1Dirs, (d, g) => inTier(g, d.energy_tier));
+    if (fixed) s.option1Dirs = clean(s.option1Dirs, (d, g) => inTier(g, d.energy_tier));
   }
 
   s.requested = s.requested.filter((g) => lv.has(g));
@@ -633,11 +637,15 @@ function finalize(s, ctx) {
 //   ops          [{ op, ...fields }]
 //   linkedTracks Map<spotify_id, { title, artist, duration_sec }> — songs the
 //                server resolved from links in this conversation
+//   admin        the admin console: see the file's header
 // → { state, applied: [op], dropped: [{ op, reason }], allowedAdded: [id],
 //     notes: [string], changed: boolean }
-export function applyOps(state, ops, { linkedTracks = new Map() } = {}) {
+export function applyOps(state, ops, { linkedTracks = new Map(), admin = false } = {}) {
   const s = clone(state);
-  const ctx = { touched: new Set(), linkedTracks, allowedAdded: [], notes: [] };
+  const ctx = {
+    touched: new Set(), linkedTracks, allowedAdded: [], notes: [], admin,
+    libraryBefore: new Set(library(s).flatMap((d) => d.genres)),
+  };
   const applied = [];
   const dropped = [];
   for (const op of (Array.isArray(ops) ? ops : []).slice(0, MAX_OPS)) {

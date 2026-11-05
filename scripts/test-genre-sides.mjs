@@ -277,6 +277,8 @@ test('an older profile (no sides) behaves as before: a calm-only genre may still
   const old = { energy_levels_total: 4, approved_genres: [{ genre: 'Bossa Nova', energy_level: 2 }, { genre: 'Fado', energy_level: 1 }] };
   const s = stateFromRows({ mode: 'option1', profile: old, option1Rows: [{ energy_tier: 'low', rank: 1, genres: ['Bossa Nova', 'Fado'] }] });
   assert.equal(s.twoSided, false);
+  const adminMove = applyOps(s, [{ op: 'move_genre', genre: 'Bossa Nova', energy_level: 3 }], { admin: true });
+  assert.equal(adminMove.dropped.length, 0, 'the admin console is not held to the sides');
   const r = applyOps(s, [{ op: 'move_genre', genre: 'Bossa Nova', energy_level: 3 }]);
   assert.equal(r.dropped.length, 0);
 });

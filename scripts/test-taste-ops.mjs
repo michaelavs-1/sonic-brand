@@ -216,6 +216,30 @@ test('context helpers: song playing at a time, genre shares', () => {
   assert.deepEqual(shares.map((x) => [x.genre, Math.round(x.share * 100)]), [['Funk', 50], ['Disco', 50]]);
 });
 
+test('admin: a removed requested genre stays out and stops being requested', () => {
+  const s = opt1();
+  const g = s.option1Dirs[0].genres[0];
+  const withReq = applyOps(s, [{ op: 'set_requested', genre: g }]).state;
+  const ops = withReq.option1Dirs.filter((d) => d.genres.includes(g)).map((d) => ({ op: 'dir_remove', dir: d.key, genre: g }));
+  const chat = applyOps(withReq, ops);
+  assert.ok(chat.state.requested.includes(g), 'the chat keeps it requested');
+  assert.ok(chat.state.option1Dirs.some((d) => d.genres.includes(g)), 'and gives it a recipe back');
+  const admin = applyOps(withReq, ops, { admin: true });
+  assert.ok(!admin.state.requested.includes(g));
+  assert.ok(!admin.state.option1Dirs.some((d) => d.genres.includes(g)));
+  assert.match(admin.notes.join(), /no longer a requested genre/);
+  // A later chat change doesn't bring it back.
+  assert.ok(!applyOps(admin.state, [{ op: 'set_pref', field: 'instrumentalness', value: 'soft' }]).state.option1Dirs.some((d) => d.genres.includes(g)));
+});
+
+test('admin: a tier may be left with no recipe, and nothing is rebuilt', () => {
+  const s = opt1();
+  const calm = s.option1Dirs.filter((d) => d.energy_tier === 'low');
+  const r = applyOps(s, calm.map((d) => ({ op: 'dir_delete', dir: d.key })), { admin: true });
+  assert.equal(r.state.option1Dirs.filter((d) => d.energy_tier === 'low').length, 0);
+  assert.equal(r.notes.length, 0);
+});
+
 test('well-known songs per tier (Option 1); whole account clears tiers; Option 2 takes no tier', () => {
   const s = opt1();   // popularity_preference 'soft'
   assert.equal(s.popTiers, null);

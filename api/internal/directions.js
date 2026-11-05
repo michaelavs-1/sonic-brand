@@ -21,18 +21,23 @@
                             also the newest change overall
      direction = a key from the latest GET ("H2", "C1", "L3-2").
 
+   Adding or removing a genre is never refused or undone (Roni, 2026-11-05):
+   no pairing rules, no side rules, and nothing is rebuilt behind the edit
+   (applyOps with { admin: true }). A requested genre taken out of its last
+   direction stops being requested (see `notes`).
+
    Adding a genre the owner's taste profile doesn't approve also approves it
    (Option 1: at `energy_level`, default the direction's middle level within
    its tier; Option 2: at the direction's level) — a direction can only play
-   approved genres. A genre already approved in the OTHER tier / at another
-   level is refused unless `move: true`, which moves it (that also takes it
-   out of the recipes of its old tier / level).
+   approved genres; new_direction does the same. A genre already approved in
+   the OTHER tier / at another level is moved there (it leaves the recipes of
+   its old tier / level; a warning says so). On a two-sided profile
+   (business_taste_profiles.two_sided) it's added on the direction's side as
+   well and stays on the other, unless `move: true` asks for a move.
 
-   Two-sided profiles (business_taste_profiles.two_sided, the two-deck
-   onboarding, 2026-11-02): a both-ways genre approved on one side is simply
-   added on the direction's side as well (no `move` needed — it then sits on
-   both sides); a calm-only genre can't go into a high-energy direction nor an
-   energetic-only one into a calm direction (dropped with that reason).
+   A tier / level left with no direction stays that way, with a warning:
+   Option 1 builds no playlists of that tier until one is added; Option 2 plays
+   that level's genres together.
 
    Runs the taste chat's ops (v7/generation/taste-ops.js) on the business's
    current state and writes it the same way (_taste-state.js), so the result
@@ -53,7 +58,6 @@ import { readLibrary } from './_library.js';
 import { readTasteState, writeTasteState } from '../v7/account/_taste-state.js';
 import { applyOps, snapshotOf, stateFromSnapshot, canonicalGenre } from '../../v7/generation/taste-ops.js';
 import { tierOfLevel } from '../../v7/generation/option1-draw.js';
-import { genreSide } from '../../shared/genre-sides.js';
 import { GENRES } from '../../shared/genre-universe.js';
 
 const ACTIONS = new Set(['add_genre', 'remove_genre', 'replace_genre', 'new_direction', 'delete_direction', 'undo']);
@@ -82,13 +86,13 @@ async function newestChange(businessId) {
 }
 
 // Where an added genre should sit in the profile, as ops to run before
-// dir_add. → { ops, error }
+// dir_add. → { ops, warnings, error }
 function placeGenre(state, dir, genre, { energy_level, move }) {
   const tierOf = (a) => tierOfLevel(a.energy_level, state.N);
   // Its entries (two for a genre on both sides of a two-sided profile).
   const entries = state.approved.filter((a) => a.genre === genre);
-  // Two-sided profile + both-ways genre: the other side can simply be added.
-  const canAddSide = state.twoSided && genreSide(genre) === 'both';
+  // Two-sided profile: the other side can simply be added.
+  const canAddSide = state.twoSided && !move;
   if (state.mode === 'option2') {
     if (!entries.length) return { ops: [{ op: 'add_genre', genre, energy_level: dir.energy_level }] };
     if (entries.some((a) => a.energy_level === dir.energy_level)) return { ops: [] };
@@ -96,8 +100,10 @@ function placeGenre(state, dir, genre, { energy_level, move }) {
     const sameSide = entries.find((a) => tierOf(a) === dirTier);
     if (canAddSide && !sameSide) return { ops: [{ op: 'add_genre', genre, energy_level: dir.energy_level }] };
     const have = sameSide || entries[0];
-    if (!move) return { error: `${genre} is approved at energy level ${have.energy_level}, not ${dir.energy_level} — pass move:true to move it (it then leaves the level-${have.energy_level} directions)` };
-    return { ops: [{ op: 'move_genre', genre, energy_level: dir.energy_level, tier: tierOf(have) }] };
+    return {
+      ops: [{ op: 'move_genre', genre, energy_level: dir.energy_level, tier: tierOf(have) }],
+      warnings: [`${genre} moved from energy level ${have.energy_level} to ${dir.energy_level}: it left the level-${have.energy_level} directions`],
+    };
   }
   const tier = dir.energy_tier;
   const levelsOfTier = Array.from({ length: state.N }, (_, i) => i + 1).filter((L) => tierOfLevel(L, state.N) === tier);
@@ -113,8 +119,10 @@ function placeGenre(state, dir, genre, { energy_level, move }) {
   if (!entries.length) return { ops: [{ op: 'add_genre', genre, energy_level: L }] };
   if (entries.some((a) => tierOf(a) === tier)) return { ops: [] };
   if (canAddSide) return { ops: [{ op: 'add_genre', genre, energy_level: L }] };
-  if (!move) return { error: `${genre} is approved in the ${tier === 'high' ? 'calm' : 'high'}-energy tier — pass move:true to move it (it then leaves that tier's directions)` };
-  return { ops: [{ op: 'move_genre', genre, energy_level: L, tier: tierOf(entries[0]) }] };
+  return {
+    ops: [{ op: 'move_genre', genre, energy_level: L, tier: tierOf(entries[0]) }],
+    warnings: [`${genre} moved to the ${tier === 'high' ? 'high' : 'calm'}-energy tier: it left the directions of the other tier`],
+  };
 }
 
 // The request → taste ops. → { ops, error, warnings }
@@ -125,12 +133,6 @@ function opsFor(state, body) {
   const needDir = ['add_genre', 'remove_genre', 'replace_genre', 'delete_direction'].includes(body.action);
   if (needDir && !dir) return { error: `no direction "${body.direction}" — use a key from the latest GET (${lib.map((d) => d.key).join(', ') || 'none'})` };
   const warnings = [];
-  // Requested genres stopped being added to every Option 1 playlist on
-  // 2026-10-26: now one of the day's playlists plays a direction that holds
-  // the genre, so taking it out of directions does change what plays — and a
-  // genre left with no direction gets one of its own (taste-ops finalize).
-  const requestedNote = (g) => (state.requested.includes(g)
-    ? [`${g} is a requested genre: one of the day's playlists must play a direction that holds it, so it keeps at least one direction (it gets one of its own if this leaves it with none)`] : []);
 
   switch (body.action) {
     case 'add_genre': {
@@ -139,13 +141,13 @@ function opsFor(state, body) {
       if (dir.genres.includes(g)) return { error: `${g} is already in ${dir.key}` };
       const placed = placeGenre(state, dir, g, body);
       if (placed.error) return { error: placed.error };
-      return { ops: [...placed.ops, { op: 'dir_add', dir: dir.key, genre: g }], warnings };
+      return { ops: [...placed.ops, { op: 'dir_add', dir: dir.key, genre: g }], warnings: placed.warnings || [] };
     }
     case 'remove_genre': {
       const g = canonicalGenre(body.genre);
       if (!g || !dir.genres.includes(g)) return { error: `${body.genre} is not in ${dir.key}` };
       if (dir.genres.length === 1) warnings.push(`${dir.key} had only ${g}, so the direction is removed`);
-      return { ops: [{ op: 'dir_remove', dir: dir.key, genre: g }], warnings: [...warnings, ...requestedNote(g)] };
+      return { ops: [{ op: 'dir_remove', dir: dir.key, genre: g }], warnings };
     }
     case 'replace_genre': {
       const out = canonicalGenre(body.genre);
@@ -157,28 +159,43 @@ function opsFor(state, body) {
       if (placed.error) return { error: placed.error };
       // Remove first: the pairing-rule check on dir_add then sees the recipe
       // without the genre being replaced.
-      return { ops: [...placed.ops, { op: 'dir_remove', dir: dir.key, genre: out }, { op: 'dir_add', dir: dir.key, genre: inn }], warnings: requestedNote(out) };
+      return { ops: [...placed.ops, { op: 'dir_remove', dir: dir.key, genre: out }, { op: 'dir_add', dir: dir.key, genre: inn }], warnings: placed.warnings || [] };
     }
     case 'new_direction': {
       const genres = [...new Set((Array.isArray(body.genres) ? body.genres : []).map(canonicalGenre).filter(Boolean))];
       if (!genres.length) return { error: 'genres: a list of catalog genres' };
-      const missing = genres.filter((g) => !state.approved.some((a) => a.genre === g));
-      if (missing.length) return { error: `not approved for this business: ${missing.join(', ')} — create the direction with approved genres, then add_genre the rest` };
-      if (state.mode === 'option2') {
-        return { ops: [{ op: 'dir_new', energy_level: Number(body.energy_level), genres, title_en: body.title_en || genres.join(' + ') }] };
+      const L = Number(body.energy_level);
+      if (state.mode === 'option2' ? !(Number.isInteger(L) && L >= 1 && L <= state.N) : body.tier !== 'high' && body.tier !== 'low') {
+        return { error: state.mode === 'option2' ? `energy_level must be 1..${state.N}` : 'tier must be "high" or "low"' };
       }
-      return { ops: [{ op: 'dir_new', tier: body.tier, genres, title_en: body.title_en || genres.join(' + ') }] };
+      // Each genre placed like add_genre (the new direction has no genres yet).
+      const target = state.mode === 'option2' ? { energy_level: L, genres: [] } : { energy_tier: body.tier, genres: [] };
+      const placed = genres.map((g) => placeGenre(state, target, g, {}));
+      const newOp = state.mode === 'option2' ? { op: 'dir_new', energy_level: L } : { op: 'dir_new', tier: body.tier };
+      return {
+        ops: [...placed.flatMap((p) => p.ops), { ...newOp, genres, title_en: body.title_en || genres.join(' + ') }],
+        warnings: placed.flatMap((p) => p.warnings || []),
+      };
     }
     case 'delete_direction': {
-      const same = lib.filter((d) => (state.mode === 'option2' ? d.energy_level === dir.energy_level : d.energy_tier === dir.energy_tier));
-      if (same.length === 1) warnings.push(state.mode === 'option2'
-        ? `${dir.key} was the only direction at level ${dir.energy_level}: that level now plays all its genres together`
-        : `${dir.key} was the last ${dir.energy_tier} direction: a new one with all the tier's genres takes its place`);
       return { ops: [{ op: 'dir_delete', dir: dir.key }], warnings };
     }
     default:
       return { error: 'unknown action' };
   }
+}
+
+// A tier / level with approved genres and no direction: the edit stands, and
+// the admin hears what that means.
+function emptySlots(s) {
+  if (s.mode === 'option2') {
+    const levels = [...new Set(s.approved.map((a) => a.energy_level))].sort((a, b) => a - b);
+    return levels.filter((L) => !s.levelDirs.some((d) => d.energy_level === L))
+      .map((L) => `energy level ${L} has no direction left: it plays all its genres together until one is added`);
+  }
+  return ['high', 'low']
+    .filter((tier) => s.approved.some((a) => tierOfLevel(a.energy_level, s.N) === tier) && !s.option1Dirs.some((d) => d.energy_tier === tier))
+    .map((tier) => `the ${tier === 'high' ? 'high' : 'calm'}-energy tier has no direction left: no ${tier === 'high' ? 'high-energy' : 'calm'} playlists are built until one is added`);
 }
 
 export default async function handler(req, res) {
@@ -220,7 +237,7 @@ export default async function handler(req, res) {
       }
       let target = stateFromSnapshot(state, last.before);
       if (last.delivery_mode !== state.mode) target = { ...target, option1Dirs: state.option1Dirs, levelDirs: state.levelDirs };
-      target = applyOps(target, []).state;
+      target = applyOps(target, [], { admin: true }).state;
       await writeTasteState(id, state, target);
       await pgrPatch('business_taste_changes', { id: `eq.${last.id}` }, { undone_at: new Date().toISOString() });
       await logAdminAction(id, 'direction:undo', { change_id: last.id, summary: last.summary_he });
@@ -229,11 +246,12 @@ export default async function handler(req, res) {
 
     const { ops, error, warnings = [] } = opsFor(state, body);
     if (error) return res.status(400).json({ error });
-    const r = applyOps(state, ops);
+    const r = applyOps(state, ops, { admin: true });
     const failed = r.dropped.length ? r.dropped : null;
     if (failed) return res.status(400).json({ error: 'nothing changed', dropped: failed });
     if (!r.changed) return res.status(409).json({ error: 'nothing changed', code: 'nothing-to-change' });
 
+    warnings.push(...emptySlots(r.state));
     await writeTasteState(id, state, r.state);
     const summary = `[admin] ${body.action}${body.direction ? ` ${String(body.direction).toUpperCase()}` : ''}`
       + `${body.genre ? ` ${body.genre}` : ''}${body.with ? ` → ${body.with}` : ''}`

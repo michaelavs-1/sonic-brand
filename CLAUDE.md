@@ -83,9 +83,10 @@ These rules live in R1's prompt sections (`v7/generation/musical-directions.js`)
     - **What it fixes:** Rule 0 (Electronic R&B only with house genres, Nu Disco or Indie Dance) and Rule 0.2 (DownTempo only with DownTempo, LoFi only with LoFi).
     - **How:** a recipe that breaks one keeps its larger side (on a tie, the DownTempo / LoFi family leaves). Electronic R&B is the one taken out when it sits with anything but its partners. Genres taken out get a recipe of their own when no other recipe of the tier / level plays them.
     - **Exempt:** nothing, since 2026-10-26. Option 1's requested genres used to be exempt, because they went into every recipe of their tier; now they are ordinary members of the recipes they sit in (see "Requested genres" below).
-    - **Taste chat and admin console edits** go through the same rules in `taste-ops.js`:
-      - `dir_add` / `dir_new` that would break one are refused, with reason "would break a pairing rule (…)". The chat drops the op; the admin console gets `400` with the reason.
-      - `finalize` fixes the current library like the normalizers do. That catches the automatic "all genres of the tier" recipe, and a restored (undo) library from before the rules.
+    - **Taste chat edits** go through the same rules in `taste-ops.js`:
+      - `dir_add` / `dir_new` that would break one are refused, with reason "would break a pairing rule (…)". The chat drops the op.
+      - `finalize` splits the automatic "all genres of the tier" recipe by the rules. Since 2026-11-05 it no longer re-splits existing recipes, which may hold an admin's pairing.
+      - **The admin console isn't held to these rules since 2026-11-05** (Roni): see "`/directions`" under § INTERNAL ADMIN API.
       - The admin console's `replace_genre` now removes before it adds, so the check sees the recipe without the genre being replaced.
     - **Not checked in code:** the pure-pop rule, whose "mainstream commercial siblings when the mood demands it" clause can't be checked mechanically.
 
@@ -527,7 +528,7 @@ The Home tab's chat for the DAILY music. It replaced the dormant v6 "חידוד�
   - `set_weight` (steps 0.25 / 0.5 / 1 / 1.5 / 2; 1 = today's mix), `remove_genre` (turned down too), `reject_genre`, `add_genre`, `move_genre`, `set_requested` (super-like);
   - recipe edits `dir_add` / `dir_remove` / `dir_new` / `dir_delete` (keys `H1`… / `C1`… in Option 1, `L2-1`… in Option 2);
   - `set_pref` (popularity takes `tier` "high" / "low" in Option 1, 2026-10-14); `shift_window` (Option 1); `set_range` (Option 2); `allow_track`; `undo`.
-  - After the ops, recipes are made consistent with the profile. An added or moved genre that no recipe plays gets a recipe of its own — and so does a requested genre no recipe plays, in both modes (2026-10-26: the daily draw can only play it through a recipe that holds it) — and an Option 1 tier left with no recipe gets one.
+  - After the ops, recipes are made consistent with the profile. An added or moved genre that no recipe plays gets a recipe of its own — and so does a requested genre no recipe plays at all, in both modes (2026-10-26: the daily draw can only play it through a recipe that holds it; "at all" since 2026-11-05, so one held on one side isn't given a recipe on the other) — and an Option 1 tier left with no recipe gets one. The admin console's edits skip all of this (`applyOps` with `admin: true`, 2026-11-05).
   - Only the CURRENT mode's library is edited. The other one is rebuilt from the profile at the next type switch (Option 2 rows are re-stamped with the new `profile_key`, so they're kept).
 - **Input hint per playlist type** (2026-10-21): `tasteChatPlaceholder(mode)` in `taste-chat-prompt.js`. Option 1 ends with "הפלייליסטים הרגועים רגועים מדי", Option 2 with "הצהריים אנרגטיים מדי" (Option 1 has no times of day). The owner's page follows the type through `syncTastePlaceholder` (called from `setDeliveryModeState` in `v7/account/app.js`), and Ami's bench uses the same function.
 - **What the chat may say** (prompt rules): plural only; never "כיוון/כיוונים", recipe, weight, level, or any internal number (the 2-replacements limit is the exception). Catalog genre names are a soft rule (fine when needed). The daily playlists are "פלייליסטים", never "מיקסים". Songs are always asked for as a Spotify link, plainly, with the how-to and no "כדי שנוכל לבדוק" (`_spotify-links.js` reads every link, short app links included: title, artist, catalog genres, energy, where it sits in today's playlists). The chat reads the clock (IL, overnight-aware) on every turn.
@@ -993,6 +994,7 @@ sonic-brand/
 │   ├── admin-api-for-michael-update-2026-11-03.md ← A like no longer asks why: `reason` only on dislikes (no API change).
 │   ├── admin-api-for-michael-update-2026-11-03-decks.md ← The calm deck first; Round 2 below 3 likes (no API change).
 │   ├── admin-api-for-michael-update-2026-11-03-accounts-billing.md ← New: GET /spotify-accounts + GET /billing (his request).
+│   ├── admin-api-for-michael-update-2026-11-05.md ← The direction editor no longer refuses or undoes adding / removing a genre.
 │   └── playlist-opens-delta.md             ← Focused delta doc for the 2026-08-30 addition of business_playlist_opens
 │                                             tracking + the new fields on /api/internal/business.
 ├── hyp-support/                            ← Gitignored, local only. Request/response logs prepared for Hyp support
@@ -1879,7 +1881,7 @@ The admin console API under `api/internal/*`, for Michael's dashboard (his own r
   - `selectOrEmpty` answers `[]` when a table or column is missing, so views degrade before a migration;
   - also auth-user listing, `logAdminAction`, Israel dates.
 - **`_library.js`** reads the profile and both libraries, with the taste chat's keys: `H1`/`C1` for Option 1, `L2-1` for Option 2. The order matches `stateFromRows` in `taste-ops.js`. **`_daily-view.js`** groups daily rows by business day (`il_date` from Option 2's meta, else the label's date, else the creation date). It also adds each row's slot, what it played and its opens. Since 2026-10-22 Option 1's `played.energy` = `{range, today_only}` (the energy circles: `{usual, direction: 'more'|'calmer', at}` or null).
-- **Telling Michael about changes:** only a new dated update file (`docs/admin-api-for-michael-update-<date>.md`). Roni sends each one to him by hand, and he never goes back to the full doc, so **never update the full doc** (Roni, 2026-11-03; until then it was kept merged too, so it holds the changes up to 2026-11-02). Updates so far: 2026-10-22, 2026-10-26, 2026-11-02, 2026-11-03 (a like no longer asks why), 2026-11-03-decks (the calm deck first, Round 2 below 3 likes), 2026-11-03-accounts-billing (`/spotify-accounts` + `/billing`, Michael's request; Roni explains the Hyp gaps to him himself).
+- **Telling Michael about changes:** only a new dated update file (`docs/admin-api-for-michael-update-<date>.md`). Roni sends each one to him by hand, and he never goes back to the full doc, so **never update the full doc** (Roni, 2026-11-03; until then it was kept merged too, so it holds the changes up to 2026-11-02). Updates so far: 2026-10-22, 2026-10-26, 2026-11-02, 2026-11-03 (a like no longer asks why), 2026-11-03-decks (the calm deck first, Round 2 below 3 likes), 2026-11-03-accounts-billing (`/spotify-accounts` + `/billing`, Michael's request; Roni explains the Hyp gaps to him himself), 2026-11-05 (the direction editor no longer refuses genres).
 
 **Read endpoints:**
 - **`GET /users`** — one row per business. Adds the playlist type, approved-genre count and opens (7 days / total), the special-request and taste-chat counts, the last build, and playlist likes / dislikes + `last_playlist_feedback_at` (2026-10-26). Payment is `payment_status`: `paid` = a paid `payment_checkouts` row; `no-payment` = signed up while payments were off, when `businesses.paid_at` is only the signup time.
@@ -1894,7 +1896,11 @@ The admin console API under `api/internal/*`, for Michael's dashboard (his own r
 **Action endpoints** (each write → `admin_actions`):
 - **`/directions`** (GET + POST) edits the library IN USE through the taste chat's ops + `writeTasteState`, so the profile stays consistent.
   - Actions: `add_genre` / `remove_genre` / `replace_genre` / `new_direction` / `delete_direction` / `undo`.
-  - A genre the profile lacks is approved at a level that fits: Option 1 = the direction's middle level in its tier, or `energy_level`; Option 2 = the direction's level. One approved in the other tier / at another level needs `move: true`.
+  - **Never refuses or undoes adding or removing a genre** (Roni, 2026-11-05, after Ami couldn't take genres out; `applyOps` with `admin: true`). No pairing or side rules, and nothing is rebuilt behind the edit. Only the console: the owner's chat and Ami's bench keep the rules.
+    - A requested genre taken out of its last recipe stops being requested (a note says so). It's the only way to clear ★ without removing the genre.
+    - A tier / level left with no recipe stays that way, with a warning: Option 1 builds no playlists of that tier, Option 2 plays the level's genres together. A later chat change can rebuild an Option 1 tier's recipe.
+    - Still refused: bad input (not a catalog genre, no such key, already there) and the size limits (30 / 10 per level).
+  - A genre the profile lacks is approved at a level that fits (`new_direction` too): Option 1 = the direction's middle level in its tier, or `energy_level`; Option 2 = the direction's level. One approved in the other tier / at another level moves there with a warning (no `move` needed since 2026-11-05); on a two-sided profile it gains the new side and keeps the old one, any genre, unless `move: true`.
   - Logged in `business_taste_changes` with `source='admin'`. Admin `undo` reverts the newest admin change only while it is also the newest change overall.
 - **`/daily-picks`** (GET calendar + POST `set` / `clear` / `rebuild_today`) — the admin picks a day's direction for one slot (see "Admin daily picks" under the v7 daily runtime).
   - The GET predicts Option 2's rotation exactly, using the builder's own `levelLibrary` + `pickLevelDirections`; Option 1's unpicked slots show "random". Checked against the 2026-10-13 builds.
@@ -1913,6 +1919,7 @@ The admin console API under `api/internal/*`, for Michael's dashboard (his own r
 **Live test:** `node --env-file=.env.local scripts/_admin-api-walkthrough.mjs`.
 - Runs against `vercel dev` on a throwaway business + coupon, and cleans up after itself. No Spotify, no Gemini.
 - Covers the reads, every direction action, picks + both planners, the owner's `generate-daily` refusals, and coupons.
+- 2026-11-05: 67 passed, after the direction editor stopped refusing genres (two checks merged).
 - 2026-11-02: 69 passed, including section [7], the re-onboarding (archive, replace, weights carried, the undo refusal, the business page).
 - 2026-10-21: 57 passed, including Ami's taste bench: load a business; save a change (the weight lands in the profile, logged as an admin change); save a type switch both ways (mode, library, the Option 2 timeline, the audit).
 - 2026-10-13, after the migration: 45 passed. That run found that a pick for one Option 2 mix could leave both mixes on the same direction at that level. Fixed: `applyOption2Picks` now moves the unpicked mix to the next different direction.

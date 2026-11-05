@@ -141,6 +141,20 @@ test('taste ops: dir_new that breaks a rule is refused', () => {
   assert.match(r.dropped[0].reason, /LoFi only with LoFi/);
 });
 
+test('taste ops: the admin console is not held to the rules', () => {
+  const r = applyOps(option1State(), [{ op: 'dir_add', dir: 'C1', genre: 'Bossa Nova' }], { admin: true });
+  assert.equal(r.applied.length, 1);
+  assert.deepEqual(r.state.option1Dirs.find((d) => d.key === 'C1').genres, ['LoFi Beats', 'LoFi Bossa', 'Bossa Nova']);
+  const n = applyOps(option1State(), [{ op: 'dir_new', tier: 'low', genres: ['LoFi Beats', 'Jazz (Standards)'], title_en: 'x' }], { admin: true });
+  assert.equal(n.applied.length, 1);
+});
+
+test('taste ops: a later chat change keeps a pairing the admin made', () => {
+  const admin = applyOps(option1State(), [{ op: 'dir_add', dir: 'C1', genre: 'Bossa Nova' }], { admin: true }).state;
+  const chat = applyOps(admin, [{ op: 'set_weight', genre: 'Rnb', weight: 0.5 }]);
+  assert.deepEqual(chat.state.option1Dirs.find((d) => d.key === 'C1').genres, ['LoFi Beats', 'LoFi Bossa', 'Bossa Nova']);
+});
+
 test('taste ops: the automatic "all genres" recipe is split by the rules', () => {
   // Deleting both calm recipes makes finalize build one from every calm genre.
   const r = applyOps(option1State(), [{ op: 'dir_delete', dir: 'C1' }, { op: 'dir_delete', dir: 'C2' }]);
